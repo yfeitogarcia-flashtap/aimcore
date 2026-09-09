@@ -12,9 +12,10 @@
  */
 
 import * as THREE from 'three'
-import { CAMERA, RENDER, SESSION_DURATION_S } from '../config.js'
+import { CAMERA, MOVEMENT, RENDER, SESSION_DURATION_S } from '../config.js'
 import { createScene } from './scene.js'
 import { LookControls } from './lookControls.js'
+import { MovementController } from './movement.js'
 import { TargetManager } from './targets.js'
 import { initAudio, playHit, playShot } from '../audio/sfx.js'
 
@@ -58,10 +59,13 @@ export class Engine {
     this._disposeScene = disposeScene
 
     this.camera = new THREE.PerspectiveCamera(CAMERA.fov, 1, CAMERA.near, CAMERA.far)
-    this.camera.position.set(0, CAMERA.height, 0)
 
     this.controls = new LookControls(this.camera)
-    this.targets = new TargetManager(this.scene)
+    this.movement = new MovementController(this.camera)
+    this.movement.reset()
+    // Con la variante de movimiento activa el cono deja de seguir la mirada:
+    // nace en la posición del jugador y apunta a una dirección fija del mundo.
+    this.targets = new TargetManager(this.scene, { anchoredAxis: MOVEMENT.enabled })
     this.raycaster = new THREE.Raycaster()
 
     this.phase = PHASE.IDLE
@@ -101,6 +105,7 @@ export class Engine {
     this.canvas.addEventListener('contextmenu', this._onContextMenu)
     document.addEventListener('pointerlockchange', this._onPointerLockChange)
     this.controls.connect(document)
+    this.movement.connect(window)
 
     this._resizeObserver = new ResizeObserver(this._onResize)
     this._resizeObserver.observe(this.canvas.parentElement || this.canvas)
@@ -117,6 +122,7 @@ export class Engine {
     this.canvas.removeEventListener('contextmenu', this._onContextMenu)
     document.removeEventListener('pointerlockchange', this._onPointerLockChange)
     this.controls.disconnect()
+    this.movement.disconnect()
     if (this._resizeObserver) this._resizeObserver.disconnect()
     if (document.pointerLockElement === this.canvas) document.exitPointerLock()
     this.targets.dispose()
@@ -177,6 +183,10 @@ export class Engine {
     this.shots = 0
     this.hits = 0
     this.controls.enabled = true
+    this.movement.reset()
+    this.movement.setEnabled(true)
+    // La primera diana nace en la posición ya reseteada del jugador.
+    this.camera.updateMatrixWorld()
     this.targets.clear()
     this.targets.spawn(this.camera)
     this._setPhase(PHASE.RUNNING)
@@ -184,6 +194,7 @@ export class Engine {
 
   _finishSession() {
     this.controls.enabled = false
+    this.movement.setEnabled(false)
     this.targets.clear()
     this._setPhase(PHASE.FINISHED)
     if (this.isLocked) document.exitPointerLock()
@@ -246,10 +257,12 @@ export class Engine {
       if (this.phase === PHASE.IDLE || this.phase === PHASE.FINISHED) this._beginSession()
       else if (this.phase === PHASE.PAUSED) {
         this.controls.enabled = true
+        this.movement.setEnabled(true)
         this._setPhase(PHASE.RUNNING)
       }
     } else {
       this.controls.enabled = false
+      this.movement.setEnabled(false)
       // Perder la captura en plena partida pausa el reloj en lugar de
       // terminarla: salir con Escape no debería arruinar la sesión.
       if (this.phase === PHASE.RUNNING) this._setPhase(PHASE.PAUSED)
@@ -277,6 +290,10 @@ export class Engine {
       if (this.elapsedMs >= this.durationMs) {
         this.elapsedMs = this.durationMs
         this._finishSession()
+      } else {
+        // `delta` ya viene acotado, así que la integración del salto no pega
+        // un salto raro si el navegador se queda parado un momento.
+        this.movement.update(delta / 1000)
       }
     }
 

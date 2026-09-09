@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
-import { COLORS, SESSION_DURATION_S } from './config.js'
+import { COLORS, MOVEMENT, SESSION_DURATION_S } from './config.js'
 import { Engine, PHASE } from './game/engine.js'
 import { disposeAudio } from './audio/sfx.js'
 import Crosshair from './ui/Crosshair.jsx'
@@ -104,6 +104,9 @@ export default function App() {
             <p className="panel__body">
               Click para capturar el ratón y empezar. Click izquierdo para disparar.
             </p>
+            {MOVEMENT.enabled && (
+              <p className="panel__hint">WASD o flechas para moverte · SPACE salta · CTRL o C agacha</p>
+            )}
             <p className="panel__hint">Escape para pausar.</p>
           </div>
         </div>

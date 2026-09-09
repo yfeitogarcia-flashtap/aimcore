@@ -32,9 +32,12 @@ function easeOut(t) {
 export class TargetManager {
   /**
    * @param {THREE.Scene} scene
+   * @param {{ anchoredAxis?: boolean }} [options] `anchoredAxis` fija el eje
+   *   del cono a una dirección del mundo en lugar de seguir a la cámara.
    */
-  constructor(scene) {
+  constructor(scene, { anchoredAxis = false } = {}) {
     this.scene = scene
+    this.anchoredAxis = anchoredAxis
 
     this.geometry = new THREE.SphereGeometry(
       TARGET.radius,
@@ -76,6 +79,17 @@ export class TargetManager {
 
     this.cosConeHalfAngle = Math.cos(SPAWN.coneHalfAngleDeg * DEG_TO_RAD)
     this.cosMinSeparation = Math.cos(SPAWN.minAngularSeparationDeg * DEG_TO_RAD)
+
+    // Dirección fija del cono, en la misma convención que la cámara: yaw 0
+    // mira hacia -Z.
+    const anchorYaw = SPAWN.anchoredAxisYawDeg * DEG_TO_RAD
+    const anchorPitch = SPAWN.anchoredAxisPitchDeg * DEG_TO_RAD
+    const anchorCosPitch = Math.cos(anchorPitch)
+    this.anchoredDirection = new THREE.Vector3(
+      -Math.sin(anchorYaw) * anchorCosPitch,
+      Math.sin(anchorPitch),
+      -Math.cos(anchorYaw) * anchorCosPitch,
+    ).normalize()
   }
 
   /** ¿Hay una diana en pantalla ahora mismo? */
@@ -147,9 +161,12 @@ export class TargetManager {
   }
 
   /**
-   * Muestrea una posición dentro de un cono centrado en la dirección de la
-   * cámara, descartando candidatos que caigan fuera de la zona jugable o
-   * demasiado cerca de la diana anterior.
+   * Muestrea una posición dentro del cono, descartando candidatos que caigan
+   * fuera de la zona jugable o demasiado cerca de la diana anterior.
+   *
+   * El vértice del cono es siempre `camera.position`, o sea la posición actual
+   * del jugador con su altura real —agachado o en el aire incluidos—, porque
+   * la cámara *es* el jugador.
    */
   _samplePosition(camera, out) {
     this._buildConeBasis(camera)
@@ -197,29 +214,42 @@ export class TargetManager {
   }
 
   /**
-   * Eje del cono (dirección de la cámara con el cabeceo acotado) más dos
-   * vectores perpendiculares que forman la base para el muestreo.
+   * Eje del cono más dos vectores perpendiculares que forman la base para el
+   * muestreo.
+   *
+   * Hay dos regímenes:
+   *  - Anclado (variante de movimiento): el eje es una dirección fija del
+   *    mundo. No lo rota ni la mirada, ni el salto, ni el agachado; sólo se
+   *    mueve el vértice, que es el jugador. Es lo que hace que desplazarse
+   *    cambie de verdad el ángulo hacia las dianas.
+   *  - Siguiendo a la cámara (línea base estática): el eje es la dirección de
+   *    la mirada con el cabeceo acotado, para que mirar al suelo no mande las
+   *    dianas bajo tierra.
    */
   _buildConeBasis(camera) {
-    camera.getWorldDirection(_axis)
-
-    const horizontal = Math.hypot(_axis.x, _axis.z)
-    if (horizontal < 1e-5) {
-      // Mirando en vertical: no hay componente horizontal de la que tirar.
-      _axis.set(0, 0, -1)
+    if (this.anchoredAxis) {
+      _axis.copy(this.anchoredDirection)
     } else {
-      const pitch = Math.asin(THREE.MathUtils.clamp(_axis.y, -1, 1))
-      const clamped = THREE.MathUtils.clamp(
-        pitch,
-        SPAWN.axisPitchClampDeg.min * DEG_TO_RAD,
-        SPAWN.axisPitchClampDeg.max * DEG_TO_RAD,
-      )
-      if (clamped !== pitch) {
-        const cos = Math.cos(clamped)
-        _axis.set((_axis.x / horizontal) * cos, Math.sin(clamped), (_axis.z / horizontal) * cos)
+      camera.getWorldDirection(_axis)
+
+      const horizontal = Math.hypot(_axis.x, _axis.z)
+      if (horizontal < 1e-5) {
+        // Mirando en vertical: no hay componente horizontal de la que tirar.
+        _axis.set(0, 0, -1)
+      } else {
+        const pitch = Math.asin(THREE.MathUtils.clamp(_axis.y, -1, 1))
+        const clamped = THREE.MathUtils.clamp(
+          pitch,
+          SPAWN.axisPitchClampDeg.min * DEG_TO_RAD,
+          SPAWN.axisPitchClampDeg.max * DEG_TO_RAD,
+        )
+        if (clamped !== pitch) {
+          const cos = Math.cos(clamped)
+          _axis.set((_axis.x / horizontal) * cos, Math.sin(clamped), (_axis.z / horizontal) * cos)
+        }
       }
+      _axis.normalize()
     }
-    _axis.normalize()
 
     // Base ortonormal alrededor del eje.
     const reference = Math.abs(_axis.y) > 0.99 ? _fallbackRef : _up
