@@ -1,0 +1,276 @@
+/*
+ * Estética minimalista: negro, tipografía monoespaciada y nada de adornos.
+ * Los colores no se escriben aquí a mano — llegan como variables CSS desde
+ * src/config.js (ver App.jsx), que es el único sitio donde se editan.
+ */
+
+:root {
+  /* Valores de arranque; App.jsx los sobreescribe con los de config.js. */
+  --crosshair-color: #eaeaea;
+  --background-color: #0a0a0a;
+  --accent-color: #e4462b;
+
+  --text-primary: #f2f2f2;
+  --text-muted: #7a7a7a;
+  --panel-border: #242424;
+
+  --crosshair-gap: 3px;
+  --crosshair-length: 7px;
+  --crosshair-thickness: 2px;
+
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--background-color);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  overflow: hidden;
+  /* Evita seleccionar texto al hacer click rápido durante la partida. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.app {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.app__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  cursor: crosshair;
+}
+
+/* ---------- HUD ---------- */
+
+.hud {
+  position: absolute;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 44px;
+  align-items: baseline;
+  pointer-events: none;
+}
+
+.hud__stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.hud__value {
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
+  line-height: 1;
+}
+
+.hud__value--muted {
+  color: var(--text-muted);
+}
+
+.hud__stat--timer .hud__value {
+  font-size: 34px;
+}
+
+.hud__label {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ---------- Crosshair ---------- */
+
+.crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  pointer-events: none;
+}
+
+.crosshair__bar {
+  position: absolute;
+  background: var(--crosshair-color);
+}
+
+.crosshair__bar--top,
+.crosshair__bar--bottom {
+  width: var(--crosshair-thickness);
+  height: var(--crosshair-length);
+  left: calc(var(--crosshair-thickness) / -2);
+}
+
+.crosshair__bar--top {
+  top: calc((var(--crosshair-gap) + var(--crosshair-length)) * -1);
+}
+
+.crosshair__bar--bottom {
+  top: var(--crosshair-gap);
+}
+
+.crosshair__bar--left,
+.crosshair__bar--right {
+  height: var(--crosshair-thickness);
+  width: var(--crosshair-length);
+  top: calc(var(--crosshair-thickness) / -2);
+}
+
+.crosshair__bar--left {
+  left: calc((var(--crosshair-gap) + var(--crosshair-length)) * -1);
+}
+
+.crosshair__bar--right {
+  left: var(--crosshair-gap);
+}
+
+/* Destello de disparo: parte del centro y se apaga en ~90 ms. */
+.crosshair__flash {
+  position: absolute;
+  left: -8px;
+  top: -8px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: var(--crosshair-color);
+  opacity: 0;
+}
+
+/* ---------- Overlays ---------- */
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 10, 10, 0.72);
+  cursor: crosshair;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 32px 40px;
+  border: 1px solid var(--panel-border);
+  background: rgba(10, 10, 10, 0.9);
+  text-align: center;
+}
+
+.panel__title {
+  margin: 0;
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+.panel__title--small {
+  font-size: 20px;
+}
+
+.panel__eyebrow {
+  margin: 0;
+  font-size: 11px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.panel__body {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.panel__hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* ---------- Resumen ---------- */
+
+.panel--summary {
+  gap: 18px;
+  min-width: 400px;
+}
+
+.summary__grid {
+  display: flex;
+  gap: 40px;
+  align-items: flex-end;
+}
+
+.summary__cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.summary__value {
+  font-size: 26px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.summary__cell--primary .summary__value {
+  font-size: 44px;
+  color: var(--accent-color);
+}
+
+.summary__label {
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.summary__detail {
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.button {
+  margin-top: 4px;
+  padding: 11px 26px;
+  border: 1px solid var(--panel-border);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.button:hover,
+.button:focus-visible {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+  outline: none;
+}

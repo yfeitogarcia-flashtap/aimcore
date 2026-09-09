@@ -1,0 +1,297 @@
+/**
+ * Motor del prototipo: render, sesión, input y detección de aciertos.
+ *
+ * Vive completamente fuera de React. React sólo pinta el HUD y recibe avisos
+ * por callback, de modo que el bucle de render nunca provoca re-renders.
+ *
+ * Contrato de rendimiento del bucle:
+ *  - Un único `requestAnimationFrame`, atado al refresco real del monitor.
+ *  - Nada de alocaciones ni de creación de geometría por frame.
+ *  - El único trabajo por frame es: animar los pops, comprobar el reloj y
+ *    renderizar.
+ */
+
+import * as THREE from 'three'
+import { CAMERA, RENDER, SESSION_DURATION_S } from '../config.js'
+import { createScene } from './scene.js'
+import { LookControls } from './lookControls.js'
+import { TargetManager } from './targets.js'
+import { initAudio, playHit, playShot } from '../audio/sfx.js'
+
+/** Centro exacto de la pantalla: el crosshair no se mueve, así que es constante. */
+const SCREEN_CENTER = new THREE.Vector2(0, 0)
+
+/** Tope de delta por frame: evita saltos del reloj tras un parón del navegador. */
+const MAX_FRAME_DELTA_MS = 100
+
+export const PHASE = {
+  IDLE: 'idle',
+  RUNNING: 'running',
+  PAUSED: 'paused',
+  FINISHED: 'finished',
+}
+
+export class Engine {
+  /**
+   * @param {HTMLCanvasElement} canvas
+   * @param {{
+   *   onPhaseChange?: (phase: string) => void,
+   *   onFrame?: (stats: object) => void,
+   *   onShot?: (hit: boolean) => void,
+   *   onFinish?: (summary: object) => void,
+   * }} callbacks
+   */
+  constructor(canvas, callbacks = {}) {
+    this.canvas = canvas
+    this.callbacks = callbacks
+
+    this.renderer = new THREE.WebGLRenderer({
+      canvas,
+      antialias: RENDER.antialias,
+      powerPreference: 'high-performance',
+      stencil: false,
+    })
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, RENDER.maxPixelRatio))
+
+    const { scene, dispose: disposeScene } = createScene()
+    this.scene = scene
+    this._disposeScene = disposeScene
+
+    this.camera = new THREE.PerspectiveCamera(CAMERA.fov, 1, CAMERA.near, CAMERA.far)
+    this.camera.position.set(0, CAMERA.height, 0)
+
+    this.controls = new LookControls(this.camera)
+    this.targets = new TargetManager(this.scene)
+    this.raycaster = new THREE.Raycaster()
+
+    this.phase = PHASE.IDLE
+    this.durationMs = SESSION_DURATION_S * 1000
+    this.elapsedMs = 0
+    this.shots = 0
+    this.hits = 0
+
+    // Objeto de estadísticas reutilizado: el HUD lo lee sin que se genere
+    // basura en cada frame.
+    this.stats = {
+      phase: this.phase,
+      timeLeftMs: this.durationMs,
+      hits: 0,
+      misses: 0,
+      shots: 0,
+      accuracy: 0,
+    }
+
+    this._rafId = 0
+    this._lastFrameTime = 0
+    this._running = false
+
+    this._onMouseDown = this._onMouseDown.bind(this)
+    this._onContextMenu = this._onContextMenu.bind(this)
+    this._onPointerLockChange = this._onPointerLockChange.bind(this)
+    this._onResize = this._onResize.bind(this)
+    this._loop = this._loop.bind(this)
+  }
+
+  /** Engancha listeners, ajusta tamaño y arranca el bucle de render. */
+  start() {
+    if (this._running) return
+    this._running = true
+
+    this.canvas.addEventListener('mousedown', this._onMouseDown)
+    this.canvas.addEventListener('contextmenu', this._onContextMenu)
+    document.addEventListener('pointerlockchange', this._onPointerLockChange)
+    this.controls.connect(document)
+
+    this._resizeObserver = new ResizeObserver(this._onResize)
+    this._resizeObserver.observe(this.canvas.parentElement || this.canvas)
+    this._onResize()
+
+    this._lastFrameTime = performance.now()
+    this._rafId = requestAnimationFrame(this._loop)
+  }
+
+  dispose() {
+    this._running = false
+    cancelAnimationFrame(this._rafId)
+    this.canvas.removeEventListener('mousedown', this._onMouseDown)
+    this.canvas.removeEventListener('contextmenu', this._onContextMenu)
+    document.removeEventListener('pointerlockchange', this._onPointerLockChange)
+    this.controls.disconnect()
+    if (this._resizeObserver) this._resizeObserver.disconnect()
+    if (document.pointerLockElement === this.canvas) document.exitPointerLock()
+    this.targets.dispose()
+    this._disposeScene()
+    this.renderer.dispose()
+  }
+
+  /** ¿Tenemos el ratón capturado? */
+  get isLocked() {
+    return document.pointerLockElement === this.canvas
+  }
+
+  /**
+   * Pide el Pointer Lock. Debe llamarse desde un gesto del usuario.
+   * `unadjustedMovement` desactiva la aceleración del sistema operativo, que es
+   * justo lo que queremos en un aim trainer; si el navegador no lo soporta,
+   * caemos al modo normal.
+   */
+  requestLock() {
+    initAudio()
+    const element = this.canvas
+    const fallback = () => {
+      try {
+        element.requestPointerLock()
+      } catch {
+        /* El navegador puede rechazarlo (p. ej. cooldown tras Escape). */
+      }
+    }
+    try {
+      const result = element.requestPointerLock({ unadjustedMovement: true })
+      if (result && typeof result.catch === 'function') result.catch(fallback)
+    } catch {
+      fallback()
+    }
+  }
+
+  /**
+   * Arranca una sesión nueva desde la pantalla de resumen. Deja la fase como
+   * está a propósito: si el navegador rechaza la captura (hay un cooldown tras
+   * pulsar Escape), el resumen sigue en pantalla con su botón en lugar de
+   * dejar al jugador mirando un canvas vacío. La sesión empieza de verdad
+   * cuando llega el evento de pointerlock.
+   */
+  restart() {
+    this.controls.reset()
+    this.requestLock()
+  }
+
+  _setPhase(phase) {
+    if (this.phase === phase) return
+    this.phase = phase
+    this.stats.phase = phase
+    this.callbacks.onPhaseChange?.(phase)
+  }
+
+  _beginSession() {
+    this.elapsedMs = 0
+    this.shots = 0
+    this.hits = 0
+    this.controls.enabled = true
+    this.targets.clear()
+    this.targets.spawn(this.camera)
+    this._setPhase(PHASE.RUNNING)
+  }
+
+  _finishSession() {
+    this.controls.enabled = false
+    this.targets.clear()
+    this._setPhase(PHASE.FINISHED)
+    if (this.isLocked) document.exitPointerLock()
+
+    const seconds = this.durationMs / 1000
+    this.callbacks.onFinish?.({
+      hits: this.hits,
+      misses: this.shots - this.hits,
+      shots: this.shots,
+      accuracy: this.shots > 0 ? (this.hits / this.shots) * 100 : 0,
+      targetsPerSecond: this.hits / seconds,
+      durationS: seconds,
+    })
+  }
+
+  _onContextMenu(event) {
+    event.preventDefault()
+  }
+
+  _onMouseDown(event) {
+    // Sólo botón izquierdo.
+    if (event.button !== 0) return
+
+    // Sin el ratón capturado, el click sirve para capturarlo: no dispara.
+    // Así el click que arranca (o reanuda) la sesión nunca cuenta como fallo.
+    if (!this.isLocked) {
+      this.requestLock()
+      return
+    }
+    if (this.phase !== PHASE.RUNNING) return
+    this._shoot()
+  }
+
+  _shoot() {
+    this.shots += 1
+
+    let hit = false
+    if (this.targets.isActive) {
+      // Las matrices se actualizan a mano: el disparo ocurre entre frames y la
+      // cámara puede haber rotado con el último mousemove.
+      this.camera.updateMatrixWorld()
+      this.targets.mesh.updateMatrixWorld()
+      this.raycaster.setFromCamera(SCREEN_CENTER, this.camera)
+      hit = this.raycaster.intersectObject(this.targets.mesh, false).length > 0
+    }
+
+    // El sonido de disparo suena siempre; el de acierto se superpone.
+    playShot()
+    if (hit) {
+      this.hits += 1
+      this.targets.registerHit(performance.now())
+      playHit()
+    }
+
+    this.callbacks.onShot?.(hit)
+  }
+
+  _onPointerLockChange() {
+    if (this.isLocked) {
+      if (this.phase === PHASE.IDLE || this.phase === PHASE.FINISHED) this._beginSession()
+      else if (this.phase === PHASE.PAUSED) {
+        this.controls.enabled = true
+        this._setPhase(PHASE.RUNNING)
+      }
+    } else {
+      this.controls.enabled = false
+      // Perder la captura en plena partida pausa el reloj en lugar de
+      // terminarla: salir con Escape no debería arruinar la sesión.
+      if (this.phase === PHASE.RUNNING) this._setPhase(PHASE.PAUSED)
+    }
+  }
+
+  _onResize() {
+    const parent = this.canvas.parentElement
+    const width = parent ? parent.clientWidth : window.innerWidth
+    const height = parent ? parent.clientHeight : window.innerHeight
+    if (width === 0 || height === 0) return
+    this.camera.aspect = width / height
+    this.camera.updateProjectionMatrix()
+    this.renderer.setSize(width, height, false)
+  }
+
+  _loop(now) {
+    this._rafId = requestAnimationFrame(this._loop)
+
+    const delta = Math.min(now - this._lastFrameTime, MAX_FRAME_DELTA_MS)
+    this._lastFrameTime = now
+
+    if (this.phase === PHASE.RUNNING) {
+      this.elapsedMs += delta
+      if (this.elapsedMs >= this.durationMs) {
+        this.elapsedMs = this.durationMs
+        this._finishSession()
+      }
+    }
+
+    this.targets.update(now, this.camera)
+    this._publishStats()
+    this.renderer.render(this.scene, this.camera)
+  }
+
+  _publishStats() {
+    const stats = this.stats
+    stats.timeLeftMs = Math.max(0, this.durationMs - this.elapsedMs)
+    stats.hits = this.hits
+    stats.shots = this.shots
+    stats.misses = this.shots - this.hits
+    stats.accuracy = this.shots > 0 ? (this.hits / this.shots) * 100 : 0
+    this.callbacks.onFrame?.(stats)
+  }
+}
