@@ -218,6 +218,93 @@ export const TARGET_TYPES = {
 }
 
 /**
+ * Pausa sin disparar que reinicia el patrón de retroceso. Cada ráfaga vuelve a
+ * empezar por el primer disparo del patrón.
+ */
+export const RECOIL_RESET_MS = 200
+
+/**
+ * Roster de armas.
+ *
+ * - `mode`: `'semi'` dispara una vez por click; `'auto'` dispara en continuo
+ *   mientras se mantenga pulsado.
+ * - `rpm`: disparos por minuto. Fija el intervalo mínimo entre disparos, y en
+ *   las semiautomáticas actúa además de tope por si se hace clic muy rápido.
+ * - `recoil`: patrón de retroceso, un `[pitch, yaw]` en **grados** por cada
+ *   disparo consecutivo de la ráfaga. Son incrementos, no posiciones: el motor
+ *   los va sumando. Pitch positivo sube, yaw positivo desvía a la izquierda.
+ *   Agotado el patrón deja de acumularse: ese es el techo del arma. Un array
+ *   vacío significa sin retroceso.
+ *
+ * Los números son un punto de partida con el carácter descrito; se calibran
+ * jugando, igual que la sensibilidad o el tamaño de diana.
+ */
+export const WEAPONS = {
+  'scalar-2': {
+    label: 'Scalar-2',
+    character: 'sin retroceso',
+    mode: 'semi',
+    rpm: 500,
+    // Arquetipo por defecto: se dispara exactamente como antes de que hubiera
+    // armas. Sin patrón, no hay empuje de cámara en absoluto.
+    recoil: [],
+  },
+  'axis-7': {
+    label: 'Axis-7',
+    character: 'rifle',
+    mode: 'auto',
+    rpm: 600,
+    // Subida vertical marcada durante los primeros ocho disparos —el pico está
+    // en el cuarto— y a partir de ahí la vertical se apaga y el arma deriva
+    // hacia la izquierda. Techo vertical ≈ 7.2°, deriva ≈ 2.6° a la izquierda.
+    recoil: [
+      [0.7, 0.02],
+      [0.85, -0.03],
+      [0.95, 0.04],
+      [1.0, -0.02],
+      [0.92, 0.05],
+      [0.8, 0.08],
+      [0.62, 0.14],
+      [0.45, 0.22],
+      [0.3, 0.3],
+      [0.2, 0.34],
+      [0.14, 0.36],
+      [0.1, 0.34],
+      [0.07, 0.3],
+      [0.05, 0.26],
+      [0.04, 0.22],
+    ],
+  },
+  'vertex-9': {
+    label: 'Vertex-9',
+    character: 'SMG',
+    mode: 'auto',
+    rpm: 800,
+    // Patada más inmediata que la del Axis-7 —el primer disparo ya empuja más—
+    // pero con la mitad de techo vertical (≈ 3.9°). El bamboleo lateral
+    // alterna lado a lado y suma más recorrido que la vertical (≈ 4.4°), sin
+    // deriva neta hacia ningún lado.
+    recoil: [
+      [0.8, -0.25],
+      [0.75, 0.38],
+      [0.62, -0.42],
+      [0.48, 0.45],
+      [0.35, -0.4],
+      [0.25, 0.36],
+      [0.18, -0.32],
+      [0.12, 0.3],
+      [0.09, -0.28],
+      [0.06, 0.26],
+      [0.05, -0.24],
+      [0.04, 0.22],
+      [0.03, -0.2],
+      [0.02, 0.18],
+      [0.02, -0.16],
+    ],
+  },
+}
+
+/**
  * Variante con movimiento del jugador.
  *
  * `enabled` es el único interruptor: con `false` el prototipo se comporta
@@ -365,6 +452,10 @@ export const SETTINGS = {
   targetType: {
     label: 'Tipo de diana',
     default: 'classic',
+  },
+  weapon: {
+    label: 'Arma',
+    default: 'scalar-2',
   },
   targetRadius: {
     label: 'Tamaño de diana',

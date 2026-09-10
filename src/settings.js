@@ -10,12 +10,18 @@
  * nadie más tiene que desconfiar de lo que hubiera en localStorage.
  */
 
-import { SETTINGS, TARGET_TYPES } from './config.js'
+import { SETTINGS, TARGET_TYPES, WEAPONS } from './config.js'
 
 const STORAGE_KEY = 'aimcore.settings.v1'
 
 /** Nombres de los ajustes numéricos, los que tienen min/max/step. */
 const NUMERIC_KEYS = Object.keys(SETTINGS).filter((key) => SETTINGS[key].min !== undefined)
+
+/**
+ * Ajustes que sólo aceptan una clave de un catálogo. El valor guardado se
+ * comprueba contra él: cualquier otra cosa cae al valor por defecto.
+ */
+const CATALOGS = { targetType: TARGET_TYPES, weapon: WEAPONS }
 
 /** Nombres de los interruptores. Se deducen del tipo del valor por defecto. */
 const BOOLEAN_KEYS = Object.keys(SETTINGS).filter(
@@ -50,8 +56,8 @@ export function sanitizeSettings(raw) {
   for (const key of BOOLEAN_KEYS) {
     if (typeof raw[key] === 'boolean') result[key] = raw[key]
   }
-  if (Object.prototype.hasOwnProperty.call(TARGET_TYPES, raw.targetType)) {
-    result.targetType = raw.targetType
+  for (const key of Object.keys(CATALOGS)) {
+    if (Object.prototype.hasOwnProperty.call(CATALOGS[key], raw[key])) result[key] = raw[key]
   }
   return result
 }

@@ -53,9 +53,29 @@ export class LookControls {
     // movementX/Y llega en counts crudos: sin aceleración del sistema.
     this.yaw -= event.movementX * this.radiansPerCount
     this.pitch -= event.movementY * this.radiansPerCount
+    this._clampPitch()
+    this._apply()
+  }
+
+  /**
+   * Empuje del arma, en grados. Se suma a la rotación igual que lo haría el
+   * ratón, así que la cámara se desplaza sola además de lo que mueva el
+   * jugador. No hay recuperación: el retroceso se queda donde deja la mira y
+   * compensarlo es cosa del jugador.
+   *
+   * @param {number} pitchDeg positivo sube
+   * @param {number} yawDeg positivo desvía a la izquierda
+   */
+  applyRecoil(pitchDeg, yawDeg) {
+    this.pitch += pitchDeg * DEG_TO_RAD
+    this.yaw += yawDeg * DEG_TO_RAD
+    this._clampPitch()
+    this._apply()
+  }
+
+  _clampPitch() {
     if (this.pitch > this.pitchLimit) this.pitch = this.pitchLimit
     else if (this.pitch < -this.pitchLimit) this.pitch = -this.pitchLimit
-    this._apply()
   }
 
   _apply() {

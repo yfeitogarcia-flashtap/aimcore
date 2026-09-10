@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { SETTINGS, TARGET_TYPES } from '../config.js'
+import { SETTINGS, TARGET_TYPES, WEAPONS } from '../config.js'
 
 /**
  * Panel de opciones. Se abre antes de empezar y también desde la pausa.
@@ -66,6 +66,14 @@ function SliderRow({ id, spec, value, onChange, suffix = '', editable = false })
   )
 }
 
+const FIRE_MODES = { semi: 'Semiautomática', auto: 'Automática' }
+
+/** Ficha corta del arma: modo, cadencia y carácter del retroceso. */
+function weaponHint(weaponKey) {
+  const weapon = WEAPONS[weaponKey]
+  return `${FIRE_MODES[weapon.mode]} · ${weapon.rpm} RPM · ${weapon.character}`
+}
+
 /** Explica en qué ejes se mueve el tipo de diana elegido. */
 function dynamicHint(targetType) {
   return TARGET_TYPES[targetType].anchor === 'feet'
@@ -115,6 +123,27 @@ export default function Options({ settings, onChange, onReset, onClose }) {
               {TARGET_TYPES[key].label}
             </button>
           ))}
+        </div>
+      </div>
+
+      <div className="field">
+        <label className="field__label" htmlFor="opt-weapon">
+          {SETTINGS.weapon.label}
+        </label>
+        <div className="field__control">
+          <select
+            id="opt-weapon"
+            className="field__select"
+            value={settings.weapon}
+            onChange={(event) => onChange({ weapon: event.target.value })}
+          >
+            {Object.keys(WEAPONS).map((key) => (
+              <option key={key} value={key}>
+                {WEAPONS[key].label}
+              </option>
+            ))}
+          </select>
+          <span className="field__hint">{weaponHint(settings.weapon)}</span>
         </div>
       </div>
 

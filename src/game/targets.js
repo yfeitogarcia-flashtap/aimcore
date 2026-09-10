@@ -42,6 +42,7 @@ const _center = new THREE.Vector3()
 const _motion = new THREE.Vector3()
 const _dir2 = new THREE.Vector3()
 const _previousDestination = new THREE.Vector3()
+const _bestDestination = new THREE.Vector3()
 
 /** Altura del suelo de la sala. */
 const FLOOR_Y = 0
@@ -350,12 +351,28 @@ export class TargetManager {
   _pickDestination(instance, camera, now) {
     // El destino que traía sirve de referencia; al sortear se sobrescribe.
     _previousDestination.copy(instance.destination)
+
+    let accepted = false
+    let bestDot = Infinity
     for (let attempt = 0; attempt < SPAWN.destinationAttempts; attempt++) {
       this._samplePosition(camera, instance.destination, false)
-      if (!this._destinationTooClose(camera, instance, _previousDestination)) break
-      // Agotados los reintentos se acepta el último: con muchas dianas en poco
-      // sitio puede no haber hueco, y el bucle nunca debe quedarse dando vueltas.
+      const dot = this._destinationClosestDot(camera, instance, _previousDestination)
+      if (dot <= this.cosMinSeparation) {
+        accepted = true
+        break
+      }
+      if (dot < bestDot) {
+        bestDot = dot
+        _bestDestination.copy(instance.destination)
+      }
     }
+
+    // Con muchas dianas en poco sitio puede no haber hueco limpio, y el bucle
+    // nunca debe quedarse dando vueltas. Al agotar los intentos nos quedamos
+    // con el mejor de los probados —el de mayor separación— en vez de con el
+    // último por orden de llegada, que podía ser el peor de todos.
+    if (!accepted) instance.destination.copy(_bestDestination)
+
     instance.destinationUntil = now + TARGET.moveMaxSeconds * 1000
   }
 
@@ -589,27 +606,39 @@ export class TargetManager {
    * los pies el origen está en el suelo y mediría hacia abajo.
    */
   _tooCloseAngularly(camera, a, b) {
+    return this._separationDot(camera, a, b) > this.cosMinSeparation
+  }
+
+  /**
+   * Coseno del ángulo que separa dos puntos vistos desde el jugador. Cuanto
+   * mayor, más juntos se ven — comparar cosenos evita un `acos` por candidato.
+   */
+  _separationDot(camera, a, b) {
     const offsetY = this.centerOffsetY
     _center.set(a.x, a.y + offsetY, a.z)
     _dir2.subVectors(_center, camera.position).normalize()
     _center.set(b.x, b.y + offsetY, b.z)
     _otherDir.subVectors(_center, camera.position).normalize()
-    return _dir2.dot(_otherDir) > this.cosMinSeparation
+    return _dir2.dot(_otherDir)
   }
 
   /**
-   * ¿El destino recién sorteado pisa a alguien? Mide contra las demás dianas
-   * vivas y contra el destino que esta misma traía, para que reelegir suponga
-   * de verdad un cambio de rumbo.
+   * ¿Cuánto pisa el destino recién sorteado? Devuelve la separación al vecino
+   * más cercano, como coseno: mide contra las demás dianas vivas y contra el
+   * destino que esta misma traía, para que reelegir suponga de verdad un
+   * cambio de rumbo.
    */
-  _destinationTooClose(camera, instance, previousDestination) {
+  _destinationClosestDot(camera, instance, previousDestination) {
     const candidate = instance.destination
+    let closest = -1
     for (let i = 0; i < this.instances.length; i++) {
       const other = this.instances[i]
       if (other === instance || other.state !== 'alive') continue
-      if (this._tooCloseAngularly(camera, candidate, other.group.position)) return true
+      const dot = this._separationDot(camera, candidate, other.group.position)
+      if (dot > closest) closest = dot
     }
-    return this._tooCloseAngularly(camera, candidate, previousDestination)
+    const previous = this._separationDot(camera, candidate, previousDestination)
+    return previous > closest ? previous : closest
   }
 
   /**

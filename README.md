@@ -79,6 +79,7 @@ recarga. **Restablecer** vuelve a los valores de `config.js`.
 | --- | --- |
 | Sensibilidad | slider y campo numérico sobre el mismo valor |
 | Tipo de diana | Clásica · Cono · Hitbox completo |
+| Arma | Scalar-2 · Axis-7 · Vertex-9 |
 | Tamaño de diana | escala la figura entera sin deformar sus proporciones |
 | Distancia de aparición | distancia base del cono respecto al jugador |
 | Cadencia | milisegundos entre apariciones. Menos es más difícil |
@@ -87,6 +88,46 @@ recarga. **Restablecer** vuelve a los valores de `config.js`.
 
 El panel sólo se abre con la partida parada, así que reconstruir las mallas al
 cambiar de tipo o de tamaño nunca cae dentro del bucle de render.
+
+## Armas
+
+Tres arquetipos, en el bloque `WEAPONS` de `config.js`.
+
+| arma | modo | RPM | carácter del retroceso |
+| --- | --- | --- | --- |
+| **Scalar-2** | semi | 500 | ninguno — se dispara como antes de que hubiera armas |
+| **Axis-7** | auto | 600 | rifle: subida vertical marcada los primeros ocho disparos, luego deriva a la izquierda |
+| **Vertex-9** | auto | 800 | SMG: patada más inmediata pero la mitad de techo vertical, y más bamboleo lateral que vertical |
+
+Scalar-2 es el valor por defecto.
+
+**Modos.** `semi` dispara una vez por click. `auto` dispara en continuo mientras
+se mantenga pulsado, al intervalo que marcan las RPM. Las RPM acotan los dos
+modos por igual: con Scalar-2 no salen más de 8.3 disparos por segundo por
+mucho que se haga clic.
+
+El intervalo se cuenta desde el momento en que *tocaba* cada disparo, no desde
+el frame en que sale. Sin eso, el redondeo al refresco del monitor inflaría el
+intervalo y las RPM reales dependerían de los Hz de la pantalla.
+
+**Retroceso.** El patrón es un `[pitch, yaw]` en grados por cada disparo
+consecutivo de la ráfaga. Son incrementos, no posiciones: el motor los suma.
+Pitch positivo sube, yaw positivo desvía a la izquierda. Agotado el patrón deja
+de acumularse — ese es el techo del arma —, y un array vacío significa sin
+retroceso.
+
+El empuje se suma a la rotación de la cámara igual que lo haría el ratón, así
+que el arma desplaza la mira además de lo que mueva el jugador. **No hay
+recuperación**: compensar el retroceso es cosa del jugador. Como el raycasting
+sale de donde apunta la cámara en ese instante, el retroceso afecta a los
+impactos sin ningún tratamiento aparte.
+
+La ráfaga se cierra al soltar el botón o tras `RECOIL_RESET_MS` (200 ms) sin
+disparar; la siguiente vuelve a empezar por el primer disparo del patrón. El
+primero de cada ráfaga sale limpio: se dispara y *después* el arma empuja.
+
+Los valores son un punto de partida con el carácter descrito, para calibrar
+jugando igual que la sensibilidad o el tamaño de diana.
 
 ### Tipos de diana
 
@@ -147,8 +188,10 @@ altura mientras está vivo. Las diagonales salen solas de elegir destinos en 2D.
 Al elegir destino se aplica **la misma comprobación de separación mínima** que
 al hacer aparecer una diana: si el punto elegido queda demasiado cerca de otra
 diana viva, o del destino que esa misma traía, se vuelve a sortear. Como tope,
-`SPAWN.destinationAttempts` (6) intentos; agotados, se acepta el último. Con la
-sala llena puede no haber hueco, y el bucle nunca debe quedarse dando vueltas.
+`SPAWN.destinationAttempts` (6) intentos; agotados, se acepta **el mejor de los
+probados** —el de mayor separación—, no el último por orden de llegada. Con la
+sala llena puede no haber hueco, y el bucle nunca debe quedarse dando vueltas,
+pero eso no obliga a quedarse con el peor candidato.
 
 El modo dinámico no toca cuándo aparece o desaparece una diana: eso lo siguen
 mandando la cadencia y el modo acumulativo. En pausa las dianas se congelan con
@@ -185,6 +228,9 @@ TARGET.maxHealth        // vida por diana
 TARGET.maxActive        // tope de dianas vivas en modo acumulativo
 TARGET.moveSpeed        // velocidad de las dianas en modo dinámico
 TARGET.moveMaxSeconds   // tiempo máximo persiguiendo un mismo destino
+
+WEAPONS                       // roster: modo, RPM y patrón de retroceso
+RECOIL_RESET_MS               // pausa que cierra la ráfaga y reinicia el patrón
 
 HITBOX.spawnConeHalfAngleDeg  // anchura del abanico frontal del hitbox
 HITBOX.distanceScale          // horquilla de distancia, en fracción del slider
@@ -285,6 +331,9 @@ cuesta ~0.1 ms por frame en p99, frente a los 4.17 ms de presupuesto a 240 Hz.
   mismo muestreo que las apariciones, así que anclar el hitbox al suelo ya
   basta para que sólo se mueva en horizontal: no hay una restricción de ejes
   escrita aparte que pueda desincronizarse.
+- **El retroceso no se recupera solo.** La cámara se queda donde la deja el
+  arma. Es lo que convierte el patrón en algo que se aprende a compensar, en
+  lugar de en un temblor que se corrige solo.
 - **La precisión cuenta impactos, el ritmo cuenta bajas.** Con el hitbox dejan
   de coincidir, así que el resumen muestra los impactos aparte cuando difieren.
 

@@ -5,6 +5,9 @@
  */
 
 :root {
+  /* Los controles nativos (el desplegable de arma) se pintan en oscuro. */
+  color-scheme: dark;
+
   /* Valores de arranque; App.jsx los sobreescribe con los de config.js. */
   --crosshair-color: #eaeaea;
   --background-color: #0a0a0a;
@@ -317,6 +320,26 @@ body {
 
 .field__number:focus-visible {
   border-color: var(--accent-color);
+  outline: none;
+}
+
+.field__select {
+  min-width: 148px;
+  padding: 8px 10px;
+  border: 1px solid var(--panel-border);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.field__select:hover,
+.field__select:focus-visible {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
   outline: none;
 }
 
