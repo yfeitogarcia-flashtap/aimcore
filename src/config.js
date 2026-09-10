@@ -89,6 +89,13 @@ export const TARGET = {
   maxHealth: 100,
   /** Tope de dianas vivas a la vez en modo acumulativo. */
   maxActive: 6,
+  /** Velocidad de las dianas en modo dinámico, en unidades por segundo. */
+  moveSpeed: 4.0,
+  /**
+   * Tiempo máximo persiguiendo un mismo destino antes de elegir otro. Sin
+   * esto, un destino lejano daría carreras largas y previsibles en línea recta.
+   */
+  moveMaxSeconds: 2.5,
 }
 
 /**
@@ -101,12 +108,20 @@ export const TARGET = {
  *
  * `damage` se descuenta de `TARGET.maxHealth`: con 100 de vida, 100 mata de un
  * disparo, 50 en dos y 34 en tres, y las combinaciones entre zonas salen solas.
+ *
+ * `anchor` decide dónde está el origen de la figura y, con él, cómo se coloca:
+ *  - `'center'`: el origen es el centro. La altura sale del cono, así que la
+ *    diana puede aparecer a cualquier altura.
+ *  - `'feet'`: el origen es la base. La diana se apoya siempre en el suelo y
+ *    el cono sólo decide su posición horizontal; los `offsetY` de sus piezas
+ *    se miden desde el suelo hacia arriba.
  */
 export const TARGET_TYPES = {
   classic: {
     label: 'Clásica',
     /** Distancia base al elegir este tipo. */
     defaultDistance: 15.5,
+    anchor: 'center',
     /** Semialtura de la figura, en múltiplos del radio. Evita que atraviese el suelo. */
     halfHeight: 1,
     parts: [
@@ -116,6 +131,7 @@ export const TARGET_TYPES = {
   cone: {
     label: 'Cono',
     defaultDistance: 15.5,
+    anchor: 'center',
     halfHeight: 1.3,
     parts: [
       {
@@ -133,15 +149,17 @@ export const TARGET_TYPES = {
     label: 'Hitbox completo',
     /** Aparece más lejos que los otros dos: acertar la cabeza tiene que costar. */
     defaultDistance: 20,
+    /** De pie en el suelo, nunca flotando: es una figura humana. */
+    anchor: 'feet',
     halfHeight: 2,
-    // Proporciones humanoides: con el radio por defecto (0.45) la figura mide
-    // 1.8 unidades de alto, y la cabeza 0.25 de diámetro.
+    // Proporciones humanoides medidas desde el suelo: con el radio por defecto
+    // (0.45) la figura mide 1.8 unidades de alto y la cabeza 0.25 de diámetro.
     parts: [
       {
         zone: 'head',
         shape: 'sphere',
         radius: 0.278,
-        offsetY: 1.722,
+        offsetY: 3.723,
         damage: 100,
         color: COLORS.targetHead,
       },
@@ -150,7 +168,7 @@ export const TARGET_TYPES = {
         shape: 'capsule',
         radius: 0.489,
         height: 1.556,
-        offsetY: 0.667,
+        offsetY: 2.667,
         damage: 50,
         color: COLORS.target,
       },
@@ -159,7 +177,7 @@ export const TARGET_TYPES = {
         shape: 'cylinder',
         radius: 0.356,
         height: 1.889,
-        offsetY: -1.056,
+        offsetY: 0.9445,
         damage: 34,
         color: COLORS.targetLegs,
       },
@@ -304,6 +322,10 @@ export const SETTINGS = {
   },
   accumulative: {
     label: 'Modo acumulativo',
+    default: false,
+  },
+  dynamic: {
+    label: 'Modo dinámico',
     default: false,
   },
 }

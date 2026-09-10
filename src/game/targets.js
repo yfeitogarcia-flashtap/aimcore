@@ -15,6 +15,12 @@
  *    instancia porque cada una parpadea y se desvanece por su cuenta.
  *  - El muestreo de posiciones y el bucle de animación reutilizan vectores de
  *    módulo: cero alocaciones en el camino caliente.
+ *
+ * En modo dinámico cada diana viva persigue un destino aleatorio dentro de su
+ * propio volumen de aparición, a velocidad constante y en línea recta. Los
+ * destinos salen del mismo muestreo que las apariciones, así que el tipo de
+ * anclaje ya decide los ejes: una figura anclada a los pies sólo recibe
+ * destinos a nivel de suelo y, por tanto, sólo se mueve en X/Z.
  */
 
 import * as THREE from 'three'
@@ -32,6 +38,12 @@ const _v = new THREE.Vector3()
 const _dir = new THREE.Vector3()
 const _candidate = new THREE.Vector3()
 const _otherDir = new THREE.Vector3()
+const _center = new THREE.Vector3()
+const _motion = new THREE.Vector3()
+const _dir2 = new THREE.Vector3()
+
+/** Altura del suelo de la sala. */
+const FLOOR_Y = 0
 const _up = new THREE.Vector3(0, 1, 0)
 const _fallbackRef = new THREE.Vector3(1, 0, 0)
 const _flashColor = new THREE.Color(COLORS.targetHit)
@@ -100,6 +112,7 @@ export class TargetManager {
     this.distance = TARGET_TYPES.classic.defaultDistance
     this.spawnIntervalMs = SPAWN.respawnDelayMs
     this.accumulative = false
+    this.dynamic = false
 
     this.aliveCount = 0
     this.sessionActive = false
@@ -118,6 +131,7 @@ export class TargetManager {
     this.distance = settings.spawnDistance
     this.spawnIntervalMs = settings.spawnIntervalMs
     this.accumulative = settings.accumulative
+    this.dynamic = settings.dynamic
 
     const geometryChanged =
       settings.targetType !== this.typeKey || settings.targetRadius !== this.radius
@@ -129,6 +143,20 @@ export class TargetManager {
   /** El tipo de diana vigente, tal cual está descrito en config.js. */
   get type() {
     return TARGET_TYPES[this.typeKey]
+  }
+
+  /** ¿La figura se apoya en el suelo en lugar de flotar? */
+  get anchoredToFloor() {
+    return this.type.anchor === 'feet'
+  }
+
+  /**
+   * Distancia del origen de la figura a su centro visual. Cero si el origen ya
+   * es el centro; la semialtura si el origen está en los pies. Sirve para
+   * medir separaciones y para que el pop crezca desde el centro.
+   */
+  get centerOffsetY() {
+    return this.anchoredToFloor ? this.type.halfHeight * this.radius : 0
   }
 
   /** ¿Hay alguna diana viva ahora mismo? */
@@ -152,14 +180,23 @@ export class TargetManager {
   }
 
   /**
-   * Avance por frame: apariciones programadas, destellos de zona y pops.
+   * Avance por frame: movimiento, apariciones programadas, destellos y pops.
    * Trabajo acotado y sin alocaciones.
+   *
+   * @param {number} deltaSeconds tiempo de juego transcurrido. Llega a cero en
+   *   pausa, de modo que las dianas se congelan con el cronómetro.
    */
-  update(now, camera) {
+  update(now, deltaSeconds, camera) {
     for (let i = 0; i < this.instances.length; i++) {
       const instance = this.instances[i]
-      if (instance.state === 'dying') this._updateDying(instance, now)
-      else if (instance.state === 'alive') this._updateFlashes(instance, now)
+      if (instance.state === 'dying') {
+        this._updateDying(instance, now)
+      } else if (instance.state === 'alive') {
+        this._updateFlashes(instance, now)
+        if (this.dynamic && deltaSeconds > 0) {
+          this._updateMotion(instance, deltaSeconds, now, camera)
+        }
+      }
     }
 
     if (!this.sessionActive || now < this._nextSpawnAt) return
@@ -219,6 +256,9 @@ export class TargetManager {
 
     instance.state = 'dying'
     instance.dyingSince = now
+    // Altura del centro visual al morir: el pop crece alrededor de este punto.
+    const offsetY = this.centerOffsetY
+    instance.popCenterY = offsetY === 0 ? 0 : instance.group.position.y + offsetY
     this.aliveCount -= 1
     if (!this.accumulative) this._nextSpawnAt = now + this.spawnIntervalMs
     return { killed: true, zone: part.zone }
@@ -241,6 +281,10 @@ export class TargetManager {
     instance.group.scale.setScalar(1)
     instance.health = TARGET.maxHealth
     instance.state = 'alive'
+    instance.popCenterY = 0
+    // El destino se elige siempre, aunque el modo dinámico esté apagado: así
+    // encenderlo a mitad de pausa no deja dianas con un destino inventado.
+    this._pickDestination(instance, camera, now)
     for (let i = 0; i < instance.parts.length; i++) {
       const part = instance.parts[i]
       part.material.opacity = 1
@@ -261,6 +305,35 @@ export class TargetManager {
     instance.group.visible = false
   }
 
+  /**
+   * Movimiento lineal hacia el destino, a velocidad constante y sin easing.
+   * Al llegar —o al agotar el tiempo máximo— se elige otro destino.
+   */
+  _updateMotion(instance, deltaSeconds, now, camera) {
+    const position = instance.group.position
+    _motion.subVectors(instance.destination, position)
+    const remaining = _motion.length()
+    const step = TARGET.moveSpeed * deltaSeconds
+
+    if (remaining <= step) {
+      position.copy(instance.destination)
+      this._pickDestination(instance, camera, now)
+      return
+    }
+    position.addScaledVector(_motion, step / remaining)
+    if (now >= instance.destinationUntil) this._pickDestination(instance, camera, now)
+  }
+
+  /**
+   * Elige destino dentro del mismo volumen del que salen las apariciones. Por
+   * eso el tipo de anclaje basta para fijar los ejes: una figura de pie sólo
+   * recibe destinos a nivel de suelo y nunca cambia de altura estando viva.
+   */
+  _pickDestination(instance, camera, now) {
+    this._samplePosition(camera, instance.destination, false)
+    instance.destinationUntil = now + TARGET.moveMaxSeconds * 1000
+  }
+
   /** Pop de muerte: la diana entera crece y se desvanece. */
   _updateDying(instance, now) {
     const t = (now - instance.dyingSince) / FEEDBACK.targetPopMs
@@ -269,7 +342,13 @@ export class TargetManager {
       return
     }
     const eased = easeOut(t)
-    instance.group.scale.setScalar(1 + (FEEDBACK.targetPopScale - 1) * eased)
+    const scale = 1 + (FEEDBACK.targetPopScale - 1) * eased
+    instance.group.scale.setScalar(scale)
+    // Escalar mueve el origen. Con el origen en los pies eso estiraría la
+    // figura hacia arriba, así que se compensa para que crezca desde su centro.
+    if (instance.popCenterY !== 0) {
+      instance.group.position.y = instance.popCenterY - this.centerOffsetY * scale
+    }
     const opacity = FEEDBACK.targetPopOpacity * (1 - eased)
     for (let i = 0; i < instance.parts.length; i++) {
       const part = instance.parts[i]
@@ -327,7 +406,16 @@ export class TargetManager {
         parts.push(part)
       }
 
-      const instance = { group, parts, state: 'free', health: TARGET.maxHealth, dyingSince: 0 }
+      const instance = {
+        group,
+        parts,
+        state: 'free',
+        health: TARGET.maxHealth,
+        dyingSince: 0,
+        popCenterY: 0,
+        destination: new THREE.Vector3(),
+        destinationUntil: 0,
+      }
       for (let p = 0; p < parts.length; p++) parts[p].mesh.userData.instance = instance
 
       this.scene.add(group)
@@ -355,15 +443,24 @@ export class TargetManager {
    * El vértice del cono es siempre `camera.position`, o sea la posición actual
    * del jugador con su altura real —agachado o en el aire incluidos—, porque
    * la cámara *es* el jugador.
+   *
+   * Con anclaje a los pies el cono deja de decidir la altura: la figura se
+   * apoya en el suelo y sólo se usa la dirección horizontal del cono, con la
+   * distancia elegida medida en el plano X/Z.
+   *
+   * @param {boolean} [checkSeparation] los destinos del modo dinámico no
+   *   necesitan guardar distancia con las demás dianas; las apariciones sí.
    */
-  _samplePosition(camera, out) {
+  _samplePosition(camera, out, checkSeparation = true) {
     this._buildConeBasis(camera)
 
+    const anchoredToFloor = this.anchoredToFloor
     const halfHeight = this.type.halfHeight * this.radius
     const margin = halfHeight + ROOM.step
     const limitX = ROOM.width / 2 - margin
     const limitZ = ROOM.depth / 2 - margin
-    // La figura no debe atravesar el suelo: el mínimo depende de su altura.
+    // Flotando, la figura no debe atravesar el suelo: el mínimo depende de su
+    // altura. Apoyada en el suelo, la altura no se muestrea.
     const minY = Math.max(TARGET.yRange.min, halfHeight + 0.1)
     const maxY = Math.max(minY, TARGET.yRange.max)
 
@@ -384,11 +481,24 @@ export class TargetManager {
         .normalize()
 
       const distance = dMin + Math.random() * (dMax - dMin)
-      out.copy(camera.position).addScaledVector(_dir, distance)
 
-      if (out.y < minY || out.y > maxY) continue
+      if (anchoredToFloor) {
+        // Sólo cuenta el rumbo del cono. La distancia se mide en horizontal y
+        // la altura la pone el suelo, así que la figura nunca flota.
+        const horizontal = Math.hypot(_dir.x, _dir.z)
+        if (horizontal < 1e-5) continue
+        out.set(
+          camera.position.x + (_dir.x / horizontal) * distance,
+          FLOOR_Y,
+          camera.position.z + (_dir.z / horizontal) * distance,
+        )
+      } else {
+        out.copy(camera.position).addScaledVector(_dir, distance)
+        if (out.y < minY || out.y > maxY) continue
+      }
+
       if (Math.abs(out.x) > limitX || Math.abs(out.z) > limitZ) continue
-      if (this._tooCloseToExisting(camera, _dir)) continue
+      if (checkSeparation && this._tooCloseToExisting(camera, out)) continue
 
       return out
     }
@@ -396,7 +506,7 @@ export class TargetManager {
     // Salvavidas: ningún candidato pasó los filtros (p. ej. con la sala llena
     // o mirando a una esquina). Acotamos el último y seguimos: mejor una diana
     // algo forzada que ninguna.
-    out.y = THREE.MathUtils.clamp(out.y, minY, maxY)
+    out.y = anchoredToFloor ? FLOOR_Y : THREE.MathUtils.clamp(out.y, minY, maxY)
     out.x = THREE.MathUtils.clamp(out.x, -limitX, limitX)
     out.z = THREE.MathUtils.clamp(out.z, -limitZ, limitZ)
     return out
@@ -405,19 +515,30 @@ export class TargetManager {
   /**
    * Separación angular vista desde el jugador: evita dianas encadenadas y, en
    * modo acumulativo, que dos se solapen en pantalla.
+   *
+   * Se compara contra el centro visual de cada figura, no contra su origen:
+   * con anclaje a los pies el origen está en el suelo y mediría hacia abajo.
    */
-  _tooCloseToExisting(camera, direction) {
+  _tooCloseToExisting(camera, position) {
+    const offsetY = this.centerOffsetY
+    _center.set(position.x, position.y + offsetY, position.z)
+    _dir2.subVectors(_center, camera.position).normalize()
+
     for (let i = 0; i < this.instances.length; i++) {
       const instance = this.instances[i]
       if (instance.state !== 'alive') continue
-      _otherDir.subVectors(instance.group.position, camera.position).normalize()
-      if (_otherDir.dot(direction) > this.cosMinSeparation) return true
+      const other = instance.group.position
+      _center.set(other.x, other.y + offsetY, other.z)
+      _otherDir.subVectors(_center, camera.position).normalize()
+      if (_otherDir.dot(_dir2) > this.cosMinSeparation) return true
     }
     // Sin dianas vivas, el listón lo pone la última que hubo: así el modo no
     // acumulativo sigue forzando el flick entre una diana y la siguiente.
     if (this.aliveCount === 0 && this._hasLastSpawn) {
-      _otherDir.subVectors(this._lastSpawnPosition, camera.position).normalize()
-      if (_otherDir.dot(direction) > this.cosMinSeparation) return true
+      const last = this._lastSpawnPosition
+      _center.set(last.x, last.y + offsetY, last.z)
+      _otherDir.subVectors(_center, camera.position).normalize()
+      if (_otherDir.dot(_dir2) > this.cosMinSeparation) return true
     }
     return false
   }

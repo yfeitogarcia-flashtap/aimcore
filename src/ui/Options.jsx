@@ -66,6 +66,28 @@ function SliderRow({ id, spec, value, onChange, suffix = '', editable = false })
   )
 }
 
+/** Explica en qué ejes se mueve el tipo de diana elegido. */
+function dynamicHint(targetType) {
+  return TARGET_TYPES[targetType].anchor === 'feet'
+    ? 'Las dianas se desplazan por el suelo, sin cambiar de altura.'
+    : 'Las dianas se desplazan por todo su volumen de aparición.'
+}
+
+/** Fila de interruptor on/off con su explicación al lado. */
+function ToggleRow({ spec, value, onChange, hint }) {
+  return (
+    <div className="field">
+      <span className="field__label">{spec.label}</span>
+      <div className="field__control">
+        <button type="button" className="toggle" aria-pressed={value} onClick={() => onChange(!value)}>
+          {value ? 'Activado' : 'Desactivado'}
+        </button>
+        <span className="field__hint">{hint}</span>
+      </div>
+    </div>
+  )
+}
+
 export default function Options({ settings, onChange, onReset, onClose }) {
   return (
     <div className="panel panel--options" onMouseDown={(event) => event.stopPropagation()}>
@@ -118,24 +140,27 @@ export default function Options({ settings, onChange, onReset, onClose }) {
         suffix=" ms"
       />
 
-      <div className="field">
-        <span className="field__label">{SETTINGS.accumulative.label}</span>
-        <div className="field__control">
-          <button
-            type="button"
-            className="toggle"
-            aria-pressed={settings.accumulative}
-            onClick={() => onChange({ accumulative: !settings.accumulative })}
-          >
-            {settings.accumulative ? 'Activado' : 'Desactivado'}
-          </button>
-          <span className="field__hint">
-            {settings.accumulative
-              ? 'Sale una diana nueva cada intervalo aunque las anteriores sigan en pie.'
-              : 'Una sola diana viva: la siguiente espera a que caiga la actual.'}
-          </span>
-        </div>
-      </div>
+      <ToggleRow
+        spec={SETTINGS.accumulative}
+        value={settings.accumulative}
+        onChange={(accumulative) => onChange({ accumulative })}
+        hint={
+          settings.accumulative
+            ? 'Sale una diana nueva cada intervalo aunque las anteriores sigan en pie.'
+            : 'Una sola diana viva: la siguiente espera a que caiga la actual.'
+        }
+      />
+
+      <ToggleRow
+        spec={SETTINGS.dynamic}
+        value={settings.dynamic}
+        onChange={(dynamic) => onChange({ dynamic })}
+        hint={
+          settings.dynamic
+            ? dynamicHint(settings.targetType)
+            : 'Las dianas se quedan quietas donde aparecen.'
+        }
+      />
 
       <div className="panel__actions">
         <button type="button" className="button" onClick={onClose} autoFocus>

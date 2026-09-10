@@ -83,6 +83,7 @@ recarga. **Restablecer** vuelve a los valores de `config.js`.
 | Distancia de aparición | distancia base del cono respecto al jugador |
 | Cadencia | milisegundos entre apariciones. Menos es más difícil |
 | Modo acumulativo | permite varias dianas vivas a la vez |
+| Modo dinámico | las dianas vivas se desplazan mientras están en pantalla |
 
 El panel sólo se abre con la partida parada, así que reconstruir las mallas al
 cambiar de tipo o de tamaño nunca cae dentro del bucle de render.
@@ -106,6 +107,30 @@ tercer impacto remata. Un impacto que no mata hace parpadear su zona, para que
 se distinga de un fallo. Este tipo aparece **más lejos por defecto** (20 frente
 a 15.5), aunque el slider de distancia manda igual: al cambiar de tipo, la
 distancia salta al valor base de ese tipo y a partir de ahí la mueves tú.
+
+**El hitbox va siempre de pie en el suelo**, nunca flotando: es una figura
+humana. Su origen está en los pies (`anchor: 'feet'` en `TARGET_TYPES`), la
+altura la pone el suelo y el cono de aparición sólo decide su posición
+horizontal — con lo que el slider de distancia pasa a medir distancia
+horizontal para este tipo. Clásica y Cono siguen apareciendo a cualquier
+altura dentro de su franja.
+
+### Modo dinámico
+
+Independiente del acumulativo. Con él activo, cada diana viva elige un punto
+de destino aleatorio dentro de su propio volumen de aparición y se mueve hacia
+él en línea recta a `TARGET.moveSpeed` unidades por segundo — sin aceleración
+ni easing. Al llegar, o al agotar `TARGET.moveMaxSeconds` persiguiendo el
+mismo punto, elige otro.
+
+Los ejes salen del tipo de anclaje, sin lógica aparte: Clásica y Cono flotan,
+así que reciben destinos en X/Y/Z; el hitbox se apoya en el suelo, así que sus
+destinos están siempre a nivel de suelo y sólo se mueve en X/Z, sin cambiar de
+altura mientras está vivo. Las diagonales salen solas de elegir destinos en 2D.
+
+El modo dinámico no toca cuándo aparece o desaparece una diana: eso lo siguen
+mandando la cadencia y el modo acumulativo. En pausa las dianas se congelan con
+el cronómetro.
 
 ### Modo acumulativo
 
@@ -136,6 +161,8 @@ SETTINGS                // valores iniciales y rangos del panel de opciones
 TARGET_TYPES            // formas, daño por zona y distancia base de cada tipo
 TARGET.maxHealth        // vida por diana
 TARGET.maxActive        // tope de dianas vivas en modo acumulativo
+TARGET.moveSpeed        // velocidad de las dianas en modo dinámico
+TARGET.moveMaxSeconds   // tiempo máximo persiguiendo un mismo destino
 
 MOVEMENT.enabled        // interruptor entre las dos variantes
 MOVEMENT.speed          // velocidad horizontal de pie
@@ -209,6 +236,10 @@ cuesta ~0.1 ms por frame en p99, frente a los 4.17 ms de presupuesto a 240 Hz.
 - **Las tres zonas del hitbox usan el mismo naranja** con distinto brillo
   —cabeza clara, piernas apagadas— para que se distingan sin salirse de la
   paleta.
+- **Los ejes del modo dinámico los decide el anclaje.** Los destinos salen del
+  mismo muestreo que las apariciones, así que anclar el hitbox al suelo ya
+  basta para que sólo se mueva en horizontal: no hay una restricción de ejes
+  escrita aparte que pueda desincronizarse.
 - **La precisión cuenta impactos, el ritmo cuenta bajas.** Con el hitbox dejan
   de coincidir, así que el resumen muestra los impactos aparte cuando difieren.
 

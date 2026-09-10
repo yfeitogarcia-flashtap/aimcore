@@ -17,6 +17,11 @@ const STORAGE_KEY = 'aimcore.settings.v1'
 /** Nombres de los ajustes numéricos, los que tienen min/max/step. */
 const NUMERIC_KEYS = Object.keys(SETTINGS).filter((key) => SETTINGS[key].min !== undefined)
 
+/** Nombres de los interruptores. Se deducen del tipo del valor por defecto. */
+const BOOLEAN_KEYS = Object.keys(SETTINGS).filter(
+  (key) => typeof SETTINGS[key].default === 'boolean',
+)
+
 function clamp(value, min, max) {
   return value < min ? min : value > max ? max : value
 }
@@ -42,7 +47,9 @@ export function sanitizeSettings(raw) {
     const value = Number(raw[key])
     if (Number.isFinite(value)) result[key] = clamp(value, SETTINGS[key].min, SETTINGS[key].max)
   }
-  if (typeof raw.accumulative === 'boolean') result.accumulative = raw.accumulative
+  for (const key of BOOLEAN_KEYS) {
+    if (typeof raw[key] === 'boolean') result[key] = raw[key]
+  }
   if (Object.prototype.hasOwnProperty.call(TARGET_TYPES, raw.targetType)) {
     result.targetType = raw.targetType
   }

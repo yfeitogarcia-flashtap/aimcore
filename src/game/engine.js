@@ -325,7 +325,10 @@ export class Engine {
       }
     }
 
-    this.targets.update(now, this.camera)
+    // En pausa el delta va a cero: las dianas se congelan con el cronómetro,
+    // pero los pops en curso siguen apagándose porque van con `now`.
+    const targetDelta = this.phase === PHASE.RUNNING ? delta / 1000 : 0
+    this.targets.update(now, targetDelta, this.camera)
     this._publishStats()
     this.renderer.render(this.scene, this.camera)
   }
