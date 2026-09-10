@@ -41,6 +41,7 @@ const _otherDir = new THREE.Vector3()
 const _center = new THREE.Vector3()
 const _motion = new THREE.Vector3()
 const _dir2 = new THREE.Vector3()
+const _previousDestination = new THREE.Vector3()
 
 /** Altura del suelo de la sala. */
 const FLOOR_Y = 0
@@ -87,8 +88,10 @@ export class TargetManager {
     this.scene = scene
     this.anchoredAxis = anchoredAxis
 
-    this.cosConeHalfAngle = Math.cos(SPAWN.coneHalfAngleDeg * DEG_TO_RAD)
     this.cosMinSeparation = Math.cos(SPAWN.minAngularSeparationDeg * DEG_TO_RAD)
+    // Se recalculan en configure(), porque dependen del tipo de diana.
+    this.coneHalfAngle = SPAWN.coneHalfAngleDeg * DEG_TO_RAD
+    this.cosConeHalfAngle = Math.cos(this.coneHalfAngle)
 
     // Dirección fija del cono, en la misma convención que la cámara: yaw 0
     // mira hacia -Z.
@@ -137,12 +140,24 @@ export class TargetManager {
       settings.targetType !== this.typeKey || settings.targetRadius !== this.radius
     this.typeKey = settings.targetType
     this.radius = settings.targetRadius
+
+    // Cada tipo puede traer su propio abanico de aparición.
+    const profile = this.spawnProfile
+    this.coneHalfAngle =
+      (profile ? profile.spawnConeHalfAngleDeg : SPAWN.coneHalfAngleDeg) * DEG_TO_RAD
+    this.cosConeHalfAngle = Math.cos(this.coneHalfAngle)
+
     if (geometryChanged) this._buildPool()
   }
 
   /** El tipo de diana vigente, tal cual está descrito en config.js. */
   get type() {
     return TARGET_TYPES[this.typeKey]
+  }
+
+  /** Reglas de aparición propias del tipo, si las tiene (ver config.js). */
+  get spawnProfile() {
+    return this.type.spawn
   }
 
   /** ¿La figura se apoya en el suelo en lugar de flotar? */
@@ -282,6 +297,9 @@ export class TargetManager {
     instance.health = TARGET.maxHealth
     instance.state = 'alive'
     instance.popCenterY = 0
+    // Referencia limpia para el primer destino: el punto donde acaba de
+    // aparecer, no lo que quedara de su vida anterior.
+    instance.destination.copy(instance.group.position)
     // El destino se elige siempre, aunque el modo dinámico esté apagado: así
     // encenderlo a mitad de pausa no deja dianas con un destino inventado.
     this._pickDestination(instance, camera, now)
@@ -330,7 +348,14 @@ export class TargetManager {
    * recibe destinos a nivel de suelo y nunca cambia de altura estando viva.
    */
   _pickDestination(instance, camera, now) {
-    this._samplePosition(camera, instance.destination, false)
+    // El destino que traía sirve de referencia; al sortear se sobrescribe.
+    _previousDestination.copy(instance.destination)
+    for (let attempt = 0; attempt < SPAWN.destinationAttempts; attempt++) {
+      this._samplePosition(camera, instance.destination, false)
+      if (!this._destinationTooClose(camera, instance, _previousDestination)) break
+      // Agotados los reintentos se acepta el último: con muchas dianas en poco
+      // sitio puede no haber hueco, y el bucle nunca debe quedarse dando vueltas.
+    }
     instance.destinationUntil = now + TARGET.moveMaxSeconds * 1000
   }
 
@@ -464,35 +489,39 @@ export class TargetManager {
     const minY = Math.max(TARGET.yRange.min, halfHeight + 0.1)
     const maxY = Math.max(minY, TARGET.yRange.max)
 
-    const dMin = Math.max(1, this.distance - TARGET.distanceSpread)
-    const dMax = this.distance + TARGET.distanceSpread
+    const [dMin, dMax] = this._distanceRange()
+    // Rumbo del abanico: la componente horizontal del eje del cono.
+    const axisAzimuth = Math.atan2(-_axis.x, -_axis.z)
 
     for (let attempt = 0; attempt < SPAWN.maxSampleAttempts; attempt++) {
-      // Muestreo uniforme sobre el casquete esférico del cono.
-      const cosTheta = this.cosConeHalfAngle + Math.random() * (1 - this.cosConeHalfAngle)
-      const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta))
-      const phi = Math.random() * Math.PI * 2
-
-      _dir
-        .copy(_axis)
-        .multiplyScalar(cosTheta)
-        .addScaledVector(_u, sinTheta * Math.cos(phi))
-        .addScaledVector(_v, sinTheta * Math.sin(phi))
-        .normalize()
-
+      // Cada diana sortea su propia distancia: es lo que da variedad de
+      // profundidad en vez de dejarlas todas sobre el mismo arco.
       const distance = dMin + Math.random() * (dMax - dMin)
 
       if (anchoredToFloor) {
-        // Sólo cuenta el rumbo del cono. La distancia se mide en horizontal y
-        // la altura la pone el suelo, así que la figura nunca flota.
-        const horizontal = Math.hypot(_dir.x, _dir.z)
-        if (horizontal < 1e-5) continue
+        // Aparición puramente horizontal: se sortea el azimut dentro del
+        // abanico y la altura la pone el suelo. Sortear el azimut directamente
+        // —en lugar de muestrear un cono 3D y aplastarlo— reparte el ángulo de
+        // forma uniforme; aplastar amontonaba las dianas cerca del eje.
+        const azimuth = axisAzimuth + (Math.random() * 2 - 1) * this.coneHalfAngle
         out.set(
-          camera.position.x + (_dir.x / horizontal) * distance,
+          camera.position.x - Math.sin(azimuth) * distance,
           FLOOR_Y,
-          camera.position.z + (_dir.z / horizontal) * distance,
+          camera.position.z - Math.cos(azimuth) * distance,
         )
       } else {
+        // Muestreo uniforme sobre el casquete esférico del cono.
+        const cosTheta = this.cosConeHalfAngle + Math.random() * (1 - this.cosConeHalfAngle)
+        const sinTheta = Math.sqrt(Math.max(0, 1 - cosTheta * cosTheta))
+        const phi = Math.random() * Math.PI * 2
+
+        _dir
+          .copy(_axis)
+          .multiplyScalar(cosTheta)
+          .addScaledVector(_u, sinTheta * Math.cos(phi))
+          .addScaledVector(_v, sinTheta * Math.sin(phi))
+          .normalize()
+
         out.copy(camera.position).addScaledVector(_dir, distance)
         if (out.y < minY || out.y > maxY) continue
       }
@@ -513,6 +542,24 @@ export class TargetManager {
   }
 
   /**
+   * Rango de distancias del que sortea cada diana.
+   *
+   * Con perfil de tipo la horquilla es proporcional al valor del slider —así
+   * el mismo control sigue mandando— y nunca baja del mínimo absoluto. Sin
+   * perfil se mantiene la dispersión fija de siempre.
+   *
+   * @returns {[number, number]}
+   */
+  _distanceRange() {
+    const profile = this.spawnProfile
+    if (!profile) {
+      return [Math.max(1, this.distance - TARGET.distanceSpread), this.distance + TARGET.distanceSpread]
+    }
+    const min = Math.max(profile.minSpawnDistance, this.distance * profile.distanceScale.min)
+    return [min, Math.max(min, this.distance * profile.distanceScale.max)]
+  }
+
+  /**
    * Separación angular vista desde el jugador: evita dianas encadenadas y, en
    * modo acumulativo, que dos se solapen en pantalla.
    *
@@ -520,27 +567,49 @@ export class TargetManager {
    * con anclaje a los pies el origen está en el suelo y mediría hacia abajo.
    */
   _tooCloseToExisting(camera, position) {
-    const offsetY = this.centerOffsetY
-    _center.set(position.x, position.y + offsetY, position.z)
-    _dir2.subVectors(_center, camera.position).normalize()
-
     for (let i = 0; i < this.instances.length; i++) {
       const instance = this.instances[i]
       if (instance.state !== 'alive') continue
-      const other = instance.group.position
-      _center.set(other.x, other.y + offsetY, other.z)
-      _otherDir.subVectors(_center, camera.position).normalize()
-      if (_otherDir.dot(_dir2) > this.cosMinSeparation) return true
+      if (this._tooCloseAngularly(camera, position, instance.group.position)) return true
     }
     // Sin dianas vivas, el listón lo pone la última que hubo: así el modo no
     // acumulativo sigue forzando el flick entre una diana y la siguiente.
     if (this.aliveCount === 0 && this._hasLastSpawn) {
-      const last = this._lastSpawnPosition
-      _center.set(last.x, last.y + offsetY, last.z)
-      _otherDir.subVectors(_center, camera.position).normalize()
-      if (_otherDir.dot(_dir2) > this.cosMinSeparation) return true
+      return this._tooCloseAngularly(camera, position, this._lastSpawnPosition)
     }
     return false
+  }
+
+  /**
+   * La comprobación de separación en crudo: ¿se ven estos dos puntos
+   * demasiado juntos desde el jugador? La comparten las apariciones y los
+   * destinos del modo dinámico, para que el criterio sea uno solo.
+   *
+   * Se compara el centro visual de cada figura, no su origen: con anclaje a
+   * los pies el origen está en el suelo y mediría hacia abajo.
+   */
+  _tooCloseAngularly(camera, a, b) {
+    const offsetY = this.centerOffsetY
+    _center.set(a.x, a.y + offsetY, a.z)
+    _dir2.subVectors(_center, camera.position).normalize()
+    _center.set(b.x, b.y + offsetY, b.z)
+    _otherDir.subVectors(_center, camera.position).normalize()
+    return _dir2.dot(_otherDir) > this.cosMinSeparation
+  }
+
+  /**
+   * ¿El destino recién sorteado pisa a alguien? Mide contra las demás dianas
+   * vivas y contra el destino que esta misma traía, para que reelegir suponga
+   * de verdad un cambio de rumbo.
+   */
+  _destinationTooClose(camera, instance, previousDestination) {
+    const candidate = instance.destination
+    for (let i = 0; i < this.instances.length; i++) {
+      const other = this.instances[i]
+      if (other === instance || other.state !== 'alive') continue
+      if (this._tooCloseAngularly(camera, candidate, other.group.position)) return true
+    }
+    return this._tooCloseAngularly(camera, candidate, previousDestination)
   }
 
   /**

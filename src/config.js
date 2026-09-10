@@ -62,8 +62,8 @@ export const LOOK = {
  * superior de las paredes hace de horizonte limpio.
  */
 export const ROOM = {
-  width: 64,
-  depth: 64,
+  width: 80,
+  depth: 80,
   height: 16,
   /** Espaciado de la grilla, en unidades. */
   step: 1,
@@ -99,6 +99,32 @@ export const TARGET = {
 }
 
 /**
+ * Reglas de aparición propias del tipo "Hitbox completo".
+ *
+ * Un dummy humanoide de pie en el suelo pide otra distribución que una esfera
+ * flotante: un abanico frontal mucho más ancho y, sobre todo, profundidad
+ * variable. Con una distancia única todos acababan alineados en el mismo arco.
+ *
+ * Todo esto es horizontal —ángulo y distancia en X/Z—; la altura la sigue
+ * poniendo el suelo.
+ */
+export const HITBOX = {
+  /**
+   * Semiángulo del abanico frontal, en grados. 55° hace un frente de 110°:
+   * bastante más que los 36° de Clásica y Cono, pero sigue siendo frontal.
+   * Se llama "half" por coherencia con `SPAWN.coneHalfAngleDeg`.
+   */
+  spawnConeHalfAngleDeg: 55,
+  /**
+   * Cada dummy sortea su propia distancia entre estas fracciones del valor
+   * que marca el slider. Con el slider en 20: entre 12 y 28 unidades.
+   */
+  distanceScale: { min: 0.6, max: 1.4 },
+  /** Suelo absoluto: por corto que quede el slider, nunca aparece encima. */
+  minSpawnDistance: 8,
+}
+
+/**
  * Tipos de diana.
  *
  * Cada tipo se describe con piezas ("partes"). Todas las medidas —radio,
@@ -115,6 +141,10 @@ export const TARGET = {
  *  - `'feet'`: el origen es la base. La diana se apoya siempre en el suelo y
  *    el cono sólo decide su posición horizontal; los `offsetY` de sus piezas
  *    se miden desde el suelo hacia arriba.
+ *
+ * `spawn`, si está, sustituye las reglas de aparición generales de `SPAWN` y
+ * `TARGET.distanceSpread` por las del propio tipo. Así el gestor de dianas no
+ * necesita saber qué tipo es cuál: mira si hay perfil y lo usa.
  */
 export const TARGET_TYPES = {
   classic: {
@@ -151,6 +181,8 @@ export const TARGET_TYPES = {
     defaultDistance: 20,
     /** De pie en el suelo, nunca flotando: es una figura humana. */
     anchor: 'feet',
+    /** Abanico ancho y profundidad variable, en lugar de las reglas generales. */
+    spawn: HITBOX,
     halfHeight: 2,
     // Proporciones humanoides medidas desde el suelo: con el radio por defecto
     // (0.45) la figura mide 1.8 unidades de alto y la cabeza 0.25 de diámetro.
@@ -258,6 +290,12 @@ export const SPAWN = {
   minAngularSeparationDeg: 9,
   /** Intentos de muestreo antes de aceptar un candidato acotado. */
   maxSampleAttempts: 32,
+  /**
+   * Reintentos al elegir destino en modo dinámico si cae demasiado cerca de
+   * otra diana. Pocos a propósito: con la sala llena hay que aceptar el
+   * resultado y seguir, nunca dejar el bucle dando vueltas.
+   */
+  destinationAttempts: 6,
   /**
    * Dirección fija del cono en la variante de movimiento, en grados. El cono
    * nace siempre en la posición actual del jugador, pero apunta aquí pase lo

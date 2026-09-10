@@ -115,6 +115,22 @@ horizontal — con lo que el slider de distancia pasa a medir distancia
 horizontal para este tipo. Clásica y Cono siguen apareciendo a cualquier
 altura dentro de su franja.
 
+**Y tiene sus propias reglas de aparición**, en el bloque `HITBOX` de
+`config.js`, porque un dummy de pie pide otra distribución que una esfera
+flotante:
+
+- **Abanico frontal mucho más ancho**: `spawnConeHalfAngleDeg` a 55°, o sea un
+  frente de 110°, frente a los 36° de Clásica y Cono. Sigue siendo frontal, no
+  360°.
+- **Profundidad variable**: cada dummy sortea su propia distancia entre el 60%
+  y el 140% del valor del slider (`distanceScale`), nunca por debajo de
+  `minSpawnDistance`. Con el slider en 20 salen entre 12 y 28 unidades, en vez
+  de todos alineados sobre el mismo arco.
+
+Ambas cosas son horizontales: la altura la sigue poniendo el suelo. El tipo
+declara su perfil con `spawn: HITBOX`, así que el gestor de dianas no necesita
+saber qué tipo es cuál — mira si hay perfil y lo usa.
+
 ### Modo dinámico
 
 Independiente del acumulativo. Con él activo, cada diana viva elige un punto
@@ -127,6 +143,12 @@ Los ejes salen del tipo de anclaje, sin lógica aparte: Clásica y Cono flotan,
 así que reciben destinos en X/Y/Z; el hitbox se apoya en el suelo, así que sus
 destinos están siempre a nivel de suelo y sólo se mueve en X/Z, sin cambiar de
 altura mientras está vivo. Las diagonales salen solas de elegir destinos en 2D.
+
+Al elegir destino se aplica **la misma comprobación de separación mínima** que
+al hacer aparecer una diana: si el punto elegido queda demasiado cerca de otra
+diana viva, o del destino que esa misma traía, se vuelve a sortear. Como tope,
+`SPAWN.destinationAttempts` (6) intentos; agotados, se acepta el último. Con la
+sala llena puede no haber hueco, y el bucle nunca debe quedarse dando vueltas.
 
 El modo dinámico no toca cuándo aparece o desaparece una diana: eso lo siguen
 mandando la cadencia y el modo acumulativo. En pausa las dianas se congelan con
@@ -163,6 +185,11 @@ TARGET.maxHealth        // vida por diana
 TARGET.maxActive        // tope de dianas vivas en modo acumulativo
 TARGET.moveSpeed        // velocidad de las dianas en modo dinámico
 TARGET.moveMaxSeconds   // tiempo máximo persiguiendo un mismo destino
+
+HITBOX.spawnConeHalfAngleDeg  // anchura del abanico frontal del hitbox
+HITBOX.distanceScale          // horquilla de distancia, en fracción del slider
+HITBOX.minSpawnDistance       // mínimo absoluto, por corto que quede el slider
+SPAWN.destinationAttempts     // reintentos al buscar destino sin solape
 
 MOVEMENT.enabled        // interruptor entre las dos variantes
 MOVEMENT.speed          // velocidad horizontal de pie
@@ -230,12 +257,18 @@ cuesta ~0.1 ms por frame en p99, frente a los 4.17 ms de presupuesto a 240 Hz.
   especiales.
 - **Sin assets.** El sonido se sintetiza con osciladores; no hay archivos de
   audio ni texturas.
-- **La sala creció a 64×64.** Con la sala anterior (44×44) el slider de
-  distancia no tenía recorrido: las dianas lejanas caían fuera de las paredes
-  y el muestreo las descartaba. Misma estética, sólo más grande.
+- **La sala creció a 80×80.** Cada ampliación ha ido detrás de un rango de
+  distancia mayor: con paredes más cerca, las dianas lejanas caían fuera y el
+  muestreo las descartaba, recortando en silencio el extremo del slider. Misma
+  estética, sólo más grande.
 - **Las tres zonas del hitbox usan el mismo naranja** con distinto brillo
   —cabeza clara, piernas apagadas— para que se distingan sin salirse de la
   paleta.
+- **El abanico del hitbox se sortea en 2D, no aplastando un cono 3D.**
+  Muestrear el cono en tres dimensiones y luego proyectarlo al suelo amontona
+  las dianas cerca del eje, porque los extremos verticales del casquete se
+  proyectan sobre azimuts pequeños. Sorteando el azimut directamente el reparto
+  es uniforme de verdad.
 - **Los ejes del modo dinámico los decide el anclaje.** Los destinos salen del
   mismo muestreo que las apariciones, así que anclar el hitbox al suelo ya
   basta para que sólo se mueva en horizontal: no hay una restricción de ejes
