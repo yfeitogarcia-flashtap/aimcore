@@ -31,10 +31,14 @@ Sólo con la variante de movimiento activa (`MOVEMENT.enabled`):
 
 - **WASD** o **flechas**: desplazamiento horizontal relativo a la cámara. El
   cabeceo no interviene: mirar al suelo o al cielo no cambia hacia dónde andas.
+- **SHIFT** mantenido: caminar, una marcha intermedia entre correr y agachado
+  (`MOVEMENT.walkSpeed`). Es la velocidad más rápida con la que se dispara sin
+  penalización — ver *Precisión y movimiento*.
 - **SPACE**: salto. Sin doble salto — no se puede volver a saltar hasta tocar
   el suelo. Si dejas la tecla pulsada, rebota al aterrizar.
 - **CTRL** (o **C**) mantenido: agacharse. Baja la altura de la cámara y
-  reduce la velocidad mientras se mantiene.
+  reduce la velocidad mientras se mantiene. Con SHIFT y CTRL a la vez manda la
+  marcha más lenta de las dos, o sea agachado.
 
 > **Cuidado con CTRL en Chrome.** Agacharse avanzando es Ctrl+W, y Ctrl+W
 > cierra la pestaña — es un atajo reservado del navegador y una página no
@@ -128,6 +132,33 @@ primero de cada ráfaga sale limpio: se dispara y *después* el arma empuja.
 
 Los valores son un punto de partida con el carácter descrito, para calibrar
 jugando igual que la sensibilidad o el tamaño de diana.
+
+### Precisión y movimiento
+
+Encima del patrón de retroceso, moverse deprisa abre el disparo. No es un
+patrón: es un desvío **aleatorio de verdad** en cada disparo, así que no se
+aprende ni se compensa — sólo se evita yendo más despacio.
+
+| estado | dispersión |
+| --- | --- |
+| Quieto, caminando (SHIFT) o agachado (CTRL) | ninguna: precisión completa |
+| Corriendo | activa |
+| En el aire | activa, sin importar la marcha: saltar penaliza como correr |
+
+El umbral es `ACCURACY.speedThreshold`, igualado a `MOVEMENT.walkSpeed`, de
+modo que caminar queda justo por debajo. La magnitud es un ángulo aleatorio
+entre 0 y `ACCURACY.movementSpreadDeg` (1.2° de partida), en una dirección
+aleatoria. Aplica igual a las tres armas.
+
+El desvío se aplica **al rayo, no a la cámara**: la mira no tiembla, se desvía
+la bala. El retroceso sí mueve la cámara, así que al desviar una dirección de
+tiro que ya lleva ese empuje los dos offsets se suman sin pisarse.
+
+Con 1.2° la penalización es deliberadamente selectiva: la diana Clásica por
+defecto abarca ~1.5° de radio angular, más que el cono entero, así que a centro
+de masa no se falla ni corriendo. Donde muerde es en el tiro fino — la cabeza
+del hitbox, de ~0.42°, baja del 100% al 42% de aciertos corriendo. Súbelo si
+quieres que correr penalice también el centro de masa.
 
 ### Tipos de diana
 
@@ -232,6 +263,10 @@ TARGET.moveMaxSeconds   // tiempo máximo persiguiendo un mismo destino
 WEAPONS                       // roster: modo, RPM y patrón de retroceso
 RECOIL_RESET_MS               // pausa que cierra la ráfaga y reinicia el patrón
 
+MOVEMENT.walkSpeed            // marcha de SHIFT, entre correr y agachado
+ACCURACY.speedThreshold       // velocidad a partir de la cual se abre el tiro
+ACCURACY.movementSpreadDeg    // radio angular máximo del desvío aleatorio
+
 HITBOX.spawnConeHalfAngleDeg  // anchura del abanico frontal del hitbox
 HITBOX.distanceScale          // horquilla de distancia, en fracción del slider
 HITBOX.minSpawnDistance       // mínimo absoluto, por corto que quede el slider
@@ -331,6 +366,14 @@ cuesta ~0.1 ms por frame en p99, frente a los 4.17 ms de presupuesto a 240 Hz.
   mismo muestreo que las apariciones, así que anclar el hitbox al suelo ya
   basta para que sólo se mueva en horizontal: no hay una restricción de ejes
   escrita aparte que pueda desincronizarse.
+- **La dispersión desvía la bala, no la mira.** Un temblor aleatorio del
+  crosshair sería insufrible y además impediría apuntar; desviando el rayo, el
+  jugador ve exactamente dónde apunta y lo que pierde es certeza sobre dónde
+  irá el disparo.
+- **La marcha más lenta manda.** SHIFT y CTRL a la vez dan agachado porque el
+  motor se queda con la menor de las velocidades pedidas, no por un orden de
+  prioridad escrito a mano — seguiría siendo cierto si un día se retocan las
+  constantes.
 - **El retroceso no se recupera solo.** La cámara se queda donde la deja el
   arma. Es lo que convierte el patrón en algo que se aprende a compensar, en
   lugar de en un temblor que se corrige solo.

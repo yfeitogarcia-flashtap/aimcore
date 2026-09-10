@@ -12,7 +12,15 @@
  */
 
 import * as THREE from 'three'
-import { CAMERA, MOVEMENT, RECOIL_RESET_MS, RENDER, SESSION_DURATION_S, WEAPONS } from '../config.js'
+import {
+  ACCURACY,
+  CAMERA,
+  MOVEMENT,
+  RECOIL_RESET_MS,
+  RENDER,
+  SESSION_DURATION_S,
+  WEAPONS,
+} from '../config.js'
 import { createScene } from './scene.js'
 import { LookControls } from './lookControls.js'
 import { MovementController } from './movement.js'
@@ -25,6 +33,41 @@ const SCREEN_CENTER = new THREE.Vector2(0, 0)
 
 /** Tope de delta por frame: evita saltos del reloj tras un parón del navegador. */
 const MAX_FRAME_DELTA_MS = 100
+
+const DEG_TO_RAD = Math.PI / 180
+
+// Vectores de módulo para desviar el rayo: el disparo no aloca nada.
+const _spreadU = new THREE.Vector3()
+const _spreadV = new THREE.Vector3()
+const _spreadUp = new THREE.Vector3(0, 1, 0)
+const _spreadFallback = new THREE.Vector3(1, 0, 0)
+
+/**
+ * Desvía una dirección un ángulo aleatorio dentro de un cono de `spreadDeg`.
+ *
+ * Se aplica **al rayo, no a la cámara**: la dispersión es una desviación del
+ * disparo, no un temblor de la mira. El retroceso sí mueve la cámara, así que
+ * al desviar la dirección que ya lleva ese empuje los dos offsets se suman.
+ *
+ * @param {THREE.Vector3} direction se modifica en el sitio; queda normalizada
+ */
+function applySpread(direction, spreadDeg) {
+  const theta = Math.random() * spreadDeg * DEG_TO_RAD
+  if (theta <= 0) return
+  const phi = Math.random() * Math.PI * 2
+
+  // Base ortonormal perpendicular a la dirección de tiro.
+  const reference = Math.abs(direction.y) > 0.99 ? _spreadFallback : _spreadUp
+  _spreadU.crossVectors(reference, direction).normalize()
+  _spreadV.crossVectors(direction, _spreadU).normalize()
+
+  const sin = Math.sin(theta)
+  direction
+    .multiplyScalar(Math.cos(theta))
+    .addScaledVector(_spreadU, sin * Math.cos(phi))
+    .addScaledVector(_spreadV, sin * Math.sin(phi))
+    .normalize()
+}
 
 export const PHASE = {
   IDLE: 'idle',
@@ -218,6 +261,22 @@ export class Engine {
     return WEAPONS[this.weaponKey]
   }
 
+  /**
+   * Radio angular del desvío que le toca al próximo disparo, en grados.
+   *
+   * Se abre corriendo —por encima del umbral de velocidad— y también en el
+   * aire, donde no hay marcha que valga: saltar penaliza como correr. Caminar
+   * con SHIFT y agacharse quedan por debajo del umbral, así que disparan con
+   * precisión completa, igual que estar quieto.
+   */
+  get currentSpreadDeg() {
+    const movement = this.movement
+    if (movement.airborne || movement.horizontalSpeed > ACCURACY.speedThreshold) {
+      return ACCURACY.movementSpreadDeg
+    }
+    return 0
+  }
+
   _setPhase(phase) {
     if (this.phase === phase) return
     this.phase = phase
@@ -350,6 +409,9 @@ export class Engine {
       this.camera.updateMatrixWorld()
       this.targets.updateMatrices()
       this.raycaster.setFromCamera(SCREEN_CENTER, this.camera)
+      // La cámara ya lleva el retroceso acumulado; encima se le suma el
+      // desvío por movimiento, que es distinto en cada disparo.
+      applySpread(this.raycaster.ray.direction, this.currentSpreadDeg)
       hit = this.targets.raycast(this.raycaster)
     }
 

@@ -318,6 +318,12 @@ export const MOVEMENT = {
 
   /** Velocidad horizontal de pie, en unidades por segundo. */
   speed: 6.5,
+  /**
+   * Velocidad horizontal manteniendo SHIFT: un paso intermedio entre correr y
+   * agachado. Es la marcha con la que se dispara con precisión completa sin
+   * quedarse quieto (ver ACCURACY.speedThreshold).
+   */
+  walkSpeed: 4.2,
   /** Velocidad horizontal mientras se mantiene agachado. */
   crouchSpeed: 2.6,
 
@@ -360,8 +366,30 @@ export const MOVEMENT = {
     left: ['KeyA', 'ArrowLeft'],
     right: ['KeyD', 'ArrowRight'],
     jump: ['Space'],
+    walk: ['ShiftLeft', 'ShiftRight'],
     crouch: ['ControlLeft', 'ControlRight', 'KeyC'],
   },
+}
+
+/**
+ * Precisión del disparo en función del movimiento.
+ *
+ * Encima del patrón de retroceso del arma, moverse deprisa abre el disparo: un
+ * desvío aleatorio de verdad, distinto en cada disparo, que no se puede
+ * aprender ni compensar. Es lo que le da sentido a caminar con SHIFT.
+ */
+export const ACCURACY = {
+  /**
+   * Velocidad horizontal por encima de la cual el disparo se abre. Igualada a
+   * `MOVEMENT.walkSpeed`, de modo que caminar y agachado disparan con
+   * precisión completa y sólo correr penaliza.
+   */
+  speedThreshold: MOVEMENT.walkSpeed,
+  /**
+   * Radio angular máximo del desvío, en grados. Cada disparo sortea una
+   * dirección al azar y una magnitud entre 0 y este valor.
+   */
+  movementSpreadDeg: 1.2,
 }
 
 /** Reglas de aparición del modo Gridshot. */

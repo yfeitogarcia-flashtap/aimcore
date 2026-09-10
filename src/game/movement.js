@@ -41,7 +41,15 @@ export class MovementController {
     this.enabled = false
 
     this.keyMap = buildKeyMap(MOVEMENT.keys)
-    this.keys = { forward: false, back: false, left: false, right: false, jump: false, crouch: false }
+    this.keys = {
+      forward: false,
+      back: false,
+      left: false,
+      right: false,
+      jump: false,
+      walk: false,
+      crouch: false,
+    }
 
     /** Altura de los pies sobre el suelo. Sólo el salto la mueve. */
     this.feetY = 0
@@ -88,7 +96,33 @@ export class MovementController {
     keys.left = false
     keys.right = false
     keys.jump = false
+    keys.walk = false
     keys.crouch = false
+  }
+
+  /**
+   * Velocidad horizontal vigente. Se queda con la **más lenta** de las marchas
+   * pedidas, así que mantener SHIFT y CTRL a la vez da agachado — y seguiría
+   * siendo así aunque un día se retoquen las constantes.
+   */
+  get currentSpeed() {
+    let speed = MOVEMENT.speed
+    if (this.keys.walk && MOVEMENT.walkSpeed < speed) speed = MOVEMENT.walkSpeed
+    if (this.keys.crouch && MOVEMENT.crouchSpeed < speed) speed = MOVEMENT.crouchSpeed
+    return speed
+  }
+
+  /**
+   * Velocidad a la que se está desplazando el jugador ahora mismo: cero si no
+   * pulsa nada o si los controles están apagados. El movimiento no tiene
+   * aceleración, así que se deduce del estado de las teclas sin necesidad de
+   * guardar la velocidad frame a frame.
+   */
+  get horizontalSpeed() {
+    if (!this.enabled) return 0
+    const keys = this.keys
+    const moving = keys.forward || keys.back || keys.left || keys.right
+    return moving ? this.currentSpeed : 0
   }
 
   /** Devuelve al jugador al centro, de pie y en el suelo. */
@@ -125,7 +159,7 @@ export class MovementController {
 
     // Normalizar el input evita que la diagonal sea más rápida que un eje.
     const inverse = 1 / Math.hypot(x, z)
-    const step = (keys.crouch ? MOVEMENT.crouchSpeed : MOVEMENT.speed) * dt * inverse
+    const step = this.currentSpeed * dt * inverse
 
     const position = this.camera.position
     position.x += (_forward.x * z + _right.x * x) * step
