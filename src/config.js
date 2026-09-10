@@ -19,6 +19,13 @@ export const COLORS = {
   gridFloorAccent: '#454545',
   /** Naranja FlickLAB. */
   target: '#E4462B',
+  /**
+   * Zonas de la diana "Hitbox completo". Mismo tono que el naranja base, sólo
+   * cambia el brillo: la cabeza destaca y las piernas quedan apagadas, para
+   * que las tres zonas se distingan de un vistazo sin salirse de la paleta.
+   */
+  targetHead: '#FF7A5C',
+  targetLegs: '#A5321F',
   /** Flash/pop de la diana al ser acertada. */
   targetHit: '#FFFFFF',
   /**
@@ -55,25 +62,109 @@ export const LOOK = {
  * superior de las paredes hace de horizonte limpio.
  */
 export const ROOM = {
-  width: 44,
-  depth: 44,
-  height: 14,
+  width: 64,
+  depth: 64,
+  height: 16,
   /** Espaciado de la grilla, en unidades. */
   step: 1,
   /** Cada cuántas unidades se dibuja una línea de acento. */
   accentEvery: 5,
 }
 
-/** Dianas (esferas). */
+/** Dianas. */
 export const TARGET = {
+  /** Radio por defecto. El ajuste "tamaño de diana" escribe sobre este valor. */
   radius: 0.45,
-  /** Segmentos de la esfera: suficiente para que el borde no se vea facetado. */
+  /** Segmentos de las mallas: suficiente para que el borde no se vea facetado. */
   widthSegments: 24,
   heightSegments: 16,
-  /** Distancia a la cámara en el momento de aparecer. */
-  distance: { min: 13, max: 18 },
+  /**
+   * Dispersión de la distancia alrededor del valor base elegido en opciones:
+   * las dianas salen entre `base - spread` y `base + spread`.
+   */
+  distanceSpread: 2.5,
   /** Franja de alturas válidas: mantiene las dianas dentro de la zona jugable. */
-  yRange: { min: 1.0, max: 11.0 },
+  yRange: { min: 1.0, max: 13.0 },
+  /** Vida de cada diana. El daño por zona se descuenta de aquí. */
+  maxHealth: 100,
+  /** Tope de dianas vivas a la vez en modo acumulativo. */
+  maxActive: 6,
+}
+
+/**
+ * Tipos de diana.
+ *
+ * Cada tipo se describe con piezas ("partes"). Todas las medidas —radio,
+ * altura, desplazamiento vertical— van en **múltiplos del radio** elegido en
+ * opciones, así que el slider de tamaño escala la figura entera sin tocar sus
+ * proporciones.
+ *
+ * `damage` se descuenta de `TARGET.maxHealth`: con 100 de vida, 100 mata de un
+ * disparo, 50 en dos y 34 en tres, y las combinaciones entre zonas salen solas.
+ */
+export const TARGET_TYPES = {
+  classic: {
+    label: 'Clásica',
+    /** Distancia base al elegir este tipo. */
+    defaultDistance: 15.5,
+    /** Semialtura de la figura, en múltiplos del radio. Evita que atraviese el suelo. */
+    halfHeight: 1,
+    parts: [
+      { zone: 'single', shape: 'sphere', radius: 1, offsetY: 0, damage: 100, color: COLORS.target },
+    ],
+  },
+  cone: {
+    label: 'Cono',
+    defaultDistance: 15.5,
+    halfHeight: 1.3,
+    parts: [
+      {
+        zone: 'single',
+        shape: 'cone',
+        radius: 1,
+        height: 2.6,
+        offsetY: 0,
+        damage: 100,
+        color: COLORS.target,
+      },
+    ],
+  },
+  hitbox: {
+    label: 'Hitbox completo',
+    /** Aparece más lejos que los otros dos: acertar la cabeza tiene que costar. */
+    defaultDistance: 20,
+    halfHeight: 2,
+    // Proporciones humanoides: con el radio por defecto (0.45) la figura mide
+    // 1.8 unidades de alto, y la cabeza 0.25 de diámetro.
+    parts: [
+      {
+        zone: 'head',
+        shape: 'sphere',
+        radius: 0.278,
+        offsetY: 1.722,
+        damage: 100,
+        color: COLORS.targetHead,
+      },
+      {
+        zone: 'torso',
+        shape: 'capsule',
+        radius: 0.489,
+        height: 1.556,
+        offsetY: 0.667,
+        damage: 50,
+        color: COLORS.target,
+      },
+      {
+        zone: 'legs',
+        shape: 'cylinder',
+        radius: 0.356,
+        height: 1.889,
+        offsetY: -1.056,
+        damage: 34,
+        color: COLORS.targetLegs,
+      },
+    ],
+  },
 }
 
 /**
@@ -145,7 +236,7 @@ export const SPAWN = {
    * rango. Sin esto, mirar al suelo mandaría todas las dianas bajo el suelo.
    */
   axisPitchClampDeg: { min: -8, max: 20 },
-  /** Separación angular mínima respecto a la diana anterior: fuerza el flick. */
+  /** Separación angular mínima respecto a las dianas ya presentes: fuerza el flick. */
   minAngularSeparationDeg: 9,
   /** Intentos de muestreo antes de aceptar un candidato acotado. */
   maxSampleAttempts: 32,
@@ -161,6 +252,62 @@ export const SPAWN = {
   respawnDelayMs: 40,
 }
 
+/**
+ * Ajustes editables desde el panel de opciones.
+ *
+ * A diferencia del resto del archivo, estos valores no se leen directamente:
+ * son el **punto de partida** de `src/settings.js`, que los guarda en
+ * localStorage y los sirve ya validados. Editar aquí cambia el valor por
+ * defecto, no el que tenga guardado un navegador que ya haya jugado.
+ *
+ * `min`/`max`/`step` alimentan los sliders y, sobre todo, acotan lo que se
+ * lee de localStorage: ahí puede haber cualquier cosa.
+ */
+export const SETTINGS = {
+  sensitivity: {
+    label: 'Sensibilidad',
+    default: LOOK.sensitivity,
+    min: 0.1,
+    max: 6,
+    step: 0.01,
+    /** Decimales al mostrar y al redondear el campo numérico. */
+    decimals: 2,
+  },
+  targetType: {
+    label: 'Tipo de diana',
+    default: 'classic',
+  },
+  targetRadius: {
+    label: 'Tamaño de diana',
+    default: TARGET.radius,
+    min: 0.15,
+    max: 1.2,
+    step: 0.01,
+    decimals: 2,
+  },
+  spawnDistance: {
+    label: 'Distancia de aparición',
+    default: TARGET_TYPES.classic.defaultDistance,
+    min: 8,
+    max: 24,
+    step: 0.5,
+    decimals: 1,
+  },
+  spawnIntervalMs: {
+    label: 'Cadencia',
+    /** Por defecto, la reaparición casi instantánea del Gridshot original. */
+    default: SPAWN.respawnDelayMs,
+    min: 0,
+    max: 1500,
+    step: 10,
+    decimals: 0,
+  },
+  accumulative: {
+    label: 'Modo acumulativo',
+    default: false,
+  },
+}
+
 /** Feedback visual. */
 export const FEEDBACK = {
   /** Duración del pop de la diana acertada. */
@@ -171,6 +318,11 @@ export const FEEDBACK = {
   targetPopOpacity: 0.85,
   /** Nº de pops simultáneos reutilizables (pool, cero alocaciones en caliente). */
   targetPopPoolSize: 6,
+  /**
+   * Cuánto dura el destello blanco de una zona al recibir un impacto que no
+   * mata. Es el único aviso de "le has dado pero sigue en pie".
+   */
+  zoneFlashMs: 110,
   /** Flash del crosshair al disparar. */
   crosshairFlashMs: 90,
   crosshairFlashOpacity: 0.9,

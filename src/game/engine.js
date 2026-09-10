@@ -18,6 +18,7 @@ import { LookControls } from './lookControls.js'
 import { MovementController } from './movement.js'
 import { TargetManager } from './targets.js'
 import { initAudio, playHit, playShot } from '../audio/sfx.js'
+import { getSettings, subscribeSettings } from '../settings.js'
 
 /** Centro exacto de la pantalla: el crosshair no se mueve, así que es constante. */
 const SCREEN_CENTER = new THREE.Vector2(0, 0)
@@ -65,14 +66,18 @@ export class Engine {
     this.movement.reset()
     // Con la variante de movimiento activa el cono deja de seguir la mirada:
     // nace en la posición del jugador y apunta a una dirección fija del mundo.
-    this.targets = new TargetManager(this.scene, { anchoredAxis: MOVEMENT.enabled })
+    this.targets = new TargetManager(this.scene, getSettings(), {
+      anchoredAxis: MOVEMENT.enabled,
+    })
     this.raycaster = new THREE.Raycaster()
+    this._applySettings(getSettings())
 
     this.phase = PHASE.IDLE
     this.durationMs = SESSION_DURATION_S * 1000
     this.elapsedMs = 0
     this.shots = 0
     this.hits = 0
+    this.kills = 0
 
     // Objeto de estadísticas reutilizado: el HUD lo lee sin que se genere
     // basura en cada frame.
@@ -82,6 +87,7 @@ export class Engine {
       hits: 0,
       misses: 0,
       shots: 0,
+      kills: 0,
       accuracy: 0,
     }
 
@@ -107,6 +113,8 @@ export class Engine {
     this.controls.connect(document)
     this.movement.connect(window)
 
+    this._unsubscribeSettings = subscribeSettings((settings) => this._applySettings(settings))
+
     this._resizeObserver = new ResizeObserver(this._onResize)
     this._resizeObserver.observe(this.canvas.parentElement || this.canvas)
     this._onResize()
@@ -123,6 +131,7 @@ export class Engine {
     document.removeEventListener('pointerlockchange', this._onPointerLockChange)
     this.controls.disconnect()
     this.movement.disconnect()
+    if (this._unsubscribeSettings) this._unsubscribeSettings()
     if (this._resizeObserver) this._resizeObserver.disconnect()
     if (document.pointerLockElement === this.canvas) document.exitPointerLock()
     this.targets.dispose()
@@ -171,6 +180,21 @@ export class Engine {
     this.requestLock()
   }
 
+  /**
+   * Reparte los ajustes del panel de opciones entre quien los usa.
+   *
+   * Cambiar el tipo o el tamaño de diana rehace las mallas. El panel sólo se
+   * abre con la partida parada (antes de empezar o en pausa), así que esa
+   * reconstrucción nunca cae dentro del bucle caliente; si había dianas en
+   * pantalla se vuelven a repartir, porque las viejas dejan de existir.
+   */
+  _applySettings(settings) {
+    this.controls.setSensitivity(settings.sensitivity)
+    const hadSession = this.targets.sessionActive
+    this.targets.configure(settings)
+    if (hadSession) this.targets.beginSession(this.camera, performance.now())
+  }
+
   _setPhase(phase) {
     if (this.phase === phase) return
     this.phase = phase
@@ -182,13 +206,13 @@ export class Engine {
     this.elapsedMs = 0
     this.shots = 0
     this.hits = 0
+    this.kills = 0
     this.controls.enabled = true
     this.movement.reset()
     this.movement.setEnabled(true)
     // La primera diana nace en la posición ya reseteada del jugador.
     this.camera.updateMatrixWorld()
-    this.targets.clear()
-    this.targets.spawn(this.camera)
+    this.targets.beginSession(this.camera, performance.now())
     this._setPhase(PHASE.RUNNING)
   }
 
@@ -204,8 +228,11 @@ export class Engine {
       hits: this.hits,
       misses: this.shots - this.hits,
       shots: this.shots,
+      // Con el hitbox, impactos y dianas abatidas dejan de coincidir: la
+      // precisión mide los disparos que entraron, el ritmo mide las bajas.
+      kills: this.kills,
       accuracy: this.shots > 0 ? (this.hits / this.shots) * 100 : 0,
-      targetsPerSecond: this.hits / seconds,
+      targetsPerSecond: seconds > 0 ? this.kills / seconds : 0,
       durationS: seconds,
     })
   }
@@ -231,25 +258,26 @@ export class Engine {
   _shoot() {
     this.shots += 1
 
-    let hit = false
-    if (this.targets.isActive) {
+    let hit = null
+    if (this.targets.hasActive) {
       // Las matrices se actualizan a mano: el disparo ocurre entre frames y la
       // cámara puede haber rotado con el último mousemove.
       this.camera.updateMatrixWorld()
-      this.targets.mesh.updateMatrixWorld()
+      this.targets.updateMatrices()
       this.raycaster.setFromCamera(SCREEN_CENTER, this.camera)
-      hit = this.raycaster.intersectObject(this.targets.mesh, false).length > 0
+      hit = this.targets.raycast(this.raycaster)
     }
 
     // El sonido de disparo suena siempre; el de acierto se superpone.
     playShot()
     if (hit) {
       this.hits += 1
-      this.targets.registerHit(performance.now())
+      const { killed } = this.targets.applyHit(hit, performance.now())
+      if (killed) this.kills += 1
       playHit()
     }
 
-    this.callbacks.onShot?.(hit)
+    this.callbacks.onShot?.(hit !== null)
   }
 
   _onPointerLockChange() {
@@ -308,6 +336,7 @@ export class Engine {
     stats.hits = this.hits
     stats.shots = this.shots
     stats.misses = this.shots - this.hits
+    stats.kills = this.kills
     stats.accuracy = this.shots > 0 ? (this.hits / this.shots) * 100 : 0
     this.callbacks.onFrame?.(stats)
   }

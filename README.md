@@ -69,7 +69,53 @@ dianas, en lugar de que el cono te siga y el movimiento no cuente para nada.
 En ambos casos: una diana a la vez, *pop* al acertar y otra en menos de
 100 ms, sesión de 30 segundos y resumen con precisión, dianas y dianas/s.
 
-## Ajustes
+## Panel de opciones
+
+Botón **Opciones** en la pantalla de inicio y en la de pausa. Los cambios se
+aplican al momento y se guardan en `localStorage`, así que sobreviven a una
+recarga. **Restablecer** vuelve a los valores de `config.js`.
+
+| ajuste | qué hace |
+| --- | --- |
+| Sensibilidad | slider y campo numérico sobre el mismo valor |
+| Tipo de diana | Clásica · Cono · Hitbox completo |
+| Tamaño de diana | escala la figura entera sin deformar sus proporciones |
+| Distancia de aparición | distancia base del cono respecto al jugador |
+| Cadencia | milisegundos entre apariciones. Menos es más difícil |
+| Modo acumulativo | permite varias dianas vivas a la vez |
+
+El panel sólo se abre con la partida parada, así que reconstruir las mallas al
+cambiar de tipo o de tamaño nunca cae dentro del bucle de render.
+
+### Tipos de diana
+
+**Clásica** (esfera) y **Cono** comparten lógica: un disparo, una baja. Sólo
+cambia la geometría.
+
+**Hitbox completo** es una figura humanoide de tres zonas con vida compartida
+(`TARGET.maxHealth`, 100 por defecto):
+
+| zona | forma | daño | disparos para abatir |
+| --- | --- | --- | --- |
+| Cabeza | esfera pequeña arriba | 100 | 1 |
+| Torso | cápsula en el medio | 50 | 2 |
+| Piernas | cilindro abajo | 34 | 3 |
+
+Las combinaciones salen solas: piernas + torso deja 16 de vida, y cualquier
+tercer impacto remata. Un impacto que no mata hace parpadear su zona, para que
+se distinga de un fallo. Este tipo aparece **más lejos por defecto** (20 frente
+a 15.5), aunque el slider de distancia manda igual: al cambiar de tipo, la
+distancia salta al valor base de ese tipo y a partir de ahí la mueves tú.
+
+### Modo acumulativo
+
+Desactivado (por defecto) hay una sola diana viva y la siguiente espera a que
+caiga la actual — el Gridshot de siempre. Activado sale una diana nueva cada
+`cadencia` milisegundos aunque las anteriores sigan en pie, hasta el tope de
+`TARGET.maxActive` (6). Con cadencias muy bajas se llena en un instante: sube
+la cadencia al activarlo.
+
+## Ajustes por defecto
 
 **Todo lo ajustable vive en [`src/config.js`](src/config.js)** — colores,
 sensibilidad, duración de la sesión, tamaño y distancia de las dianas, ángulo
@@ -82,9 +128,14 @@ Los más probables de tocar mientras se prueba el feel:
 SESSION_DURATION_S      // duración de la sesión
 LOOK.sensitivity        // 0.022°/count, misma convención que en los FPS
 TARGET.radius           // tamaño de la diana
-TARGET.distance         // a qué distancia aparecen
+TARGET.distanceSpread   // dispersión alrededor de la distancia elegida
 SPAWN.coneHalfAngleDeg  // cuánta pantalla cubren las apariciones
 COLORS.crosshair        // color del crosshair (punto único de cambio)
+
+SETTINGS                // valores iniciales y rangos del panel de opciones
+TARGET_TYPES            // formas, daño por zona y distancia base de cada tipo
+TARGET.maxHealth        // vida por diana
+TARGET.maxActive        // tope de dianas vivas en modo acumulativo
 
 MOVEMENT.enabled        // interruptor entre las dos variantes
 MOVEMENT.speed          // velocidad horizontal de pie
@@ -106,6 +157,7 @@ Vite lo elimina del build de producción.
 ```
 src/
 ├── config.js           todas las constantes de tuning
+├── settings.js         ajustes de partida: validación y localStorage
 ├── App.jsx             une el motor con el HUD
 ├── styles.css
 ├── audio/sfx.js        sonido sintetizado con la Web Audio API
@@ -114,8 +166,8 @@ src/
 │   ├── scene.js        sala de líneas
 │   ├── lookControls.js rotación de cámara desde el ratón crudo
 │   ├── movement.js     desplazamiento, salto y agachado
-│   └── targets.js      aparición de dianas y pops
-└── ui/                 Hud, Crosshair, Summary
+│   └── targets.js      dianas: tipos, zonas, vida y apariciones
+└── ui/                 Hud, Crosshair, Options, Summary
 ```
 
 ### Por qué React no toca el bucle de render
@@ -126,8 +178,9 @@ directamente en el DOM por refs desde el bucle. Una partida entera provoca un
 puñado de renders de React en vez de miles.
 
 En el bucle no se crea geometría, ni vectores, ni objetos: los vectores de
-muestreo son de módulo, los *pops* salen de un pool fijo y la diana se
-reposiciona en lugar de recrearse. Medido en este repo, la lógica de juego
+muestreo son de módulo y las dianas salen de un pool fijo que se reutiliza —
+sólo se reconstruye al cambiar de tipo o de tamaño desde el panel, que nunca
+está abierto con la partida en marcha. Medido en este repo, la lógica de juego
 cuesta ~0.1 ms por frame en p99, frente a los 4.17 ms de presupuesto a 240 Hz.
 
 ## Decisiones de esta fase
@@ -150,10 +203,20 @@ cuesta ~0.1 ms por frame en p99, frente a los 4.17 ms de presupuesto a 240 Hz.
   especiales.
 - **Sin assets.** El sonido se sintetiza con osciladores; no hay archivos de
   audio ni texturas.
+- **La sala creció a 64×64.** Con la sala anterior (44×44) el slider de
+  distancia no tenía recorrido: las dianas lejanas caían fuera de las paredes
+  y el muestreo las descartaba. Misma estética, sólo más grande.
+- **Las tres zonas del hitbox usan el mismo naranja** con distinto brillo
+  —cabeza clara, piernas apagadas— para que se distingan sin salirse de la
+  paleta.
+- **La precisión cuenta impactos, el ritmo cuenta bajas.** Con el hitbox dejan
+  de coincidir, así que el resumen muestra los impactos aparte cuando difieren.
 
 ## Fuera de alcance (siguiente fase)
 
-Sin Supabase, sin login, sin persistencia: todo vive en memoria del cliente y
-se pierde al recargar. Cuentas, ranking, backend y menú de opciones
-(sensibilidad, crosshair y elección de variante desde la UI en vez de desde
-`config.js`) van aparte.
+Sin Supabase, sin login y sin cuentas: lo único que persiste son los ajustes,
+en el `localStorage` de este navegador. Las estadísticas de partida siguen en
+memoria y se pierden al recargar.
+
+Fuera de alcance también, por decisión explícita: fuego automático, retroceso
+y escenarios con cobertura. Cuentas, ranking y backend van aparte.

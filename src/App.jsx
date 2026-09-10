@@ -1,9 +1,18 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from 'react'
 import { COLORS, MOVEMENT, SESSION_DURATION_S } from './config.js'
 import { Engine, PHASE } from './game/engine.js'
 import { disposeAudio } from './audio/sfx.js'
+import { getSettings, resetSettings, subscribeSettings, updateSettings } from './settings.js'
 import Crosshair from './ui/Crosshair.jsx'
 import Hud from './ui/Hud.jsx'
+import Options from './ui/Options.jsx'
 import Summary from './ui/Summary.jsx'
 
 /**
@@ -23,6 +32,10 @@ export default function App() {
   const [phase, setPhase] = useState(PHASE.IDLE)
   const [summary, setSummary] = useState(null)
   const [engineError, setEngineError] = useState(null)
+  const [optionsOpen, setOptionsOpen] = useState(false)
+
+  // El store de ajustes vive fuera de React porque el motor también lo lee.
+  const settings = useSyncExternalStore(subscribeSettings, getSettings)
 
   // La paleta vive en config.js; aquí sólo la publicamos como variables CSS
   // para que las hojas de estilo no repitan ningún color a mano.
@@ -77,7 +90,28 @@ export default function App() {
     engineRef.current?.restart()
   }, [])
 
+  // Los overlays de inicio y pausa capturan el ratón con un click en cualquier
+  // sitio; los botones tienen que quedarse ese click para ellos.
+  const swallowClick = useCallback((event) => event.stopPropagation(), [])
+  const openOptions = useCallback(() => setOptionsOpen(true), [])
+  const closeOptions = useCallback(() => setOptionsOpen(false), [])
+
   const showHud = phase === PHASE.RUNNING || phase === PHASE.PAUSED
+
+  const optionsPanel = (
+    <Options
+      settings={settings}
+      onChange={updateSettings}
+      onReset={resetSettings}
+      onClose={closeOptions}
+    />
+  )
+
+  const optionsButton = (
+    <button type="button" className="button" onMouseDown={swallowClick} onClick={openOptions}>
+      Opciones
+    </button>
+  )
 
   return (
     <div className="app">
@@ -97,27 +131,41 @@ export default function App() {
       )}
 
       {!engineError && phase === PHASE.IDLE && (
-        <div className="overlay" onMouseDown={lock}>
-          <div className="panel">
-            <h1 className="panel__title">AimCore</h1>
-            <p className="panel__eyebrow">gridshot · {SESSION_DURATION_S}s</p>
-            <p className="panel__body">
-              Click para capturar el ratón y empezar. Click izquierdo para disparar.
-            </p>
-            {MOVEMENT.enabled && (
-              <p className="panel__hint">WASD o flechas para moverte · SPACE salta · CTRL o C agacha</p>
-            )}
-            <p className="panel__hint">Escape para pausar.</p>
-          </div>
+        // Con las opciones abiertas el overlay deja de capturar el ratón: sería
+        // desconcertante que tocar un slider arrancara la partida.
+        <div className="overlay" onMouseDown={optionsOpen ? undefined : lock}>
+          {optionsOpen ? (
+            optionsPanel
+          ) : (
+            <div className="panel">
+              <h1 className="panel__title">AimCore</h1>
+              <p className="panel__eyebrow">gridshot · {SESSION_DURATION_S}s</p>
+              <p className="panel__body">
+                Click para capturar el ratón y empezar. Click izquierdo para disparar.
+              </p>
+              {MOVEMENT.enabled && (
+                <p className="panel__hint">
+                  WASD o flechas para moverte · SPACE salta · CTRL o C agacha
+                </p>
+              )}
+              <p className="panel__hint">Escape para pausar.</p>
+              {optionsButton}
+            </div>
+          )}
         </div>
       )}
 
       {phase === PHASE.PAUSED && (
-        <div className="overlay" onMouseDown={lock}>
-          <div className="panel">
-            <h2 className="panel__title panel__title--small">Pausa</h2>
-            <p className="panel__body">Click para continuar.</p>
-          </div>
+        <div className="overlay" onMouseDown={optionsOpen ? undefined : lock}>
+          {optionsOpen ? (
+            optionsPanel
+          ) : (
+            <div className="panel">
+              <h2 className="panel__title panel__title--small">Pausa</h2>
+              <p className="panel__body">Click para continuar.</p>
+              {optionsButton}
+            </div>
+          )}
         </div>
       )}
 

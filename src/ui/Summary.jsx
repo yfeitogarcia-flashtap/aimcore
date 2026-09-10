@@ -14,7 +14,7 @@ export default function Summary({ summary, onRestart }) {
           <span className="summary__label">precisión</span>
         </div>
         <div className="summary__cell">
-          <span className="summary__value">{summary.hits}</span>
+          <span className="summary__value">{summary.kills}</span>
           <span className="summary__label">dianas</span>
         </div>
         <div className="summary__cell">
@@ -25,6 +25,9 @@ export default function Summary({ summary, onRestart }) {
 
       <p className="summary__detail">
         {summary.shots} disparos · {summary.misses} fallos
+        {/* Con el hitbox hacen falta varios impactos por diana, así que el dato
+            deja de ser redundante y merece salir. */}
+        {summary.hits !== summary.kills && ` · ${summary.hits} impactos`}
       </p>
 
       <button type="button" className="button" onClick={onRestart} autoFocus>
