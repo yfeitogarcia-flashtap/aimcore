@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "description": "AimCore - prototipo local de aim trainer (FlickLAB)",
+  "description": "Vektor by FlickLAB - prototipo local de aim trainer",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

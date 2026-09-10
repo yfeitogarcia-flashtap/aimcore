@@ -1,5 +1,5 @@
 /**
- * AimCore — configuración central del prototipo.
+ * Vektor — configuración central del prototipo.
  *
  * Todo lo ajustable vive aquí: ningún valor de estos debería aparecer
  * hardcodeado en otro archivo. En una fase posterior, la pantalla de opciones
@@ -309,6 +309,39 @@ export const SPAWN = {
 }
 
 /**
+ * Margen mínimo que debe quedar entre una diana y cualquier pared, en unidades.
+ *
+ * La sala tiene tamaño definitivo: a partir de aquí, lo que se acota es el
+ * slider de distancia, no las paredes.
+ */
+const WALL_CLEARANCE = 5
+
+/**
+ * Tope del slider de distancia de aparición. Se calcula, no se escribe a mano,
+ * para que siga siendo correcto si algún día cambian la sala, el radio de
+ * movimiento o las horquillas de distancia.
+ *
+ * El peor caso es un jugador desplazado hasta el borde de su radio de
+ * movimiento, con un dummy sorteado a la distancia máxima posible y justo en
+ * la dirección contraria a la pared más cercana. Incluso así tienen que
+ * sobrar `WALL_CLEARANCE` unidades.
+ *
+ * Se toma el más restrictivo de los dos regímenes de distancia, porque el
+ * slider es uno solo y vale para los tres tipos de diana:
+ *  - general (Clásica y Cono): el valor del slider más `TARGET.distanceSpread`
+ *  - hitbox: el valor del slider por `HITBOX.distanceScale.max`
+ */
+function computeMaxSpawnDistance(step) {
+  const halfRoom = Math.min(ROOM.width, ROOM.depth) / 2
+  // Distancia máxima que puede haber entre jugador y diana sin comerse el margen.
+  const reach = halfRoom - WALL_CLEARANCE - MOVEMENT.radius
+  const generalMax = reach - TARGET.distanceSpread
+  const hitboxMax = reach / HITBOX.distanceScale.max
+  // Redondeo hacia abajo al escalón del slider, para que el tope sea alcanzable.
+  return Math.floor(Math.min(generalMax, hitboxMax) / step) * step
+}
+
+/**
  * Ajustes editables desde el panel de opciones.
  *
  * A diferencia del resto del archivo, estos valores no se leen directamente:
@@ -345,7 +378,8 @@ export const SETTINGS = {
     label: 'Distancia de aparición',
     default: TARGET_TYPES.classic.defaultDistance,
     min: 8,
-    max: 24,
+    /** Derivado del tamaño de la sala: ver computeMaxSpawnDistance. */
+    max: computeMaxSpawnDistance(0.5),
     step: 0.5,
     decimals: 1,
   },

@@ -138,7 +138,8 @@ export default function App() {
             optionsPanel
           ) : (
             <div className="panel">
-              <h1 className="panel__title">AimCore</h1>
+              <h1 className="panel__title">Vektor</h1>
+              <p className="panel__byline">by FlickLAB</p>
               <p className="panel__eyebrow">gridshot · {SESSION_DURATION_S}s</p>
               <p className="panel__body">
                 Click para capturar el ratón y empezar. Click izquierdo para disparar.

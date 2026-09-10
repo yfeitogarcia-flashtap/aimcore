@@ -190,6 +190,17 @@ body {
   font-size: 20px;
 }
 
+/*
+ * Línea de crédito bajo el logotipo. Deliberadamente pequeña y sin versalitas:
+ * acompaña al nombre, no forma parte de él.
+ */
+.panel__byline {
+  margin: -6px 0 2px;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+
 .panel__eyebrow {
   margin: 0;
   font-size: 11px;

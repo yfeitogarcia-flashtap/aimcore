@@ -1,4 +1,4 @@
-# AimCore
+# Vektor <sub>by FlickLAB</sub>
 
 Prototipo local de *aim trainer* de FlickLAB. El objetivo de esta primera fase
 es uno solo: **validar la sensación de apuntado, el rendimiento y el "feel" del
@@ -191,6 +191,9 @@ HITBOX.distanceScale          // horquilla de distancia, en fracción del slider
 HITBOX.minSpawnDistance       // mínimo absoluto, por corto que quede el slider
 SPAWN.destinationAttempts     // reintentos al buscar destino sin solape
 
+// El máximo del slider de distancia NO se edita: sale de la sala.
+WALL_CLEARANCE                // margen mínimo diana-pared (5 unidades)
+
 MOVEMENT.enabled        // interruptor entre las dos variantes
 MOVEMENT.speed          // velocidad horizontal de pie
 MOVEMENT.crouchSpeed    // velocidad agachado
@@ -204,6 +207,8 @@ MOVEMENT.keys           // mapeo de teclas, por código físico
 
 En desarrollo el motor queda expuesto en `window.aimcore`, así que se puede
 trastear en caliente desde la consola (`aimcore.controls.setSensitivity(2)`).
+Ese nombre, como el del repositorio, se queda en `aimcore`: son identificadores
+técnicos internos, no la marca.
 Vite lo elimina del build de producción.
 
 ## Estructura
@@ -257,10 +262,17 @@ cuesta ~0.1 ms por frame en p99, frente a los 4.17 ms de presupuesto a 240 Hz.
   especiales.
 - **Sin assets.** El sonido se sintetiza con osciladores; no hay archivos de
   audio ni texturas.
-- **La sala creció a 80×80.** Cada ampliación ha ido detrás de un rango de
-  distancia mayor: con paredes más cerca, las dianas lejanas caían fuera y el
-  muestreo las descartaba, recortando en silencio el extremo del slider. Misma
-  estética, sólo más grande.
+- **La sala mide 80×80 y ya no crece.** Cada ampliación anterior fue detrás de
+  un rango de distancia mayor. A partir de aquí es al revés: el que se acota es
+  el slider. Su máximo se **calcula** a partir del tamaño de la sala en vez de
+  escribirse a mano (`computeMaxSpawnDistance` en `config.js`), de modo que el
+  peor caso —jugador en el borde de su radio de movimiento y dummy sorteado a
+  la distancia máxima— deje siempre al menos `WALL_CLEARANCE` (5 unidades) de
+  margen hasta la pared. Manda el más restrictivo de los dos regímenes de
+  distancia, porque el slider es uno solo: hoy sale **21**, con 5.6 unidades de
+  margen en el peor caso del hitbox y 11.5 en el de Clásica y Cono. Si algún
+  día cambian la sala, el radio de movimiento o las horquillas, el tope se
+  recalcula solo.
 - **Las tres zonas del hitbox usan el mismo naranja** con distinto brillo
   —cabeza clara, piernas apagadas— para que se distingan sin salirse de la
   paleta.
