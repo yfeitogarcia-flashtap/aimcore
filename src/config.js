@@ -408,10 +408,20 @@ export const MOVEMENT = {
    */
   crouchTransitionSpeed: 6.0,
 
-  /** Velocidad vertical inicial del salto, en unidades por segundo. */
-  jumpSpeed: 6.75,
-  /** Gravedad constante, en unidades por segundo al cuadrado. */
-  gravity: 18.0,
+  /**
+   * Velocidad vertical inicial del salto, en unidades por segundo.
+   * Va emparejada con `gravity`: el ápice es jumpSpeed² / (2·gravity).
+   */
+  jumpSpeed: 8.67,
+  /**
+   * Gravedad constante, en unidades por segundo al cuadrado.
+   *
+   * Subida de 18 a 30 junto con `jumpSpeed` para acortar el vuelo sin mover el
+   * ápice: 575 ms en lugar de 746, con la misma altura de 1.25 u. El salto se
+   * resuelve en forma cerrada (ver movement.js), así que subir la gravedad ya no
+   * arrastra dependencia del refresco del monitor.
+   */
+  gravity: 30.0,
 
   /**
    * Margen que se deja libre junto a cada pared. El desplazamiento ya no está
@@ -679,12 +689,14 @@ export const SETTINGS = {
  *
  * El razonamiento completo está en docs/propuestas/01-escenario-cobertura.md.
  *
- * Qué se salta, con `jumpSpeed 6.75` y `gravity 18` (ápice 1.2656 u, igual en
+ * Qué se salta, con `jumpSpeed 8.67` y `gravity 30` (ápice 1.2528 u, igual en
  * cualquier monitor desde que el salto se resuelve en forma cerrada):
- * el `bordillo` (0.6) con holgura y la cobertura `baja` (1.25) con 1.6 cm de
- * margen — verificado subiéndose a ella a 60, 144 y 240 Hz. La `media` (1.9)
- * sólo se supera con la vista, subido a un bordillo. Si tocas `jumpSpeed` o
- * `gravity`, vuelve a comprobar esta lista.
+ * el `bordillo` (0.6) con holgura y la cobertura `baja` (1.25) — el ápice sólo
+ * la pasa por 2.8 mm, pero lo que abre la ventana de verdad es `stepHeight`:
+ * basta con ir por encima de 1.00 para dejar de chocar con ella y posarse
+ * encima. Verificado 12 de 12 a 60, 144 y 240 Hz. La `media` (1.9) sólo se
+ * supera con la vista, subido a un bordillo. Si tocas `jumpSpeed`, `gravity` o
+ * `stepHeight`, vuelve a comprobar esta lista.
  */
 export const COVER = {
   /** Alturas, en unidades de mundo. */

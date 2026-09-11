@@ -230,17 +230,17 @@ encargo no lo pide explícitamente, no se añade.
 de `docs/propuestas/01-escenario-cobertura.md`. No los construyas hasta que el
 Plano A esté validado jugando.
 
-**El salto ya no depende del refresco.** Ápice 1.2656 u en cualquier monitor
-(desviación 0.049% entre 30 y 360 Hz, y esa pizca es dónde caen las muestras, no
-la trayectoria). Con `jumpSpeed 6.75` eso deja **1.6 cm de margen sobre la
-cobertura `baja` de 1.25: ya es saltable de forma fiable**. El aviso anterior en
-contra queda anulado.
+**El salto ya no depende del refresco.** Con `jumpSpeed 8.67` y `gravity 30`:
+ápice **1.2528 u** y **578 ms** de vuelo, iguales en cualquier monitor
+(desviación 0.036% entre 60 y 240 Hz, y esa pizca es dónde caen las muestras, no
+la trayectoria). La cobertura `baja` de 1.25 **es saltable de forma fiable** —
+verificado 12 de 12 a 60, 144 y 240 Hz.
 
-**El salto se siente flotante y está medido, no resuelto.** 746 ms de vuelo, con
-el 45% del tiempo en el quinto superior de la altura. Acortarlo pide subir
-`gravity` y `jumpSpeed` a la vez; el motivo que había para no hacerlo —que
-empeoraba la dependencia del refresco— ya no aplica. Números y alternativas en
-`docs/decisions.md` §16.7 y §17; la decisión está pendiente y es de *feel*.
+**Pendiente tras subir la gravedad:** la escala de `LANDING` se quedó corta. Con
+`fullSpeed: 7.0`, cualquier caída desde un salto normal en adelante satura a
+fuerza 1, así que el golpe suena igual bajando de un cajón que del Balcón. Se
+arregla subiendo `LANDING.fullSpeed` a ~12.5; no se tocó porque no estaba en el
+encargo. Detalle en `docs/decisions.md` §18.
 
 ---
 

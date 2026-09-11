@@ -234,12 +234,13 @@ pero conviene decidirlas antes de tocar geometría, no durante.
    | 5.00 (antes) | 0.653 | 0.677 | 0.684 |
    | 6.75 (ahora) | 1.210 | 1.242 | 1.252 |
 
-   **Resuelto en la ronda 17** (`docs/decisions.md` §17). La dependencia del
+   **Resuelto en las rondas 17 y 18** (`docs/decisions.md`). La dependencia del
    refresco venía de integrar la gravedad paso a paso; el salto se calcula ahora
-   en forma cerrada y el ápice es **1.2656 u en cualquier monitor** (desviación
-   0.049% entre 30 y 360 Hz). Con eso la cobertura Baja de 1.25 **sí es saltable
-   de forma fiable**: verificado subiéndose a ella 12 de 12 veces a 60, 144 y
-   240 Hz. La tabla de arriba ya no necesita asterisco.
+   en forma cerrada, y con eso se pudo subir la gravedad sin pagar precisión.
+   Valores vigentes: `jumpSpeed 8.67`, `gravity 30`, ápice **1.2528 u** y 578 ms
+   de vuelo, iguales en cualquier monitor. La cobertura Baja de 1.25 **sí es
+   saltable de forma fiable**: verificado 12 de 12 a 60, 144 y 240 Hz. La tabla
+   de arriba ya no necesita asterisco.
 5. **El movimiento hoy sólo se recorta contra la sala.** `movement.js` limita X y
    Z contra las paredes y nada más. Con estructuras hace falta colisión contra
    una lista de cajas, resuelta por eje para que rozar una pared no frene al
@@ -255,9 +256,8 @@ pero conviene decidirlas antes de tocar geometría, no durante.
 
 1. **Qué plano** — A, B o C, o qué mezclar de cuáles.
 2. **La rampa de grises** para las estructuras, o un criterio de color distinto.
-3. ~~**El salto**~~ — `jumpSpeed` ya está en 6.75 para probar el *feel*. Falta
-   decidir, con geometría delante, si se queda ahí (Baja saltable sólo a alto
-   refresco), sube a 6.91 (saltable a 60 Hz) o se arregla antes la dependencia
-   del integrador con los FPS.
+3. ~~**El salto**~~ — cerrado. Integrador analítico (ronda 17) y `jumpSpeed 8.67`
+   / `gravity 30` (ronda 18): 578 ms de vuelo, ápice 1.2528 u, sin dependencia
+   del refresco y con la Baja saltable.
 4. **Anclajes**: fijos siempre en los mismos puntos, o sorteo entre los anclajes
    visibles en cada aparición. Lo segundo es más rejugable y cuesta poco más.

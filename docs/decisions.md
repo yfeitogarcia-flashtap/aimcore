@@ -1115,6 +1115,78 @@ Y el freno que §16.7 ponía a subir la gravedad —que agravaba la dependencia 
 refresco— desaparece: ya no hay dependencia que agravar. La decisión sobre el
 flotamiento vuelve a ser puramente de *feel*.
 
+## Ronda 18 — Subir la gravedad, ahora que sale gratis
+
+Un solo cambio: `gravity` 18 → 30 y `jumpSpeed` 6.75 → 8.67, el punto intermedio
+de la tabla de §16.7. Nada más.
+
+### 18.1 Por qué ahora y no en la ronda 16
+
+El diagnóstico del flotamiento (§16.7) ya señalaba que la única palanca real es
+la gravedad, y que subirla **empeoraba** la dependencia del refresco: del 3.3% al
+4.3% con `g=30`, hasta el 6.6% con `g=70`. Ese era el motivo para no tocarla.
+
+Con el salto resuelto en forma cerrada (§17) ese precio desapareció, así que el
+cambio pasó a ser puramente de *feel*. Es el orden correcto: **primero se arregla
+la precisión, después se ajusta la sensación.** Al revés se habría metido más
+error para conseguir mejor tacto.
+
+Medido con los valores nuevos: la altura sigue coincidiendo con
+`y(t) = v₀t − ½gt²` con error **exactamente cero** en cada frame, de 30 a 360 Hz,
+y el ápice varía un 0.036% entre 60 y 240. Con el integrador viejo, `g=30` habría
+dado 4.3%.
+
+### 18.2 Qué cambia en el juego
+
+| | antes | ahora |
+|---|---|---|
+| `gravity` / `jumpSpeed` | 18 / 6.75 | 30 / 8.67 |
+| ápice | 1.2656 u | 1.2528 u |
+| vuelo | 746 ms | **578 ms** |
+| ápice 60 ↔ 240 Hz | 0.049% | 0.036% |
+
+Mismo alcance vertical, **un 23% menos de tiempo en el aire**. Las proporciones
+de la parábola no cambian —el 45% del vuelo sigue estando en el quinto superior,
+porque eso es invariante de escala (§16.7)—, pero los 333 ms que antes se pasaban
+ahí arriba ahora son 258.
+
+### 18.3 La Baja sigue siendo saltable, y no por donde parecía
+
+El ápice pasa de superar la cobertura `baja` (1.25) por 1.6 cm a hacerlo por
+**2.8 mm**. Parece que quedara al filo, y no es así.
+
+Lo que abre la ventana no es `apex − 1.25` sino **`COVER.stepHeight`**: la caja
+deja de ser un muro en cuanto los pies pasan de `1.25 − 0.25 = 1.00`, y a partir
+de ahí cualquier descenso sobre ella se posa encima. Esa ventana dura 260 ms —
+1.7 unidades de carrera—, más que de sobra.
+
+Verificado igualmente en el cajón de Los Cajones: **12 de 12 intentos** a 60, 144
+y 240 Hz, aterrizando dentro de 5 cm en los tres refrescos.
+
+**La lección:** un margen que parece de milímetros sobre el papel puede ser
+holgado en la práctica si otra constante gobierna la tolerancia real. Y al revés.
+Por eso la tabla de `COVER` lleva escrito que hay que **volver a medirla** si se
+toca `jumpSpeed`, `gravity` o `stepHeight` — no deducirla.
+
+### 18.4 Efecto colateral: el aterrizaje se satura
+
+Más gravedad son caídas más rápidas, y `LANDING` no se movió:
+
+| caída | antes | ahora |
+|---|---|---|
+| bajarse de un bordillo (0.60 u) | 4.65 u/s → 0.57 | 6.00 u/s → 0.82 |
+| bajarse de una Baja (1.25 u) | 6.71 u/s → 0.95 | 8.66 u/s → **1.00** |
+| salto en plano | 6.75 u/s → 0.95 | 8.67 u/s → **1.00** |
+| bajar del Balcón (2.60 u) | 9.67 u/s → 1.00 | 12.49 u/s → **1.00** |
+
+Con `fullSpeed: 7.0`, todo lo que no sea un bordillo satura: el golpe suena y
+hunde la cámara igual bajándose de un cajón que tirándose del Balcón. El rango
+útil se queda en 0.18 de los 0.38 que había.
+
+**No se tocó** porque el encargo era explícito en no mover nada más. Se arregla
+subiendo `LANDING.fullSpeed` a ~12.5, que devuelve la escala completa hasta la
+caída más alta del Plano A.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
