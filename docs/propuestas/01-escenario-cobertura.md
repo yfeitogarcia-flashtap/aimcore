@@ -12,13 +12,13 @@ sala vacía no entrena.
 
 ## Vocabulario de alturas
 
-Las alturas no son arbitrarias: salen de `config.js`. Con `jumpSpeed: 5` y
-`gravity: 18` el salto sube **0.694 u**, y el ojo está a **1.70** de pie y
-**1.05** agachado. Los tres planos usan sólo estas seis piezas.
+Las alturas no son arbitrarias: salen de `config.js`. El ojo está a **1.70** de
+pie y **1.05** agachado, y el salto sube lo que diga `jumpSpeed` (ver más abajo:
+el valor cambió tras esta propuesta). Los tres planos usan sólo estas seis piezas.
 
 | Pieza | Altura | De pie (ojo 1.70) | Agachado (ojo 1.05) | ¿Encima? |
 |---|---|---|---|---|
-| Bordillo | 0.60 | no tapa | no tapa | **sí**, de un salto (tope 0.694) |
+| Bordillo | 0.60 | no tapa | no tapa | **sí**, de un salto |
 | Baja | 1.25 | disparas por encima | te tapa entero | no |
 | Media | 1.90 | te tapa entero | te tapa entero | no — pero desde un bordillo el ojo sube a 2.30 y disparas por encima |
 | Alta | 3.60 | corta del todo | corta del todo | no — desde plataforma (ojo 4.30) sí se ve por encima |
@@ -198,10 +198,35 @@ pero conviene decidirlas antes de tocar geometría, no durante.
    un anclaje — barato **sólo si se hace al activar**, nunca por frame: el
    presupuesto de 0.2 ms p99 no admite raycasts continuos contra toda la
    geometría.
-4. **El salto sólo sube 0.69 u.** Toda plataforma necesita rampa. Para poder
-   saltar sobre la cobertura Baja (1.25) habría que subir `jumpSpeed` a 6.44,
-   pero eso cambia el *feel* del salto en todos los modos: queda como pregunta,
-   no como cambio.
+4. **El salto.** ~~Sólo sube 0.69 u~~ — **resuelto en parte, y con una
+   corrección importante.** `jumpSpeed` pasó de 5.0 a **6.75** para probar el
+   *feel* de un salto que supere la cobertura Baja. Dos avisos sobre las cifras
+   que esta propuesta daba:
+
+   - La fórmula continua (`v² / 2g`) **sobrestima** la altura real. El integrador
+     de `movement.js` es Euler semi-implícito —resta la gravedad antes de mover—
+     así que el ápice sale más bajo, y **depende de los FPS**. Con el
+     `jumpSpeed: 5` original el salto no subía 0.694 sino 0.653 a 60 Hz y 0.684 a
+     240 Hz.
+   - Por eso el 6.44 que proponía este documento estaba mal por partida doble:
+     salía de una altura Baja de 1.15 anterior a la tabla final de 1.25, y además
+     usaba la fórmula continua.
+
+   | `jumpSpeed` | ápice 60 Hz | 144 Hz | 240 Hz |
+   |---|---|---|---|
+   | 5.00 (antes) | 0.653 | 0.677 | 0.684 |
+   | 6.75 (ahora) | 1.210 | 1.242 | 1.252 |
+
+   **Consecuencia:** con 6.75 la cobertura Baja de 1.25 sólo es saltable por
+   encima de ~200 Hz. Para que lo sea también a 60 Hz haría falta **6.91**. Queda
+   pendiente de decidir al construir el escenario, cuando haya geometría real
+   sobre la que posarse.
+
+   **Y queda un problema de fondo:** que la altura del salto dependa del refresco
+   del monitor contradice la convención de `CLAUDE.md` sobre mecánicas
+   temporizadas. Se arregla con paso fijo o integrando el medio paso de gravedad,
+   pero eso es un cambio de motor, no de constante: fuera del alcance de esta
+   vuelta.
 5. **El movimiento hoy sólo se recorta contra la sala.** `movement.js` limita X y
    Z contra las paredes y nada más. Con estructuras hace falta colisión contra
    una lista de cajas, resuelta por eje para que rozar una pared no frene al
@@ -217,7 +242,9 @@ pero conviene decidirlas antes de tocar geometría, no durante.
 
 1. **Qué plano** — A, B o C, o qué mezclar de cuáles.
 2. **La rampa de grises** para las estructuras, o un criterio de color distinto.
-3. **El salto**: se queda en 0.69 y toda subida es por rampa, o sube a 6.44 y la
-   cobertura Baja se vuelve saltable.
+3. ~~**El salto**~~ — `jumpSpeed` ya está en 6.75 para probar el *feel*. Falta
+   decidir, con geometría delante, si se queda ahí (Baja saltable sólo a alto
+   refresco), sube a 6.91 (saltable a 60 Hz) o se arregla antes la dependencia
+   del integrador con los FPS.
 4. **Anclajes**: fijos siempre en los mismos puntos, o sorteo entre los anclajes
    visibles en cada aparición. Lo segundo es más rejugable y cuesta poco más.

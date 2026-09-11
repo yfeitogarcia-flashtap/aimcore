@@ -409,7 +409,7 @@ export const MOVEMENT = {
   crouchTransitionSpeed: 6.0,
 
   /** Velocidad vertical inicial del salto, en unidades por segundo. */
-  jumpSpeed: 5.0,
+  jumpSpeed: 6.75,
   /** Gravedad constante, en unidades por segundo al cuadrado. */
   gravity: 18.0,
 
