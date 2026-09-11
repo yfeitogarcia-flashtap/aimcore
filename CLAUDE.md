@@ -44,6 +44,7 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 |---|---|---|
 | Motor | `src/game/` | Bucle rAF, input, raycast, dianas, armas, panel de acciones. **Vive fuera de React.** |
 | Escenario | `src/game/scenario.js` | Convierte los datos de `SCENARIOS` en mallas, colisionadores, oclusores y anclajes. |
+| Transición | `src/game/transition.js` | **Módulo sustituible entero.** Contrato único: `run(build)` tapa la escena, llama a `build()` y destapa. Nada más del motor sabe qué forma tiene. |
 | React | `src/App.jsx`, `src/ui/` | Sólo conoce la *fase* (inicio / juego / pausa / resumen) y el resumen final. |
 | HUD | `src/ui/Hud.jsx` | Se actualiza **imperativamente por refs** desde el bucle. Cero `setState` por frame. |
 | Config | `src/config.js` | Todo el tuning, sin excepción. |
@@ -93,6 +94,11 @@ cono no sabe poner una diana en una tronera. Cada anclaje lleva su zona, su
 suelo y si obliga a asomarse, y se sortea **entre los visibles**: se baraja el
 orden y se coge el primero que pase el test de visibilidad, que es un sorteo
 uniforme entre los visibles y de paso ahorra raycasts.
+
+**Lo que se dibuja de unos datos no se guarda como imagen.** La miniatura de
+cada escenario se dibuja en SVG desde `SCENARIOS`, con `coverHeight` y
+`coverEdgeColor` compartidos con la escena 3D. Una captura se desincroniza en
+cuanto alguien mueve una caja y nadie se entera.
 
 **El test de visibilidad es de activación, nunca por frame.** Es un raycast
 contra toda la geometría del escenario y no cabe en el presupuesto de un frame.
@@ -178,8 +184,12 @@ propio sonido de confirmación.
 actual/máximo con parpadeo en reserva baja, indicador de recarga, contador de
 FPS (media móvil), silueta del arma equipada y mensajes de ayuda contextuales.
 
+**Selector de escenario:** plano cenital por escenario dibujado desde los datos,
+más la ficha —entrena / riesgo / rejugabilidad— del que esté elegido. Al cambiar,
+una transición corta tapa el montaje.
+
 **Opciones** (accesibles antes de empezar y desde la pausa, persistidas):
-sensibilidad, tipo de diana, arma, tamaño de diana, distancia de spawn, cadencia
+escenario, sensibilidad, tipo de diana, arma, tamaño de diana, distancia de spawn, cadencia
 de aparición, dianas simultáneas, límite de FPS, supresor (sólo si el arma lo
 admite), mensajes de ayuda y modo dinámico.
 

@@ -76,6 +76,28 @@ body {
   pointer-events: none;
 }
 
+/*
+ * Capa de transición entre escenarios. La monta y la anima src/game/transition.js
+ * — aquí sólo vive su aspecto. Por encima de todo menos de los overlays de UI,
+ * y transparente a los eventos: tapa, no bloquea.
+ */
+.scene-transition {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  background: var(--background-color);
+  opacity: 0;
+  pointer-events: none;
+  transition-property: opacity;
+  transition-timing-function: ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .scene-transition {
+    transition-duration: 1ms !important;
+  }
+}
+
 /* ---------- Panel de acciones rápidas ---------- */
 
 .action-panel {
@@ -601,6 +623,74 @@ body {
 .segmented__option[aria-pressed='true'] {
   border-color: var(--accent-color);
   color: var(--accent-color);
+}
+
+/* ---------- Selector de escenario ---------- */
+
+.scenarios {
+  display: flex;
+  gap: 8px;
+}
+
+.scenarios__option {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 7px;
+  border: 1px solid var(--panel-border);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.scenarios__option:hover {
+  color: var(--text-primary);
+}
+
+.scenarios__option[aria-pressed='true'] {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+.scenario-thumb {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* El plano es cuadrado como la sala; sin esto se estira en pantallas raras. */
+  aspect-ratio: 1;
+}
+
+.scenarios__name {
+  text-align: center;
+}
+
+.scenario-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 2px 0 0;
+  padding: 10px 12px;
+  border-left: 1px solid var(--panel-border);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.scenario-card dt {
+  font-size: 10px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding-top: 1px;
+}
+
+.scenario-card dd {
+  margin: 0;
+  color: var(--text-primary);
 }
 
 .toggle {

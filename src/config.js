@@ -745,6 +745,61 @@ export const LANDING = {
 }
 
 /**
+ * Altura de una pieza de cobertura: un número tal cual, o una clave del
+ * vocabulario de `COVER.heights`.
+ *
+ * Vive aquí porque lo usan dos sitios que no se conocen entre sí —el montaje de
+ * la escena y la miniatura del selector— y si cada uno tuviera su copia,
+ * cambiar una altura dejaría la miniatura mintiendo.
+ */
+export function coverHeight(value) {
+  if (typeof value === 'number') return value
+  return COVER.heights[value] ?? 0
+}
+
+const SRGB_TO_LINEAR = (c) => (c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4)
+const LINEAR_TO_SRGB = (c) => (c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.4) - 0.055)
+
+/**
+ * Color de la arista de una pieza: su relleno aclarado hacia el blanco.
+ *
+ * La mezcla va en espacio **lineal**, no en sRGB, porque es lo que hace
+ * `THREE.Color.lerp` y las dos cosas tienen que salir idénticas: la escena la
+ * usa para las aristas de los bloques y la miniatura del selector para los
+ * bordes de su plano. Mezclar en sRGB daría un gris bastante más oscuro en las
+ * piezas bajas (#848484 en vez de #b0b0b0 para el bordillo) y la miniatura
+ * dejaría de parecerse a lo que se ve en partida.
+ */
+export function coverEdgeColor(kind) {
+  const hex = COVER.colors[kind] ?? COVER.colors.media
+  const value = parseInt(hex.slice(1), 16)
+  let out = ''
+  for (const shift of [16, 8, 0]) {
+    const channel = SRGB_TO_LINEAR(((value >> shift) & 255) / 255)
+    const mixed = channel + (1 - channel) * COVER.edgeLighten
+    const byte = Math.round(Math.min(1, Math.max(0, LINEAR_TO_SRGB(mixed))) * 255)
+    out += byte.toString(16).padStart(2, '0')
+  }
+  return `#${out}`
+}
+
+/**
+ * Transición al cambiar de escenario. Los tiempos viven aquí y no dentro del
+ * módulo de transición para que se puedan tocar sin abrirlo, como todo lo demás.
+ *
+ * El total ronda el medio segundo: lo justo para tapar el cambio sin que se
+ * sienta una espera.
+ */
+export const TRANSITION = {
+  /** Lo que tarda en taparse la escena vieja. */
+  outMs: 200,
+  /** Pausa con la escena tapada. Es cuando se construye la nueva. */
+  holdMs: 90,
+  /** Lo que tarda en destaparse la escena nueva. */
+  inMs: 240,
+}
+
+/**
  * Escenarios con cobertura. Cada uno es geometría + anclajes de aparición.
  *
  * Las cajas se declaran en planta (`x`/`z` son la esquina mínima, `w`/`d` el
@@ -771,6 +826,17 @@ export const SCENARIOS = {
 
   largoYPuerta: {
     label: 'Largo y Puerta',
+    /**
+     * Ficha del selector. Versión corta de lo que dice la propuesta en
+     * docs/propuestas/01-escenario-cobertura.md; la sala vacía no lleva ficha
+     * porque no hay nada que explicar.
+     */
+    card: {
+      trains:
+        'Sostener y cruzar un carril largo, pre-apuntar un paso obligado y pasar de largo a corto en la misma sesión.',
+      risk: 'El más cargado de geometría: hay mucho que leer antes de moverse con soltura.',
+      replay: 'Alta. Tres zonas que se pueden entrenar por separado.',
+    },
     /**
      * El jugador aparece en el Vestíbulo, mirando hacia -Z, que es la dirección
      * fija del cono de aparición. El panel de acciones se ancla a este punto.

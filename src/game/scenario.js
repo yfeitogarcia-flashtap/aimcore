@@ -17,21 +17,7 @@
 
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { COVER, SCENARIOS } from '../config.js'
-
-/** Aclara un color hex hacia el blanco. Para las aristas. */
-function lighten(hex, amount) {
-  const color = new THREE.Color(hex)
-  color.lerp(_WHITE, amount)
-  return color
-}
-const _WHITE = new THREE.Color(0xffffff)
-
-/** Altura de una pieza: un número tal cual, o una clave del vocabulario. */
-function resolveHeight(value) {
-  if (typeof value === 'number') return value
-  return COVER.heights[value] ?? 0
-}
+import { COVER, SCENARIOS, coverEdgeColor, coverHeight } from '../config.js'
 
 /**
  * Prisma triangular para las rampas: rectángulo abajo y una única arista
@@ -43,7 +29,7 @@ function buildRampGeometry(ramp) {
   const x1 = ramp.x + ramp.w
   const zLow = ramp.fromZ
   const zHigh = ramp.toZ
-  const top = resolveHeight(ramp.top)
+  const top = coverHeight(ramp.top)
 
   const a = [x0, 0, zLow]
   const b = [x1, 0, zLow]
@@ -119,8 +105,8 @@ export class Scenario {
     const byKind = new Map()
 
     for (const box of definition.boxes) {
-      const height = resolveHeight(box.kind)
-      const bottom = box.base ? resolveHeight(box.base) : 0
+      const height = coverHeight(box.kind)
+      const bottom = box.base ? coverHeight(box.base) : 0
       const thickness = height - bottom
       if (thickness <= 0) continue
 
@@ -141,7 +127,7 @@ export class Scenario {
     }
 
     for (const ramp of definition.ramps) {
-      const top = resolveHeight(ramp.top)
+      const top = coverHeight(ramp.top)
       this.ramps.push({
         minX: ramp.x,
         maxX: ramp.x + ramp.w,
@@ -175,7 +161,7 @@ export class Scenario {
       // mismo gris se funden entre sí contra el fondo negro.
       const edgeGeometry = new THREE.EdgesGeometry(merged, 20)
       const edgeMaterial = new THREE.LineBasicMaterial({
-        color: lighten(fill, COVER.edgeLighten),
+        color: coverEdgeColor(kind),
         transparent: true,
         opacity: COVER.edgeOpacity,
       })
@@ -189,10 +175,10 @@ export class Scenario {
         id: anchor.id,
         zone: anchor.zone,
         /** Suelo sobre el que se apoya la diana: 0 o la altura de la plataforma. */
-        floorY: resolveHeight(anchor.y),
+        floorY: coverHeight(anchor.y),
         /** ¿Obliga a asomarse a descubierto para tirarle? */
         requiresPeek: Boolean(anchor.peek),
-        position: new THREE.Vector3(anchor.x, resolveHeight(anchor.y), anchor.z),
+        position: new THREE.Vector3(anchor.x, coverHeight(anchor.y), anchor.z),
       })
     }
   }

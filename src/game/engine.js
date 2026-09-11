@@ -28,6 +28,7 @@ import {
 } from '../config.js'
 import { createScene } from './scene.js'
 import { Scenario } from './scenario.js'
+import { createSceneTransition } from './transition.js'
 import { LookControls } from './lookControls.js'
 import { MovementController } from './movement.js'
 import { TargetManager } from './targets.js'
@@ -141,6 +142,14 @@ export class Engine {
     this.cssRenderer = new CSS3DRenderer()
     const cssElement = this.cssRenderer.domElement
     cssElement.className = 'app__css3d'
+    // El único contrato con el motor es run(build): cómo se presente el cambio
+    // es asunto exclusivo del módulo. Ver src/game/transition.js.
+    this.transition = createSceneTransition({
+      host: canvas.parentElement ?? document.body,
+      scene: this.scene,
+      camera: this.camera,
+    })
+
     this.actionPanel = new ActionPanel(this.scene, this.cssScene)
     this.actionPanel.setAnchor(this.scenario.spawn)
     this.targets.setAnchors(this.scenario.anchors, this.scenario.occluders)
@@ -272,6 +281,7 @@ export class Engine {
     this.cssRenderer.domElement.remove()
     this.targets.dispose()
     this.scenario.dispose()
+    this.transition.dispose()
     this._disposeScene()
     this.renderer.dispose()
   }
@@ -385,16 +395,36 @@ export class Engine {
     })
     const hadSession = this.targets.sessionActive
     this.targets.configure(settings)
-    if (hadSession) this.targets.beginSession(this.camera, performance.now())
+    // Con un cambio de escenario en marcha la siembra la hace `_buildScenario`,
+    // ya con el mundo nuevo montado: sembrar aquí usaría los anclajes viejos.
+    if (hadSession && !this.transition.active) {
+      this.targets.beginSession(this.camera, performance.now())
+    }
   }
 
   /**
-   * Cambia de escenario. Reconstruye la geometría, recoloca al jugador en el
-   * nuevo punto de aparición y repone los anclajes; si no cambia la clave, no
-   * hace nada, que es el caso de casi todas las llamadas.
+   * Pide un cambio de escenario. El montaje va dentro de una transición, pero
+   * aquí no se sabe de qué tipo: sólo que `_buildScenario` se llamará en algún
+   * momento con el jugador sin ver la escena.
+   *
+   * Se guarda la clave pedida en lugar de capturarla: si llegan varias mientras
+   * la transición corre, se monta la última y no una intermedia.
    */
   _applyScenario(key) {
-    if (this.scenario && this.scenario.key === key) return
+    this._wantedScenarioKey = key
+    if (this.scenario.key === key && !this.transition.active) return
+    this.transition.run(() => this._buildScenario(this._wantedScenarioKey))
+  }
+
+  /**
+   * Monta el escenario nuevo. Cambia el mundo entero bajo los pies del jugador,
+   * así que además de la geometría recoloca al jugador, reancla el panel y
+   * repone los anclajes de aparición.
+   */
+  _buildScenario(key) {
+    if (this.scenario.key === key) return
+    const hadSession = this.targets.sessionActive
+
     this.scenario.dispose()
     this.scenario = new Scenario(this.scene, key)
     this.movement.setScenario(this.scenario)
@@ -402,6 +432,10 @@ export class Engine {
     this.camera.updateMatrixWorld()
     this.actionPanel.setAnchor(this.scenario.spawn)
     this.targets.setAnchors(this.scenario.anchors, this.scenario.occluders)
+
+    // Las dianas vivas estaban ancladas a un mundo que ya no existe. Si había
+    // sesión en marcha se vuelve a sembrar desde la posición nueva del jugador.
+    if (hadSession) this.targets.beginSession(this.camera, performance.now())
   }
 
   /** El arma vigente, tal cual está descrita en config.js. */

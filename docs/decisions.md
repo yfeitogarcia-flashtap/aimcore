@@ -805,6 +805,102 @@ tirarse del Balcón, ni sonar en absoluto.
 Es puramente sensorial. No toca `gravity` ni `jumpSpeed`, que es justo el punto:
 comprobar si la sensación de "flotante" se arregla sin tocar la física.
 
+## Ronda 15 — Selector de escenario
+
+Sólo interfaz: ni geometría, ni anclajes, ni los planos B y C.
+
+### 15.1 La miniatura se dibuja de los datos, nunca es una captura
+
+Un PNG del escenario se desincroniza en cuanto alguien mueve una caja, y nadie
+se entera hasta verlo en partida — el mismo fallo que las siluetas de arma por
+arquetipo de la ronda 10, en otro sitio.
+
+`ScenarioThumbnail.jsx` lee las mismas piezas de `SCENARIOS` que monta
+`scenario.js` y resuelve las alturas con el mismo `coverHeight`. **No puede
+mentir**: si la geometría cambia, la miniatura cambia sola. El test lo comprueba
+contando piezas dibujadas contra piezas declaradas y verificando que una caja
+concreta está en la coordenada que dice el dato.
+
+### 15.2 `coverHeight` y `coverEdgeColor` suben a `config.js`
+
+Los necesitaban dos sitios que no se conocen entre sí —el montaje 3D y la
+miniatura— y una copia en cada uno es exactamente cómo se desincronizan las
+cosas (§ convención de fuente única).
+
+**El detalle que casi se cuela:** la escena aclaraba las aristas con
+`THREE.Color.lerp`, que mezcla en espacio **lineal**. Escribir el mismo aclarado
+"a mano" en sRGB, que es lo natural en una hoja de estilos, da un gris bastante
+más oscuro en las piezas bajas: `#848484` en vez de `#b0b0b0` para el bordillo.
+La miniatura habría quedado apagada respecto a lo que se ve jugando, y la causa
+no habría sido evidente.
+
+`coverEdgeColor` hace la conversión sRGB → lineal → mezcla → sRGB, y se comprobó
+que sale **byte a byte igual** que `THREE.Color.lerp` en las ocho piezas. Ahora
+la usan los dos, así que el 3D no cambió nada y la miniatura coincide por
+construcción.
+
+*Por qué hacía falta el borde en la miniatura:* a tamaño de selector, un
+bordillo `#2B2B2B` sobre fondo `#0c0c0c` desaparece. En la escena eso no pasa
+porque los bloques ya llevan arista; la miniatura necesitaba la misma.
+
+### 15.3 La ficha es del escenario seleccionado, no una por tarjeta
+
+Con cuatro escenarios, cuatro fichas a la vez convierten el panel en un muro de
+texto — y el panel de opciones ya iba justo de alto (§11, `max-height` +
+`overflow-y`). Se muestra la del elegido.
+
+La sala vacía no lleva ficha, que es lo que la distingue: no hay nada que
+explicar.
+
+### 15.4 La transición es un módulo sustituible entero
+
+**La decisión estructural de la ronda.** El contrato con el motor es una sola
+función:
+
+```js
+transition.run(build)   // tapa → llama a build() → destapa
+```
+
+El motor no sabe que hoy es un fundido, y nada de lo que hay detrás —colisión,
+activación de anclajes, entrada del jugador— depende de la forma que tome. Si
+mañana el fundido se cambia por una elevación de las piezas desde el suelo, se
+reescribe `transition.js` y nada más.
+
+Tres decisiones que hacen cierta esa promesa:
+
+- **La fábrica ya recibe `scene` y `camera`** aunque el fundido no los use. Una
+  transición que anime la geometría los necesitaría, y si no estuvieran ahí el
+  cambio tocaría `engine.js` — justo lo que se quiere evitar.
+- **`build` es síncrona y se llama con la escena tapada.** El módulo decide
+  *cuándo*; el motor sólo garantiza que construir es instantáneo desde fuera.
+- **El `finally` levanta la capa aunque `build` lance.** Más vale ver una escena
+  rota que quedarse a oscuras para siempre.
+
+*Se comprobó que la promesa se cumple:* el test hace `grep` sobre `engine.js`
+buscando `opacity`, `fade`, `veil` y `TRANSITION.` — cero apariciones. La primera
+versión suspendía, porque un comentario mío decía "el juego no sabe que es un
+fundido"; nombrar la técnica en el motor es exactamente el acoplamiento que la
+decisión quería evitar, aunque sea en prosa.
+
+### 15.5 Peticiones encadenadas: se monta la última, no todas
+
+Cambiar de escenario a toda prisa encadenaría un fundido por click. `run` guarda
+la última construcción pedida en lugar de encolarlas, y el motor pasa
+`() => this._buildScenario(this._wantedScenarioKey)` —una clave leída en el
+momento de construir, no capturada al pedirla—. Medido: 9 peticiones en 200 ms
+producen 1 o 2 montajes, y acaba montado el último escenario pedido.
+
+### 15.6 Con sesión en marcha, las dianas se siembran después de montar
+
+`_applySettings` resembraba las dianas justo después de pedir el cambio de
+escenario. Con la transición de por medio eso pasó a ocurrir **antes** de que el
+mundo nuevo existiera: las dianas nacían en los anclajes del escenario viejo.
+
+La siembra se movió a `_buildScenario`, que es el instante en que el mundo
+cambia, y `_applySettings` la salta si hay una transición en curso. Es la misma
+lección que el orden del constructor (§13.2): aplicar configuración va **después**
+de que exista lo que esa configuración toca.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

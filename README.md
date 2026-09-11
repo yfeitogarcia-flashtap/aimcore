@@ -96,6 +96,12 @@ En ambos casos: una diana a la vez, *pop* al acertar y otra en menos de
 Se elige en **Opciones → Escenario**, y es una variante activable: la sala vacía
 sigue ahí sin cambiar.
 
+Cada escenario se presenta con su **plano cenital** —dibujado a partir de la
+geometría real, así que siempre coincide con lo que vas a jugar— y, el que tenga
+cobertura, con una ficha corta de qué entrena, qué tiene de exigente y cuánto se
+deja rejugar. Al cambiar de escenario hay una transición breve mientras se monta
+el nuevo.
+
 **Sala vacía** — el Gridshot de siempre. Las dianas salen por muestreo dentro del
 cono, con la distancia y el modo dinámico que digan las opciones.
 

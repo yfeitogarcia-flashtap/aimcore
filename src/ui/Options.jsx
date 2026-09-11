@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import ScenarioThumbnail from './ScenarioThumbnail.jsx'
 import {
   FRAME_LIMITS,
   SCENARIOS,
@@ -84,8 +85,54 @@ function weaponHint(weaponKey) {
 /** Explica en qué ejes se mueve el tipo de diana elegido. */
 function scenarioHint(scenario) {
   return scenario === 'empty'
-    ? 'Sala vacía: las dianas salen por muestreo dentro del cono de siempre.'
-    : 'Con cobertura: las dianas salen en anclajes fijos y sólo si los ves. El modo dinámico y la distancia de aparición no se aplican aquí.'
+    ? 'Las dianas salen por muestreo dentro del cono de siempre.'
+    : 'Las dianas salen en anclajes fijos y sólo si los ves. El modo dinámico y la distancia de aparición no se aplican aquí.'
+}
+
+/**
+ * Selector de escenario: un plano cenital por opción y, debajo, la ficha del
+ * que esté elegido.
+ *
+ * La ficha se muestra sólo del seleccionado en lugar de una por tarjeta: con
+ * cuatro escenarios, cuatro fichas a la vez convierten el panel en un muro de
+ * texto, y el panel ya iba justo de alto.
+ */
+function ScenarioRow({ value, onChange }) {
+  const card = SCENARIOS[value]?.card
+
+  return (
+    <div className="field">
+      <span className="field__label">{SETTINGS.scenario.label}</span>
+
+      <div className="scenarios">
+        {Object.keys(SCENARIOS).map((key) => (
+          <button
+            key={key}
+            type="button"
+            className="scenarios__option"
+            aria-pressed={value === key}
+            onClick={() => onChange(key)}
+          >
+            <ScenarioThumbnail scenarioKey={key} />
+            <span className="scenarios__name">{SCENARIOS[key].label}</span>
+          </button>
+        ))}
+      </div>
+
+      {card ? (
+        <dl className="scenario-card">
+          <dt>Entrena</dt>
+          <dd>{card.trains}</dd>
+          <dt>Riesgo</dt>
+          <dd>{card.risk}</dd>
+          <dt>Rejugable</dt>
+          <dd>{card.replay}</dd>
+        </dl>
+      ) : null}
+
+      <span className="field__hint">{scenarioHint(value)}</span>
+    </div>
+  )
 }
 
 function dynamicHint(targetType) {
@@ -145,12 +192,9 @@ export default function Options({ settings, onChange, onReset, onClose }) {
         editable
       />
 
-      <SegmentedRow
-        spec={SETTINGS.scenario}
-        catalog={SCENARIOS}
+      <ScenarioRow
         value={settings.scenario}
         onChange={(scenario) => onChange({ scenario })}
-        hint={scenarioHint(settings.scenario)}
       />
 
       <SegmentedRow
