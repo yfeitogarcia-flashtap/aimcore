@@ -35,6 +35,13 @@ export const COLORS = {
    */
   action: '#2FCB82',
   /**
+   * Ámbar del explosivo. Cuarto color de la paleta, y añadido a regañadientes:
+   * el marcador no puede ser naranja —se confundiría con una diana— ni verde
+   * —eso es la interfaz accionable—, y en gris desaparecería contra la
+   * cobertura. El ámbar se lee como peligro y no colisiona con nada.
+   */
+  objective: '#E8B33A',
+  /**
    * Color del crosshair. Punto único de cambio: se publica como la variable CSS
    * `--crosshair-color` (ver src/ui/Crosshair.jsx) y nadie más lo referencia.
    */
@@ -756,8 +763,15 @@ export const COVER = {
 export const LANDING = {
   /** Por debajo de esta velocidad de caída no hay ni sonido ni hundimiento. */
   minSpeed: 1.5,
-  /** Velocidad de caída a la que el efecto llega a su máximo. */
-  fullSpeed: 7.0,
+  /**
+   * Velocidad de caída a la que el efecto llega a su máximo.
+   *
+   * Subida de 7.0 a 12.5 al pasar `gravity` a 30: con el valor viejo, todo lo
+   * que no fuera bajarse de un bordillo saturaba, y el golpe sonaba igual
+   * bajando de un cajón que del Balcón. 12.5 es justo por encima de la caída
+   * más alta del Plano A (2.6 u -> 12.49 u/s), así que la escala llega entera.
+   */
+  fullSpeed: 12.5,
   /** Hundimiento máximo de la cámara, en unidades. Unos 9 cm. */
   dipUnits: 0.09,
   /** Lo que tarda la cámara en volver a su sitio. */
@@ -934,6 +948,19 @@ export const SCENARIOS = {
       { x: 26, z: -28, w: 6, d: 12, fromZ: -16, toZ: -28, top: 'plataforma' },
     ],
 
+    /**
+     * Sitios posibles del explosivo, curados igual que los anclajes. Repartidos
+     * por zonas distintas para que buscarlo sea un recorrido real, y ninguno en
+     * el Vestíbulo: aparecer encima del spawn no es un objetivo, es un regalo.
+     */
+    objectiveSites: [
+      { id: 'largo-fondo', x: -30, y: 0, z: -25, zone: 'El Largo' },
+      { id: 'balcon', x: -28, y: 'plataforma', z: -33, zone: 'El Balcón' },
+      { id: 'cajones-este', x: 26, y: 0, z: 8, zone: 'Los Cajones' },
+      { id: 'puerta-sur', x: -10, y: 0, z: -16, zone: 'La Puerta' },
+      { id: 'pasillo', x: 16, y: 0, z: -22, zone: 'Pasillo trasero' },
+    ],
+
     anchors: [
       // --- El Largo: lo lejano, detrás de la cobertura escalonada.
       { id: 'largo-1', x: -32, y: 0, z: -14, zone: 'El Largo', peek: true },
@@ -970,6 +997,84 @@ export const SCENARIOS = {
   },
 }
 
+/**
+ * Explosivo de escenario. Sólo existe con un escenario con cobertura montado y
+ * en sesiones con cronómetro: la práctica libre no acaba sola por definición, y
+ * un explosivo que la cierre rompería ese contrato.
+ *
+ * El jugador **no tiene ayuda de interfaz** para encontrarlo: ni indicador en el
+ * HUD ni marcador en pantalla. La única pista es el pitido, que sube de volumen
+ * al acercarse y de tempo y tono según se acaba el tiempo. El marcador existe en
+ * el mundo, así que se ve si se mira hacia él, pero hay que buscarlo.
+ */
+export const OBJECTIVE = {
+  /** Cuenta atrás desde que aparece. También es el reloj de la sesión. */
+  timerMs: 45000,
+  /** Lo que hay que mantener pulsada la tecla, seguido. */
+  defuseMs: 3000,
+  /** Distancia máxima a la que se puede desactivar. */
+  defuseRadius: 3.0,
+  /** Tecla de desactivación. Soltar cancela el progreso, sin penalización. */
+  defuseKeys: ['KeyE'],
+
+  /** Marcador: un octaedro con arista, parpadeando. */
+  markerRadius: 0.42,
+  markerHeight: 0.9,
+  blinkHz: 2.0,
+  /** Opacidad mínima y máxima del parpadeo. Nunca llega a cero: no desaparece. */
+  blinkMin: 0.35,
+  blinkMax: 1.0,
+
+  beep: {
+    /** Intervalo entre pitidos al principio y al final de la cuenta atrás. */
+    slowIntervalMs: 1150,
+    fastIntervalMs: 130,
+    /** Tono al principio y al final, en Hz. */
+    lowHz: 620,
+    highHz: 1280,
+    durationS: 0.07,
+    /** A esta distancia o menos suena al máximo; a partir de la otra, al mínimo. */
+    nearDistance: 4,
+    farDistance: 55,
+    minVolume: 0.1,
+    maxVolume: 1.0,
+  },
+}
+
+/**
+ * Puntuación por estrellas de un escenario.
+ *
+ * La nota es una media **ponderada y normalizada por la suma de los pesos**, de
+ * modo que las variables reservadas a peso 0 no arrastran el resultado hacia
+ * abajo: están en la fórmula, pero no cuentan hasta que se les dé peso.
+ */
+export const SCORING = {
+  weights: {
+    /** Aciertos ÷ disparos. */
+    accuracy: 0.5,
+    /** Cuánto se tarda en desactivar dentro de la cuenta atrás. */
+    time: 0.5,
+    /** RESERVADO: daño recibido. La mecánica no existe todavía. */
+    damage: 0,
+    /** RESERVADO: muertes y reinicios. La mecánica no existe todavía. */
+    deaths: 0,
+  },
+
+  /**
+   * Referencias para normalizar las variables reservadas cuando se implementen.
+   * Con peso 0 no se usan, pero dejarlas escritas evita tener que inventarlas
+   * más tarde.
+   */
+  damageReference: 100,
+  deathsReference: 3,
+
+  /**
+   * Cortes de estrella, de 5 a 2. Por debajo del último, 1 estrella. Que el
+   * explosivo detone **no es una estrella**: es un resultado de fallo aparte.
+   */
+  starThresholds: [0.9, 0.75, 0.55, 0.35],
+}
+
 export const FEEDBACK = {
   /** Duración del pop de la diana acertada. */
   targetPopMs: 130,
@@ -991,6 +1096,8 @@ export const FEEDBACK = {
 
 /** Sonido sintetizado (Web Audio API). Sin assets externos. */
 export const AUDIO = {
+  /** Volumen del explosivo: pitido, desactivación y detonación. */
+  objectiveVolume: 0.4,
   /** Volumen del golpe de aterrizaje, relativo al máster. */
   landingVolume: 0.34,
   masterVolume: 0.45,

@@ -10,7 +10,7 @@
  * (el click que activa el Pointer Lock), que es lo que exigen los navegadores.
  */
 
-import { AUDIO, LANDING } from '../config.js'
+import { AUDIO, LANDING, OBJECTIVE } from '../config.js'
 
 /** @type {AudioContext | null} */
 let ctx = null
@@ -277,6 +277,112 @@ export function playLanding(strength = 1) {
   body.connect(bodyGain).connect(master)
   body.start(t)
   body.stop(t + profile.bodyDecay + 0.03)
+  body.onended = () => {
+    body.disconnect()
+    bodyGain.disconnect()
+  }
+}
+
+/**
+ * Pitido del explosivo.
+ *
+ * Onda cuadrada: la cuarta identidad sonora del juego y la más estridente a
+ * propósito, para que no se confunda ni con el disparo (ruido filtrado + seno)
+ * ni con el aterrizaje (triangular grave de ataque largo) ni con la
+ * confirmación del panel.
+ *
+ * @param {number} urgency 0..1, cuánto se ha consumido la cuenta atrás
+ * @param {number} volume  0..1, cerca del explosivo suena fuerte y lejos flojo
+ */
+export function playObjectiveBeep(urgency, volume) {
+  initAudio()
+  if (!ctx || !master) return
+  const level = Math.max(0, Math.min(1, volume))
+  if (level <= 0) return
+
+  const beep = OBJECTIVE.beep
+  const u = Math.max(0, Math.min(1, urgency))
+  const t = ctx.currentTime
+  const hz = beep.lowHz + (beep.highHz - beep.lowHz) * u
+
+  const osc = ctx.createOscillator()
+  osc.type = 'square'
+  osc.frequency.setValueAtTime(hz, t)
+  const gain = ctx.createGain()
+  gain.gain.setValueAtTime(0.0001, t)
+  gain.gain.exponentialRampToValueAtTime(AUDIO.objectiveVolume * level, t + 0.004)
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + beep.durationS)
+  osc.connect(gain).connect(master)
+  osc.start(t)
+  osc.stop(t + beep.durationS + 0.02)
+  osc.onended = () => {
+    osc.disconnect()
+    gain.disconnect()
+  }
+}
+
+/** Desactivado: dos tonos que bajan, tranquilos. Lo contrario del pitido. */
+export function playObjectiveDefused() {
+  initAudio()
+  if (!ctx || !master) return
+  const t = ctx.currentTime
+  for (const [i, hz] of [880, 587].entries()) {
+    const at = t + i * 0.11
+    const osc = ctx.createOscillator()
+    osc.type = 'triangle'
+    osc.frequency.setValueAtTime(hz, at)
+    const gain = ctx.createGain()
+    gain.gain.setValueAtTime(0.0001, at)
+    gain.gain.exponentialRampToValueAtTime(AUDIO.objectiveVolume * 0.7, at + 0.012)
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.22)
+    osc.connect(gain).connect(master)
+    osc.start(at)
+    osc.stop(at + 0.26)
+    osc.onended = () => {
+      osc.disconnect()
+      gain.disconnect()
+    }
+  }
+}
+
+/** Detonación: ruido grave largo con un golpe que se desploma por debajo. */
+export function playObjectiveExplosion() {
+  initAudio()
+  if (!ctx || !master || !noiseBuffer) return
+  const t = ctx.currentTime
+  const level = AUDIO.objectiveVolume
+
+  const noise = ctx.createBufferSource()
+  noise.buffer = noiseBuffer
+  noise.loop = true
+  const lowpass = ctx.createBiquadFilter()
+  lowpass.type = 'lowpass'
+  lowpass.frequency.setValueAtTime(900, t)
+  lowpass.frequency.exponentialRampToValueAtTime(90, t + 0.75)
+  const noiseGain = ctx.createGain()
+  noiseGain.gain.setValueAtTime(0.0001, t)
+  noiseGain.gain.exponentialRampToValueAtTime(level, t + 0.015)
+  noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.9)
+  noise.connect(lowpass).connect(noiseGain).connect(master)
+  noise.start(t)
+  noise.stop(t + 0.95)
+  noise.onended = () => {
+    noise.disconnect()
+    lowpass.disconnect()
+    noiseGain.disconnect()
+  }
+
+  const body = ctx.createOscillator()
+  body.type = 'sine'
+  body.frequency.setValueAtTime(110, t)
+  body.frequency.exponentialRampToValueAtTime(26, t + 0.5)
+  const bodyGain = ctx.createGain()
+  bodyGain.gain.setValueAtTime(0.0001, t)
+  bodyGain.gain.exponentialRampToValueAtTime(level * 1.1, t + 0.02)
+  bodyGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.7)
+  body.connect(bodyGain).connect(master)
+  body.start(t)
+  body.stop(t + 0.75)
   body.onended = () => {
     body.disconnect()
     bodyGain.disconnect()

@@ -141,6 +141,42 @@ Más claro, más alto, menos se pasa.
 - **El modo dinámico y la distancia de aparición no se aplican.** Las dianas se
   quedan en su sitio; moverlas las metería dentro de los muros.
 
+## El explosivo
+
+Con un escenario montado y cronómetro (no en práctica libre) aparece un
+**explosivo** en algún punto del mapa. Tienes **45 segundos**.
+
+**No hay nada en el HUD que te diga dónde está.** Ni marcador, ni flecha, ni
+distancia. Lo único que tienes es el **pitido**: suena más fuerte cuanto más
+cerca estás, y más rápido y agudo cuanto menos tiempo queda. El marcador —un
+rombo ámbar parpadeante— está en el mundo, así que lo verás si miras hacia él,
+pero hay que buscarlo.
+
+Para desactivarlo, ponte al lado y **mantén E unos tres segundos**. Un anillo en
+el suelo se va llenando. Si sueltas, el progreso se pierde entero, pero no hay
+más castigo que el tiempo perdido.
+
+Desactivarlo o que estalle terminan la sesión, y el resumen te dice cuál de las
+dos cosas pasó.
+
+## Estrellas
+
+En modo escenario el HUD muestra **cinco estrellas que se actualizan mientras
+juegas**, no sólo al final. Salen de dos cosas a partes iguales:
+
+- **Precisión** — aciertos entre disparos.
+- **Tiempo** — cuanto antes desactives dentro de los 45 s, mejor.
+
+Como el tiempo cuenta la mitad, **las estrellas bajan solas según pasan los
+segundos** aunque no falles un tiro. Empiezas con las cinco y las vas gastando.
+
+Que el explosivo detone **no es una estrella baja**: es **Fallido**, un resultado
+aparte. No llegar a desactivar no es jugar mal, es no terminar.
+
+Los pesos y los cortes de estrella están en `SCORING`, en `src/config.js`. Hay
+además dos variables preparadas a peso cero —daño recibido y muertes— para
+cuando esas mecánicas existan.
+
 ## Aterrizaje
 
 Al caer desde cierta altura suena un golpe sordo y la cámara se hunde unos

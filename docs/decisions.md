@@ -1187,6 +1187,104 @@ hunde la cámara igual bajándose de un cajón que tirándose del Balcón. El ra
 subiendo `LANDING.fullSpeed` a ~12.5, que devuelve la escala completa hasta la
 caída más alta del Plano A.
 
+## Ronda 19 — Explosivo y puntuación por estrellas
+
+El escenario deja de ser un campo de tiro con muros y pasa a tener un objetivo.
+
+### 19.1 La escala del aterrizaje, cerrada
+
+`LANDING.fullSpeed` de 7.0 a 12.5, que es justo por encima de la caída más alta
+del Plano A (2.6 u → 12.49 u/s). El rango útil pasa de 0.18 a 0.59: bajarse de un
+bordillo, de un cajón y del Balcón vuelven a sonar distinto. Era el cabo suelto
+que dejó §18.4.
+
+### 19.2 El explosivo no tiene ayuda de interfaz
+
+**La decisión de diseño de la ronda.** Ni indicador en el HUD, ni marcador en
+pantalla, ni distancia, ni flecha. La única pista es el pitido: **volumen por
+proximidad, tempo y tono por cuenta atrás**. El marcador existe en el mundo —un
+octaedro ámbar parpadeante— así que se ve si miras hacia él, pero encontrarlo es
+recorrer el mapa escuchando.
+
+Eso obligó a un cambio que no era evidente: **el cronómetro del HUD pasa a contar
+hacia arriba** en modo escenario. Como desactivar o detonar terminan la sesión,
+el reloj de la sesión *es* la cuenta atrás de la bomba; enseñar "lo que queda"
+habría puesto un temporizador de bomba en pantalla por la puerta de atrás,
+justo lo que la mecánica quería evitar. Contando hacia arriba no se filtra nada,
+y de paso el número que se ve es el que puntúa.
+
+**El progreso de desactivación sí se enseña, pero en el mundo:** un anillo que se
+llena en el suelo, alrededor del marcador. Mantener una tecla tres segundos a
+ciegas sería cruel; ponerlo en el HUD delataría que estás al lado. El anillo se
+rellena moviendo el **rango de dibujo** de una geometría construida una sola vez,
+no regenerándola: rehacerla cada frame sería alocar en el bucle caliente durante
+los tres segundos que dura.
+
+### 19.3 Sin explosivo en práctica libre
+
+La práctica libre existe para **no terminar sola**. Un explosivo que la cerrase a
+los 45 s rompería su único contrato, así que sólo se arma con escenario **y**
+cronómetro. El escenario tiene sus sitios igualmente: lo que no ocurre es
+armarlo.
+
+En la sala vacía no hay explosivo por una vía más limpia todavía: no tiene
+`objectiveSites`, y `Scenario.objectiveSites` devuelve lista vacía. Ningún caso
+especial en el motor.
+
+### 19.4 Un cuarto color, a regañadientes
+
+El marcador no podía ser naranja —se confundiría con una diana—, ni verde —eso es
+la interfaz accionable—, ni gris —desaparecería contra la cobertura—. Se añadió
+`COLORS.objective`, un ámbar `#E8B33A` que se lee como peligro y no colisiona con
+nada. Es el primer color nuevo desde la ronda 1 y el criterio para añadirlo fue
+el mismo de siempre: sólo si ninguno de los que hay puede hacer el trabajo sin
+robarle significado a otra cosa.
+
+La silueta también separa: un **octaedro**, que no se parece ni a una esfera
+—diana— ni a una caja —cobertura—.
+
+### 19.5 Los sitios se curan, como los anclajes
+
+Cinco posiciones escritas a mano, **una por zona** —El Largo, El Balcón, Los
+Cajones, La Puerta, el pasillo trasero—, y ninguna en el Vestíbulo: aparecer
+encima del spawn no es un objetivo, es un regalo. La más cercana queda a 33 u.
+Mismo razonamiento que §14.2: un cono no sabe dónde importa que esté algo.
+
+### 19.6 La puntuación normaliza por la suma de los pesos, no por el número
+
+Cuatro variables: precisión y tiempo activas a 0.5, daño y muertes **reservadas a
+0**. El encargo pedía dejarles el hueco hecho sin implementar la mecánica.
+
+El detalle que hace que "reservada" signifique algo: la media se divide por la
+**suma de los pesos**, no por el número de variables. Sin eso, dos a 0.5 y dos a
+0 darían como mucho media nota y las reservadas arrastrarían el resultado hacia
+abajo desde el primer día. Verificado: pasar `damageTaken: 100, deaths: 3` no
+mueve la nota ni un decimal mientras su peso sea 0, pero sus partes ya se
+calculan y aparecen en la salida.
+
+La precisión **parte de 1 cuando no hay disparos**. Arrancar en cero haría que el
+indicador de estrellas empezara vacío y subiera, cuando lo que cuenta la mecánica
+es lo contrario: empiezas con todo y lo vas gastando.
+
+### 19.7 Detonar no es una estrella
+
+Que el explosivo estalle **no puntúa**. No es 1★, es "Fallido": quien no llega a
+desactivar no ha hecho una mala partida, ha hecho otra cosa. El resumen lo
+distingue visualmente —naranja de aviso y sin fila de estrellas— y el motor lo
+implementa no calculando puntuación cuando el desenlace es `exploded`.
+
+### 19.8 Las estrellas son en vivo, y por eso bajan solas
+
+El indicador del HUD se recalcula **cada frame**, no sólo al final. Como el
+tiempo es la mitad de la nota, las estrellas **bajan por sí solas según pasan los
+segundos** aunque no dispares: eso es la mecánica diciéndote que tardar cuesta.
+Verificado en el DOM: fallar disparos las baja en el acto, acertar las sube, y
+treinta segundos sin hacer nada las bajan de 5 a 3.
+
+Recalcular en cada frame son cuatro divisiones y una media ponderada, muy por
+debajo de lo que costaría guardar la nota y mantenerla sincronizada con cada
+disparo, cada impacto y el reloj.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

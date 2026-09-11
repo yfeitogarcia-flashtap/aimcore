@@ -44,6 +44,8 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 |---|---|---|
 | Motor | `src/game/` | Bucle rAF, input, raycast, dianas, armas, panel de acciones. **Vive fuera de React.** |
 | Escenario | `src/game/scenario.js` | Convierte los datos de `SCENARIOS` en mallas, colisionadores, oclusores y anclajes. |
+| Explosivo | `src/game/objective.js` | Aparición, cuenta atrás, pitido y desactivación. No publica nada al HUD a propósito. |
+| Puntuación | `src/game/scoring.js` | Variables normalizadas, media ponderada y estrellas. |
 | Transición | `src/game/transition.js` | **Módulo sustituible entero.** Contrato único: `run(build)` tapa la escena, llama a `build()` y destapa. Nada más del motor sabe qué forma tiene. |
 | React | `src/App.jsx`, `src/ui/` | Sólo conoce la *fase* (inicio / juego / pausa / resumen) y el resumen final. |
 | HUD | `src/ui/Hud.jsx` | Se actualiza **imperativamente por refs** desde el bucle. Cero `setState` por frame. |
@@ -108,6 +110,18 @@ uniforme entre los visibles y de paso ahorra raycasts.
 cada escenario se dibuja en SVG desde `SCENARIOS`, con `coverHeight` y
 `coverEdgeColor` compartidos con la escena 3D. Una captura se desincroniza en
 cuanto alguien mueve una caja y nadie se entera.
+
+**El explosivo no tiene ayuda de interfaz.** Ni indicador en el HUD, ni marcador
+en pantalla, ni distancia. La única pista es el pitido: volumen por proximidad,
+tempo y tono por cuenta atrás. Por eso, con explosivo, **el cronómetro del HUD
+cuenta hacia arriba**: enseñar lo que queda sería poner el temporizador de la
+bomba en pantalla por la puerta de atrás. El progreso de desactivación sí se ve,
+pero en el mundo —un anillo en el suelo—, no en la interfaz.
+
+**La puntuación normaliza por la suma de los pesos, no por el número de
+variables.** Es lo que hace que una variable a peso 0 sea de verdad inerte:
+`damage` y `deaths` están en la fórmula y se calculan, pero no arrastran la nota
+hasta que se les dé peso. Detonar **no puntúa**: es "Fallido", no 1★.
 
 **Bajo el punto de mira gana lo más cercano, siempre.** El tablero de acciones no
 tiene prioridad por ser interfaz: se compara su distancia con la de la diana y la
@@ -210,6 +224,18 @@ propio sonido de confirmación.
 actual/máximo con parpadeo en reserva baja, indicador de recarga, contador de
 FPS (media móvil), silueta del arma equipada y mensajes de ayuda contextuales.
 
+**Explosivo (sólo con escenario y cronómetro, nunca en práctica libre):** aparece
+en uno de cinco sitios curados del Plano A —uno por zona, ninguno en el
+Vestíbulo—, marcador de octaedro ámbar parpadeante, 45 s de cuenta atrás que
+**son el reloj de la sesión**. Se desactiva manteniendo **E** a menos de 3 u
+durante 3 s; soltar cancela el progreso sin penalización. Desactivarlo y que
+detone terminan la sesión, y el resumen dice cuál de las dos.
+
+**Puntuación por estrellas (1-5, sólo con escenario):** precisión y tiempo a peso
+0.5 cada una; daño recibido y muertes **reservadas a peso 0**, ya con su hueco en
+la fórmula. Cortes en `SCORING.starThresholds`. El HUD las enseña **en vivo**, y
+bajan solas con el paso del tiempo porque el tiempo es la mitad de la nota.
+
 **Selector de escenario:** plano cenital por escenario dibujado desde los datos,
 más la ficha —entrena / riesgo / rejugabilidad— del que esté elegido. Al cambiar,
 una transición corta tapa el montaje.
@@ -236,11 +262,9 @@ Plano A esté validado jugando.
 la trayectoria). La cobertura `baja` de 1.25 **es saltable de forma fiable** —
 verificado 12 de 12 a 60, 144 y 240 Hz.
 
-**Pendiente tras subir la gravedad:** la escala de `LANDING` se quedó corta. Con
-`fullSpeed: 7.0`, cualquier caída desde un salto normal en adelante satura a
-fuerza 1, así que el golpe suena igual bajando de un cajón que del Balcón. Se
-arregla subiendo `LANDING.fullSpeed` a ~12.5; no se tocó porque no estaba en el
-encargo. Detalle en `docs/decisions.md` §18.
+**Mecánicas reservadas, con el hueco ya hecho:** daño recibido y
+muertes/reinicios tienen su peso en `SCORING.weights` (a 0) y su parte calculada
+en `scoring.js`. Implementarlas es darles peso; no hace falta tocar la fórmula.
 
 ---
 

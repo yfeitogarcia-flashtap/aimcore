@@ -17,7 +17,9 @@ import {
   ACCURACY,
   ACTION_PANEL,
   CAMERA,
+  COVER,
   FRAME_LIMITS,
+  OBJECTIVE,
   MOVEMENT,
   HELP,
   RECOIL_RESET_MS,
@@ -28,6 +30,8 @@ import {
 } from '../config.js'
 import { createScene } from './scene.js'
 import { Scenario } from './scenario.js'
+import { Objective, OUTCOME } from './objective.js'
+import { computeScore } from './scoring.js'
 import { createSceneTransition } from './transition.js'
 import { LookControls } from './lookControls.js'
 import { MovementController } from './movement.js'
@@ -37,6 +41,8 @@ import {
   playDryFire,
   playHit,
   playLanding,
+  playObjectiveDefused,
+  playObjectiveExplosion,
   playShot,
   playUiConfirm,
 } from '../audio/sfx.js'
@@ -150,6 +156,9 @@ export class Engine {
       camera: this.camera,
     })
 
+    this.objective = new Objective(this.scene, COVER.heights)
+    this.objective.setSites(this.scenario.objectiveSites)
+
     this.actionPanel = new ActionPanel(this.scene, this.cssScene)
     this.actionPanel.setAnchor(this.scenario.spawn)
     this.targets.setAnchors(this.scenario.anchors, this.scenario.occluders)
@@ -186,6 +195,11 @@ export class Engine {
     this.suppressorEnabled = false
     this.helpMessagesEnabled = true
 
+    /** Tecla de desactivar mantenida. */
+    this._defuseHeld = false
+    /** Desenlace del explosivo de la sesión, o null si no hubo explosivo. */
+    this.objectiveOutcome = null
+
     // Objeto de estadísticas reutilizado: el HUD lo lee sin que se genere
     // basura en cada frame.
     this.stats = {
@@ -202,6 +216,11 @@ export class Engine {
       magazine: 0,
       reloading: false,
       reloadProgress: 0,
+      /** El cronómetro cuenta hacia arriba: práctica libre y modo escenario. */
+      countUp: false,
+      /** Hay puntuación por estrellas que enseñar. */
+      scoring: false,
+      stars: 5,
     }
 
     this._rafId = 0
@@ -229,6 +248,8 @@ export class Engine {
     this._onMouseDown = this._onMouseDown.bind(this)
     this._onMouseUp = this._onMouseUp.bind(this)
     this._onKeyDown = this._onKeyDown.bind(this)
+    this._onKeyUp = this._onKeyUp.bind(this)
+    this._onWindowBlur = this._onWindowBlur.bind(this)
     this._onContextMenu = this._onContextMenu.bind(this)
     this._onPointerLockChange = this._onPointerLockChange.bind(this)
     this._onResize = this._onResize.bind(this)
@@ -245,6 +266,8 @@ export class Engine {
     // canvas, el arma tiene que dejar de disparar igualmente.
     window.addEventListener('mouseup', this._onMouseUp)
     window.addEventListener('keydown', this._onKeyDown)
+    window.addEventListener('keyup', this._onKeyUp)
+    window.addEventListener('blur', this._onWindowBlur)
     this.canvas.addEventListener('contextmenu', this._onContextMenu)
     document.addEventListener('pointerlockchange', this._onPointerLockChange)
     this.controls.connect(document)
@@ -270,6 +293,8 @@ export class Engine {
     this.canvas.removeEventListener('mousedown', this._onMouseDown)
     window.removeEventListener('mouseup', this._onMouseUp)
     window.removeEventListener('keydown', this._onKeyDown)
+    window.removeEventListener('keyup', this._onKeyUp)
+    window.removeEventListener('blur', this._onWindowBlur)
     this.canvas.removeEventListener('contextmenu', this._onContextMenu)
     document.removeEventListener('pointerlockchange', this._onPointerLockChange)
     this.controls.disconnect()
@@ -280,6 +305,7 @@ export class Engine {
     this.actionPanel.dispose()
     this.cssRenderer.domElement.remove()
     this.targets.dispose()
+    this.objective.dispose()
     this.scenario.dispose()
     this.transition.dispose()
     this._disposeScene()
@@ -432,6 +458,7 @@ export class Engine {
     this.camera.updateMatrixWorld()
     this.actionPanel.setAnchor(this.scenario.spawn)
     this.targets.setAnchors(this.scenario.anchors, this.scenario.occluders)
+    this.objective.setSites(this.scenario.objectiveSites)
 
     // Las dianas vivas estaban ancladas a un mundo que ya no existe. Si había
     // sesión en marcha se vuelve a sembrar desde la posición nueva del jugador.
@@ -524,23 +551,46 @@ export class Engine {
     this._nextShotAt = -Infinity
     this.movement.reset()
     this.movement.setEnabled(true)
+    this._defuseHeld = false
+    this.objectiveOutcome = null
     // La primera diana nace en la posición ya reseteada del jugador.
     this.camera.updateMatrixWorld()
-    this.targets.beginSession(this.camera, performance.now())
+    const now = performance.now()
+    this.targets.beginSession(this.camera, now)
+    // El explosivo sólo existe con escenario y con cronómetro. En práctica libre
+    // no: esa modalidad existe para no terminar sola, y un explosivo que la
+    // cerrase a los 45 s rompería su único contrato.
+    this.objective.clear()
+    if (!this.endless && this.objective.available) this.objective.begin(now)
     this._setPhase(PHASE.RUNNING)
+  }
+
+  /** ¿Es el explosivo quien lleva el reloj de esta sesión? */
+  get objectiveRunning() {
+    return this.objective.active
   }
 
   _finishSession() {
     this.controls.enabled = false
     this._releaseTrigger()
+    this._defuseHeld = false
     this.movement.setEnabled(false)
     this.targets.clear()
+    this.objective.clear()
     this._setPhase(PHASE.FINISHED)
     if (this.isLocked) document.exitPointerLock()
 
-    // En práctica libre el ritmo se mide contra lo que haya durado de verdad.
-    const seconds = (this.endless ? this.elapsedMs : this.durationMs) / 1000
+    // En práctica libre, y con explosivo, el ritmo se mide contra lo que la
+    // sesión haya durado de verdad, no contra la duración nominal.
+    const openEnded = this.endless || this.objectiveOutcome !== null
+    const seconds = (openEnded ? this.elapsedMs : this.durationMs) / 1000
+    // Detonar no puntúa: es un resultado de fallo aparte, no una estrella baja.
+    const score = this.objectiveOutcome === OUTCOME.DEFUSED ? this._currentScore() : null
     this.callbacks.onFinish?.({
+      objectiveOutcome: this.objectiveOutcome,
+      stars: score ? score.stars : 0,
+      scoreValue: score ? score.value : 0,
+      scoreParts: score ? score.parts : null,
       endless: this.endless,
       hits: this.hits,
       misses: this.shots - this.hits,
@@ -598,8 +648,59 @@ export class Engine {
     this._releaseTrigger()
   }
 
+  /**
+   * Avanza el explosivo y cierra la sesión cuando se resuelve. Desactivarlo y
+   * que detone terminan igual de rápido: los dos son un final, no un evento.
+   */
+  _updateObjective(now, deltaSeconds) {
+    if (!this.objective.active) return
+    // En pausa el explosivo se congela entero, cuenta atrás y pitido incluidos,
+    // igual que las dianas. El progreso de desactivación se conserva: pausar no
+    // es soltar la tecla.
+    if (this.phase !== PHASE.RUNNING) return
+    const outcome = this.objective.update(now, deltaSeconds, this.camera, this._defuseHeld)
+    if (!outcome) return
+
+    this.objectiveOutcome = outcome
+    if (outcome === OUTCOME.DEFUSED) playObjectiveDefused()
+    else playObjectiveExplosion()
+    this._finishSession()
+  }
+
+  /**
+   * Puntuación viva de la sesión. Se recalcula cada vez que se pide, que es en
+   * cada frame: son cuatro divisiones y una media, muy por debajo de lo que
+   * costaría guardarla y mantenerla sincronizada.
+   */
+  _currentScore() {
+    return computeScore({
+      shots: this.shots,
+      hits: this.hits,
+      elapsedMs: this.elapsedMs,
+      // RESERVADAS: sin mecánica todavía, y con peso 0 no entran en la media.
+      damageTaken: 0,
+      deaths: 0,
+    })
+  }
+
+  _onWindowBlur() {
+    // Alt-tab con E pulsada dejaría el explosivo desactivándose solo.
+    this._defuseHeld = false
+  }
+
+  _onKeyUp(event) {
+    if (OBJECTIVE.defuseKeys.includes(event.code)) this._defuseHeld = false
+  }
+
   _onKeyDown(event) {
     if (this.phase !== PHASE.RUNNING || !this.isLocked || event.repeat) return
+
+    if (OBJECTIVE.defuseKeys.includes(event.code)) {
+      event.preventDefault()
+      this._defuseHeld = true
+      return
+    }
+
     if (!WEAPON_KEYS.reload.includes(event.code)) return
     event.preventDefault()
     this._startReload(performance.now())
@@ -852,7 +953,9 @@ export class Engine {
     if (this.phase === PHASE.RUNNING) {
       this._updateReload(now)
       this.elapsedMs += delta
-      if (!this.endless && this.elapsedMs >= this.durationMs) {
+      // Con explosivo, el reloj de la sesión es su cuenta atrás: la duración
+      // fija no se aplica, o los 30 s cortarían la partida antes de los 45.
+      if (!this.endless && !this.objectiveRunning && this.elapsedMs >= this.durationMs) {
         this.elapsedMs = this.durationMs
         this._finishSession()
       } else {
@@ -873,6 +976,7 @@ export class Engine {
     // pero los pops en curso siguen apagándose porque van con `now`.
     const targetDelta = this.phase === PHASE.RUNNING ? delta / 1000 : 0
     this.targets.update(now, targetDelta, this.camera)
+    this._updateObjective(now, targetDelta)
     this.actionPanel.follow(this.camera)
     this.actionPanel.syncLayout()
     this._publishStats()
@@ -929,8 +1033,11 @@ export class Engine {
       ? Math.min(1, (performance.now() - this.reloadStartedAt) / this.weapon.reloadMs)
       : 0
     stats.endless = this.endless
-    // Sin cronómetro el HUD enseña el tiempo jugado, no el que queda.
-    stats.timeLeftMs = this.endless
+    // El cronómetro cuenta hacia arriba en práctica libre y también con
+    // explosivo: enseñar lo que queda sería un temporizador de bomba en el HUD,
+    // y la cuenta atrás sólo se puede oír, no leer.
+    stats.countUp = this.endless || this.objectiveRunning
+    stats.timeLeftMs = stats.countUp
       ? this.elapsedMs
       : Math.max(0, this.durationMs - this.elapsedMs)
     stats.hits = this.hits
@@ -938,6 +1045,9 @@ export class Engine {
     stats.misses = this.shots - this.hits
     stats.kills = this.kills
     stats.accuracy = this.shots > 0 ? (this.hits / this.shots) * 100 : 0
+    // Estrellas en vivo: sólo hay puntuación donde hay objetivo que puntuar.
+    stats.scoring = this.objective.active
+    if (stats.scoring) stats.stars = this._currentScore().stars
     this.callbacks.onFrame?.(stats)
   }
 }

@@ -99,6 +99,14 @@ export class Scenario {
     return this.definition.spawn
   }
 
+  /**
+   * Sitios posibles del explosivo. Vacío en los escenarios que no tienen
+   * objetivo, que es como la sala vacía se queda sin él sin ningún caso especial.
+   */
+  get objectiveSites() {
+    return this.definition.objectiveSites ?? []
+  }
+
   _build() {
     const definition = this.definition
     /** Geometrías agrupadas por tipo de pieza, para fusionarlas de una vez. */

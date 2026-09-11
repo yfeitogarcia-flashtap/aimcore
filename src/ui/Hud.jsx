@@ -22,6 +22,9 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
   const reloadBarRef = useRef(null)
   const helpRef = useRef(null)
   const helpTimer = useRef(0)
+  const starsRef = useRef(null)
+  // Cinco nodos fijos: encender estrellas es cambiar clases, no crear elementos.
+  const starRefs = useRef([])
 
   // Últimos valores mostrados, como números: comparamos antes de formatear,
   // así que un frame que no cambia nada no genera ni un string.
@@ -35,6 +38,9 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
     magazine: -1,
     reloading: null,
     low: null,
+    countUp: null,
+    scoring: null,
+    stars: -1,
   })
 
   useImperativeHandle(ref, () => ({
@@ -49,7 +55,7 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
 
       // Sin cronómetro el hueco lo ocupa el símbolo de infinito, y el rótulo
       // pasa de "tiempo restante" a decir sólo que la sesión no acaba sola.
-      if (stats.endless !== last.endless) {
+      if (stats.endless !== last.endless || stats.countUp !== last.countUp) {
         if (timeRef.current) {
           timeRef.current.textContent = stats.endless ? '∞' : '0.0'
           timeRef.current.classList.toggle('hud__value--endless', stats.endless)
@@ -58,15 +64,35 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
           timeLabelRef.current.textContent = stats.endless ? 'libre' : 'tiempo'
         }
         last.endless = stats.endless
+        last.countUp = stats.countUp
         last.deciseconds = -1
       }
 
+      // Con explosivo el reloj sube en vez de bajar: enseñar lo que queda sería
+      // poner la cuenta atrás de la bomba en el HUD, y ésa sólo se oye.
       if (!stats.endless) {
-        const deciseconds = Math.ceil(stats.timeLeftMs / 100)
+        const deciseconds = stats.countUp
+          ? Math.floor(stats.timeLeftMs / 100)
+          : Math.ceil(stats.timeLeftMs / 100)
         if (deciseconds !== last.deciseconds && timeRef.current) {
           timeRef.current.textContent = (deciseconds / 10).toFixed(1)
           last.deciseconds = deciseconds
         }
+      }
+
+      // Estrellas en vivo: sólo aparecen donde hay puntuación, y se recalculan
+      // con cada disparo y con el paso del tiempo, no sólo al terminar.
+      if (stats.scoring !== last.scoring) {
+        if (starsRef.current) starsRef.current.hidden = !stats.scoring
+        last.scoring = stats.scoring
+        last.stars = -1
+      }
+      if (stats.scoring && stats.stars !== last.stars) {
+        for (let i = 0; i < starRefs.current.length; i++) {
+          const star = starRefs.current[i]
+          if (star) star.classList.toggle('hud__star--on', i < stats.stars)
+        }
+        last.stars = stats.stars
       }
       if (stats.hits !== last.hits && hitsRef.current) {
         hitsRef.current.textContent = String(stats.hits)
@@ -124,6 +150,18 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
           0
         </span>
         <span className="hud__fps-unit">fps</span>
+      </div>
+
+      <div className="hud__stars" ref={starsRef} hidden>
+        {[0, 1, 2, 3, 4].map((i) => (
+          <span
+            key={i}
+            className="hud__star"
+            ref={(node) => {
+              starRefs.current[i] = node
+            }}
+          />
+        ))}
       </div>
 
       <div className="hud">
