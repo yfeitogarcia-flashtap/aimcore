@@ -161,9 +161,14 @@ admite), mensajes de ayuda y modo dinámico.
 
 ## 6. Fuera de alcance por decisión, no por olvido
 
-Backend, cuentas, guardado en la nube, rankings, minimapa, pasos sonoros,
-escenarios con cobertura, colisión con estructuras. Si el encargo no lo pide
-explícitamente, no se añade.
+Backend, cuentas, guardado en la nube, rankings, minimapa, pasos sonoros. Si el
+encargo no lo pide explícitamente, no se añade.
+
+**En diseño, aún no construido:** el primer escenario con cobertura y la colisión
+del jugador contra estructuras. Hay tres layouts propuestos y seis avisos sobre
+lo que rompen del sistema actual en
+`docs/propuestas/01-escenario-cobertura.md` — léelo antes de tocar geometría,
+movimiento o aparición de dianas.
 
 ---
 
