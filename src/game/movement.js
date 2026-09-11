@@ -59,6 +59,8 @@ export class MovementController {
     this.airborne = false
     /** Altura de los ojos sobre los pies. Sólo el agachado la mueve. */
     this.eyeHeight = MOVEMENT.standHeight
+    /** Marcha congelada mientras se está en el aire. Ver `currentSpeed`. */
+    this._airSpeed = MOVEMENT.speed
 
     /** Escenario contra el que se colisiona. Null = sala vacía, suelo en y = 0. */
     this.scenario = null
@@ -128,6 +130,11 @@ export class MovementController {
    * siendo así aunque un día se retoquen las constantes.
    */
   get currentSpeed() {
+    // En el aire la marcha se queda como estaba al despegar. Sin esto,
+    // agacharse a media trayectoria bajaba la velocidad de 6.5 a 2.6 de golpe
+    // —el vuelo dura lo mismo pero recorres la mitad—, y eso se siente
+    // exactamente como quedarse flotando a cámara lenta.
+    if (this.airborne) return this._airSpeed
     let speed = MOVEMENT.speed
     if (this.keys.walk && MOVEMENT.walkSpeed < speed) speed = MOVEMENT.walkSpeed
     if (this.keys.crouch && MOVEMENT.crouchSpeed < speed) speed = MOVEMENT.crouchSpeed
@@ -237,8 +244,10 @@ export class MovementController {
       // corregida. Resolver los dos a la vez dejaría al jugador clavado en
       // cuanto rozara una esquina.
       const headY = this.feetY + this.eyeHeight
-      position.x = this.scenario.resolveAxis('x', wantedX, position.z, this.feetY, headY)
-      position.z = this.scenario.resolveAxis('z', wantedZ, position.x, this.feetY, headY)
+      const fromX = position.x
+      const fromZ = position.z
+      position.x = this.scenario.resolveAxis('x', fromX, wantedX, fromZ, this.feetY, headY)
+      position.z = this.scenario.resolveAxis('z', fromZ, wantedZ, position.x, this.feetY, headY)
     } else {
       position.x = wantedX
       position.z = wantedZ
@@ -268,6 +277,7 @@ export class MovementController {
 
     // Salto: sólo desde el suelo, así que no hay doble salto posible.
     if (this.keys.jump && !this.airborne) {
+      this._airSpeed = this.currentSpeed
       this.verticalVelocity = MOVEMENT.jumpSpeed
       this.airborne = true
     }
@@ -279,6 +289,8 @@ export class MovementController {
         this.feetY = ground
         return
       }
+      // Se ha salido de un borde andando: conserva la marcha que llevaba.
+      this._airSpeed = this.currentSpeed
       this.airborne = true
       this.verticalVelocity = 0
     }

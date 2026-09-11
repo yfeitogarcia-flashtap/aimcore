@@ -575,9 +575,9 @@ export class Engine {
     this._triggerHeld = true
     const now = performance.now()
 
-    // El panel se comprueba antes que nada: darle a un botón es accionarlo,
-    // no disparar. No cuenta como acierto ni como fallo, no gasta munición y
-    // no mueve la cámara.
+    // Darle a un botón es accionarlo, no disparar: no cuenta como acierto ni
+    // como fallo, no gasta munición y no mueve la cámara. Pero sólo gana si es
+    // lo más cercano bajo el punto de mira — ver `_tryPanelAction`.
     if (this._tryPanelAction(now)) {
       this._triggerConsumedByPanel = true
       return
@@ -623,13 +623,43 @@ export class Engine {
     if (now - this._lastPanelActionAt < ACTION_PANEL.cooldownMs) return false
     this.camera.updateMatrixWorld()
     this.raycaster.setFromCamera(SCREEN_CENTER, this.camera)
-    const buttonId = this.actionPanel.raycast(this.raycaster)
-    if (!buttonId) return false
+    const panelHit = this.actionPanel.raycast(this.raycaster)
+    if (!panelHit) return false
+    // El tablero no tiene prioridad por ser el tablero: sólo se acciona si no
+    // hay nada por delante. Con una diana o un muro entre medias, el disparo es
+    // un disparo. Antes bastaba con que el rayo tocase el tablero en algún
+    // punto, así que una diana pegada a un botón era imposible de matar.
+    if (this._isNearerThanPanel(panelHit.distance)) return false
 
     this._lastPanelActionAt = now
     playUiConfirm()
-    this._runPanelAction(buttonId)
+    this._runPanelAction(panelHit.buttonId)
     return true
+  }
+
+  /**
+   * ¿Hay una diana o una estructura más cerca que el tablero, sobre el mismo
+   * rayo? Se mide con el rayo limpio de la cámara, no con el desviado por
+   * retroceso y dispersión: la decisión es "a qué está apuntando el jugador",
+   * y a un botón no se le falla por ir corriendo.
+   */
+  _isNearerThanPanel(panelDistance) {
+    if (this.targets.hasActive) {
+      this.targets.updateMatrices()
+      const hit = this.targets.raycast(this.raycaster)
+      if (hit && hit.distance < panelDistance) return true
+    }
+
+    const occluders = this.scenario.occluders
+    if (occluders.length > 0) {
+      this.raycaster.near = 0
+      this.raycaster.far = panelDistance
+      const blockers = this.raycaster.intersectObjects(occluders, false)
+      this.raycaster.far = Infinity
+      if (blockers.length > 0) return true
+    }
+
+    return false
   }
 
   _runPanelAction(buttonId) {

@@ -10,7 +10,7 @@
  * (el click que activa el Pointer Lock), que es lo que exigen los navegadores.
  */
 
-import { AUDIO } from '../config.js'
+import { AUDIO, LANDING } from '../config.js'
 
 /** @type {AudioContext | null} */
 let ctx = null
@@ -226,9 +226,11 @@ export function playHit() {
 /**
  * Aterrizaje: un golpe sordo al tocar el suelo tras una caída.
  *
- * Ruido pasa-bajo muy corto —la suela— sobre un seno que cae en picado —el
- * peso—. Nada de esto toca la física: es puro acompañamiento del salto, y por
- * eso escala con la fuerza del impacto en lugar de sonar siempre igual.
+ * El perfil vive en `LANDING.sound` y está elegido para **no parecerse al
+ * disparo silenciado**, con el que se confundía en partida: onda triangular en
+ * lugar de seno, mucho más grave, ataque largo en vez de instantáneo y una cola
+ * cuatro veces mayor. Nada de esto toca la física: escala con la fuerza del
+ * impacto y ya está.
  *
  * @param {number} strength 0..1, lo fuerte que fue la caída
  */
@@ -238,40 +240,43 @@ export function playLanding(strength = 1) {
   const level = Math.max(0, Math.min(1, strength))
   if (level <= 0) return
 
+  const profile = LANDING.sound
   const t = ctx.currentTime
   const gain = AUDIO.landingVolume * (0.45 + 0.55 * level)
 
-  // Suela: ruido grave y seco.
+  // Suela: ruido filtrado muy abajo. Es roce, no percutor.
   const noise = ctx.createBufferSource()
   noise.buffer = noiseBuffer
   const lowpass = ctx.createBiquadFilter()
   lowpass.type = 'lowpass'
-  lowpass.frequency.setValueAtTime(320 + 160 * level, t)
+  lowpass.frequency.setValueAtTime(profile.scuffHz, t)
   const noiseGain = ctx.createGain()
   noiseGain.gain.setValueAtTime(0.0001, t)
-  noiseGain.gain.exponentialRampToValueAtTime(gain, t + 0.004)
-  noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.07)
+  noiseGain.gain.exponentialRampToValueAtTime(gain * profile.scuffGain, t + 0.008)
+  noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + profile.scuffDecay)
   noise.connect(lowpass).connect(noiseGain).connect(master)
   noise.start(t)
-  noise.stop(t + 0.09)
+  noise.stop(t + profile.scuffDecay + 0.02)
   noise.onended = () => {
     noise.disconnect()
     lowpass.disconnect()
     noiseGain.disconnect()
   }
 
-  // Peso: un seno que se desploma. Lo que hace que se sienta el cuerpo.
+  // Cuerpo: triangular grave con ataque largo y cola larga. El ataque de 12 ms
+  // es lo que separa esto de un disparo: un percutor ataca en 2 ms y suena a
+  // clic por mucho que se le baje el tono.
   const body = ctx.createOscillator()
-  body.type = 'sine'
-  body.frequency.setValueAtTime(120, t)
-  body.frequency.exponentialRampToValueAtTime(42, t + 0.09)
+  body.type = profile.bodyType
+  body.frequency.setValueAtTime(profile.bodyFrom, t)
+  body.frequency.exponentialRampToValueAtTime(profile.bodyTo, t + profile.bodyDecay * 0.7)
   const bodyGain = ctx.createGain()
   bodyGain.gain.setValueAtTime(0.0001, t)
-  bodyGain.gain.exponentialRampToValueAtTime(gain * 0.9, t + 0.006)
-  bodyGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.11)
+  bodyGain.gain.exponentialRampToValueAtTime(gain * profile.bodyGain, t + profile.bodyAttack)
+  bodyGain.gain.exponentialRampToValueAtTime(0.0001, t + profile.bodyDecay)
   body.connect(bodyGain).connect(master)
   body.start(t)
-  body.stop(t + 0.13)
+  body.stop(t + profile.bodyDecay + 0.03)
   body.onended = () => {
     body.disconnect()
     bodyGain.disconnect()

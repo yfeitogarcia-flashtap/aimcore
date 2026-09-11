@@ -136,6 +136,8 @@ Más claro, más alto, menos se pasa.
 - **Los disparos se paran en la cobertura.** No se mata a través de un muro.
 - **Las dianas salen en trece sitios fijos**, elegidos a mano por zona, y sólo en
   los que **ves desde donde estás**. Si no ves ninguno, no sale ninguna: muévete.
+  Por eso el selector de dianas simultáneas es un techo y no una cantidad: con x8
+  verás entre dos y seis a la vez según la zona en la que estés.
 - **El modo dinámico y la distancia de aparición no se aplican.** Las dianas se
   quedan en su sitio; moverlas las metería dentro de los muros.
 

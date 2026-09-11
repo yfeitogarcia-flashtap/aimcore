@@ -100,6 +100,20 @@ cada escenario se dibuja en SVG desde `SCENARIOS`, con `coverHeight` y
 `coverEdgeColor` compartidos con la escena 3D. Una captura se desincroniza en
 cuanto alguien mueve una caja y nadie se entera.
 
+**Bajo el punto de mira gana lo más cercano, siempre.** El tablero de acciones no
+tiene prioridad por ser interfaz: se compara su distancia con la de la diana y la
+del escenario. Cualquier candidato nuevo se suma a esa comparación, nunca delante
+de ella.
+
+**En el aire la marcha se congela.** `currentSpeed` devuelve la del despegue
+mientras `airborne`. Cambiarla a media trayectoria deja el vuelo igual de largo y
+la mitad de recorrido, que se siente como flotar.
+
+**La colisión frena en el sentido del avance, no hacia la cara más cercana**, y a
+quien ya esté dentro de una caja no se le expulsa. Con cajas grandes —la
+plataforma del Balcón ocupa la sala entera— "salir por el lado más próximo" son
+cuarenta unidades de teletransporte.
+
 **El test de visibilidad es de activación, nunca por frame.** Es un raycast
 contra toda la geometría del escenario y no cabe en el presupuesto de un frame.
 Si no hay ningún anclaje visible se reintenta tras `SPAWN.anchorRetryMs`, jamás
@@ -141,7 +155,9 @@ defecto, más **PRÁCTICA LIBRE ∞** sin límite de tiempo con finalización ma
 por zona: cabeza 100 / torso 50 / piernas 34; cono de aparición más ancho y
 distancia variable por muñeco). Modo dinámico opcional: destino aleatorio a
 velocidad constante, con comprobación de separación para evitar solapes.
-Selector de dianas simultáneas x1 / x2 / x3 / x5.
+Selector de dianas simultáneas x1 / x2 / x3 / x5 / x8. **Ojo:** con cobertura, el
+nivel es un *techo*, no una cantidad — el número real lo pone cuántos anclajes se
+ven desde donde está el jugador (en el Plano A, entre 2 y 6 según la zona).
 
 **Escenarios:** variante activable desde opciones, no reemplazo. *Sala vacía*
 (Gridshot de siempre, muestreo por cono) y **Largo y Puerta**, el primer
@@ -208,6 +224,12 @@ Plano A esté validado jugando.
 a 60 Hz, 1.25 a 240 Hz con `jumpSpeed 6.75`). Por eso **subirse a la cobertura
 `baja` de 1.25 no es una mecánica fiable** y ningún escenario debe depender de
 ella. El bordillo de 0.6 sí se salta en cualquier refresco.
+
+**El salto se siente flotante y está medido, no resuelto.** 746 ms de vuelo, con
+el 45% del tiempo en el quinto superior de la altura. Acortarlo pide subir
+`gravity` y `jumpSpeed` a la vez, lo que **agrava** la dependencia del refresco
+de arriba. Los números y las alternativas están en `docs/decisions.md` §16.7; la
+decisión está pendiente.
 
 ---
 

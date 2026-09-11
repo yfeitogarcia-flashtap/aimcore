@@ -226,17 +226,31 @@ export class Scenario {
    * eje —primero X con la Z vieja, luego Z con la X ya corregida— es lo que
    * hace que rozar un muro deslice en lugar de frenar en seco.
    *
+   * El bloqueo va **en el sentido del avance**, no hacia la cara más cercana.
+   * Sacar al jugador por la cara más próxima parece razonable hasta que la caja
+   * es enorme: la plataforma del Balcón ocupa el ancho entero de la sala, así
+   * que a quien quedara dentro de su huella lo escupía cuarenta unidades de
+   * golpe, contra la pared. Se leía como un teletransporte.
+   *
+   * Por lo mismo, a quien ya estuviera dentro de una caja antes de moverse no
+   * se le empuja: se le deja salir. Un empujón ahí es siempre peor que el
+   * problema que arregla.
+   *
    * @param {'x'|'z'} axis
-   * @param {number} value posición propuesta en ese eje
+   * @param {number} from posición en ese eje antes de moverse
+   * @param {number} to posición propuesta
    * @param {number} other posición en el otro eje
    * @param {number} feetY altura de los pies
    * @param {number} headY altura de la coronilla
    * @returns {number} la posición admitida
    */
-  resolveAxis(axis, value, other, feetY, headY) {
+  resolveAxis(axis, from, to, other, feetY, headY) {
+    const delta = to - from
+    if (delta === 0) return to
+
     const radius = COVER.playerRadius
     const reach = feetY + COVER.stepHeight
-    let resolved = value
+    let resolved = to
 
     for (let i = 0; i < this.boxes.length; i++) {
       const box = this.boxes[i]
@@ -251,11 +265,11 @@ export class Scenario {
 
       if (other + radius <= minB || other - radius >= maxB) continue
       if (resolved + radius <= minA || resolved - radius >= maxA) continue
+      // Ya estaba dentro en este eje antes de moverse: no es un choque.
+      if (from + radius > minA && from - radius < maxA) continue
 
-      // Se sale por el lado más cercano: el que menos corrige.
-      const pushLow = minA - radius
-      const pushHigh = maxA + radius
-      resolved = resolved - pushLow < pushHigh - resolved ? pushLow : pushHigh
+      resolved =
+        delta > 0 ? Math.min(resolved, minA - radius) : Math.max(resolved, maxA + radius)
     }
 
     return resolved

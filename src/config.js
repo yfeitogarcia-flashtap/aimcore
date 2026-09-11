@@ -557,6 +557,12 @@ export const SIMULTANEOUS_TARGETS = {
   x2: { label: 'x2', count: 2 },
   x3: { label: 'x3', count: 3 },
   x5: { label: 'x5', count: 5 },
+  /**
+   * Pensado para escenarios con anclajes: el Plano A tiene trece y con x5 la
+   * mayoría se queda sin usar a la vez. En la sala vacía el cono de aparición
+   * queda muy apretado a este nivel y las dianas se rozan.
+   */
+  x8: { label: 'x8', count: 8 },
 }
 
 /** El mayor valor elegible. Dimensiona el pool de dianas, que no se rehace al cambiar de opción. */
@@ -742,6 +748,28 @@ export const LANDING = {
   dipUnits: 0.09,
   /** Lo que tarda la cámara en volver a su sitio. */
   dipMs: 110,
+
+  /**
+   * Perfil del golpe. Deliberadamente lejos del disparo silenciado de la
+   * Scalar-2, con el que se confundía: aquel es un chasquido con pasa-banda a
+   * 700 Hz y ataque de 2 ms; este es un golpe sordo —onda triangular mucho más
+   * grave, ataque de 12 ms que quita todo el "clic" y una cola cuatro veces más
+   * larga— y el ruido va filtrado tan abajo que suena a suela, no a percutor.
+   */
+  sound: {
+    /** Corte del pasa-bajo del ruido de suela, en Hz. */
+    scuffHz: 190,
+    scuffGain: 0.1,
+    scuffDecay: 0.05,
+    /** Cuerpo: onda triangular que cae en picado. */
+    bodyType: 'triangle',
+    bodyFrom: 90,
+    bodyTo: 34,
+    bodyGain: 0.34,
+    /** Ataque largo: es lo que separa un golpe de un clic. */
+    bodyAttack: 0.012,
+    bodyDecay: 0.2,
+  },
 }
 
 /**
@@ -912,13 +940,18 @@ export const SCENARIOS = {
       { id: 'cajon-3', x: 24, y: 0, z: 11, zone: 'Los Cajones', peek: true },
       { id: 'cajon-4', x: 33, y: 0, z: 10, zone: 'Los Cajones', peek: false },
 
-      // --- Vestíbulo: uno en la boca de cada salida, pasados los extremos de
-      // la divisoria. La banda alrededor del spawn se queda despejada, pero
-      // estos dos tienen que verse **desde el propio spawn**: la divisoria tapa
-      // todo lo que hay de frente, así que sin ellos la sesión arrancaría sin
-      // ninguna diana a la vista hasta que el jugador se moviera.
+      // --- Vestíbulo. Los dos tienen que verse **desde el propio spawn**: la
+      // divisoria tapa todo lo que hay de frente, así que sin ellos la sesión
+      // arrancaría sin ninguna diana a la vista hasta que el jugador se moviera.
+      //
+      // El este estaba en la boca de salida, en x 22, y quedaba **detrás del
+      // tablero de acciones** —que ocupa de x 18 a la pared—: una diana pegada a
+      // un botón hace imposible pulsarlo. Se movió al otro lado del tablero y
+      // por detrás del spawn, donde está a 10 u de la pizarra y a 41° de ella
+      // vista desde el punto de aparición. De paso obliga a girarse, que en un
+      // aim trainer no sobra.
       { id: 'vestibulo-o', x: -12, y: 0, z: 22.7, zone: 'Vestíbulo', peek: false },
-      { id: 'vestibulo-e', x: 22, y: 0, z: 23, zone: 'Vestíbulo', peek: false },
+      { id: 'vestibulo-e', x: 8, y: 0, z: 35, zone: 'Vestíbulo', peek: false },
     ],
   },
 }

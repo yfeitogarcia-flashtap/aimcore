@@ -194,7 +194,10 @@ export class ActionPanel {
   raycast(raycaster) {
     if (this._activeMeshes.length === 0) return null
     const hits = raycaster.intersectObjects(this._activeMeshes, false)
-    return hits.length > 0 ? hits[0].object.userData.buttonId : null
+    if (hits.length === 0) return null
+    // La distancia sale de aquí para que el motor pueda decidir por proximidad
+    // entre el tablero y lo que haya por delante.
+    return { buttonId: hits[0].object.userData.buttonId, distance: hits[0].distance }
   }
 
   dispose() {

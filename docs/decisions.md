@@ -901,6 +901,133 @@ cambia, y `_applySettings` la salta si hay una transición en curso. Es la misma
 lección que el orden del constructor (§13.2): aplicar configuración va **después**
 de que exista lo que esa configuración toca.
 
+## Ronda 16 — Lo que salió de jugar el Plano A
+
+Primera tanda de arreglos venidos de jugar en serio, no de leer el código.
+
+### 16.1 El panel ganaba por orden de comprobación, no por distancia
+
+`_onMouseDown` preguntaba al panel **antes que a nada**, y si el rayo tocaba el
+tablero en cualquier punto, ahí acababa el click. Con una diana delante de un
+botón, la diana era literalmente inmatable.
+
+Ahora el tablero sólo se acciona si es **lo más cercano bajo el punto de mira**:
+se compara su distancia con la del impacto en diana más próximo y con la
+geometría del escenario. Gana el más cercano, sin privilegios.
+
+*Detalle deliberado:* la comparación usa el rayo **limpio** de la cámara, no el
+desviado por retroceso y dispersión. La pregunta es "a qué está apuntando el
+jugador", y a un botón de interfaz no se le debe fallar por ir corriendo. El
+disparo, si gana la diana, sigue usando el rayo desviado como siempre.
+
+### 16.2 El este del Vestíbulo es del tablero
+
+El anclaje `vestibulo-e` estaba en x 22, y el tablero ocupa de x 18 a la pared:
+la diana salía **detrás** de la pizarra. Aunque §16.1 arregla quién gana el
+click, una diana pegada a un botón sigue haciendo imposible pulsarlo.
+
+Se movió a (8, 35): al otro lado del tablero, a 10 u de su volumen y a 41° de él
+visto desde el spawn. Queda **detrás del punto de aparición**, así que obliga a
+girarse — en un aim trainer eso no sobra.
+
+*Lo que se descartó:* llevarlo más al sur del Vestíbulo. Todo lo que está de
+frente al spawn lo tapa la divisoria, así que habría dejado de verse al arrancar
+la sesión y el primer disparo de cada partida sería siempre al mismo sitio
+(§14.10). El este de esa banda, sencillamente, no da para anclajes mientras el
+tablero esté ahí.
+
+### 16.3 Agacharse en el aire frenaba a la mitad
+
+`currentSpeed` devolvía `crouchSpeed` estuvieras donde estuvieras. Pulsar CTRL a
+media trayectoria bajaba la velocidad horizontal de 6.5 a 2.6 de golpe: **el
+vuelo duraba lo mismo (746 ms) pero recorrías la mitad** (4.07 u → 2.07 u). Eso
+es exactamente lo que se siente como quedarse flotando a cámara lenta.
+
+La marcha ahora **se congela al despegar** y se mantiene hasta tocar suelo, tanto
+si se salta como si se sale andando de un borde. Es además lo que hacen los
+shooters: en el aire llevas la inercia que traías, no la que pidas.
+
+Agacharse en el aire sigue bajando la cámara, que es su otro trabajo.
+
+### 16.4 La colisión expulsaba a quien quedara dentro de una caja
+
+Bajarse del Balcón cerca del borde teletransportaba al jugador contra la pared.
+
+`resolveAxis` sacaba al jugador **por la cara más cercana de la caja**. Parece
+razonable hasta que la caja es enorme: la plataforma del Balcón ocupa el ancho
+entero de la sala, así que a quien quedara dentro de su huella a ras de suelo lo
+escupía cuarenta unidades de golpe. Reproducido barriendo el borde entero: 71 de
+77 posiciones acababan pegadas a la pared.
+
+Dos cambios:
+
+- **El bloqueo va en el sentido del avance**, no hacia la cara más próxima. Si
+  avanzas en +X te paras en la cara mínima; si avanzas en −X, en la máxima. No
+  hay forma de que la corrección sea mayor que el paso que la provocó.
+- **A quien ya estuviera dentro de una caja antes de moverse no se le empuja.**
+  Un empujón ahí es siempre peor que el problema que arregla.
+
+La firma pasó a `resolveAxis(axis, from, to, other, feetY, headY)`: sin saber de
+dónde viene el jugador no se puede saber en qué sentido frenarlo.
+
+### 16.5 El aterrizaje sonaba a disparo silenciado
+
+Los dos perfiles habían convergido sin querer: ruido filtrado corto sobre un
+seno grave que cae. En partida se confundían.
+
+El aterrizaje se rediseñó para alejarse en los tres ejes que distinguen un golpe
+de un chasquido: **onda triangular** en vez de seno, **ataque de 12 ms** en vez
+de 2 —un percutor ataca instantáneo y suena a clic por mucho que se le baje el
+tono—, y **cola cuatro veces más larga** (200 ms contra 55). El ruido de suela
+baja de 320 Hz a 190, que es roce y no percutor.
+
+El perfil vive en `LANDING.sound`, no incrustado en la función.
+
+### 16.6 x8, y lo que x8 significa de verdad con cobertura
+
+Con trece anclajes, el tope de x5 dejaba la mayoría sin usar. Se añadió x8; el
+pool de dianas crece solo porque se dimensiona desde `MAX_SIMULTANEOUS_TARGETS`.
+
+**Lo que hay que saber:** en un escenario con cobertura, x8 no significa ocho
+dianas. Significa *hasta* ocho, y el techo real lo pone cuántos anclajes ves
+desde donde estás. Medido en el Plano A: 2 en el Vestíbulo, 4 en los Cajones, 5
+en El Largo, 6 en La Puerta. Ningún puesto ve los trece, y eso es la cobertura
+haciendo su trabajo, no un fallo. En la sala vacía sí salen las ocho.
+
+### 16.7 El salto: qué se midió y por qué el hundimiento no bastaba
+
+Investigación sin tocar constantes, a petición.
+
+La curva no tiene nada roto: es una parábola limpia y simétrica —371 ms de
+subida, 375 de bajada— con ápice en 1.252 u. El problema no es la forma, es la
+**duración**: 746 ms de vuelo, de los cuales **el 45% se pasa en el 20% superior
+de la altura** y el 28% a menos de 10 cm del punto más alto. Una parábola va más
+lenta justo donde más consciente eres de estar en el aire.
+
+Por eso el hundimiento de aterrizaje no podía arreglarlo: **cubre los últimos
+110 ms de 746**, el 15% final. Era un parche pequeño sobre una superficie grande.
+
+Lo medido para una decisión futura, sin aplicar:
+
+| | ápice | vuelo | desvío 60↔240 Hz |
+|---|---|---|---|
+| actual `g=18, v=6.75` | 1.252 | 746 ms | 3.3% |
+| `g=30, v=8.67` | 1.234 | 575 ms | 4.3% |
+| `g=40, v=10.01` | 1.231 | 500 ms | 5.1% |
+| `g=70, v=13.24` | 1.225 | 375 ms | 6.6% |
+
+Dos conclusiones que conviene no perder:
+
+- **Las proporciones no cambian.** El 45% en el quinto superior y el 28% cerca
+  del ápice salen iguales con cualquier gravedad: una parábola es una parábola.
+  Lo único que se mueve es el tiempo absoluto, que va como 1/√g.
+- **Gravedad asimétrica —subir igual, caer más rápido— apenas sirve.** Ni
+  duplicando la caída se baja de 625 ms, porque la bajada ya es sólo la mitad del
+  vuelo. El acortamiento real exige subir la gravedad de las dos.
+- **Y sale caro por otro lado:** más gravedad agrava la dependencia del refresco
+  del monitor que ya está anotada en `CLAUDE.md`, del 3.3% actual al 6.6% con
+  `g=70`. Antes de tocar la gravedad conviene arreglar el integrador.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
