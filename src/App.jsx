@@ -59,6 +59,7 @@ export default function App() {
         onFrame: (stats) => hudRef.current?.update(stats),
         onShot: () => crosshairRef.current?.flash(),
         onHelp: (text, durationMs) => hudRef.current?.showHelp(text, durationMs),
+        onOpenOptions: () => setOptionsOpen(true),
         onFinish: setSummary,
       })
       engine.start()

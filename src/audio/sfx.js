@@ -164,6 +164,32 @@ export function playDryFire() {
   }
 }
 
+/**
+ * Confirmación de una acción del panel. Un bip corto y limpio, sin ruido ni
+ * cuerpo grave: tiene que oírse como interfaz y no confundirse ni con el
+ * disparo ni con el acierto.
+ */
+export function playUiConfirm() {
+  if (!ctx || !master) return
+  const t = ctx.currentTime
+
+  const osc = ctx.createOscillator()
+  osc.type = 'sine'
+  osc.frequency.setValueAtTime(1460, t)
+  osc.frequency.setValueAtTime(1950, t + 0.035)
+  const gain = ctx.createGain()
+  gain.gain.setValueAtTime(0.0001, t)
+  gain.gain.exponentialRampToValueAtTime(0.2 * AUDIO.hitVolume, t + 0.004)
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.075)
+  osc.connect(gain).connect(master)
+  osc.start(t)
+  osc.stop(t + 0.09)
+  osc.onended = () => {
+    osc.disconnect()
+    gain.disconnect()
+  }
+}
+
 /** Acierto: dos parciales senoidales con subida rápida de tono. Brillante. */
 export function playHit() {
   if (!ctx || !master) return

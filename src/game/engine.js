@@ -12,8 +12,10 @@
  */
 
 import * as THREE from 'three'
+import { CSS3DRenderer } from 'three/examples/jsm/renderers/CSS3DRenderer.js'
 import {
   ACCURACY,
+  ACTION_PANEL,
   CAMERA,
   FRAME_LIMITS,
   MOVEMENT,
@@ -28,8 +30,9 @@ import { createScene } from './scene.js'
 import { LookControls } from './lookControls.js'
 import { MovementController } from './movement.js'
 import { TargetManager } from './targets.js'
-import { initAudio, playDryFire, playHit, playShot } from '../audio/sfx.js'
-import { getSettings, subscribeSettings } from '../settings.js'
+import { initAudio, playDryFire, playHit, playShot, playUiConfirm } from '../audio/sfx.js'
+import { ActionPanel } from './actionPanel.js'
+import { getSettings, subscribeSettings, updateSettings } from '../settings.js'
 
 /** Centro exacto de la pantalla: el crosshair no se mueve, así que es constante. */
 const SCREEN_CENTER = new THREE.Vector2(0, 0)
@@ -116,6 +119,19 @@ export class Engine {
       anchoredAxis: MOVEMENT.enabled,
     })
     this.raycaster = new THREE.Raycaster()
+
+    // Capa CSS3D: escena propia y renderizador propio, montados sobre el
+    // canvas y con los eventos de puntero desactivados —el panel se dispara,
+    // no se pulsa—.
+    this.cssScene = new THREE.Scene()
+    this.cssRenderer = new CSS3DRenderer()
+    const cssElement = this.cssRenderer.domElement
+    cssElement.className = 'app__css3d'
+    this.actionPanel = new ActionPanel(this.scene, this.cssScene)
+    /** Última activación del panel, para el antirrebote. */
+    this._lastPanelActionAt = -Infinity
+    /** Si la pulsación en curso ya se gastó en el panel, no dispara. */
+    this._triggerConsumedByPanel = false
 
     this.phase = PHASE.IDLE
     this.durationMs = SESSION_DURATION_S * 1000
@@ -207,6 +223,9 @@ export class Engine {
 
     this._unsubscribeSettings = subscribeSettings((settings) => this._applySettings(settings))
 
+    const parent = this.canvas.parentElement
+    if (parent) parent.appendChild(this.cssRenderer.domElement)
+
     this._resizeObserver = new ResizeObserver(this._onResize)
     this._resizeObserver.observe(this.canvas.parentElement || this.canvas)
     this._onResize()
@@ -229,6 +248,8 @@ export class Engine {
     if (this._unsubscribeSettings) this._unsubscribeSettings()
     if (this._resizeObserver) this._resizeObserver.disconnect()
     if (document.pointerLockElement === this.canvas) document.exitPointerLock()
+    this.actionPanel.dispose()
+    this.cssRenderer.domElement.remove()
     this.targets.dispose()
     this._disposeScene()
     this.renderer.dispose()
@@ -299,6 +320,11 @@ export class Engine {
       this._cancelReload()
       this._refillMagazine()
     }
+    this.actionPanel.update({
+      weaponLabel: this.weapon.label,
+      suppressorSupported: this.weapon.supportsSuppressor,
+      suppressorEnabled: this.suppressorEnabled,
+    })
     const hadSession = this.targets.sessionActive
     this.targets.configure(settings)
     if (hadSession) this.targets.beginSession(this.camera, performance.now())
@@ -437,6 +463,14 @@ export class Engine {
     this._triggerHeld = true
     const now = performance.now()
 
+    // El panel se comprueba antes que nada: darle a un botón es accionarlo,
+    // no disparar. No cuenta como acierto ni como fallo, no gasta munición y
+    // no mueve la cámara.
+    if (this._tryPanelAction(now)) {
+      this._triggerConsumedByPanel = true
+      return
+    }
+
     // Con el cargador vacío el gatillo suena en seco, una vez por pulsación:
     // el fuego automático no repite el clic, que sería insufrible.
     if (!this.reloading && this.ammo <= 0) {
@@ -462,7 +496,57 @@ export class Engine {
   /** Suelta el gatillo y deja el patrón de retroceso listo para otra ráfaga. */
   _releaseTrigger() {
     this._triggerHeld = false
+    this._triggerConsumedByPanel = false
     this._sprayIndex = 0
+  }
+
+  /**
+   * Raycast propio contra el panel de acciones, sin pasar por nada del arma.
+   * Usa la mira limpia: la dispersión por movimiento desvía balas, no la
+   * intención de pulsar un botón.
+   *
+   * @returns {boolean} si la pulsación se ha gastado en el panel
+   */
+  _tryPanelAction(now) {
+    if (now - this._lastPanelActionAt < ACTION_PANEL.cooldownMs) return false
+    this.camera.updateMatrixWorld()
+    this.raycaster.setFromCamera(SCREEN_CENTER, this.camera)
+    const buttonId = this.actionPanel.raycast(this.raycaster)
+    if (!buttonId) return false
+
+    this._lastPanelActionAt = now
+    playUiConfirm()
+    this._runPanelAction(buttonId)
+    return true
+  }
+
+  _runPanelAction(buttonId) {
+    switch (buttonId) {
+      case 'pause':
+        // Mismo camino que Escape: soltar el ratón pausa el cronómetro.
+        if (this.isLocked) document.exitPointerLock()
+        break
+      case 'restart':
+        // Ya estamos capturados, así que la sesión arranca aquí mismo en vez
+        // de esperar al evento de pointerlock.
+        this._beginSession()
+        break
+      case 'weapon': {
+        const keys = Object.keys(WEAPONS)
+        const next = keys[(keys.indexOf(this.weaponKey) + 1) % keys.length]
+        updateSettings({ weapon: next })
+        break
+      }
+      case 'suppressor':
+        updateSettings({ suppressor: !getSettings().suppressor })
+        break
+      case 'options':
+        if (this.isLocked) document.exitPointerLock()
+        this.callbacks.onOpenOptions?.()
+        break
+      default:
+        break
+    }
   }
 
   /**
@@ -581,6 +665,7 @@ export class Engine {
     this.camera.aspect = width / height
     this.camera.updateProjectionMatrix()
     this.renderer.setSize(width, height, false)
+    this.cssRenderer.setSize(width, height)
   }
 
   _loop(now) {
@@ -609,7 +694,9 @@ export class Engine {
         this.movement.update(delta / 1000)
         // Fuego automático: como mucho un disparo por frame. A 60 Hz eso son
         // 3600 RPM de techo, muy por encima de cualquier arma del roster.
-        if (this._triggerHeld && this.weapon.mode === 'auto') this._tryShoot(now)
+        if (this._triggerHeld && !this._triggerConsumedByPanel && this.weapon.mode === 'auto') {
+          this._tryShoot(now)
+        }
       }
     }
 
@@ -617,8 +704,10 @@ export class Engine {
     // pero los pops en curso siguen apagándose porque van con `now`.
     const targetDelta = this.phase === PHASE.RUNNING ? delta / 1000 : 0
     this.targets.update(now, targetDelta, this.camera)
+    this.actionPanel.syncLayout()
     this._publishStats()
     this.renderer.render(this.scene, this.camera)
+    this.cssRenderer.render(this.cssScene, this.camera)
   }
 
   /**

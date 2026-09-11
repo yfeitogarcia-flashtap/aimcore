@@ -63,6 +63,74 @@ body {
   height: 100%;
 }
 
+/*
+ * Capa CSS3D sobre el canvas. Queda por encima de la escena pero por debajo
+ * del HUD y de los overlays, y no recibe eventos de puntero: el panel se
+ * acciona a tiros, no con el cursor.
+ */
+.app__css3d {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* ---------- Panel de acciones rápidas ---------- */
+
+.action-panel {
+  display: flex;
+  align-items: stretch;
+  gap: 20px;
+  box-sizing: border-box;
+  padding: 30px;
+  border: 3px solid var(--panel-border);
+  background: rgba(10, 10, 10, 0.82);
+  font-family: var(--font-mono);
+}
+
+.action-panel__button {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 0 10px;
+  border: 3px solid var(--action-color);
+  color: var(--action-color);
+  text-align: center;
+}
+
+.action-panel__label {
+  font-size: 44px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.action-panel__value {
+  font-size: 28px;
+  letter-spacing: 0.04em;
+  white-space: nowrap;
+  color: var(--text-muted);
+}
+
+/* Sin valor que mostrar, la línea no debe reservar sitio. */
+.action-panel__value:empty {
+  display: none;
+}
+
+/* Silenciador puesto: el botón se rellena, como los de acción del modal. */
+.action-panel__button--on {
+  background: var(--action-color);
+  color: var(--background-color);
+}
+
+.action-panel__button--on .action-panel__value {
+  color: var(--background-color);
+}
+
 .app__canvas {
   display: block;
   width: 100%;
@@ -73,6 +141,7 @@ body {
 /* ---------- HUD ---------- */
 
 .hud {
+  z-index: 2;
   position: absolute;
   top: 24px;
   left: 50%;
@@ -114,6 +183,7 @@ body {
 
 /* Contador de FPS: presente pero fuera del paso, en la esquina del HUD. */
 .hud__fps {
+  z-index: 2;
   position: absolute;
   top: 26px;
   right: 28px;
@@ -137,6 +207,7 @@ body {
 /* ---------- Arma y cargador ---------- */
 
 .hud__weapon {
+  z-index: 2;
   position: absolute;
   right: 28px;
   bottom: 26px;
@@ -156,8 +227,9 @@ body {
 
 /* Sólo contorno: mismo gris y mismo grosor que el resto del HUD. */
 .weapon__svg {
-  width: 156px;
-  height: 60px;
+  /* Proporción del encuadre común que genera scripts/trace-weapons.mjs. */
+  width: 164px;
+  height: 71px;
   fill: none;
   stroke: var(--text-muted);
   stroke-width: 1.5;
@@ -224,7 +296,7 @@ body {
 
 .hud__reload-track {
   display: block;
-  width: 156px;
+  width: 164px;
   height: 2px;
   background: var(--panel-border);
 }
@@ -250,6 +322,7 @@ body {
 /* ---------- Crosshair ---------- */
 
 .crosshair {
+  z-index: 2;
   position: absolute;
   left: 50%;
   top: 50%;
@@ -308,6 +381,7 @@ body {
 /* ---------- Overlays ---------- */
 
 .overlay {
+  z-index: 2;
   position: absolute;
   inset: 0;
   display: flex;
@@ -378,6 +452,10 @@ body {
   align-items: stretch;
   min-width: 460px;
   text-align: left;
+  /* Con tantas filas, en pantallas bajas el panel no cabía y quedaban fuera
+     tanto los primeros ajustes como los botones del final. */
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
 }
 
 .panel--options .panel__title {

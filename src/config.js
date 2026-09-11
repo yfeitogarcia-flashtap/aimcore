@@ -232,6 +232,35 @@ export const WEAPON_KEYS = {
   reload: ['KeyR'],
 }
 
+/**
+ * Panel de acciones rápidas: un tablero dentro de la sala que se acciona a
+ * tiros, sin gesto para abrirlo.
+ *
+ * Se dibuja con CSS3DRenderer —es DOM de verdad colocado en el espacio— para
+ * reutilizar la tipografía y el verde de marca sin repintarlos en WebGL. Va
+ * pegado a la pared derecha, fuera del abanico de aparición de las dianas, y a
+ * una altura desde la que se ve girando la cabeza sin buscarlo.
+ */
+export const ACTION_PANEL = {
+  /** Tamaño del tablero en píxeles CSS. */
+  widthPx: 1800,
+  heightPx: 340,
+  /**
+   * Unidades de mundo por píxel CSS. Con la sala a 80 de ancho, la pared queda
+   * lejos: el tablero tiene que ser grande para leerse desde el centro.
+   */
+  scale: 0.023,
+  /** Altura del centro del tablero sobre el suelo. */
+  height: 5,
+  /** Separación respecto a la pared, para que no haga z-fighting con la grilla. */
+  wallOffset: 0.6,
+  /**
+   * Antirrebote entre activaciones. Sin esto, mantener el gatillo sobre un
+   * botón con un arma automática lo repetiría a 600 RPM.
+   */
+  cooldownMs: 280,
+}
+
 /** Mensajes de ayuda del HUD. */
 export const HELP = {
   /** Fracción del cargador por debajo de la cual se avisa de que toca recargar. */

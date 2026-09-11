@@ -263,15 +263,34 @@ Abajo a la derecha, el bloque del arma: silueta, nombre, cargador `actual/máxim
 y, durante la recarga, una barra de progreso. Cuando el cargador baja de
 `HELP.lowAmmoRatio` (20%) el contador parpadea en naranja.
 
-Las siluetas son SVG trazados a mano sobre las referencias de
-`Reference/Weapons/`, sólo contorno, sin relleno y con el mismo gris y grosor
-que el resto del HUD. **Las imágenes son sólo guía**: no se importan, no se
-empaquetan y no llegan al navegador —el `dist/` no contiene ni un PNG—. El
-cañón mira a la izquierda, como en las referencias.
+Las siluetas **no están dibujadas a mano**: se vectorizan con potrace a partir
+de las referencias recortadas de `Reference/Weapons/` (ver abajo). Se dibujan
+sólo a trazo, sin relleno, con el mismo gris y grosor que el resto del HUD.
 
-Scalar-2 tiene dos variantes, con y sin el cilindro del silenciador, y cambia
-con el interruptor. La versión sin silenciador no tiene referencia: es la misma
-pistola con la boca al ras de la corredera.
+Scalar-2 tiene dos variantes y cambia con el interruptor del silenciador. La
+referencia está fotografiada **con** silenciador, así que el trazado real es el
+silenciado; la versión corta se deriva de él comprimiendo la zona del cañón, no
+redibujándola.
+
+### Vectorizar las siluetas
+
+```bash
+npm run trace:weapons
+```
+
+`scripts/trace-weapons.mjs` es un script puntual —**no forma parte del build**—
+que lee cada PNG de `Reference/Weapons/`, lo vectoriza y escribe
+`src/ui/weaponPaths.js`. Lo que se versiona es esa salida, de modo que ni
+potrace ni las imágenes llegan al navegador: `dist/` no contiene ni un PNG.
+
+Las referencias vienen con el arma recortada sobre fondo transparente, así que
+la máscara que recibe potrace sale del **canal alfa** —opaco es arma,
+transparente es fondo—. Es un umbral exacto y no una lectura del color, y por
+eso el contorno es el del recorte y no una interpretación de la forma.
+
+Las cuatro entradas comparten el tamaño de `viewBox` y sólo cambian de origen,
+así que conservan su tamaño relativo: la pistola no se ve tan larga como el
+fusil.
 
 ### Mensajes de ayuda
 
@@ -280,6 +299,34 @@ Avisos breves que aparecen junto al bloque del arma y se retiran solos pasados
 hoy hay un solo uso: *Pulsa R para recargar*, que salta una vez por cargador al
 bajar del umbral, y otra vez si se aprieta el gatillo en vacío. El interruptor
 **Mensajes de ayuda** del panel los apaga, y con ellos el parpadeo del contador.
+
+## Panel de acciones rápidas
+
+Un tablero dentro de la sala, pegado a la pared derecha y fuera del abanico de
+aparición de las dianas. No hay gesto para abrirlo: está siempre ahí y se
+acciona **disparándole**. Cinco botones: Pausa, Reiniciar, Arma (cicla el
+roster), Silenciador y Opciones, que abre el modal 2D de siempre. El de
+silenciador desaparece —y con él su blanco— cuando el arma no lo admite.
+
+Se dibuja con `CSS3DRenderer`: es DOM de verdad colocado en el espacio y
+sincronizado con la misma cámara que el `WebGLRenderer`, lo que permite
+reutilizar la tipografía y el verde de marca sin repintarlos en WebGL. Lo que
+se dispara son planos invisibles en la escena WebGL, colgados de un grupo con
+la misma transformación que el tablero; compartir transformación es lo que
+mantiene alineados el dibujo y el blanco sin repetir la trigonometría. Los
+planos se colocan leyendo la caja real de cada botón ya maquetado, así que el
+blanco sigue al diseño aunque cambien los estilos.
+
+El raycast del panel es independiente del de las dianas y se comprueba antes:
+darle a un botón **no cuenta como acierto ni como fallo, no gasta munición y no
+mueve la cámara**, y tiene su propio sonido de confirmación —un bip corto, sin
+ruido ni cuerpo grave, que no se confunde con el disparo—. Usa la mira limpia:
+la dispersión por movimiento desvía balas, no la intención de pulsar un botón.
+Un antirrebote de `ACTION_PANEL.cooldownMs` evita que mantener el gatillo sobre
+un botón lo repita a 600 RPM.
+
+El DOM del panel no recibe eventos de puntero: con el ratón capturado no habría
+clicks, y la única forma de accionarlo es dispararle.
 
 ## Rendimiento
 
@@ -325,6 +372,7 @@ SETTINGS                // valores iniciales y rangos del panel de opciones
 TARGET_TYPES            // formas, daño por zona y distancia base de cada tipo
 TARGET.maxHealth        // vida por diana
 TARGET.maxActive        // tope de dianas vivas en modo acumulativo
+ACTION_PANEL            // tamaño, escala, sitio y antirrebote del panel
 WEAPON_KEYS             // teclas de acción del arma (R para recargar)
 HELP.lowAmmoRatio       // umbral de aviso de munición baja
 HELP.messageDurationMs  // cuánto dura un aviso en pantalla
@@ -443,6 +491,15 @@ cuesta ~0.1 ms por frame en p99, frente a los 4.17 ms de presupuesto a 240 Hz.
   mismo muestreo que las apariciones, así que anclar el hitbox al suelo ya
   basta para que sólo se mueva en horizontal: no hay una restricción de ejes
   escrita aparte que pueda desincronizarse.
+- **Las siluetas se vectorizan, no se dibujan.** La vuelta anterior las trazó
+  a ojo y no eran fieles. Sacarlas del canal alfa del recorte quita de en medio
+  mi interpretación de la forma.
+- **El panel se dibuja en DOM y se dispara en WebGL.** Son dos mitades con la
+  misma transformación en lugar de una sola: CSS3D da los estilos ya escritos,
+  y el raycast necesita geometría de verdad. La contrapartida conocida es que
+  el DOM se pinta siempre por delante de la escena, así que una diana entre la
+  cámara y el tablero quedaría tapada por él; está en la pared lateral y fuera
+  del abanico de aparición justamente para que no pase.
 - **El verde de marca sólo viste botones de acción.** JUGAR, REANUDAR,
   REINICIAR y VOLVER. El naranja sigue siendo el acento de la interfaz y el HUD
   se queda en blanco y gris: tres colores con tres trabajos distintos.
