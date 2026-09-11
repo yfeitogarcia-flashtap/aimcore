@@ -3,9 +3,10 @@ import { WEAPONS } from '../config.js'
 /**
  * Silueta del arma para el HUD: perfil lateral, sólo contorno, sin relleno.
  *
- * Son trazos dibujados a mano en un `viewBox` común, con el cañón a la
- * derecha, para que las tres se lean a la misma escala y con el mismo peso de
- * línea que el resto del HUD. No hay imágenes de por medio: el color y el
+ * Trazadas a mano sobre las referencias de `Reference/Weapons/`, en un
+ * `viewBox` común y con el cañón a la izquierda como en ellas, para que las
+ * tres se lean a la misma escala y con el mismo peso de línea que el resto del
+ * HUD. Las imágenes son sólo guía: no se importan ni se envían al navegador. No hay imágenes de por medio: el color y el
  * grosor los hereda del CSS, así que la silueta acompaña a cualquier cambio de
  * paleta sin tocar este archivo.
  *
@@ -14,44 +15,51 @@ import { WEAPONS } from '../config.js'
  * emborrona.
  */
 const SILHOUETTES = {
+  // Perfil de fusil de asalto: bocacha, alza de torreta, tubo de gas sobre el
+  // guardamanos, cargador curvo hacia el cañón, empuñadura inclinada y culata
+  // fija descendente.
   'axis-7': [
-    // Culata, cajón con riel, guardamanos y cañón largo.
-    'M 4 17 L 44 13 L 44 10 L 72 10 L 72 14 L 106 15 L 106 18 L 134 18 L 134 22',
-    'L 106 22 L 106 25 L 84 25 L 84 28 L 78 28 L 74 41 L 64 41 L 66 28',
-    'L 54 28 L 46 42 L 37 42 L 42 28 L 20 28 L 4 26 Z',
+    'M 4 19 L 16 19 L 16 21 L 26 21 L 26 12 L 31 12 L 31 21 L 43 21',
+    'L 43 16 L 52 16 L 52 18 L 72 18 L 72 15 L 80 15 L 80 13 L 118 13',
+    'L 157 25 L 157 35 L 133 35 L 128 48 L 118 48 L 122 31 L 107 31',
+    // Cargador curvo hacia delante: el rasgo más reconocible del arquetipo.
+    'Q 104 44 96 55 L 84 55 Q 85 42 88 31 L 80 31 L 80 29 L 52 29 L 52 27 L 43 27',
+    'L 43 25 L 16 25 L 16 27 L 4 27 Z',
     // Guardamonte.
-    'M 54 28 Q 55 34 61 33',
+    'M 107 31 Q 109 39 116 37',
   ].join(' '),
 
+  // Subfusil de polímero: riel corrido, empuñadura vertical delantera,
+  // cargador recto y culata plegable de esqueleto.
   'vertex-9': [
-    // Compacta: cajón corto, cargador largo y recto, cañón mínimo.
-    'M 6 18 L 22 16 L 40 16 L 40 12 L 62 12 L 62 16 L 88 17 L 88 19 L 106 19 L 106 23',
-    'L 88 23 L 88 26 L 74 26 L 74 29 L 68 29 L 66 46 L 55 46 L 57 29',
-    'L 48 29 L 41 41 L 32 41 L 36 29 L 22 29 L 6 27 Z',
-    // Varilla de la culata plegable.
-    'M 6 21 L 2 21 M 6 24 L 2 24',
+    'M 6 23 L 18 23 L 18 19 L 30 19 L 30 13 L 88 13 L 88 19 L 100 19',
+    'L 100 34 L 92 34 L 86 51 L 75 51 L 79 34 L 68 34 L 66 57 L 50 57',
+    'L 52 34 L 18 34 L 18 27 L 6 27 Z',
+    // Empuñadura vertical delantera.
+    'M 26 34 L 39 34 L 39 51 L 26 51 Z',
+    // Culata plegable: marco abierto, no una pieza maciza.
+    'M 100 21 L 146 21 L 152 27 L 152 33 L 146 39 L 100 39 L 100 36 L 144 36',
+    'L 148 32 L 148 28 L 144 24 L 100 24 Z',
     // Guardamonte.
-    'M 48 29 Q 49 35 55 34',
+    'M 79 34 Q 81 42 88 40',
   ].join(' '),
 
-  // Scalar-2 con silenciador: el cilindro gordo por delante del cañón.
+  // Pistola con silenciador: el cilindro es mucho más grueso que la corredera
+  // y sale muy por delante de ella.
   'scalar-2-suppressed': [
-    'M 8 19 L 34 17 L 34 14 L 58 14 L 58 17 L 84 18 L 84 20 L 92 20',
-    'L 92 15 L 128 15 L 128 25 L 92 25 L 92 22 L 84 22 L 84 25 L 70 25',
-    'L 70 28 L 64 28 L 62 42 L 52 42 L 54 28 L 46 28 L 39 41 L 30 41 L 34 28 L 8 27 Z',
-    // Junta del silenciador.
-    'M 96 15 L 96 25',
-    // Guardamonte.
-    'M 46 28 Q 47 34 53 33',
+    'M 78 16 L 126 15 L 126 12 L 138 12 L 138 22 L 132 22 L 143 54 L 127 57',
+    'L 119 34 L 116 34 L 116 39 Q 110 41 106 34 L 103 34 L 103 30 L 78 30 Z',
+    // Cilindro del silenciador y su junta.
+    'M 6 13 L 77 13 L 77 33 L 6 33 Z',
+    'M 71 13 L 71 33',
   ].join(' '),
 
-  // Sin silenciador: mismo cuerpo, cañón corto y sin cilindro.
+  // Sin silenciador: misma pistola, cañón al ras de la corredera.
   'scalar-2': [
-    'M 8 19 L 34 17 L 34 14 L 58 14 L 58 17 L 84 18 L 84 20 L 98 20 L 98 23',
-    'L 84 23 L 84 25 L 70 25 L 70 28 L 64 28 L 62 42 L 52 42 L 54 28',
-    'L 46 28 L 39 41 L 30 41 L 34 28 L 8 27 Z',
-    // Guardamonte.
-    'M 46 28 Q 47 34 53 33',
+    'M 78 16 L 126 15 L 126 12 L 138 12 L 138 22 L 132 22 L 143 54 L 127 57',
+    'L 119 34 L 116 34 L 116 39 Q 110 41 106 34 L 103 34 L 103 30 L 78 30 Z',
+    // Boca del cañón, asomando apenas de la corredera.
+    'M 74 19 L 78 19 M 74 27 L 78 27 M 74 19 L 74 27',
   ].join(' '),
 }
 
@@ -68,7 +76,7 @@ export default function WeaponSilhouette({ weaponKey, suppressed = false }) {
 
   return (
     <div className="weapon" aria-label={WEAPONS[weaponKey]?.label}>
-      <svg className="weapon__svg" viewBox="0 0 140 50" role="presentation">
+      <svg className="weapon__svg" viewBox="0 0 160 62" role="presentation">
         <path d={path} />
       </svg>
       <span className="weapon__label">{WEAPONS[weaponKey]?.label}</span>

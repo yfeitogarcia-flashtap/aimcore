@@ -263,10 +263,15 @@ Abajo a la derecha, el bloque del arma: silueta, nombre, cargador `actual/máxim
 y, durante la recarga, una barra de progreso. Cuando el cargador baja de
 `HELP.lowAmmoRatio` (20%) el contador parpadea en naranja.
 
-Las siluetas son SVG trazados a mano, sólo contorno, sin relleno y con el mismo
-gris y grosor que el resto del HUD — ninguna imagen de por medio. Scalar-2 tiene
-dos variantes, con y sin el cilindro del silenciador, y cambia con el
-interruptor.
+Las siluetas son SVG trazados a mano sobre las referencias de
+`Reference/Weapons/`, sólo contorno, sin relleno y con el mismo gris y grosor
+que el resto del HUD. **Las imágenes son sólo guía**: no se importan, no se
+empaquetan y no llegan al navegador —el `dist/` no contiene ni un PNG—. El
+cañón mira a la izquierda, como en las referencias.
+
+Scalar-2 tiene dos variantes, con y sin el cilindro del silenciador, y cambia
+con el interruptor. La versión sin silenciador no tiene referencia: es la misma
+pistola con la boca al ras de la corredera.
 
 ### Mensajes de ayuda
 

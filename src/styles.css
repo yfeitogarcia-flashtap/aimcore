@@ -156,8 +156,8 @@ body {
 
 /* Sólo contorno: mismo gris y mismo grosor que el resto del HUD. */
 .weapon__svg {
-  width: 150px;
-  height: 54px;
+  width: 156px;
+  height: 60px;
   fill: none;
   stroke: var(--text-muted);
   stroke-width: 1.5;
@@ -224,7 +224,7 @@ body {
 
 .hud__reload-track {
   display: block;
-  width: 150px;
+  width: 156px;
   height: 2px;
   background: var(--panel-border);
 }
