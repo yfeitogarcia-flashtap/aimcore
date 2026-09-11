@@ -493,6 +493,23 @@ export const ACCURACY = {
 /** Reglas de aparición del modo Gridshot. */
 export const SPAWN = {
   /**
+   * Sesgo hacia delante al elegir anclaje. Sortear entre todos los visibles por
+   * igual hacía que la mitad de las dianas naciera a la espalda, y girarse a
+   * ciegas no es apuntar: es lotería.
+   *
+   * `forwardBiasConeDeg` es la **apertura total** del cono (±la mitad respecto a
+   * la mirada), medida sólo en horizontal: mirar al suelo no debe dejar de
+   * considerar "delante" lo que tienes delante.
+   */
+  forwardBiasConeDeg: 100,
+  /**
+   * Con esta probabilidad se sortea sólo entre los de delante; el resto de las
+   * veces, entre todos los visibles. No es 1 a propósito: una sorpresa
+   * ocasional a la espalda mantiene la atención, siempre que no sea lo normal.
+   */
+  forwardBiasChance: 0.85,
+
+  /**
    * Con anclajes curados, lo que se espera antes de reintentar cuando ninguno
    * está visible desde donde está el jugador. Sin esta espera el motor volvería
    * a comprobar visibilidad en cada frame, que es justo lo que no debe hacer.
@@ -981,25 +998,98 @@ export const SCENARIOS = {
       { id: 'pasillo', x: 16, y: 0, z: -22, zone: 'Pasillo trasero' },
     ],
 
+    /**
+     * Grupos de patrulla para los muñecos con movimiento dinámico.
+     *
+     * **Cada par de puntos de un mismo grupo está verificado como alcanzable en
+     * línea recta**, sin cruzar cobertura y sin salirse del nivel de suelo. Eso
+     * es lo que permite caminar de cualquiera a cualquiera sin pathfinding: el
+     * muñeco elige otro punto al azar y va, y no hay forma de que se quede
+     * encajado en un muro.
+     *
+     * Los anclajes no son miembros del grupo, son **entradas**: el muñeco nace
+     * en su anclaje y de ahí sale al grupo, así que lo que se verifica es que el
+     * anclaje vea a todos los puntos. Al grupo no se vuelve. Es lo que permite
+     * que las dos troneras del Balcón compartan grupo aunque el parapeto se
+     * interponga entre ellas.
+     *
+     * Un anclaje sin `cluster` da un muñeco quieto, que es el comportamiento de
+     * antes. La geometría manda: donde no hay un conjunto limpio, no hay patrulla.
+     */
+    patrolClusters: {
+      // El Largo. Las tres Media escalonadas parten el carril en bandas de Z
+      // limpias; el grupo vive entero dentro de una de ellas.
+      largo: [
+        { id: 'largo-a', x: -34, z: -12 },
+        { id: 'largo-b', x: -31, z: -16 },
+        { id: 'largo-c', x: -34, z: -16 },
+        { id: 'largo-d', x: -31, z: -11 },
+      ],
+      // Los Cajones van en dos grupos, no en uno: la divisoria Alta parte la
+      // zona en dos bolsas y ninguna recta las cruza. Meterlas en el mismo
+      // conjunto sería prometer un camino que no existe.
+      cajonesOeste: [
+        { id: 'cajon-o-a', x: -8, z: 6 },
+        { id: 'cajon-o-b', x: -2, z: 4 },
+        { id: 'cajon-o-c', x: -9, z: 13 },
+        { id: 'cajon-o-d', x: -12, z: 10 },
+      ],
+      cajonesEste: [
+        { id: 'cajon-e-a', x: 30, z: 11 },
+        { id: 'cajon-e-b', x: 34, z: 13 },
+        { id: 'cajon-e-c', x: 36, z: 17 },
+        { id: 'cajon-e-d', x: 31, z: 15 },
+      ],
+      // La Puerta, ídem: la Espina separa las dos bocas y sólo se cruza por el
+      // hueco, que es demasiado estrecho para garantizar cualquier recta.
+      puertaOeste: [
+        { id: 'puerta-o-a', x: -20, z: 0 },
+        { id: 'puerta-o-b', x: -24, z: 3 },
+        { id: 'puerta-o-c', x: -21, z: 4 },
+        { id: 'puerta-o-d', x: -25, z: -1 },
+      ],
+      puertaEste: [
+        { id: 'puerta-e-a', x: -2, z: -4 },
+        { id: 'puerta-e-b', x: 0, z: -10 },
+        { id: 'puerta-e-c', x: 1, z: -14 },
+        { id: 'puerta-e-d', x: 2, z: -7 },
+      ],
+      // El Balcón: los puntos van **detrás** del parapeto. Las dos troneras
+      // comparten grupo porque cada una lo alcanza por su propio hueco, aunque
+      // entre ellas se interponga el labio del parapeto.
+      balcon: [
+        { id: 'balcon-a', x: -31, y: 'plataforma', z: -37 },
+        { id: 'balcon-b', x: -23, y: 'plataforma', z: -37 },
+        { id: 'balcon-c', x: -27, y: 'plataforma', z: -34 },
+        { id: 'balcon-d', x: -28, y: 'plataforma', z: -38 },
+      ],
+      vestibulo: [
+        { id: 'vest-a', x: -20, z: 28 },
+        { id: 'vest-b', x: -12, z: 32 },
+        { id: 'vest-c', x: -22, z: 34 },
+        { id: 'vest-d', x: -30, z: 30 },
+      ],
+    },
+
     anchors: [
       // --- El Largo: lo lejano, detrás de la cobertura escalonada.
-      { id: 'largo-1', x: -32, y: 0, z: -14, zone: 'El Largo', peek: true },
+      { id: 'largo-1', x: -32, y: 0, z: -14, zone: 'El Largo', peek: true, cluster: 'largo' },
       { id: 'largo-2', x: -20, y: 0, z: -24, zone: 'El Largo', peek: true },
-      { id: 'largo-3', x: -34, y: 0, z: 2, zone: 'El Largo', peek: true },
+      { id: 'largo-3', x: -34, y: 0, z: 2, zone: 'El Largo', peek: true, cluster: 'largo' },
 
       // --- Troneras del Balcón: elevadas, en los huecos del parapeto.
-      { id: 'tronera-o', x: -32, y: 'plataforma', z: -29, zone: 'El Balcón', peek: false },
-      { id: 'tronera-e', x: -22, y: 'plataforma', z: -29, zone: 'El Balcón', peek: false },
+      { id: 'tronera-o', x: -32, y: 'plataforma', z: -29, zone: 'El Balcón', peek: false, cluster: 'balcon' },
+      { id: 'tronera-e', x: -22, y: 'plataforma', z: -29, zone: 'El Balcón', peek: false, cluster: 'balcon' },
 
       // --- Bocas de La Puerta, una a cada lado de la Espina.
-      { id: 'puerta-o', x: -18, y: 0, z: -2, zone: 'La Puerta', peek: false },
-      { id: 'puerta-e', x: -9, y: 0, z: -2, zone: 'La Puerta', peek: false },
+      { id: 'puerta-o', x: -18, y: 0, z: -2, zone: 'La Puerta', peek: false, cluster: 'puertaOeste' },
+      { id: 'puerta-e', x: -9, y: 0, z: -2, zone: 'La Puerta', peek: false, cluster: 'puertaEste' },
 
       // --- Los Cajones: corta distancia, asomada agachado.
-      { id: 'cajon-1', x: -7, y: 0, z: 13, zone: 'Los Cajones', peek: true },
-      { id: 'cajon-2', x: 8, y: 0, z: 2, zone: 'Los Cajones', peek: true },
-      { id: 'cajon-3', x: 24, y: 0, z: 11, zone: 'Los Cajones', peek: true },
-      { id: 'cajon-4', x: 33, y: 0, z: 10, zone: 'Los Cajones', peek: false },
+      { id: 'cajon-1', x: -7, y: 0, z: 13, zone: 'Los Cajones', peek: true, cluster: 'cajonesOeste' },
+      { id: 'cajon-2', x: 8, y: 0, z: 2, zone: 'Los Cajones', peek: true, cluster: 'cajonesOeste' },
+      { id: 'cajon-3', x: 24, y: 0, z: 11, zone: 'Los Cajones', peek: true, cluster: 'cajonesEste' },
+      { id: 'cajon-4', x: 33, y: 0, z: 10, zone: 'Los Cajones', peek: false, cluster: 'cajonesEste' },
 
       // --- Vestíbulo. Los dos tienen que verse **desde el propio spawn**: la
       // divisoria tapa todo lo que hay de frente, así que sin ellos la sesión
@@ -1011,7 +1101,7 @@ export const SCENARIOS = {
       // por detrás del spawn, donde está a 10 u de la pizarra y a 41° de ella
       // vista desde el punto de aparición. De paso obliga a girarse, que en un
       // aim trainer no sobra.
-      { id: 'vestibulo-o', x: -12, y: 0, z: 22.7, zone: 'Vestíbulo', peek: false },
+      { id: 'vestibulo-o', x: -12, y: 0, z: 22.7, zone: 'Vestíbulo', peek: false, cluster: 'vestibulo' },
       { id: 'vestibulo-e', x: 8, y: 0, z: 35, zone: 'Vestíbulo', peek: false },
     ],
   },

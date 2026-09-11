@@ -84,6 +84,12 @@ export class Scenario {
     this.occluders = []
     /** Anclajes de aparición ya resueltos. */
     this.anchors = []
+    /**
+     * Grupos de patrulla por id, con sus puntos ya resueltos. Cada anclaje
+     * apunta al suyo con `cluster`; los que no tienen dan muñecos quietos.
+     * @type {Map<string, Array<{id: string, position: THREE.Vector3}>>}
+     */
+    this.patrolClusters = new Map()
 
     this._build()
     scene.add(this.group)
@@ -178,6 +184,17 @@ export class Scenario {
       this.geometries.push(edgeGeometry)
     }
 
+    const clusters = definition.patrolClusters ?? {}
+    for (const id of Object.keys(clusters)) {
+      this.patrolClusters.set(
+        id,
+        clusters[id].map((point) => ({
+          id: point.id,
+          position: new THREE.Vector3(point.x, coverHeight(point.y ?? 0), point.z),
+        })),
+      )
+    }
+
     for (const anchor of definition.anchors) {
       this.anchors.push({
         id: anchor.id,
@@ -186,6 +203,8 @@ export class Scenario {
         floorY: coverHeight(anchor.y),
         /** ¿Obliga a asomarse a descubierto para tirarle? */
         requiresPeek: Boolean(anchor.peek),
+        /** Grupo de patrulla al que sale este muñeco, o null si se queda quieto. */
+        cluster: anchor.cluster ? this.patrolClusters.get(anchor.cluster) ?? null : null,
         position: new THREE.Vector3(anchor.x, coverHeight(anchor.y), anchor.z),
       })
     }

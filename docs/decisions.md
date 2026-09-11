@@ -1430,6 +1430,107 @@ Se actualizaron los selectores en lugar de borrar las comprobaciones. Una suite
 que se desactiva al primer renombrado deja de vigilar justo cuando más falta
 hace.
 
+## Ronda 22 — Sesgo hacia delante y patrullas por grupo
+
+### 22.0 Dos premisas del encargo que no existían
+
+El encargo pedía "sustituir cualquier ruta declarada de la vuelta anterior" y
+daba por hechos unos "footsteps espaciales ya construidos". **Ninguna de las dos
+cosas existía.** No había rutas, y de los pasos sólo hay una mención en
+`spatial.js` como uso futuro del módulo — `CLAUDE.md` §6 los sigue listando fuera
+de alcance.
+
+Se construyeron los grupos y se dejaron los pasos donde estaban, que además
+habrían sido audio y la vuelta lo excluía explícitamente. Misma lección que la
+ronda 10: cuando falta una entrada, se dice; construir sobre una suposición sale
+más caro que declarar el hueco.
+
+### 22.1 El sorteo uniforme repartía la mitad de las dianas a la espalda
+
+Sortear entre **todos** los visibles trataba igual lo que tienes delante y lo que
+tienes detrás. Medido en el Plano A con el sesgo apagado: **34%** de las
+apariciones caían dentro del cono frontal. Girarse a ciegas no es apuntar.
+
+Ahora, con probabilidad `SPAWN.forwardBiasChance`, el sorteo se restringe a los
+que caen dentro de `SPAWN.forwardBiasConeDeg`; el resto de las veces, al conjunto
+completo. Medido: **93%, 91% y 97%** en los tres puestos donde hay candidatos en
+el cono.
+
+Tres decisiones dentro de eso:
+
+- **El ángulo se mide sólo en horizontal.** Con un cono 3D, mirar al suelo dejaría
+  de considerar "delante" lo que tienes justo delante.
+- **Si no hay ningún candidato visible en el cono, se cae al conjunto completo.**
+  Antes quedarse sin diana que ser fiel al sesgo. Pasa de verdad: desde La Puerta
+  mirando al sur, la Espina tapa todo lo que cae en el cono.
+- **La economía de raycasts se conserva.** Se sigue barajando y cogiendo el
+  primero visible (§14.3), sólo que sobre un subconjunto. El subconjunto se
+  acumula en un `Int32Array` preasignado: elegir sigue sin alocar.
+
+*Medido de paso:* desde el spawn, los dos anclajes del Vestíbulo quedan a 66° y a
+la espalda, así que **la primera diana de cada sesión nunca entra en el cono**.
+Es el momento más visible de la partida y el sesgo no llega. Se deja anotado: la
+colocación de anclajes no era de esta vuelta.
+
+### 22.2 Grupos de puntos, no rutas: cada par verificado
+
+Un muñeco que camina necesita saber que puede llegar. Las dos salidas eran
+pathfinding —caro y complejo para cinco dummies— o **garantizar la premisa**:
+todos los puntos de un grupo mutuamente alcanzables en línea recta.
+
+Con esa garantía, moverse es elegir otro punto al azar y andar. No hay
+comprobaciones en el bucle, no hay atascos posibles y no hay una sola línea de
+navegación.
+
+La verificación es una auditoría geométrica —la misma familia que la de anclajes
+(§14.10)—: se muestrea el segmento cada 0.25 u y se exige (1) que ninguna caja
+corte el cuerpo del muñeco a su altura y (2) que la altura del suelo no cambie,
+lo que impide de paso que un muñeco del Balcón camine por el aire. Con radio de
+0.6 u, que es lo que ocupa. **42 pares y 44 entradas** comprobados.
+
+### 22.3 Los anclajes son entradas al grupo, no miembros
+
+Primer intento: que el anclaje fuera un punto más del grupo. No funciona, y la
+geometría lo dice a gritos: las **dos troneras del Balcón** no se ven entre sí
+—el labio del parapeto se interpone— así que nunca podrían estar en un conjunto
+donde todos los pares están limpios.
+
+La versión correcta: el anclaje es una **entrada**. El muñeco nace ahí, sale al
+grupo y ya no vuelve; lo que hay que verificar es que la entrada ve a todos los
+puntos, no que las entradas se vean entre sí. Con eso las dos troneras comparten
+grupo, cada una entrando por su propio hueco.
+
+### 22.4 La geometría decidió cuántos grupos hay, no el encargo
+
+El encargo pedía "un conjunto por zona". La auditoría dijo que no se podía:
+
+- **Los Cajones** están partidos por una divisoria Alta —puesta ahí en la ronda
+  14 justo para partirlos en dos bolsas—. Ninguna recta las cruza.
+- **La Puerta** tiene la Espina entre sus dos bocas, y el único paso es un hueco
+  de 4 u demasiado estrecho para garantizar cualquier recta.
+
+Así que son **siete grupos para cinco zonas**: `cajonesOeste`/`cajonesEste` y
+`puertaOeste`/`puertaEste` van por separado. Forzar uno por zona habría sido
+prometer un camino que no existe, y el muñeco se habría quedado empotrado contra
+la divisoria en la primera partida.
+
+Por lo mismo, **dos anclajes se quedan sin grupo** (`largo-2` y `vestibulo-e`):
+desde donde están no hay conjunto limpio que los acoja. Dan muñecos quietos, que
+es el comportamiento de siempre. La geometría manda; donde no hay conjunto, no
+hay patrulla.
+
+### 22.5 El plazo del destino se calcula del tramo
+
+`_pickDestination` usaba un tope fijo de `TARGET.moveMaxSeconds` que reelegía
+destino a mitad de camino. Para una patrulla eso rompe la premisa —"al llegar a
+un punto, elige otro"— así que el plazo pasa a salir de la distancia real
+(`distancia / velocidad`, con el doble de margen). Sigue existiendo como red de
+seguridad, pero ya no dispara en uso normal.
+
+Sólo patrullan los muñecos **anclados al suelo**. Una esfera flotante caminando
+entre cajas no tendría ningún sentido, y clásica y cono siguen quietas en
+escenario, como estaban.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

@@ -107,6 +107,20 @@ suelo y si obliga a asomarse, y se sortea **entre los visibles**: se baraja el
 orden y se coge el primero que pase el test de visibilidad, que es un sorteo
 uniforme entre los visibles y de paso ahorra raycasts.
 
+El sorteo va **sesgado hacia delante**: con `SPAWN.forwardBiasChance` se restringe
+a los que caen en el cono de `SPAWN.forwardBiasConeDeg`, medido **sólo en
+horizontal** —mirar al suelo no debe dejar de considerar "delante" lo que tienes
+delante—. Si no hay ninguno visible en el cono, se cae al conjunto completo:
+antes una diana a la espalda que ninguna diana.
+
+**Los muñecos que patrullan lo hacen entre puntos de un grupo cuyos pares están
+verificados** como alcanzables en línea recta. Eso es lo que permite mover sin
+pathfinding: elegir otro punto y andar, sin comprobaciones en el bucle ni atascos
+posibles. Los anclajes son **entradas** al grupo, no miembros —lo que se verifica
+es que la entrada vea todos los puntos, no que las entradas se vean entre sí—.
+Si tocas geometría, **vuelve a pasar la auditoría de pares**: donde no hay
+conjunto limpio, no hay patrulla.
+
 **Lo que se dibuja de unos datos no se guarda como imagen.** La miniatura de
 cada escenario se dibuja en SVG desde `SCENARIOS`, con `coverHeight` y
 `coverEdgeColor` compartidos con la escena 3D. Una captura se desincroniza en
@@ -215,11 +229,16 @@ rampa y parapeto con dos troneras, y un Vestíbulo despejado alrededor del spawn
 Trece anclajes curados. El vocabulario de piezas y la rampa de grises están en
 `COVER`; la geometría, en `SCENARIOS`.
 
+Siete **grupos de patrulla** de 4 puntos cada uno —dos para Los Cajones y dos
+para La Puerta, porque la divisoria y la Espina las parten en bolsas que ninguna
+recta cruza—. Once de los trece anclajes tienen grupo; los otros dos dan muñecos
+quietos.
+
 Con un escenario montado: el jugador **colisiona** contra las cajas (resuelto un
 eje cada vez, con soporte de suelo y rampas), los **disparos se paran en la
-cobertura**, y el **modo dinámico y la distancia de aparición no se aplican** —
-las dianas se quedan en su anclaje porque un destino aleatorio las metería dentro
-de un muro.
+cobertura**, y la **distancia de aparición no se aplica**. El **modo dinámico**
+sólo mueve a los muñecos *hitbox* con grupo de patrulla; clásica y cono se quedan
+en su anclaje, porque un destino aleatorio las metería dentro de un muro.
 
 **Movimiento:** WASD, tres marchas (correr / SHIFT andar / CTRL o C agachado,
 gana la más lenta), salto sin doble salto **resuelto en forma cerrada** —misma

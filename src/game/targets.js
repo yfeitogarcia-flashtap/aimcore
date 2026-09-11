@@ -50,6 +50,8 @@ const _candidate = new THREE.Vector3()
 // Propios del test de visibilidad de anclajes, para no pisar `_candidate`.
 const _anchorProbe = new THREE.Vector3()
 const _direction = new THREE.Vector3()
+// Mirada horizontal del jugador, para el sesgo hacia delante.
+const _viewForward = new THREE.Vector3()
 const _otherDir = new THREE.Vector3()
 const _center = new THREE.Vector3()
 const _motion = new THREE.Vector3()
@@ -147,6 +149,9 @@ export class TargetManager {
     this._visibilityRay = new THREE.Raycaster()
     /** Orden barajado de anclajes. Preasignado: barajar no aloca. */
     this._anchorOrder = new Int32Array(0)
+    /** Subconjunto de los que caen delante del jugador. Mismo tamaño, se llena en parte. */
+    this._forwardOrder = new Int32Array(0)
+    this.cosForwardBias = Math.cos((SPAWN.forwardBiasConeDeg / 2) * DEG_TO_RAD)
 
     this.configure(settings)
   }
@@ -190,6 +195,7 @@ export class TargetManager {
     this._occluders = occluders || []
     if (this._anchorOrder.length !== this.anchors.length) {
       this._anchorOrder = new Int32Array(this.anchors.length)
+      this._forwardOrder = new Int32Array(this.anchors.length)
     }
     for (let i = 0; i < this.anchors.length; i++) {
       this._anchorOrder[i] = i
@@ -264,10 +270,11 @@ export class TargetManager {
         this._updateDying(instance, now)
       } else if (instance.state === 'alive') {
         this._updateFlashes(instance, now)
-        // Con anclajes curados las dianas no se mueven: un destino aleatorio
-        // las metería dentro de un muro y se llevaría por delante el sentido de
-        // la cobertura. El modo dinámico se ignora aquí a propósito.
-        if (this.dynamic && !this.useAnchors && deltaSeconds > 0) {
+        // Con anclajes curados, el muestreo de destinos sigue prohibido —un
+        // punto al azar acabaría dentro de un muro—, pero un muñeco con grupo de
+        // patrulla sí se mueve: entre puntos verificados como alcanzables en
+        // línea recta. Clásica y cono se quedan quietas en escenario.
+        if (this.dynamic && deltaSeconds > 0 && (!this.useAnchors || instance.cluster)) {
           this._updateMotion(instance, deltaSeconds, now, camera)
         }
       }
@@ -361,10 +368,16 @@ export class TargetManager {
       }
       anchor.occupied = true
       instance.anchor = anchor
+      // Sólo patrullan los muñecos que se apoyan en el suelo: una esfera
+      // flotante caminando entre cajas no tendría ningún sentido.
+      instance.cluster = this.anchoredToFloor ? anchor.cluster : null
+      instance.clusterIndex = -1
       _candidate.copy(anchor.position)
       if (!this.anchoredToFloor) _candidate.y += COVER.targetStandY
     } else {
       instance.anchor = null
+      instance.cluster = null
+      instance.clusterIndex = -1
       this._samplePosition(camera, _candidate)
     }
     instance.group.position.copy(_candidate)
@@ -403,25 +416,73 @@ export class TargetManager {
   }
 
   /**
-   * Elige un anclaje libre y **visible** desde la cámara.
+   * Elige un anclaje libre y **visible** desde la cámara, sesgado hacia delante.
    *
-   * Baraja el orden y devuelve el primero que pase el test de visibilidad. Eso
-   * es exactamente un sorteo uniforme entre los visibles —el primer elemento
-   * visible de una permutación uniforme lo es—, y de paso ahorra raycasts: no
-   * hace falta comprobar los 13 para elegir entre ellos, basta con los que se
-   * miran hasta dar con uno.
+   * Sortear entre todos los visibles por igual hacía que la mitad de las dianas
+   * naciera a la espalda, y girarse a ciegas no es apuntar. Con probabilidad
+   * `SPAWN.forwardBiasChance` se sortea sólo entre los que caen dentro del cono
+   * de `SPAWN.forwardBiasConeDeg`; el resto de las veces, entre todos. No es
+   * siempre a propósito: una sorpresa ocasional a la espalda mantiene la
+   * atención, siempre que no sea lo normal.
+   *
+   * Si el grupo de delante no da ninguno visible, se cae al conjunto completo —
+   * antes quedarse sin diana que ser fiel al sesgo.
    */
   _pickAnchor(camera) {
+    if (Math.random() < SPAWN.forwardBiasChance) {
+      const forward = this._collectForward(camera)
+      const picked = this._firstVisible(camera, this._forwardOrder, forward)
+      if (picked) return picked
+    }
+
     const order = this._anchorOrder
-    const count = order.length
-    // Fisher-Yates sobre el array preasignado: no aloca nada.
+    for (let i = 0; i < order.length; i++) order[i] = i
+    return this._firstVisible(camera, order, order.length)
+  }
+
+  /**
+   * Índices de los anclajes que caen delante del jugador, en `_forwardOrder`.
+   *
+   * El ángulo se mide **sólo en horizontal**: mirar al suelo no debe dejar de
+   * considerar "delante" lo que tienes delante.
+   *
+   * @returns {number} cuántos hay
+   */
+  _collectForward(camera) {
+    camera.getWorldDirection(_viewForward)
+    _viewForward.y = 0
+    const length = _viewForward.length()
+    // Mirando en vertical perfecta no hay dirección horizontal que comparar.
+    if (length < 1e-4) return 0
+    _viewForward.multiplyScalar(1 / length)
+
+    let count = 0
+    for (let i = 0; i < this.anchors.length; i++) {
+      const anchor = this.anchors[i]
+      if (anchor.occupied) continue
+      _direction.subVectors(anchor.position, camera.position)
+      _direction.y = 0
+      const distance = _direction.length()
+      if (distance < 1e-4) continue
+      const dot = (_direction.x * _viewForward.x + _direction.z * _viewForward.z) / distance
+      if (dot >= this.cosForwardBias) this._forwardOrder[count++] = i
+    }
+    return count
+  }
+
+  /**
+   * Baraja los `count` primeros índices de `order` y devuelve el primer anclaje
+   * libre y visible. El primer elemento visible de una permutación uniforme
+   * está distribuido uniformemente entre los visibles, así que el sorteo sale
+   * gratis — y de paso ahorra raycasts: se dejan de mirar en cuanto uno acierta.
+   */
+  _firstVisible(camera, order, count) {
     for (let i = count - 1; i > 0; i--) {
       const j = (Math.random() * (i + 1)) | 0
       const tmp = order[i]
       order[i] = order[j]
       order[j] = tmp
     }
-
     for (let i = 0; i < count; i++) {
       const anchor = this.anchors[order[i]]
       if (anchor.occupied) continue
@@ -481,6 +542,11 @@ export class TargetManager {
    * recibe destinos a nivel de suelo y nunca cambia de altura estando viva.
    */
   _pickDestination(instance, camera, now) {
+    if (instance.cluster) {
+      this._pickClusterDestination(instance, now)
+      return
+    }
+
     // El destino que traía sirve de referencia; al sortear se sobrescribe.
     _previousDestination.copy(instance.destination)
 
@@ -506,6 +572,36 @@ export class TargetManager {
     if (!accepted) instance.destination.copy(_bestDestination)
 
     instance.destinationUntil = now + TARGET.moveMaxSeconds * 1000
+  }
+
+  /**
+   * Siguiente punto del grupo de patrulla, distinto del que se acaba de dejar.
+   *
+   * No hace falta comprobar nada: **cada par del grupo está verificado como
+   * alcanzable en línea recta** al definir el escenario, así que cualquier
+   * elección es válida y no hay forma de que el muñeco se encaje en un muro.
+   * Esa verificación es lo que permite prescindir de pathfinding entero.
+   */
+  _pickClusterDestination(instance, now) {
+    const points = instance.cluster
+    if (points.length === 0) return
+
+    let index = (Math.random() * points.length) | 0
+    if (points.length > 1 && index === instance.clusterIndex) {
+      // Un solo salto basta para no repetir, y reparte uniforme entre el resto.
+      index = (index + 1 + ((Math.random() * (points.length - 1)) | 0)) % points.length
+    }
+
+    instance.clusterIndex = index
+    instance.destination.copy(points[index].position)
+
+    // El plazo se calcula del tramo, no es el tope genérico: un muñeco de
+    // patrulla camina **hasta llegar**, y reelegir a mitad de camino rompería
+    // "al llegar a un punto, elige otro". Se deja margen sólo como red de
+    // seguridad, por si algo lo empuja fuera de su recta.
+    const distance = instance.group.position.distanceTo(instance.destination)
+    const travelMs = (distance / TARGET.moveSpeed) * 1000
+    instance.destinationUntil = now + travelMs * 2 + 500
   }
 
   /** Pop de muerte: la diana entera crece y se desvanece. */
@@ -593,6 +689,10 @@ export class TargetManager {
         destinationUntil: 0,
         /** Anclaje que ocupa, si el escenario los usa. */
         anchor: null,
+        /** Grupo de patrulla, si lo hay. Null = se queda donde nace. */
+        cluster: null,
+        /** Punto del grupo hacia el que camina, para no repetirlo al llegar. */
+        clusterIndex: -1,
       }
       for (let p = 0; p < parts.length; p++) parts[p].mesh.userData.instance = instance
 

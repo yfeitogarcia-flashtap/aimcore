@@ -135,7 +135,12 @@ Más claro, más alto, menos se pasa.
 - **Chocas con las estructuras.** Rozar un muro desliza, no frena en seco.
 - **Los disparos se paran en la cobertura.** No se mata a través de un muro.
 - **Las dianas salen en trece sitios fijos**, elegidos a mano por zona, y sólo en
-  los que **ves desde donde estás**. Si no ves ninguno, no sale ninguna: muévete.
+  los que **ves desde donde estás**. La mayoría de las veces salen **hacia donde
+  estás mirando**, no a la espalda — pero no siempre: de vez en cuando aparece
+  una detrás, para que no te acomodes.
+- **Con modo dinámico, los muñecos hitbox patrullan.** Cada uno tiene un grupo de
+  puntos en su zona y va de uno a otro caminando. Los recorridos están
+  verificados de antemano, así que nunca se quedan encajados en un muro. Si no ves ninguno, no sale ninguna: muévete.
   Por eso el selector de dianas simultáneas es un techo y no una cantidad: con x8
   verás entre dos y seis a la vez según la zona en la que estés.
 - **El modo dinámico y la distancia de aparición no se aplican.** Las dianas se
