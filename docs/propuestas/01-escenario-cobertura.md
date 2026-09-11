@@ -234,16 +234,12 @@ pero conviene decidirlas antes de tocar geometría, no durante.
    | 5.00 (antes) | 0.653 | 0.677 | 0.684 |
    | 6.75 (ahora) | 1.210 | 1.242 | 1.252 |
 
-   **Consecuencia:** con 6.75 la cobertura Baja de 1.25 sólo es saltable por
-   encima de ~200 Hz. Para que lo sea también a 60 Hz haría falta **6.91**. Queda
-   pendiente de decidir al construir el escenario, cuando haya geometría real
-   sobre la que posarse.
-
-   **Y queda un problema de fondo:** que la altura del salto dependa del refresco
-   del monitor contradice la convención de `CLAUDE.md` sobre mecánicas
-   temporizadas. Se arregla con paso fijo o integrando el medio paso de gravedad,
-   pero eso es un cambio de motor, no de constante: fuera del alcance de esta
-   vuelta.
+   **Resuelto en la ronda 17** (`docs/decisions.md` §17). La dependencia del
+   refresco venía de integrar la gravedad paso a paso; el salto se calcula ahora
+   en forma cerrada y el ápice es **1.2656 u en cualquier monitor** (desviación
+   0.049% entre 30 y 360 Hz). Con eso la cobertura Baja de 1.25 **sí es saltable
+   de forma fiable**: verificado subiéndose a ella 12 de 12 veces a 60, 144 y
+   240 Hz. La tabla de arriba ya no necesita asterisco.
 5. **El movimiento hoy sólo se recorta contra la sala.** `movement.js` limita X y
    Z contra las paredes y nada más. Con estructuras hace falta colisión contra
    una lista de cajas, resuelta por eje para que rozar una pared no frene al

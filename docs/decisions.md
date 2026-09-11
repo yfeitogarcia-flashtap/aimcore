@@ -1028,6 +1028,93 @@ Dos conclusiones que conviene no perder:
   del monitor que ya está anotada en `CLAUDE.md`, del 3.3% actual al 6.6% con
   `g=70`. Antes de tocar la gravedad conviene arreglar el integrador.
 
+## Ronda 17 — El salto deja de depender del monitor
+
+Sin tocar `gravity` ni `jumpSpeed`: sólo cómo se calcula la trayectoria.
+
+### 17.1 La causa: Euler acumula error, y el error depende del paso
+
+`_updateVertical` integraba paso a paso, que es lo natural de escribir:
+
+```js
+this.verticalVelocity -= MOVEMENT.gravity * dt
+this.feetY += this.verticalVelocity * dt
+```
+
+Eso es Euler semi-implícito. Es estable, pero **no es exacto**, y su error va con
+el tamaño del paso: el mismo salto subía 1.210 u a 60 Hz y 1.252 a 240 Hz, un
+3.3% de diferencia según el monitor que tuvieras delante. Con `gravity` más alta
+—lo que pedía el diagnóstico del flotamiento (§16.7)— la desviación empeoraba
+hasta el 6.6%.
+
+### 17.2 El arreglo: forma cerrada, no integración
+
+La trayectoria de un salto es un movimiento uniformemente acelerado, y eso tiene
+solución analítica. Se guarda el estado del despegue —instante, altura y
+velocidad— y cada frame se **evalúa** la parábola en vez de acumularla:
+
+```js
+this._airTime += dt
+const t = this._airTime
+this.feetY = this._launchY + this._launchVelocity * t - 0.5 * g * t * t
+this.verticalVelocity = this._launchVelocity - g * t
+```
+
+No hay estado que arrastre error: `_airTime` es la única cantidad acumulada y su
+suma es exacta hasta el épsilon del doble. Da igual a qué ritmo se evalúe.
+
+Es la misma idea que ya gobierna la cadencia de disparo desde la ronda 7: **el
+tiempo del juego no puede depender de cuándo dibuja el monitor**. Allí se
+consiguió programando desde el instante en que el disparo tocaba; aquí,
+evaluando la posición desde el instante del despegue.
+
+### 17.3 La velocidad de impacto sale de la energía, no del frame
+
+Un cabo suelto del cambio: si la velocidad de aterrizaje se lee del frame en que
+se detecta el suelo, llega **pasada de largo** y en una cantidad que depende del
+refresco. El golpe sonaría distinto y la cámara se hundiría distinto en cada
+monitor.
+
+Se calcula de la conservación de energía sobre la propia parábola:
+
+```
+v² = v0² + 2·g·(y0 − suelo)
+```
+
+Medido: la fuerza del impacto sale **idéntica bit a bit** entre 60, 144 y 240 Hz,
+tanto saltando como cayéndose del Balcón.
+
+### 17.4 Lo que queda, y por qué no es la física
+
+| | antes | ahora |
+|---|---|---|
+| ápice 60 ↔ 240 Hz | 3.3% | **0.049%** |
+| ápice 30 ↔ 360 Hz | — | **0.049%** |
+| fuerza del impacto | variable | **0%, exacta** |
+| altura contra `y(t)` | error de Euler | **0.00e+0 en todos los frames** |
+
+El 0.049% que queda **no es error de cálculo**: la trayectoria coincide con
+`y(t) = v₀t − ½gt²` con error exactamente cero en cada frame y a cada Hz
+—medido a 30, 60, 90, 144, 165, 240 y 360—. Lo que varía es *dónde caen las
+muestras*: a 60 Hz ningún frame cae justo en el vértice, así que el máximo
+observado se queda corto en ½·g·(dt/2)² = 0.6 mm. Es una limitación de dibujar a
+intervalos, no de la simulación, y no se puede quitar sin renderizar entre
+frames.
+
+Lo mismo vale para el tiempo de vuelo, que sigue cuantizado a un frame: el
+aterrizaje se **detecta** cuando toca dibujar. La trayectoria hasta ahí es
+exacta; el instante en que el jugador se entera, no puede serlo.
+
+### 17.5 Lo que esto desbloquea
+
+El aviso de `CLAUDE.md` sobre no fiarse de saltar a la cobertura `baja` de 1.25
+se cae solo: el ápice es ahora 1.2656 en cualquier monitor, con 1.6 cm de margen
+real y reproducible. **La cobertura Baja pasa a ser saltable de verdad.**
+
+Y el freno que §16.7 ponía a subir la gravedad —que agravaba la dependencia del
+refresco— desaparece: ya no hay dependencia que agravar. La decisión sobre el
+flotamiento vuelve a ser puramente de *feel*.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

@@ -82,12 +82,21 @@ cambiarlo borraría los ajustes de los usuarios existentes.
 disponibles. Todo lo medido hasta ahora se mueve en 0.1–0.2 ms p99. Cualquier
 cambio que se acerque a 1 ms es una regresión aunque "se vea bien".
 
-**Recoil y cadencia se miden desde el instante *programado* del disparo, no
-desde el frame que lo renderiza.** `_nextShotAt` se calcula a partir del momento
-en que el disparo *tocaba*, no de `performance.now()` del frame. Si no se hace
-así, la cadencia queda cuantizada por el refresco del monitor y un arma de 600
-RPM dispara distinto a 60 Hz que a 240 Hz. Lo mismo aplica a cualquier
-mecánica temporizada que se añada.
+**El tiempo del juego no puede depender de cuándo dibuja el monitor.** Se aplica
+en dos sitios y vale para cualquier mecánica temporizada que se añada:
+
+- *Cadencia y recoil*: `_nextShotAt` se calcula desde el instante en que el
+  disparo **tocaba**, no desde `performance.now()` del frame que lo ejecuta. Sin
+  esto un arma de 600 RPM dispara distinto a 60 que a 240 Hz.
+- *Salto*: la vertical **no se integra frame a frame**. Se guarda el estado del
+  despegue y se evalúa la parábola —`y = y0 + v0·t − ½gt²`— desde `_airTime`.
+  Integrar por pasos acumula error de Euler y ese error va con el tamaño del
+  paso. La velocidad de impacto sale de la energía (`v² = v0² + 2g·Δy`), no del
+  frame en que se detecta el suelo, que llega pasado de largo.
+
+**Ojo con las alturas de `COVER`:** el bordillo (0.6) y ahora también la
+cobertura baja (1.25) se saltan; la Media (1.9) sólo se supera subido a un
+bordillo. Si tocas `jumpSpeed` o `gravity`, revisa esa tabla.
 
 **Con cobertura, las dianas salen en anclajes curados, no por muestreo.** Un
 cono no sabe poner una diana en una tronera. Cada anclaje lleva su zona, su
@@ -174,8 +183,9 @@ las dianas se quedan en su anclaje porque un destino aleatorio las metería dent
 de un muro.
 
 **Movimiento:** WASD, tres marchas (correr / SHIFT andar / CTRL o C agachado,
-gana la más lenta), salto con gravedad constante sin doble salto, límites reales
-de la sala con margen de seguridad. Por encima de `ACCURACY.speedThreshold` y
+gana la más lenta), salto sin doble salto **resuelto en forma cerrada** —misma
+trayectoria a cualquier refresco—, límites reales de la sala con margen de
+seguridad. Por encima de `ACCURACY.speedThreshold` y
 siempre en el aire se aplica dispersión de disparo (dirección y magnitud
 aleatorias, sumada al recoil, sin mover la cámara).
 
@@ -220,16 +230,17 @@ encargo no lo pide explícitamente, no se añade.
 de `docs/propuestas/01-escenario-cobertura.md`. No los construyas hasta que el
 Plano A esté validado jugando.
 
-**Aviso sobre el salto:** su altura depende del refresco del monitor (ápice 1.21
-a 60 Hz, 1.25 a 240 Hz con `jumpSpeed 6.75`). Por eso **subirse a la cobertura
-`baja` de 1.25 no es una mecánica fiable** y ningún escenario debe depender de
-ella. El bordillo de 0.6 sí se salta en cualquier refresco.
+**El salto ya no depende del refresco.** Ápice 1.2656 u en cualquier monitor
+(desviación 0.049% entre 30 y 360 Hz, y esa pizca es dónde caen las muestras, no
+la trayectoria). Con `jumpSpeed 6.75` eso deja **1.6 cm de margen sobre la
+cobertura `baja` de 1.25: ya es saltable de forma fiable**. El aviso anterior en
+contra queda anulado.
 
 **El salto se siente flotante y está medido, no resuelto.** 746 ms de vuelo, con
 el 45% del tiempo en el quinto superior de la altura. Acortarlo pide subir
-`gravity` y `jumpSpeed` a la vez, lo que **agrava** la dependencia del refresco
-de arriba. Los números y las alternativas están en `docs/decisions.md` §16.7; la
-decisión está pendiente.
+`gravity` y `jumpSpeed` a la vez; el motivo que había para no hacerlo —que
+empeoraba la dependencia del refresco— ya no aplica. Números y alternativas en
+`docs/decisions.md` §16.7 y §17; la decisión está pendiente y es de *feel*.
 
 ---
 

@@ -123,7 +123,7 @@ El gris dice la altura, y la altura dice lo que puedes hacer:
 | Pieza | Altura | De pie | Agachado |
 |---|---|---|---|
 | Bordillo | 0.60 | no tapa — y te subes de un salto | no tapa |
-| Baja | 1.25 | disparas por encima | te tapa entero |
+| Baja | 1.25 | disparas por encima — y te subes de un salto | te tapa entero |
 | Media | 1.90 | te tapa entero (desde un bordillo, disparas por encima) | te tapa |
 | Alta | 3.60 | corta del todo | corta del todo |
 | Bloque | 4.80 | corta del todo, también desde el Balcón | corta |

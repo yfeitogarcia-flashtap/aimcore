@@ -2,10 +2,22 @@
  * Movimiento del jugador: desplazamiento horizontal, salto y agachado.
  *
  * Cinemática básica, sin motor de físicas: una velocidad horizontal constante
- * y una única integración de la gravedad para el salto. El suelo es y = 0 en la
- * sala vacía; con un escenario montado lo marca su geometría, y el jugador
- * choca contra las cajas resolviendo **un eje cada vez**, que es lo que hace
- * que rozar un muro deslice en lugar de frenar en seco.
+ * y un salto **resuelto en forma cerrada**. El suelo es y = 0 en la sala vacía;
+ * con un escenario montado lo marca su geometría, y el jugador choca contra las
+ * cajas resolviendo **un eje cada vez**, que es lo que hace que rozar un muro
+ * deslice en lugar de frenar en seco.
+ *
+ * El salto **no se integra frame a frame**. Se guarda el instante y el estado
+ * del despegue y cada frame se evalúa la parábola directamente:
+ *
+ *     y(t) = y0 + v0·t - ½·g·t²
+ *     v(t) = v0 - g·t
+ *
+ * Integrar por pasos —restar la gravedad y mover, como hacía antes— acumula el
+ * error del método de Euler, y ese error depende del tamaño del paso: el mismo
+ * salto subía 1.21 u a 60 Hz y 1.25 a 240 Hz, un 3.3% de diferencia según el
+ * monitor. Con la forma cerrada el único residuo es **dónde caen las muestras**,
+ * no la trayectoria, y eso está acotado por ½·g·(dt/2)² — 0.6 mm a 60 Hz.
  *
  * La posición vertical se modela en dos piezas independientes:
  *  - `feetY`, la altura de los pies sobre el suelo, que sólo cambia al saltar.
@@ -61,6 +73,11 @@ export class MovementController {
     this.eyeHeight = MOVEMENT.standHeight
     /** Marcha congelada mientras se está en el aire. Ver `currentSpeed`. */
     this._airSpeed = MOVEMENT.speed
+
+    // Estado del despegue: con esto y el tiempo de vuelo sale toda la parábola.
+    this._airTime = 0
+    this._launchY = 0
+    this._launchVelocity = 0
 
     /** Escenario contra el que se colisiona. Null = sala vacía, suelo en y = 0. */
     this.scenario = null
@@ -173,6 +190,9 @@ export class MovementController {
       : 0
     this.verticalVelocity = 0
     this.airborne = false
+    this._airTime = 0
+    this._launchY = this.feetY
+    this._launchVelocity = 0
     this.eyeHeight = MOVEMENT.standHeight
     this.landingDip = 0
     this._dipFrom = 0
@@ -277,9 +297,7 @@ export class MovementController {
 
     // Salto: sólo desde el suelo, así que no hay doble salto posible.
     if (this.keys.jump && !this.airborne) {
-      this._airSpeed = this.currentSpeed
-      this.verticalVelocity = MOVEMENT.jumpSpeed
-      this.airborne = true
+      this._takeOff(MOVEMENT.jumpSpeed)
     }
 
     if (!this.airborne) {
@@ -289,29 +307,58 @@ export class MovementController {
         this.feetY = ground
         return
       }
-      // Se ha salido de un borde andando: conserva la marcha que llevaba.
-      this._airSpeed = this.currentSpeed
-      this.airborne = true
-      this.verticalVelocity = 0
+      // Se ha salido de un borde andando: cae desde parado.
+      this._takeOff(0)
     }
 
-    this.verticalVelocity -= MOVEMENT.gravity * dt
-    this.feetY += this.verticalVelocity * dt
-    if (this.feetY <= ground) {
-      this._land(ground)
-    }
+    const g = MOVEMENT.gravity
+    this._airTime += dt
+    const t = this._airTime
+    this.feetY = this._launchY + this._launchVelocity * t - 0.5 * g * t * t
+    this.verticalVelocity = this._launchVelocity - g * t
+
+    // Sólo se aterriza bajando. Subiendo, el suelo sólo puede estar por encima
+    // si el jugador acaba de pasar sobre un bordillo, y eso no es un impacto.
+    if (this.feetY <= ground && this.verticalVelocity <= 0) this._land(ground)
+  }
+
+  /**
+   * Arranca un vuelo: congela la marcha y anota desde dónde y con qué velocidad
+   * se despega. A partir de aquí la trayectoria ya no depende de cuántas veces
+   * se evalúe ni cada cuánto.
+   *
+   * @param {number} velocity velocidad vertical inicial (0 al salirse de un borde)
+   */
+  _takeOff(velocity) {
+    this._airSpeed = this.currentSpeed
+    this._airTime = 0
+    this._launchY = this.feetY
+    this._launchVelocity = velocity
+    this.verticalVelocity = velocity
+    this.airborne = true
   }
 
   /**
    * Toma de tierra. Guarda la fuerza del impacto para el sonido y arranca el
    * hundimiento de cámara. Una caída suave —bajarse de un bordillo— no dispara
    * ninguna de las dos cosas.
+   *
+   * La velocidad de impacto **no es la del frame en que se detecta el suelo**,
+   * que llegaría pasado de largo y dependería del refresco. Sale de la
+   * conservación de energía sobre la parábola —v² = v0² + 2·g·(y0 − suelo)—, así
+   * que un mismo salto suena y hunde la cámara igual a 60 que a 240 Hz.
    */
   _land(ground) {
-    const fallSpeed = -this.verticalVelocity
+    const g = MOVEMENT.gravity
+    const drop = this._launchY - ground
+    const impactSq = this._launchVelocity * this._launchVelocity + 2 * g * drop
+    const fallSpeed = impactSq > 0 ? Math.sqrt(impactSq) : 0
     this.feetY = ground
     this.verticalVelocity = 0
     this.airborne = false
+    this._airTime = 0
+    this._launchY = ground
+    this._launchVelocity = 0
 
     if (fallSpeed <= LANDING.minSpeed) return
     const span = LANDING.fullSpeed - LANDING.minSpeed

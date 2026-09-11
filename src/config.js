@@ -679,10 +679,12 @@ export const SETTINGS = {
  *
  * El razonamiento completo está en docs/propuestas/01-escenario-cobertura.md.
  *
- * AVISO sobre `bordillo` y `baja`: la altura del salto depende del refresco del
- * monitor (ver el aviso 4 de esa propuesta), así que subirse a la cobertura
- * `baja` NO es una mecánica fiable y ningún escenario debe depender de ella.
- * El bordillo sí se salta con holgura en cualquier refresco.
+ * Qué se salta, con `jumpSpeed 6.75` y `gravity 18` (ápice 1.2656 u, igual en
+ * cualquier monitor desde que el salto se resuelve en forma cerrada):
+ * el `bordillo` (0.6) con holgura y la cobertura `baja` (1.25) con 1.6 cm de
+ * margen — verificado subiéndose a ella a 60, 144 y 240 Hz. La `media` (1.9)
+ * sólo se supera con la vista, subido a un bordillo. Si tocas `jumpSpeed` o
+ * `gravity`, vuelve a comprobar esta lista.
  */
 export const COVER = {
   /** Alturas, en unidades de mundo. */
