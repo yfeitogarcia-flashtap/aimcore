@@ -1470,7 +1470,7 @@ Tres decisiones dentro de eso:
 *Medido de paso:* desde el spawn, los dos anclajes del Vestíbulo quedan a 66° y a
 la espalda, así que **la primera diana de cada sesión nunca entra en el cono**.
 Es el momento más visible de la partida y el sesgo no llega. Se deja anotado: la
-colocación de anclajes no era de esta vuelta.
+colocación de anclajes no era de esta vuelta. → Resuelto en §23.
 
 ### 22.2 Grupos de puntos, no rutas: cada par verificado
 
@@ -1530,6 +1530,73 @@ seguridad, pero ya no dispara en uso normal.
 Sólo patrullan los muñecos **anclados al suelo**. Una esfera flotante caminando
 entre cajas no tendría ningún sentido, y clásica y cono siguen quietas en
 escenario, como estaban.
+
+## Ronda 23 — La primera diana, delante
+
+### 23.1 El sesgo no puede apuntar donde no hay nada
+
+La ronda anterior dejó el sesgo hacia delante funcionando y un agujero anotado:
+desde el punto de aparición **sólo se ven dos anclajes**, los dos del Vestíbulo,
+y estaban a 66° y a la espalda. Da igual lo bien que sesgue el sorteo si el
+único conjunto del que puede elegir está fuera del cono. La primera diana de
+cualquier sesión —lo primero que ve quien prueba el mapa— salía siempre detrás.
+
+### 23.2 La divisoria sella el cono frontal a 9.2 u
+
+Antes de mover nada se barrió la sala entera: rejilla de 0.5 u sobre los 80×80,
+filtrando por cono de `SPAWN.forwardBiasConeDeg`, fuera del volumen del tablero
+de acciones, cuerpo del muñeco libre de geometría, suelo a nivel, y el **test de
+visibilidad real del motor** (`_isAnchorVisible`, no una aproximación).
+
+Resultado: **65 posiciones válidas, y ninguna más allá de 9.2 u del spawn.**
+
+El porqué es geométrico y vale la pena dejarlo escrito, porque acota lo que se
+puede hacer en el Vestíbulo sin tocar el plano:
+
+- La **divisoria Alta** ocupa x −4..16 en z 22..23.5 y mide 3.6; el ojo del
+  jugador está a 1.7. No se ve por encima ni de lejos: para asomar la línea de
+  visión por su borde superior a 4.5 u haría falta subir 1.9 u en esos 4.5, y
+  esa misma pendiente estaría a 25 u de altura al llegar al Balcón.
+- Para **rodearla por el oeste**, la visual tiene que pasar de x ≤ −4 en z 23.5,
+  lo que exige |x| ≥ 0.889·(28−z). El cono de ±50° impone |x| ≤ 1.19·(28−z).
+  Queda una cuña estrecha, y dentro de ella la **Espina** (x −15..−13.5, z 0..22)
+  corta: cruzarla por el norte pediría |x| > 2.25·(28−z), incompatible con el
+  cono. Contradicción, sin margen.
+- Por el **este** no hay discusión: de x 18 a la pared está el volumen reservado
+  del tablero de acciones.
+
+Así que el cono frontal desde el spawn es un embudo cerrado de nueve unidades de
+fondo. Los dos anclajes se ponen en el punto más lejano de cada lado de ese
+embudo: `vestibulo-o` en (−6.5, 22), a 8.8 u y 47.3°, justo en la esquina oeste
+de la divisoria; `vestibulo-e` en (2, 24.5), a 4 u y 29.7°, el más centrado de
+los que pasan de 4 u. Los dos se ven de golpe, sin mover el ratón, desde el
+punto de aparición.
+
+**El precio se paga y se dice:** son dianas de corta distancia. No hay ninguna
+alternativa dentro de las restricciones —lo dice la barrida, no una estimación—
+y la única forma de tener una primera diana lejana *y* de frente es tocar el
+plano: abrir un hueco en la divisoria, acortarla por el oeste, o mover el spawn.
+Eso es rediseño del Plano A y no era de esta vuelta.
+
+### 23.3 Un guardia que salta es un guardia que hay que reescribir, no borrar
+
+El barrido de la ronda 14 dejó dos aserciones —una en `audit.mjs`, otra en
+`fixes.mjs`— exigiendo que **ningún anclaje estuviera a menos de 10 u** del
+spawn. Esta vuelta las rompe a propósito.
+
+No se borran: se reescriben con la regla nueva. Fuera del Vestíbulo el mínimo de
+10 u sigue en pie; dentro, el mínimo pasa a 4 u —que es "no encima del
+jugador"— y se añade la aserción que de verdad protege lo que se acaba de
+conseguir: **los dos anclajes del Vestíbulo caen dentro del cono frontal medido
+desde la dirección inicial de la mirada.** Una excepción declarada y comprobada
+vale; un test borrado no deja rastro de por qué.
+
+### 23.4 Lo que no cambió
+
+El sesgo de selección, los grupos de patrulla y el resto del Plano A se quedan
+igual. `vestibulo-o` sigue siendo la entrada del grupo `vestibulo` y desde su
+posición nueva sigue viendo los cuatro puntos del grupo: verificado, 6 pares + 4
+entradas limpios.
 
 ## 13. Bugs con enseñanza duradera
 

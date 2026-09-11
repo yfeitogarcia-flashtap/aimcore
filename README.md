@@ -116,6 +116,12 @@ asomada agachado y giros cortos. Al fondo, **El Balcón**: una plataforma elevad
 con rampa de acceso por la derecha y un parapeto con dos troneras que miran El
 Largo de punta a punta.
 
+La divisoria del Vestíbulo tapa todo lo que hay de frente, así que la sesión
+arranca con las dos únicas dianas que se ven desde el punto de aparición: una a
+media distancia asomada por la esquina oeste de la divisoria y otra corta, algo a
+la derecha. Las dos están **en pantalla sin mover el ratón** — de ahí en adelante
+mandan el mapa y hacia dónde mires.
+
 ### Cómo leer las estructuras
 
 El gris dice la altura, y la altura dice lo que puedes hacer:

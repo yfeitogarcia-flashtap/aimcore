@@ -1095,14 +1095,26 @@ export const SCENARIOS = {
       // divisoria tapa todo lo que hay de frente, así que sin ellos la sesión
       // arrancaría sin ninguna diana a la vista hasta que el jugador se moviera.
       //
-      // El este estaba en la boca de salida, en x 22, y quedaba **detrás del
-      // tablero de acciones** —que ocupa de x 18 a la pared—: una diana pegada a
-      // un botón hace imposible pulsarlo. Se movió al otro lado del tablero y
-      // por detrás del spawn, donde está a 10 u de la pizarra y a 41° de ella
-      // vista desde el punto de aparición. De paso obliga a girarse, que en un
-      // aim trainer no sobra.
-      { id: 'vestibulo-o', x: -12, y: 0, z: 22.7, zone: 'Vestíbulo', peek: false, cluster: 'vestibulo' },
-      { id: 'vestibulo-e', x: 8, y: 0, z: 35, zone: 'Vestíbulo', peek: false },
+      // Y tienen que verse **de frente**, no de reojo: son los únicos dos
+      // anclajes visibles desde el punto de aparición, así que entre ellos sale
+      // siempre la primera diana de la sesión. Estaban a 66° y a la espalda, con
+      // lo que lo primero que veía cualquiera que probase el mapa era una sala
+      // vacía. Ahora los dos caen dentro del cono de `SPAWN.forwardBiasConeDeg`
+      // medido desde la dirección inicial de la mirada: el oeste a 47.3° y el
+      // este a 29.7°.
+      //
+      // El precio lo pone la divisoria: **sella el cono frontal a 9.2 u**. Barrida
+      // la sala entera en rejilla de 0.5 u con el test de visibilidad del motor,
+      // no existe ninguna posición visible, libre y dentro del cono más lejos que
+      // eso — la Espina tapa el oeste y el tablero de acciones ocupa el este, y
+      // por encima de la divisoria no se ve nada porque el ojo está a 1.7 y ella
+      // mide 3.6. Estos dos son el punto más lejano de cada lado del embudo.
+      //
+      // (El este estaba antes en la boca de salida, en x 22, **detrás del tablero
+      // de acciones** —que ocupa de x 18 a la pared—: una diana pegada a un botón
+      // hace imposible pulsarlo. Sigue lejos de ese volumen.)
+      { id: 'vestibulo-o', x: -6.5, y: 0, z: 22, zone: 'Vestíbulo', peek: false, cluster: 'vestibulo' },
+      { id: 'vestibulo-e', x: 2, y: 0, z: 24.5, zone: 'Vestíbulo', peek: false },
     ],
   },
 }

@@ -113,6 +113,17 @@ horizontal** —mirar al suelo no debe dejar de considerar "delante" lo que tien
 delante—. Si no hay ninguno visible en el cono, se cae al conjunto completo:
 antes una diana a la espalda que ninguna diana.
 
+**Los dos anclajes del Vestíbulo son los únicos que se ven desde el spawn, así
+que entre ellos sale siempre la primera diana de la sesión.** Tienen que caer en
+el cono frontal medido desde la mirada inicial, y hay dos tests que lo guardan
+(`audit.mjs` y `fixes.mjs`). La divisoria **sella ese cono a 9.2 u** —barrida la
+sala en rejilla de 0.5 u con el test de visibilidad del motor, no hay nada válido
+más lejos—, así que los dos son de corta distancia por fuerza: a 8.8 u / 47.3° el
+oeste y a 4 u / 29.7° el este. Ése es también el único sitio del plano donde vale
+un anclaje a menos de 10 u del spawn; fuera del Vestíbulo, el mínimo sigue en 10.
+Tener una primera diana lejana *y* de frente pide tocar la divisoria o el spawn,
+que es rediseño del Plano A. El razonamiento completo, en `docs/decisions.md` §23.
+
 **Los muñecos que patrullan lo hacen entre puntos de un grupo cuyos pares están
 verificados** como alcanzables en línea recta. Eso es lo que permite mover sin
 pathfinding: elegir otro punto y andar, sin comprobaciones en el bucle ni atascos
