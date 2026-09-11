@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import {
   FRAME_LIMITS,
+  SCENARIOS,
   SETTINGS,
   SIMULTANEOUS_TARGETS,
   TARGET_TYPES,
@@ -81,6 +82,12 @@ function weaponHint(weaponKey) {
 }
 
 /** Explica en qué ejes se mueve el tipo de diana elegido. */
+function scenarioHint(scenario) {
+  return scenario === 'empty'
+    ? 'Sala vacía: las dianas salen por muestreo dentro del cono de siempre.'
+    : 'Con cobertura: las dianas salen en anclajes fijos y sólo si los ves. El modo dinámico y la distancia de aparición no se aplican aquí.'
+}
+
 function dynamicHint(targetType) {
   return TARGET_TYPES[targetType].anchor === 'feet'
     ? 'Las dianas se desplazan por el suelo, sin cambiar de altura.'
@@ -136,6 +143,14 @@ export default function Options({ settings, onChange, onReset, onClose }) {
         value={settings.sensitivity}
         onChange={(sensitivity) => onChange({ sensitivity })}
         editable
+      />
+
+      <SegmentedRow
+        spec={SETTINGS.scenario}
+        catalog={SCENARIOS}
+        value={settings.scenario}
+        onChange={(scenario) => onChange({ scenario })}
+        hint={scenarioHint(settings.scenario)}
       />
 
       <SegmentedRow

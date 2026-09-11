@@ -222,3 +222,58 @@ export function playHit() {
     }
   }
 }
+
+/**
+ * Aterrizaje: un golpe sordo al tocar el suelo tras una caída.
+ *
+ * Ruido pasa-bajo muy corto —la suela— sobre un seno que cae en picado —el
+ * peso—. Nada de esto toca la física: es puro acompañamiento del salto, y por
+ * eso escala con la fuerza del impacto en lugar de sonar siempre igual.
+ *
+ * @param {number} strength 0..1, lo fuerte que fue la caída
+ */
+export function playLanding(strength = 1) {
+  initAudio()
+  if (!ctx || !master || !noiseBuffer) return
+  const level = Math.max(0, Math.min(1, strength))
+  if (level <= 0) return
+
+  const t = ctx.currentTime
+  const gain = AUDIO.landingVolume * (0.45 + 0.55 * level)
+
+  // Suela: ruido grave y seco.
+  const noise = ctx.createBufferSource()
+  noise.buffer = noiseBuffer
+  const lowpass = ctx.createBiquadFilter()
+  lowpass.type = 'lowpass'
+  lowpass.frequency.setValueAtTime(320 + 160 * level, t)
+  const noiseGain = ctx.createGain()
+  noiseGain.gain.setValueAtTime(0.0001, t)
+  noiseGain.gain.exponentialRampToValueAtTime(gain, t + 0.004)
+  noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.07)
+  noise.connect(lowpass).connect(noiseGain).connect(master)
+  noise.start(t)
+  noise.stop(t + 0.09)
+  noise.onended = () => {
+    noise.disconnect()
+    lowpass.disconnect()
+    noiseGain.disconnect()
+  }
+
+  // Peso: un seno que se desploma. Lo que hace que se sienta el cuerpo.
+  const body = ctx.createOscillator()
+  body.type = 'sine'
+  body.frequency.setValueAtTime(120, t)
+  body.frequency.exponentialRampToValueAtTime(42, t + 0.09)
+  const bodyGain = ctx.createGain()
+  bodyGain.gain.setValueAtTime(0.0001, t)
+  bodyGain.gain.exponentialRampToValueAtTime(gain * 0.9, t + 0.006)
+  bodyGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.11)
+  body.connect(bodyGain).connect(master)
+  body.start(t)
+  body.stop(t + 0.13)
+  body.onended = () => {
+    body.disconnect()
+    bodyGain.disconnect()
+  }
+}

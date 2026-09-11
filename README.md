@@ -91,6 +91,56 @@ dianas, en lugar de que el cono te siga y el movimiento no cuente para nada.
 En ambos casos: una diana a la vez, *pop* al acertar y otra en menos de
 100 ms, sesión de 30 segundos y resumen con precisión, dianas y dianas/s.
 
+## Escenarios
+
+Se elige en **Opciones → Escenario**, y es una variante activable: la sala vacía
+sigue ahí sin cambiar.
+
+**Sala vacía** — el Gridshot de siempre. Las dianas salen por muestreo dentro del
+cono, con la distancia y el modo dinámico que digan las opciones.
+
+**Largo y Puerta** — el primer escenario con cobertura. Apareces en el
+**Vestíbulo**, una banda despejada con una divisoria que te obliga a elegir
+salida. A la izquierda, **El Largo**: un carril de unas 50 unidades de visión
+limpia, roto por tres bloques Media escalonados que se cruzan a base de asomadas
+cortas. En el centro, **La Espina**, un muro que parte el mapa de norte a sur con
+un único hueco de 4 u —**La Puerta**—, el único punto del mapa que se puede
+pre-apuntar con certeza. A la derecha, **Los Cajones**: distancias de 8 a 16 u,
+asomada agachado y giros cortos. Al fondo, **El Balcón**: una plataforma elevada
+con rampa de acceso por la derecha y un parapeto con dos troneras que miran El
+Largo de punta a punta.
+
+### Cómo leer las estructuras
+
+El gris dice la altura, y la altura dice lo que puedes hacer:
+
+| Pieza | Altura | De pie | Agachado |
+|---|---|---|---|
+| Bordillo | 0.60 | no tapa — y te subes de un salto | no tapa |
+| Baja | 1.25 | disparas por encima | te tapa entero |
+| Media | 1.90 | te tapa entero (desde un bordillo, disparas por encima) | te tapa |
+| Alta | 3.60 | corta del todo | corta del todo |
+| Bloque | 4.80 | corta del todo, también desde el Balcón | corta |
+
+Más claro, más alto, menos se pasa.
+
+### Qué cambia al jugar con cobertura
+
+- **Chocas con las estructuras.** Rozar un muro desliza, no frena en seco.
+- **Los disparos se paran en la cobertura.** No se mata a través de un muro.
+- **Las dianas salen en trece sitios fijos**, elegidos a mano por zona, y sólo en
+  los que **ves desde donde estás**. Si no ves ninguno, no sale ninguna: muévete.
+- **El modo dinámico y la distancia de aparición no se aplican.** Las dianas se
+  quedan en su sitio; moverlas las metería dentro de los muros.
+
+## Aterrizaje
+
+Al caer desde cierta altura suena un golpe sordo y la cámara se hunde unos
+centímetros durante una décima de segundo. Escala con la velocidad de la caída y
+no hace nada si te bajas de un bordillo.
+
+Es sólo sensación: no toca la gravedad ni la fuerza del salto.
+
 ## Panel de opciones
 
 Botón **Opciones** en la pantalla de inicio y en la de pausa. Los cambios se

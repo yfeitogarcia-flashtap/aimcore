@@ -1,6 +1,7 @@
 # Propuesta 01 — Primer escenario con cobertura
 
-**Estado:** propuesta, sin construir. Pendiente de elegir plano.
+**Estado:** **Plano A construido** (ver `docs/decisions.md`, ronda 14). Planos B y
+C siguen en propuesta; no se construyen hasta validar A jugando.
 **Versión visual (plantas dibujadas):** https://claude.ai/code/artifact/5446051b-7eef-4aa7-b8b8-8e681aae3439
 
 Tres layouts para el primer escenario con cobertura de Vektor, dentro de la sala
@@ -35,7 +36,23 @@ Dos combinaciones nacen de esta tabla y se usan a propósito:
 
 ---
 
-## Plano A — «Largo y Puerta» *(recomendado)*
+## Plano A — «Largo y Puerta» *(construido)*
+
+> **Cambios respecto a esta propuesta, hechos al construirlo.** El razonamiento
+> completo está en `docs/decisions.md` §14.10-14.11.
+>
+> - **Los dos anclajes del Vestíbulo se movieron a las bocas de cada salida.**
+>   Donde los ponía esta propuesta no se veían desde el spawn —la divisoria tapa
+>   el cono entero— y la sesión arrancaba sin ninguna diana.
+> - **La plataforma del Balcón llega a ±39, no a ±38.** El jugador alcanza ±38.5
+>   y se caía por la rendija trasera.
+> - **El parapeto se apoya sobre la plataforma** (de 2.6 a 3.8), no sobre el
+>   suelo: si no, sólo asomaría una rodaja de cabeza por encima.
+> - **Los disparos se paran en la cobertura.** No estaba en el encargo y sin ello
+>   el escenario no significaba nada.
+> - **El modo dinámico y el *slider* de distancia no se aplican** en escenarios.
+> - **El panel de acciones se ancla al spawn de verdad** (antes, a z = 0).
+
 
 Un carril largo, un cuello de botella y un cuarto de cerca, separados por una
 espina que cruza el mapa de norte a sur.

@@ -27,10 +27,18 @@ import {
   WEAPONS,
 } from '../config.js'
 import { createScene } from './scene.js'
+import { Scenario } from './scenario.js'
 import { LookControls } from './lookControls.js'
 import { MovementController } from './movement.js'
 import { TargetManager } from './targets.js'
-import { initAudio, playDryFire, playHit, playShot, playUiConfirm } from '../audio/sfx.js'
+import {
+  initAudio,
+  playDryFire,
+  playHit,
+  playLanding,
+  playShot,
+  playUiConfirm,
+} from '../audio/sfx.js'
 import { ActionPanel } from './actionPanel.js'
 import { getSettings, subscribeSettings, updateSettings } from '../settings.js'
 
@@ -111,7 +119,13 @@ export class Engine {
     this.camera = new THREE.PerspectiveCamera(CAMERA.fov, 1, CAMERA.near, CAMERA.far)
 
     this.controls = new LookControls(this.camera)
+
+    // El escenario se monta antes que el movimiento: de él salen la colisión y
+    // el punto de aparición.
+    this.scenario = new Scenario(this.scene, getSettings().scenario)
+
     this.movement = new MovementController(this.camera)
+    this.movement.setScenario(this.scenario)
     this.movement.reset()
     // Con la variante de movimiento activa el cono deja de seguir la mirada:
     // nace en la posición del jugador y apunta a una dirección fija del mundo.
@@ -128,6 +142,8 @@ export class Engine {
     const cssElement = this.cssRenderer.domElement
     cssElement.className = 'app__css3d'
     this.actionPanel = new ActionPanel(this.scene, this.cssScene)
+    this.actionPanel.setAnchor(this.scenario.spawn)
+    this.targets.setAnchors(this.scenario.anchors, this.scenario.occluders)
     /** Última activación del panel, para el antirrebote. */
     this._lastPanelActionAt = -Infinity
     /** Si la pulsación en curso ya se gastó en el panel, no dispara. */
@@ -255,6 +271,7 @@ export class Engine {
     this.actionPanel.dispose()
     this.cssRenderer.domElement.remove()
     this.targets.dispose()
+    this.scenario.dispose()
     this._disposeScene()
     this.renderer.dispose()
   }
@@ -345,6 +362,7 @@ export class Engine {
    * pantalla se vuelven a repartir, porque las viejas dejan de existir.
    */
   _applySettings(settings) {
+    this._applyScenario(settings.scenario)
     this.controls.setSensitivity(settings.sensitivity)
     const limit = FRAME_LIMITS[settings.frameLimit].fps
     this._frameIntervalMs = limit > 0 ? 1000 / limit : 0
@@ -368,6 +386,22 @@ export class Engine {
     const hadSession = this.targets.sessionActive
     this.targets.configure(settings)
     if (hadSession) this.targets.beginSession(this.camera, performance.now())
+  }
+
+  /**
+   * Cambia de escenario. Reconstruye la geometría, recoloca al jugador en el
+   * nuevo punto de aparición y repone los anclajes; si no cambia la clave, no
+   * hace nada, que es el caso de casi todas las llamadas.
+   */
+  _applyScenario(key) {
+    if (this.scenario && this.scenario.key === key) return
+    this.scenario.dispose()
+    this.scenario = new Scenario(this.scene, key)
+    this.movement.setScenario(this.scenario)
+    this.movement.reset()
+    this.camera.updateMatrixWorld()
+    this.actionPanel.setAnchor(this.scenario.spawn)
+    this.targets.setAnchors(this.scenario.anchors, this.scenario.occluders)
   }
 
   /** El arma vigente, tal cual está descrita en config.js. */
@@ -675,6 +709,10 @@ export class Engine {
       // desvío por movimiento, que es distinto en cada disparo.
       applySpread(this.raycaster.ray.direction, this.currentSpreadDeg)
       hit = this.targets.raycast(this.raycaster)
+      // Con cobertura por medio, el disparo se para en el muro. Sin esto se
+      // podría matar a través de la Espina y el escenario entero dejaría de
+      // significar nada. Es un raycast más por disparo, no por frame.
+      if (hit && this._isBlockedByCover(hit)) hit = null
     }
 
     // El sonido de disparo suena siempre; el de acierto se superpone.
@@ -687,6 +725,21 @@ export class Engine {
     }
 
     this.callbacks.onShot?.(hit !== null)
+  }
+
+  /**
+   * ¿Hay geometría del escenario más cerca que el impacto? Se comprueba con el
+   * rayo ya desviado por retroceso y dispersión, así que un tiro que se va a la
+   * cobertura se come la cobertura.
+   */
+  _isBlockedByCover(hit) {
+    const occluders = this.scenario.occluders
+    if (occluders.length === 0) return false
+    this.raycaster.near = 0
+    this.raycaster.far = hit.distance
+    const blockers = this.raycaster.intersectObjects(occluders, false)
+    this.raycaster.far = Infinity
+    return blockers.length > 0
   }
 
   _onPointerLockChange() {
@@ -742,6 +795,8 @@ export class Engine {
         // `delta` ya viene acotado, así que la integración del salto no pega
         // un salto raro si el navegador se queda parado un momento.
         this.movement.update(delta / 1000)
+        const landing = this.movement.takeLandingImpact()
+        if (landing > 0) playLanding(landing)
         // Fuego automático: como mucho un disparo por frame. A 60 Hz eso son
         // 3600 RPM de techo, muy por encima de cualquier arma del roster.
         if (this._triggerHeld && !this._triggerConsumedByPanel && this.weapon.mode === 'auto') {

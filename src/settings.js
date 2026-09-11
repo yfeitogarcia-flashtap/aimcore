@@ -10,7 +10,14 @@
  * nadie más tiene que desconfiar de lo que hubiera en localStorage.
  */
 
-import { FRAME_LIMITS, SETTINGS, SIMULTANEOUS_TARGETS, TARGET_TYPES, WEAPONS } from './config.js'
+import {
+  FRAME_LIMITS,
+  SCENARIOS,
+  SETTINGS,
+  SIMULTANEOUS_TARGETS,
+  TARGET_TYPES,
+  WEAPONS,
+} from './config.js'
 
 const STORAGE_KEY = 'aimcore.settings.v1'
 
@@ -22,6 +29,7 @@ const NUMERIC_KEYS = Object.keys(SETTINGS).filter((key) => SETTINGS[key].min !==
  * comprueba contra él: cualquier otra cosa cae al valor por defecto.
  */
 const CATALOGS = {
+  scenario: SCENARIOS,
   targetType: TARGET_TYPES,
   weapon: WEAPONS,
   simultaneousTargets: SIMULTANEOUS_TARGETS,

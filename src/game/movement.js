@@ -2,8 +2,10 @@
  * Movimiento del jugador: desplazamiento horizontal, salto y agachado.
  *
  * Cinemática básica, sin motor de físicas: una velocidad horizontal constante
- * y una única integración de la gravedad para el salto. El suelo es y = 0 y no
- * hay más colisiones que el acotado al radio de movimiento.
+ * y una única integración de la gravedad para el salto. El suelo es y = 0 en la
+ * sala vacía; con un escenario montado lo marca su geometría, y el jugador
+ * choca contra las cajas resolviendo **un eje cada vez**, que es lo que hace
+ * que rozar un muro deslice en lugar de frenar en seco.
  *
  * La posición vertical se modela en dos piezas independientes:
  *  - `feetY`, la altura de los pies sobre el suelo, que sólo cambia al saltar.
@@ -17,7 +19,7 @@
  */
 
 import * as THREE from 'three'
-import { MOVEMENT, ROOM } from '../config.js'
+import { COVER, LANDING, MOVEMENT, ROOM } from '../config.js'
 
 // Vectores de módulo: el bucle no aloca nada.
 const _forward = new THREE.Vector3()
@@ -57,6 +59,26 @@ export class MovementController {
     this.airborne = false
     /** Altura de los ojos sobre los pies. Sólo el agachado la mueve. */
     this.eyeHeight = MOVEMENT.standHeight
+
+    /** Escenario contra el que se colisiona. Null = sala vacía, suelo en y = 0. */
+    this.scenario = null
+    /** Dónde aparece el jugador. Lo fija el escenario. */
+    this.spawnX = 0
+    this.spawnZ = 0
+
+    /**
+     * Hundimiento de cámara al aterrizar. Puramente sensorial: no toca la
+     * física, sólo resta unos centímetros a la altura de los ojos y los
+     * devuelve en `LANDING.dipMs`.
+     */
+    this.landingDip = 0
+    this._dipFrom = 0
+    this._dipElapsedMs = 0
+    /**
+     * Fuerza del último aterrizaje, 0..1, para que el motor le ponga sonido.
+     * Lo lee y lo consume `takeLandingImpact()`.
+     */
+    this._landingImpact = 0
 
     this._onKeyDown = this._onKeyDown.bind(this)
     this._onKeyUp = this._onKeyUp.bind(this)
@@ -125,14 +147,42 @@ export class MovementController {
     return moving ? this.currentSpeed : 0
   }
 
-  /** Devuelve al jugador al centro, de pie y en el suelo. */
+  /**
+   * Monta (o quita) el escenario contra el que se colisiona y adopta su punto
+   * de aparición.
+   */
+  setScenario(scenario) {
+    this.scenario = scenario && scenario.hasGeometry ? scenario : null
+    const spawn = scenario ? scenario.spawn : null
+    this.spawnX = spawn ? spawn.x : 0
+    this.spawnZ = spawn ? spawn.z : 0
+  }
+
+  /** Devuelve al jugador a su punto de aparición, de pie y en el suelo. */
   reset() {
     this.releaseKeys()
-    this.feetY = 0
+    this.feetY = this.scenario
+      ? this.scenario.groundHeightAt(this.spawnX, this.spawnZ, 0)
+      : 0
     this.verticalVelocity = 0
     this.airborne = false
     this.eyeHeight = MOVEMENT.standHeight
-    this.camera.position.set(0, MOVEMENT.standHeight, 0)
+    this.landingDip = 0
+    this._dipFrom = 0
+    this._dipElapsedMs = 0
+    this._landingImpact = 0
+    this.camera.position.set(this.spawnX, this.feetY + MOVEMENT.standHeight, this.spawnZ)
+  }
+
+  /**
+   * Devuelve la fuerza del último aterrizaje (0..1) y la consume. Cero si no ha
+   * habido ninguno desde la última llamada. El sonido lo pone el motor: aquí no
+   * se toca audio.
+   */
+  takeLandingImpact() {
+    const impact = this._landingImpact
+    this._landingImpact = 0
+    return impact
   }
 
   /** @param {number} dt segundos transcurridos desde el frame anterior */
@@ -140,7 +190,24 @@ export class MovementController {
     if (!this.enabled) return
     this._updateHorizontal(dt)
     this._updateVertical(dt)
-    this.camera.position.y = this.feetY + this.eyeHeight
+    this._updateLandingDip(dt)
+    this.camera.position.y = this.feetY + this.eyeHeight - this.landingDip
+  }
+
+  /**
+   * El hundimiento entra de golpe en el instante del impacto y se recupera con
+   * una salida suave. Al revés —entrar suave— se sentiría como un ascensor.
+   */
+  _updateLandingDip(dt) {
+    if (this.landingDip === 0) return
+    this._dipElapsedMs += dt * 1000
+    const t = this._dipElapsedMs / LANDING.dipMs
+    if (t >= 1) {
+      this.landingDip = 0
+      return
+    }
+    const eased = 1 - (1 - t) * (1 - t)
+    this.landingDip = this._dipFrom * (1 - eased)
   }
 
   _updateHorizontal(dt) {
@@ -162,8 +229,20 @@ export class MovementController {
     const step = this.currentSpeed * dt * inverse
 
     const position = this.camera.position
-    position.x += (_forward.x * z + _right.x * x) * step
-    position.z += (_forward.z * z + _right.z * x) * step
+    const wantedX = position.x + (_forward.x * z + _right.x * x) * step
+    const wantedZ = position.z + (_forward.z * z + _right.z * x) * step
+
+    if (this.scenario) {
+      // Un eje cada vez: X contra la Z vieja, y luego Z contra la X ya
+      // corregida. Resolver los dos a la vez dejaría al jugador clavado en
+      // cuanto rozara una esquina.
+      const headY = this.feetY + this.eyeHeight
+      position.x = this.scenario.resolveAxis('x', wantedX, position.z, this.feetY, headY)
+      position.z = this.scenario.resolveAxis('z', wantedZ, position.x, this.feetY, headY)
+    } else {
+      position.x = wantedX
+      position.z = wantedZ
+    }
 
     // Acotado a las paredes de la sala, cada frame. El único límite es el
     // real: se recorre entera menos el margen que se deja junto al muro.
@@ -182,20 +261,55 @@ export class MovementController {
     if (this.eyeHeight < targetEye) this.eyeHeight = Math.min(targetEye, this.eyeHeight + step)
     else if (this.eyeHeight > targetEye) this.eyeHeight = Math.max(targetEye, this.eyeHeight - step)
 
+    const position = this.camera.position
+    const ground = this.scenario
+      ? this.scenario.groundHeightAt(position.x, position.z, this.feetY)
+      : 0
+
     // Salto: sólo desde el suelo, así que no hay doble salto posible.
     if (this.keys.jump && !this.airborne) {
       this.verticalVelocity = MOVEMENT.jumpSpeed
       this.airborne = true
     }
-    if (!this.airborne) return
+
+    if (!this.airborne) {
+      // Sin salto de por medio el jugador sigue al suelo: subir una rampa es
+      // pegarse a ella, y salirse de una plataforma es empezar a caer.
+      if (ground >= this.feetY - 1e-6) {
+        this.feetY = ground
+        return
+      }
+      this.airborne = true
+      this.verticalVelocity = 0
+    }
 
     this.verticalVelocity -= MOVEMENT.gravity * dt
     this.feetY += this.verticalVelocity * dt
-    if (this.feetY <= 0) {
-      this.feetY = 0
-      this.verticalVelocity = 0
-      this.airborne = false
+    if (this.feetY <= ground) {
+      this._land(ground)
     }
+  }
+
+  /**
+   * Toma de tierra. Guarda la fuerza del impacto para el sonido y arranca el
+   * hundimiento de cámara. Una caída suave —bajarse de un bordillo— no dispara
+   * ninguna de las dos cosas.
+   */
+  _land(ground) {
+    const fallSpeed = -this.verticalVelocity
+    this.feetY = ground
+    this.verticalVelocity = 0
+    this.airborne = false
+
+    if (fallSpeed <= LANDING.minSpeed) return
+    const span = LANDING.fullSpeed - LANDING.minSpeed
+    let strength = span > 0 ? (fallSpeed - LANDING.minSpeed) / span : 1
+    if (strength > 1) strength = 1
+
+    this._landingImpact = strength
+    this._dipFrom = LANDING.dipUnits * strength
+    this.landingDip = this._dipFrom
+    this._dipElapsedMs = 0
   }
 
   _onKeyDown(event) {

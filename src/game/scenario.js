@@ -1,0 +1,289 @@
+/**
+ * Escenarios con cobertura: geometría, colisión y anclajes de aparición.
+ *
+ * Un escenario se declara como datos en `SCENARIOS` (config.js) y este módulo
+ * lo convierte en tres cosas que consume el resto del motor:
+ *
+ *  - **Mallas** para dibujar. Se fusionan por tipo de pieza, así que 20 cajas
+ *    salen en 5 llamadas de dibujo y no en 20.
+ *  - **Colisionadores**: una lista plana de AABB más las rampas, que se
+ *    resuelven aparte porque no frenan y sí levantan el suelo.
+ *  - **Anclajes** resueltos, con su metadato intacto.
+ *
+ * Sin luces ni materiales PBR, igual que el resto de la escena: `MeshBasicMaterial`
+ * de color plano más una arista un tono por encima, que es lo que le da al
+ * bloque su silueta contra el fondo negro.
+ */
+
+import * as THREE from 'three'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
+import { COVER, SCENARIOS } from '../config.js'
+
+/** Aclara un color hex hacia el blanco. Para las aristas. */
+function lighten(hex, amount) {
+  const color = new THREE.Color(hex)
+  color.lerp(_WHITE, amount)
+  return color
+}
+const _WHITE = new THREE.Color(0xffffff)
+
+/** Altura de una pieza: un número tal cual, o una clave del vocabulario. */
+function resolveHeight(value) {
+  if (typeof value === 'number') return value
+  return COVER.heights[value] ?? 0
+}
+
+/**
+ * Prisma triangular para las rampas: rectángulo abajo y una única arista
+ * arriba, en el lado alto. Se construye a mano porque `BoxGeometry` no hace
+ * cuñas, y con `DoubleSide` para no depender del orden de los vértices.
+ */
+function buildRampGeometry(ramp) {
+  const x0 = ramp.x
+  const x1 = ramp.x + ramp.w
+  const zLow = ramp.fromZ
+  const zHigh = ramp.toZ
+  const top = resolveHeight(ramp.top)
+
+  const a = [x0, 0, zLow]
+  const b = [x1, 0, zLow]
+  const c = [x1, 0, zHigh]
+  const d = [x0, 0, zHigh]
+  const e = [x0, top, zHigh]
+  const f = [x1, top, zHigh]
+
+  const tris = [
+    a, b, c, a, c, d, // suelo
+    a, b, f, a, f, e, // rampa
+    d, c, f, d, f, e, // cara alta
+    a, d, e, // costado x0
+    b, f, c, // costado x1
+  ]
+
+  const positions = new Float32Array(tris.length * 3)
+  for (let i = 0; i < tris.length; i++) {
+    positions[i * 3] = tris[i][0]
+    positions[i * 3 + 1] = tris[i][1]
+    positions[i * 3 + 2] = tris[i][2]
+  }
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+  geometry.computeVertexNormals()
+  return geometry
+}
+
+/**
+ * Un escenario ya montado. Mientras `key` sea `empty` no hay geometría, no hay
+ * colisión y no hay anclajes: el motor se comporta exactamente como antes.
+ */
+export class Scenario {
+  /**
+   * @param {THREE.Scene} scene
+   * @param {string} key clave dentro de SCENARIOS
+   */
+  constructor(scene, key) {
+    this.scene = scene
+    this.key = SCENARIOS[key] ? key : 'empty'
+    this.definition = SCENARIOS[this.key]
+
+    this.group = new THREE.Group()
+    this.materials = []
+    this.geometries = []
+
+    /** AABB de colisión: {minX, maxX, minZ, maxZ, bottom, top}. */
+    this.boxes = []
+    /** Rampas: no frenan, sólo levantan el suelo. */
+    this.ramps = []
+    /** Mallas contra las que se comprueba la visibilidad de un anclaje. */
+    this.occluders = []
+    /** Anclajes de aparición ya resueltos. */
+    this.anchors = []
+
+    this._build()
+    scene.add(this.group)
+  }
+
+  /** ¿Este escenario tiene cobertura, o es la sala vacía de siempre? */
+  get hasGeometry() {
+    return this.boxes.length > 0 || this.ramps.length > 0
+  }
+
+  /** Punto de aparición del jugador. */
+  get spawn() {
+    return this.definition.spawn
+  }
+
+  _build() {
+    const definition = this.definition
+    /** Geometrías agrupadas por tipo de pieza, para fusionarlas de una vez. */
+    const byKind = new Map()
+
+    for (const box of definition.boxes) {
+      const height = resolveHeight(box.kind)
+      const bottom = box.base ? resolveHeight(box.base) : 0
+      const thickness = height - bottom
+      if (thickness <= 0) continue
+
+      this.boxes.push({
+        minX: box.x,
+        maxX: box.x + box.w,
+        minZ: box.z,
+        maxZ: box.z + box.d,
+        bottom,
+        top: height,
+        kind: box.kind,
+      })
+
+      const geometry = new THREE.BoxGeometry(box.w, thickness, box.d)
+      geometry.translate(box.x + box.w / 2, bottom + thickness / 2, box.z + box.d / 2)
+      if (!byKind.has(box.kind)) byKind.set(box.kind, [])
+      byKind.get(box.kind).push(geometry)
+    }
+
+    for (const ramp of definition.ramps) {
+      const top = resolveHeight(ramp.top)
+      this.ramps.push({
+        minX: ramp.x,
+        maxX: ramp.x + ramp.w,
+        minZ: Math.min(ramp.z, ramp.z + ramp.d),
+        maxZ: Math.max(ramp.z, ramp.z + ramp.d),
+        fromZ: ramp.fromZ,
+        toZ: ramp.toZ,
+        top,
+      })
+      if (!byKind.has('rampa')) byKind.set('rampa', [])
+      byKind.get('rampa').push(buildRampGeometry(ramp))
+    }
+
+    for (const [kind, geometries] of byKind) {
+      const merged = mergeGeometries(geometries, false)
+      for (const geometry of geometries) geometry.dispose()
+      if (!merged) continue
+
+      const fill = COVER.colors[kind] ?? COVER.colors.media
+      const material = new THREE.MeshBasicMaterial({
+        color: fill,
+        side: kind === 'rampa' ? THREE.DoubleSide : THREE.FrontSide,
+      })
+      const mesh = new THREE.Mesh(merged, material)
+      this.group.add(mesh)
+      this.occluders.push(mesh)
+      this.materials.push(material)
+      this.geometries.push(merged)
+
+      // Arista: mismo volumen, un tono por encima. Sin ella los bloques del
+      // mismo gris se funden entre sí contra el fondo negro.
+      const edgeGeometry = new THREE.EdgesGeometry(merged, 20)
+      const edgeMaterial = new THREE.LineBasicMaterial({
+        color: lighten(fill, COVER.edgeLighten),
+        transparent: true,
+        opacity: COVER.edgeOpacity,
+      })
+      this.group.add(new THREE.LineSegments(edgeGeometry, edgeMaterial))
+      this.materials.push(edgeMaterial)
+      this.geometries.push(edgeGeometry)
+    }
+
+    for (const anchor of definition.anchors) {
+      this.anchors.push({
+        id: anchor.id,
+        zone: anchor.zone,
+        /** Suelo sobre el que se apoya la diana: 0 o la altura de la plataforma. */
+        floorY: resolveHeight(anchor.y),
+        /** ¿Obliga a asomarse a descubierto para tirarle? */
+        requiresPeek: Boolean(anchor.peek),
+        position: new THREE.Vector3(anchor.x, resolveHeight(anchor.y), anchor.z),
+      })
+    }
+  }
+
+  /**
+   * Altura del suelo bajo un punto. Sólo cuentan las superficies que el jugador
+   * podría pisar desde donde está: una caja cuyo techo le queda por encima de la
+   * cabeza es un muro, no un suelo.
+   *
+   * @param {number} feetY altura actual de los pies, para decidir qué pisa
+   */
+  groundHeightAt(x, z, feetY) {
+    let ground = 0
+    const reach = feetY + COVER.stepHeight
+
+    for (let i = 0; i < this.boxes.length; i++) {
+      const box = this.boxes[i]
+      if (x < box.minX || x > box.maxX || z < box.minZ || z > box.maxZ) continue
+      if (box.top > reach || box.top <= ground) continue
+      ground = box.top
+    }
+
+    for (let i = 0; i < this.ramps.length; i++) {
+      const height = this._rampHeightAt(this.ramps[i], x, z)
+      if (height === null || height > reach || height <= ground) continue
+      ground = height
+    }
+
+    return ground
+  }
+
+  /** Altura de una rampa en un punto, o null si el punto queda fuera de ella. */
+  _rampHeightAt(ramp, x, z) {
+    if (x < ramp.minX || x > ramp.maxX || z < ramp.minZ || z > ramp.maxZ) return null
+    const span = ramp.toZ - ramp.fromZ
+    if (span === 0) return ramp.top
+    let t = (z - ramp.fromZ) / span
+    if (t < 0) t = 0
+    else if (t > 1) t = 1
+    return ramp.top * t
+  }
+
+  /**
+   * Resuelve la colisión horizontal **en un solo eje**. Llamarla una vez por
+   * eje —primero X con la Z vieja, luego Z con la X ya corregida— es lo que
+   * hace que rozar un muro deslice en lugar de frenar en seco.
+   *
+   * @param {'x'|'z'} axis
+   * @param {number} value posición propuesta en ese eje
+   * @param {number} other posición en el otro eje
+   * @param {number} feetY altura de los pies
+   * @param {number} headY altura de la coronilla
+   * @returns {number} la posición admitida
+   */
+  resolveAxis(axis, value, other, feetY, headY) {
+    const radius = COVER.playerRadius
+    const reach = feetY + COVER.stepHeight
+    let resolved = value
+
+    for (let i = 0; i < this.boxes.length; i++) {
+      const box = this.boxes[i]
+      // Ni suelo que se pisa ni techo bajo el que se pasa: sólo estorba lo que
+      // corta a la altura del cuerpo.
+      if (box.top <= reach || box.bottom >= headY) continue
+
+      const minA = axis === 'x' ? box.minX : box.minZ
+      const maxA = axis === 'x' ? box.maxX : box.maxZ
+      const minB = axis === 'x' ? box.minZ : box.minX
+      const maxB = axis === 'x' ? box.maxZ : box.maxX
+
+      if (other + radius <= minB || other - radius >= maxB) continue
+      if (resolved + radius <= minA || resolved - radius >= maxA) continue
+
+      // Se sale por el lado más cercano: el que menos corrige.
+      const pushLow = minA - radius
+      const pushHigh = maxA + radius
+      resolved = resolved - pushLow < pushHigh - resolved ? pushLow : pushHigh
+    }
+
+    return resolved
+  }
+
+  dispose() {
+    this.scene.remove(this.group)
+    for (const geometry of this.geometries) geometry.dispose()
+    for (const material of this.materials) material.dispose()
+    this.geometries.length = 0
+    this.materials.length = 0
+    this.occluders.length = 0
+    this.boxes.length = 0
+    this.ramps.length = 0
+    this.anchors.length = 0
+  }
+}

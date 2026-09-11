@@ -464,6 +464,13 @@ export const ACCURACY = {
 
 /** Reglas de aparición del modo Gridshot. */
 export const SPAWN = {
+  /**
+   * Con anclajes curados, lo que se espera antes de reintentar cuando ninguno
+   * está visible desde donde está el jugador. Sin esta espera el motor volvería
+   * a comprobar visibilidad en cada frame, que es justo lo que no debe hacer.
+   */
+  anchorRetryMs: 150,
+
   /** Semiángulo del cono frente a la cámara (cono total ≈ 36°). */
   coneHalfAngleDeg: 18,
   /**
@@ -592,6 +599,14 @@ export const SETTINGS = {
     /** Decimales al mostrar y al redondear el campo numérico. */
     decimals: 2,
   },
+  scenario: {
+    label: 'Escenario',
+    /**
+     * Variante activable, no reemplazo: la sala vacía sigue siendo un escenario
+     * válido y la referencia limpia de rendimiento (ver docs/decisions.md §2.1).
+     */
+    default: 'empty',
+  },
   targetType: {
     label: 'Tipo de diana',
     default: 'classic',
@@ -649,6 +664,199 @@ export const SETTINGS = {
 }
 
 /** Feedback visual. */
+/**
+ * Vocabulario de cobertura: las piezas con las que se construyen los
+ * escenarios. Las alturas no son decorativas, salen de las del jugador —ojo a
+ * `MOVEMENT.standHeight` de pie y `MOVEMENT.crouchHeight` agachado— y cada una
+ * responde a una pregunta distinta: ¿la ves por encima?, ¿te tapa agachado?,
+ * ¿te puedes subir?
+ *
+ * El razonamiento completo está en docs/propuestas/01-escenario-cobertura.md.
+ *
+ * AVISO sobre `bordillo` y `baja`: la altura del salto depende del refresco del
+ * monitor (ver el aviso 4 de esa propuesta), así que subirse a la cobertura
+ * `baja` NO es una mecánica fiable y ningún escenario debe depender de ella.
+ * El bordillo sí se salta con holgura en cualquier refresco.
+ */
+export const COVER = {
+  /** Alturas, en unidades de mundo. */
+  heights: {
+    bordillo: 0.6,
+    baja: 1.25,
+    media: 1.9,
+    alta: 3.6,
+    bloque: 4.8,
+    plataforma: 2.6,
+    parapeto: 3.8,
+  },
+
+  /**
+   * Rampa de grises: más claro = más alto = menos se pasa. Es codificación
+   * funcional, no estética — el jugador aprende a leer la altura por el tono.
+   *
+   * Ningún naranja: `COLORS.target` es de las dianas y una estructura naranja
+   * competiría con lo único que el ojo debe buscar (mismo criterio que el verde
+   * de acción, ver docs/decisions.md §10.4).
+   */
+  colors: {
+    bordillo: '#2B2B2B',
+    baja: '#454545',
+    media: '#6E6E6E',
+    alta: '#9A9A9A',
+    bloque: '#C8C8C8',
+    plataforma: '#3A3A3A',
+    parapeto: '#9A9A9A',
+    rampa: '#4E4E4E',
+  },
+
+  /** Aristas: un tono por encima del relleno, para que el bloque tenga borde. */
+  edgeLighten: 0.42,
+  edgeOpacity: 0.55,
+
+  /** Radio del cilindro del jugador para la colisión horizontal. */
+  playerRadius: 0.4,
+
+  /**
+   * Escalón que el jugador sube sin saltar. Deliberadamente por debajo del
+   * bordillo (0.6): sirve para no engancharse en juntas, no para convertir la
+   * cobertura más baja en una rampa.
+   */
+  stepHeight: 0.25,
+
+  /** Altura a la que se pone una diana de tipo esfera sobre el suelo de su anclaje. */
+  targetStandY: 1.45,
+}
+
+/**
+ * Aterrizaje: sonido y hundimiento de cámara al tocar el suelo tras una caída.
+ *
+ * Es puramente sensorial —no toca `gravity` ni `jumpSpeed`— y existe para
+ * probar si el salto deja de sentirse flotante sin tocar la física.
+ */
+export const LANDING = {
+  /** Por debajo de esta velocidad de caída no hay ni sonido ni hundimiento. */
+  minSpeed: 1.5,
+  /** Velocidad de caída a la que el efecto llega a su máximo. */
+  fullSpeed: 7.0,
+  /** Hundimiento máximo de la cámara, en unidades. Unos 9 cm. */
+  dipUnits: 0.09,
+  /** Lo que tarda la cámara en volver a su sitio. */
+  dipMs: 110,
+}
+
+/**
+ * Escenarios con cobertura. Cada uno es geometría + anclajes de aparición.
+ *
+ * Las cajas se declaran en planta (`x`/`z` son la esquina mínima, `w`/`d` el
+ * tamaño) y la altura sale del vocabulario de `COVER.heights`; `base` eleva la
+ * caja si se apoya sobre otra cosa, como el parapeto sobre la plataforma.
+ *
+ * Las rampas no son cajas: no frenan al jugador y su altura se interpola entre
+ * `from` y `to` a lo largo del eje Z.
+ *
+ * Los anclajes son **curados**, no muestreados: el sentido de un escenario con
+ * cobertura es que la diana salga donde importa —una tronera, una esquina, una
+ * boca de paso—, y eso no lo da un cono. Cada uno lleva `y` (el suelo sobre el
+ * que se apoya), `peek` (si exige asomarse a descubierto) y `zone`.
+ */
+export const SCENARIOS = {
+  empty: {
+    label: 'Sala vacía',
+    /** Sin geometría: el Gridshot de siempre, con su muestreo por cono. */
+    spawn: { x: 0, z: 0 },
+    boxes: [],
+    ramps: [],
+    anchors: [],
+  },
+
+  largoYPuerta: {
+    label: 'Largo y Puerta',
+    /**
+     * El jugador aparece en el Vestíbulo, mirando hacia -Z, que es la dirección
+     * fija del cono de aparición. El panel de acciones se ancla a este punto.
+     */
+    spawn: { x: 0, z: 28 },
+
+    boxes: [
+      // --- La Espina: parte el mapa de norte a sur. El único hueco es La
+      // Puerta, de 4 u, entre z = -4 y z = 0.
+      { x: -15, z: -22, w: 1.5, d: 18, kind: 'alta' },
+      { x: -15, z: 0, w: 1.5, d: 22, kind: 'alta' },
+
+      // --- Vestíbulo: la divisoria que obliga a elegir salida.
+      { x: -4, z: 22, w: 20, d: 1.5, kind: 'alta' },
+
+      // --- El Largo: tres Media escalonadas a un lado y otro del carril.
+      { x: -36, z: 6, w: 7, d: 3, kind: 'media' },
+      { x: -24, z: -8, w: 7, d: 3, kind: 'media' },
+      { x: -34, z: -22, w: 7, d: 3, kind: 'media' },
+
+      // --- Aproximación a La Puerta, una por cada boca.
+      { x: -11, z: -9, w: 4, d: 3, kind: 'media' },
+      { x: -12, z: 2, w: 4, d: 3, kind: 'media' },
+
+      // --- Los Cajones: racimo de corta distancia, separaciones de 4 a 7 u.
+      { x: -10, z: 16, w: 5, d: 5, kind: 'baja' },
+      { x: 6, z: 5, w: 5, d: 5, kind: 'baja' },
+      { x: 22, z: 14, w: 5, d: 5, kind: 'baja' },
+      { x: 30, z: 3, w: 5, d: 5, kind: 'baja' },
+      { x: 0, z: 9, w: 6, d: 4, kind: 'bordillo' },
+      { x: 15, z: 18, w: 6, d: 4, kind: 'bordillo' },
+      // Divisoria que parte la zona en dos bolsas.
+      { x: 13, z: 4, w: 3, d: 10, kind: 'alta' },
+
+      // --- Pasillo trasero: ruta de rotación.
+      { x: 4, z: -14, w: 7, d: 3, kind: 'media' },
+
+      // --- El Balcón: plataforma corrida al fondo.
+      // Llega hasta ±39 y z -39 a propósito: el jugador se puede acercar a las
+      // paredes hasta ROOM/2 - MOVEMENT.wallMargin (±38.5), y si la plataforma
+      // se quedase corta habría una rendija por la que caerse por detrás.
+      { x: -39, z: -39, w: 78, d: 11, kind: 'plataforma' },
+      // Parapeto sobre el borde delantero, con dos troneras abiertas entre
+      // x -34..-30 y x -24..-20. Por ahí, y sólo por ahí, se ve el Largo.
+      { x: -39, z: -29.5, w: 5, d: 1.5, kind: 'parapeto', base: 'plataforma' },
+      { x: -30, z: -29.5, w: 6, d: 1.5, kind: 'parapeto', base: 'plataforma' },
+      { x: -20, z: -29.5, w: 40, d: 1.5, kind: 'parapeto', base: 'plataforma' },
+    ],
+
+    ramps: [
+      // Acceso al Balcón por la derecha: sube de 0 en z = -16 a 2.6 en z = -28,
+      // donde engancha con el borde de la plataforma.
+      { x: 26, z: -28, w: 6, d: 12, fromZ: -16, toZ: -28, top: 'plataforma' },
+    ],
+
+    anchors: [
+      // --- El Largo: lo lejano, detrás de la cobertura escalonada.
+      { id: 'largo-1', x: -32, y: 0, z: -14, zone: 'El Largo', peek: true },
+      { id: 'largo-2', x: -20, y: 0, z: -24, zone: 'El Largo', peek: true },
+      { id: 'largo-3', x: -34, y: 0, z: 2, zone: 'El Largo', peek: true },
+
+      // --- Troneras del Balcón: elevadas, en los huecos del parapeto.
+      { id: 'tronera-o', x: -32, y: 'plataforma', z: -29, zone: 'El Balcón', peek: false },
+      { id: 'tronera-e', x: -22, y: 'plataforma', z: -29, zone: 'El Balcón', peek: false },
+
+      // --- Bocas de La Puerta, una a cada lado de la Espina.
+      { id: 'puerta-o', x: -18, y: 0, z: -2, zone: 'La Puerta', peek: false },
+      { id: 'puerta-e', x: -9, y: 0, z: -2, zone: 'La Puerta', peek: false },
+
+      // --- Los Cajones: corta distancia, asomada agachado.
+      { id: 'cajon-1', x: -7, y: 0, z: 13, zone: 'Los Cajones', peek: true },
+      { id: 'cajon-2', x: 8, y: 0, z: 2, zone: 'Los Cajones', peek: true },
+      { id: 'cajon-3', x: 24, y: 0, z: 11, zone: 'Los Cajones', peek: true },
+      { id: 'cajon-4', x: 33, y: 0, z: 10, zone: 'Los Cajones', peek: false },
+
+      // --- Vestíbulo: uno en la boca de cada salida, pasados los extremos de
+      // la divisoria. La banda alrededor del spawn se queda despejada, pero
+      // estos dos tienen que verse **desde el propio spawn**: la divisoria tapa
+      // todo lo que hay de frente, así que sin ellos la sesión arrancaría sin
+      // ninguna diana a la vista hasta que el jugador se moviera.
+      { id: 'vestibulo-o', x: -12, y: 0, z: 22.7, zone: 'Vestíbulo', peek: false },
+      { id: 'vestibulo-e', x: 22, y: 0, z: 23, zone: 'Vestíbulo', peek: false },
+    ],
+  },
+}
+
 export const FEEDBACK = {
   /** Duración del pop de la diana acertada. */
   targetPopMs: 130,
@@ -670,6 +878,8 @@ export const FEEDBACK = {
 
 /** Sonido sintetizado (Web Audio API). Sin assets externos. */
 export const AUDIO = {
+  /** Volumen del golpe de aterrizaje, relativo al máster. */
+  landingVolume: 0.34,
   masterVolume: 0.45,
   shotVolume: 0.9,
   hitVolume: 0.8,

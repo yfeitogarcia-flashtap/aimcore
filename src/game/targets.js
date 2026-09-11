@@ -26,6 +26,7 @@
 import * as THREE from 'three'
 import {
   COLORS,
+  COVER,
   FEEDBACK,
   MAX_SIMULTANEOUS_TARGETS,
   ROOM,
@@ -46,6 +47,9 @@ const _u = new THREE.Vector3()
 const _v = new THREE.Vector3()
 const _dir = new THREE.Vector3()
 const _candidate = new THREE.Vector3()
+// Propios del test de visibilidad de anclajes, para no pisar `_candidate`.
+const _anchorProbe = new THREE.Vector3()
+const _direction = new THREE.Vector3()
 const _otherDir = new THREE.Vector3()
 const _center = new THREE.Vector3()
 const _motion = new THREE.Vector3()
@@ -134,6 +138,16 @@ export class TargetManager {
     this._hasLastSpawn = false
     this._lastSpawnPosition = new THREE.Vector3()
 
+    /**
+     * Anclajes curados de un escenario con cobertura. Mientras esté vacío se
+     * usa el muestreo por cono de siempre.
+     */
+    this.anchors = []
+    this._occluders = []
+    this._visibilityRay = new THREE.Raycaster()
+    /** Orden barajado de anclajes. Preasignado: barajar no aloca. */
+    this._anchorOrder = new Int32Array(0)
+
     this.configure(settings)
   }
 
@@ -159,6 +173,33 @@ export class TargetManager {
     this.cosConeHalfAngle = Math.cos(this.coneHalfAngle)
 
     if (geometryChanged) this._buildPool()
+  }
+
+  /**
+   * Monta los anclajes de un escenario. Con anclajes, las dianas dejan de
+   * muestrearse dentro de un cono: salen donde el escenario dice que importa
+   * —una tronera, una boca de paso, la esquina de un cajón—, que es justo lo
+   * que un cono no sabe hacer.
+   *
+   * @param {Array<object>} anchors
+   * @param {Array<THREE.Object3D>} occluders geometría contra la que se
+   *   comprueba la visibilidad
+   */
+  setAnchors(anchors, occluders) {
+    this.anchors = anchors && anchors.length ? anchors : []
+    this._occluders = occluders || []
+    if (this._anchorOrder.length !== this.anchors.length) {
+      this._anchorOrder = new Int32Array(this.anchors.length)
+    }
+    for (let i = 0; i < this.anchors.length; i++) {
+      this._anchorOrder[i] = i
+      this.anchors[i].occupied = false
+    }
+  }
+
+  /** ¿Estamos en un escenario con anclajes curados? */
+  get useAnchors() {
+    return this.anchors.length > 0
   }
 
   /** El tipo de diana vigente, tal cual está descrito en config.js. */
@@ -200,6 +241,10 @@ export class TargetManager {
   /** Apaga todas las dianas y detiene las apariciones. */
   clear() {
     for (const instance of this.instances) this._release(instance)
+    // Reconstruir el pool descarta instancias sin soltarlas, así que los
+    // anclajes se liberan también por su lado: si no, un cambio de tamaño de
+    // diana dejaría medio escenario marcado como ocupado para siempre.
+    for (let i = 0; i < this.anchors.length; i++) this.anchors[i].occupied = false
     this.aliveCount = 0
     this.sessionActive = false
     this._hasLastSpawn = false
@@ -219,7 +264,10 @@ export class TargetManager {
         this._updateDying(instance, now)
       } else if (instance.state === 'alive') {
         this._updateFlashes(instance, now)
-        if (this.dynamic && deltaSeconds > 0) {
+        // Con anclajes curados las dianas no se mueven: un destino aleatorio
+        // las metería dentro de un muro y se llevaría por delante el sentido de
+        // la cobertura. El modo dinámico se ignora aquí a propósito.
+        if (this.dynamic && !this.useAnchors && deltaSeconds > 0) {
           this._updateMotion(instance, deltaSeconds, now, camera)
         }
       }
@@ -258,7 +306,9 @@ export class TargetManager {
     const hits = raycaster.intersectObjects(meshes, false)
     if (hits.length === 0) return null
     const { instance, part } = hits[0].object.userData
-    return { instance, part }
+    // La distancia sale de aquí para que el motor pueda comprobar si hay
+    // cobertura por delante sin repetir el raycast contra las dianas.
+    return { instance, part, distance: hits[0].distance }
   }
 
   /**
@@ -301,7 +351,22 @@ export class TargetManager {
     }
     if (!instance) return
 
-    this._samplePosition(camera, _candidate)
+    if (this.useAnchors) {
+      const anchor = this._pickAnchor(camera)
+      if (!anchor) {
+        // Nada visible desde donde está el jugador. Se reintenta en un rato,
+        // nunca en el frame siguiente: el test de visibilidad es de activación.
+        this._nextSpawnAt = now + SPAWN.anchorRetryMs
+        return
+      }
+      anchor.occupied = true
+      instance.anchor = anchor
+      _candidate.copy(anchor.position)
+      if (!this.anchoredToFloor) _candidate.y += COVER.targetStandY
+    } else {
+      instance.anchor = null
+      this._samplePosition(camera, _candidate)
+    }
     instance.group.position.copy(_candidate)
     instance.group.scale.setScalar(1)
     instance.health = TARGET.maxHealth
@@ -331,6 +396,64 @@ export class TargetManager {
   _release(instance) {
     instance.state = 'free'
     instance.group.visible = false
+    if (instance.anchor) {
+      instance.anchor.occupied = false
+      instance.anchor = null
+    }
+  }
+
+  /**
+   * Elige un anclaje libre y **visible** desde la cámara.
+   *
+   * Baraja el orden y devuelve el primero que pase el test de visibilidad. Eso
+   * es exactamente un sorteo uniforme entre los visibles —el primer elemento
+   * visible de una permutación uniforme lo es—, y de paso ahorra raycasts: no
+   * hace falta comprobar los 13 para elegir entre ellos, basta con los que se
+   * miran hasta dar con uno.
+   */
+  _pickAnchor(camera) {
+    const order = this._anchorOrder
+    const count = order.length
+    // Fisher-Yates sobre el array preasignado: no aloca nada.
+    for (let i = count - 1; i > 0; i--) {
+      const j = (Math.random() * (i + 1)) | 0
+      const tmp = order[i]
+      order[i] = order[j]
+      order[j] = tmp
+    }
+
+    for (let i = 0; i < count; i++) {
+      const anchor = this.anchors[order[i]]
+      if (anchor.occupied) continue
+      if (this._isAnchorVisible(camera, anchor)) return anchor
+    }
+    return null
+  }
+
+  /**
+   * Línea de visión entre el jugador y un anclaje. Sólo se llama al activar un
+   * anclaje, nunca por frame: con cobertura por medio esto es un raycast contra
+   * toda la geometría y no cabe en el presupuesto de un frame.
+   */
+  _isAnchorVisible(camera, anchor) {
+    if (this._occluders.length === 0) return true
+
+    _anchorProbe.copy(anchor.position)
+    _anchorProbe.y +=
+      this.anchoredToFloor ? this.type.halfHeight * this.radius : COVER.targetStandY
+
+    _direction.subVectors(_anchorProbe, camera.position)
+    const distance = _direction.length()
+    if (distance <= 1e-4) return true
+    _direction.multiplyScalar(1 / distance)
+
+    this._visibilityRay.set(camera.position, _direction)
+    this._visibilityRay.near = 0
+    // Un pelo por delante de la diana: si no, la propia cobertura pegada a ella
+    // contaría como obstáculo.
+    this._visibilityRay.far = distance - 0.15
+    const hits = this._visibilityRay.intersectObjects(this._occluders, false)
+    return hits.length === 0
   }
 
   /**
@@ -468,6 +591,8 @@ export class TargetManager {
         popCenterY: 0,
         destination: new THREE.Vector3(),
         destinationUntil: 0,
+        /** Anclaje que ocupa, si el escenario los usa. */
+        anchor: null,
       }
       for (let p = 0; p < parts.length; p++) parts[p].mesh.userData.instance = instance
 

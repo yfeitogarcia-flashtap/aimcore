@@ -43,6 +43,7 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Capa | Dónde | Qué hace |
 |---|---|---|
 | Motor | `src/game/` | Bucle rAF, input, raycast, dianas, armas, panel de acciones. **Vive fuera de React.** |
+| Escenario | `src/game/scenario.js` | Convierte los datos de `SCENARIOS` en mallas, colisionadores, oclusores y anclajes. |
 | React | `src/App.jsx`, `src/ui/` | Sólo conoce la *fase* (inicio / juego / pausa / resumen) y el resumen final. |
 | HUD | `src/ui/Hud.jsx` | Se actualiza **imperativamente por refs** desde el bucle. Cero `setState` por frame. |
 | Config | `src/config.js` | Todo el tuning, sin excepción. |
@@ -87,6 +88,17 @@ así, la cadencia queda cuantizada por el refresco del monitor y un arma de 600
 RPM dispara distinto a 60 Hz que a 240 Hz. Lo mismo aplica a cualquier
 mecánica temporizada que se añada.
 
+**Con cobertura, las dianas salen en anclajes curados, no por muestreo.** Un
+cono no sabe poner una diana en una tronera. Cada anclaje lleva su zona, su
+suelo y si obliga a asomarse, y se sortea **entre los visibles**: se baraja el
+orden y se coge el primero que pase el test de visibilidad, que es un sorteo
+uniforme entre los visibles y de paso ahorra raycasts.
+
+**El test de visibilidad es de activación, nunca por frame.** Es un raycast
+contra toda la geometría del escenario y no cabe en el presupuesto de un frame.
+Si no hay ningún anclaje visible se reintenta tras `SPAWN.anchorRetryMs`, jamás
+al frame siguiente.
+
 **El límite de FPS usa un acumulador de delta con arrastre del resto y
 tolerancia** (`tolerance = min(1, interval * 0.1)`), no salto crudo de frames.
 Sin la tolerancia, un tope igual al refresco del monitor lo parte por la mitad
@@ -124,6 +136,20 @@ por zona: cabeza 100 / torso 50 / piernas 34; cono de aparición más ancho y
 distancia variable por muñeco). Modo dinámico opcional: destino aleatorio a
 velocidad constante, con comprobación de separación para evitar solapes.
 Selector de dianas simultáneas x1 / x2 / x3 / x5.
+
+**Escenarios:** variante activable desde opciones, no reemplazo. *Sala vacía*
+(Gridshot de siempre, muestreo por cono) y **Largo y Puerta**, el primer
+escenario con cobertura: Espina con una sola Puerta de 4 u, El Largo con tres
+Media escalonadas, Los Cajones de corta distancia, el Balcón elevado (+2.6) con
+rampa y parapeto con dos troneras, y un Vestíbulo despejado alrededor del spawn.
+Trece anclajes curados. El vocabulario de piezas y la rampa de grises están en
+`COVER`; la geometría, en `SCENARIOS`.
+
+Con un escenario montado: el jugador **colisiona** contra las cajas (resuelto un
+eje cada vez, con soporte de suelo y rampas), los **disparos se paran en la
+cobertura**, y el **modo dinámico y la distancia de aparición no se aplican** —
+las dianas se quedan en su anclaje porque un destino aleatorio las metería dentro
+de un muro.
 
 **Movimiento:** WASD, tres marchas (correr / SHIFT andar / CTRL o C agachado,
 gana la más lenta), salto con gravedad constante sin doble salto, límites reales
@@ -164,11 +190,14 @@ admite), mensajes de ayuda y modo dinámico.
 Backend, cuentas, guardado en la nube, rankings, minimapa, pasos sonoros. Si el
 encargo no lo pide explícitamente, no se añade.
 
-**En diseño, aún no construido:** el primer escenario con cobertura y la colisión
-del jugador contra estructuras. Hay tres layouts propuestos y seis avisos sobre
-lo que rompen del sistema actual en
-`docs/propuestas/01-escenario-cobertura.md` — léelo antes de tocar geometría,
-movimiento o aparición de dianas.
+**En diseño, aún no construido:** los Planos B (*El Patio*) y C (*La Ejecución*)
+de `docs/propuestas/01-escenario-cobertura.md`. No los construyas hasta que el
+Plano A esté validado jugando.
+
+**Aviso sobre el salto:** su altura depende del refresco del monitor (ápice 1.21
+a 60 Hz, 1.25 a 240 Hz con `jumpSpeed 6.75`). Por eso **subirse a la cobertura
+`baja` de 1.25 no es una mecánica fiable** y ningún escenario debe depender de
+ella. El bordillo de 0.6 sí se salta en cualquier refresco.
 
 ---
 

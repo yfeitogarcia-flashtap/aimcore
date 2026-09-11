@@ -74,6 +74,10 @@ export class ActionPanel {
     this._hitMaterial = new THREE.MeshBasicMaterial()
     this._activeMeshes = []
     this._maxX = ROOM.width / 2 - ACTION_PANEL.wallOffset
+    // El tablero mide `widthPx * scale` de ancho y está girado para mirar a -X,
+    // así que se extiende a lo largo de Z: media anchura a cada lado del ancla.
+    this._halfSpan = (ACTION_PANEL.widthPx * ACTION_PANEL.scale) / 2
+    this._maxZ = ROOM.depth / 2 - this._halfSpan - ACTION_PANEL.wallOffset
   }
 
   /**
@@ -84,6 +88,33 @@ export class ActionPanel {
    * —ahora que la sala se recorre entera, se puede llegar hasta él—, y nunca
    * pasa de la pared.
    */
+  /**
+   * Ancla el tablero al punto de aparición del jugador. Hasta que hubo
+   * escenarios el spawn era siempre el origen y bastaba con dejarlo en z = 0;
+   * ahora cada escenario aparece donde quiere y el tablero lo sigue, o se
+   * quedaría a media sala del jugador.
+   *
+   * La Z se acota para que el tablero entero quepa dentro de la sala: con el
+   * ancla pegada a la pared trasera, media pizarra se saldría por detrás.
+   */
+  setAnchor(spawn) {
+    const z = Math.max(-this._maxZ, Math.min(this._maxZ, spawn ? spawn.z : 0))
+    this.object.position.z = z
+    this.group.position.z = z
+  }
+
+  /** Volumen que el escenario debe dejar libre para que el tablero quepa. */
+  get clearVolume() {
+    return {
+      minX: ACTION_PANEL.distance,
+      maxX: this._maxX,
+      minZ: this.object.position.z - this._halfSpan,
+      maxZ: this.object.position.z + this._halfSpan,
+      minY: ACTION_PANEL.height - (ACTION_PANEL.heightPx * ACTION_PANEL.scale) / 2,
+      maxY: ACTION_PANEL.height + (ACTION_PANEL.heightPx * ACTION_PANEL.scale) / 2,
+    }
+  }
+
   follow(camera) {
     const wanted = Math.max(ACTION_PANEL.distance, camera.position.x + ACTION_PANEL.minDistance)
     const x = Math.min(wanted, this._maxX)

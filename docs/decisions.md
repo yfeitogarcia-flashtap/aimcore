@@ -648,6 +648,163 @@ crecer sin límite. Fusionarlos degradaría el primero sin mejorar el segundo.
 
 ---
 
+## Ronda 14 — Plano A: el primer escenario con cobertura
+
+Se construye *Largo y Puerta* de la propuesta 01. Es la ronda que más supuestos
+tácitos del motor rompe, porque todos ellos existían gracias a que la sala estaba
+vacía.
+
+### 14.1 Escenario como variante, no como reemplazo
+
+`SETTINGS.scenario` con *Sala vacía* por defecto. Mismo criterio que el
+movimiento en la ronda 2 (§2.1): la sala vacía sigue siendo un escenario válido y
+la referencia limpia de rendimiento, y poder apagar el escenario es lo que
+permite aislar una regresión.
+
+### 14.2 Anclajes curados en lugar de muestreo por cono
+
+**La decisión central de la ronda.** Con cobertura, el sentido de una diana es
+*dónde* sale: una tronera, la boca de un paso, la esquina de un cajón. Eso no lo
+da un cono, que sólo sabe de ángulos y distancias.
+
+Trece anclajes escritos a mano, cada uno con zona, suelo sobre el que se apoya y
+si obliga a asomarse. El muestreo por cono sigue vivo y sin tocar para la sala
+vacía: son dos modos, no un reemplazo.
+
+*Consecuencia asumida:* el *slider* de distancia de aparición no se aplica en un
+escenario. Los anclajes están donde el diseño dice, y filtrarlos por distancia
+podría dejar cero candidatos visibles. Se avisa en la propia opción.
+
+### 14.3 Barajar y coger el primero visible
+
+Había que "sortear entre los anclajes visibles". Lo obvio sería comprobar los 13,
+quedarse con los visibles y sortear entre ellos: 13 raycasts siempre.
+
+En su lugar se baraja el orden y se devuelve **el primero que pase el test**. El
+primer elemento visible de una permutación uniforme está distribuido
+uniformemente entre los visibles, así que el sorteo es exactamente el mismo — y
+se dejan de hacer todos los raycasts posteriores al acierto. Medido en juego: 1 a
+3 raycasts por aparición en vez de 13.
+
+El barajado es Fisher-Yates sobre un `Int32Array` preasignado: no aloca.
+
+### 14.4 La visibilidad se comprueba al activar, jamás por frame
+
+Un raycast contra toda la geometría no cabe en el presupuesto de 0.2 ms p99. Se
+comprueba sólo al elegir anclaje.
+
+El detalle que lo hace cierto: si **ningún** anclaje está visible, hay que
+esperar (`SPAWN.anchorRetryMs`, 150 ms) antes de reintentar. Sin esa espera,
+`_spawn` fallaría y el bucle lo volvería a llamar al frame siguiente,
+convirtiendo un test de activación en uno por frame — exactamente lo que la
+decisión quería evitar. Verificado en navegador: 0 raycasts de visibilidad en un
+segundo de juego sin apariciones.
+
+### 14.5 Los disparos se paran en la cobertura
+
+No estaba en el encargo, pero sin esto el escenario no significa nada: las dianas
+nacen visibles, el jugador se mete detrás de la Espina y sigue matando a través
+del muro.
+
+Se resuelve con un segundo raycast **por disparo** —nunca por frame— contra los
+oclusores, acotado a la distancia del impacto. Va con el rayo ya desviado por
+retroceso y dispersión, así que un tiro que se va a la cobertura se come la
+cobertura. Coste medido: p99 0.2 ms por disparo, y un arma dispara como mucho 13
+veces por segundo.
+
+### 14.6 El modo dinámico se ignora con anclajes
+
+Una diana que se mueve a un destino aleatorio atravesaría los muros y se llevaría
+por delante todo el diseño de cobertura. Se descartó moverlas **entre anclajes**
+por el mismo motivo: la línea recta entre dos anclajes también cruza paredes.
+
+Así que en un escenario las dianas se quedan quietas, y la opción lo dice.
+Moverlas bien pide rutas declaradas en el escenario, que es otra ronda.
+
+### 14.7 Grises por altura, ningún naranja
+
+La referencia de estilo es naranja entera, pero `#E4462B` es el color de las
+dianas (§10.4). La rampa de grises no es un sustituto estético: **codifica
+altura**, de `#2B2B2B` para el bordillo a `#C8C8C8` para el bloque. Más claro =
+más alto = menos se pasa, y el jugador aprende a leerlo sin que nadie se lo
+explique.
+
+Cada pieza lleva una arista un tono por encima del relleno: sin ella, dos grises
+vecinos se funden contra el fondo negro y el bloque pierde su silueta.
+
+### 14.8 Colisión por eje, y las rampas aparte
+
+La resolución es **un eje cada vez**: X contra la Z vieja, luego Z contra la X ya
+corregida. Resolver los dos a la vez clava al jugador en cuanto roza una esquina;
+por ejes, resbala.
+
+Las rampas **no son cajas**. Si lo fueran, frenarían. Son un tipo propio de
+colisionador que no estorba y sólo levanta el suelo, interpolando entre su
+extremo bajo y el alto. Es lo que hace subible el Balcón, que con un salto de
+0.69–1.25 u no se alcanza de ninguna otra forma.
+
+El escalón automático (`COVER.stepHeight`) es 0.25, deliberadamente **por debajo
+del bordillo de 0.6**: sirve para no engancharse en juntas, no para convertir la
+cobertura más baja en una rampa.
+
+### 14.9 El parapeto es un labio de la plataforma, no un muro del suelo
+
+Primer intento: un muro de 3.8 delante del Balcón, a nivel de suelo. Mal — desde
+el Largo tapa al muñeco de 2.6 a 3.8, dejando asomar sólo una rodaja de cabeza.
+
+Correcto: el parapeto se apoya **sobre** la plataforma (`base: 'plataforma'`), de
+2.6 a 3.8. Así cubre hasta el pecho a quien está arriba, que es lo que hace una
+ventana, y las troneras son huecos en ese labio por donde el muñeco se ve entero
+de cintura para arriba.
+
+### 14.10 Tres fallos que sólo aparecieron al probar
+
+**La plataforma dejaba una rendija.** Iba de z −38 a −28, pero el jugador llega
+hasta ±38.5 (`ROOM/2 - MOVEMENT.wallMargin`). Por esa franja de medio metro se
+caía por detrás del Balcón. Se extendió a ±39. **Regla general:** cualquier
+superficie pisable tiene que llegar al límite de movimiento, no al límite
+nominal de la sala.
+
+**Desde el spawn no se veía ningún anclaje.** La divisoria del Vestíbulo —20 u de
+ancho a 5 u del jugador— tapaba el cono entero, así que la sesión arrancaba sin
+ninguna diana y el reintento de 150 ms se disparaba en bucle. Los dos anclajes
+del Vestíbulo se movieron a las bocas de cada salida, fuera de la sombra de la
+divisoria. **Regla general:** un escenario tiene que garantizar al menos un
+anclaje visible desde su propio punto de aparición.
+
+**Dos anclajes nacían dentro de un bloque.** Uno dentro de una Baja y otro dentro
+de un Bordillo. El segundo se coló porque la primera versión del test sólo
+miraba piezas altas: una diana con los pies enterrados en un bordillo es
+igual de inaceptable que una dentro de un muro, y el test no lo veía.
+
+### 14.11 El panel de acciones se ancla al spawn de verdad
+
+`CLAUDE.md` decía que el panel estaba "anclado respecto al spawn", pero la
+implementación lo ponía en la pared +X a z = 0 — que coincidía con el spawn
+mientras el spawn fue siempre el origen. Con escenarios dejó de coincidir.
+
+Ahora `setAnchor(spawn)` mueve el tablero en Z con el punto de aparición, acotado
+para que la pizarra entera quepa dentro de la sala (mide 19.8 u de ancho: con el
+ancla pegada a la pared trasera, media se saldría). Verificado que su volumen
+—X 18..39.4, Z 18.1..37.9, Y 2.35..5.65— no toca ninguna estructura del Plano A.
+
+*Lo que sí cambia y es inherente:* el panel ya no está siempre a la vista. Desde
+el Largo lo tapa la Espina. Con cobertura eso es inevitable, y preferible a
+ponerlo flotando en mitad del mapa.
+
+### 14.12 Aterrizaje: hundimiento instantáneo, recuperación suave
+
+El hundimiento entra **de golpe** en el instante del impacto y se recupera con
+una salida suave en 110 ms. Al revés —entrar suave— se sentiría como un ascensor,
+no como un golpe.
+
+Ambos, sonido y hundimiento, escalan con la velocidad de caída y no hacen nada
+por debajo de `LANDING.minSpeed`: bajarse de un bordillo no debe sonar igual que
+tirarse del Balcón, ni sonar en absoluto.
+
+Es puramente sensorial. No toca `gravity` ni `jumpSpeed`, que es justo el punto:
+comprobar si la sensación de "flotante" se arregla sin tocar la física.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
