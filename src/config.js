@@ -315,6 +315,13 @@ export const WEAPONS = {
     magazine: 18,
     reloadMs: 1200,
     supportsSuppressor: true,
+    /**
+     * Precisión que se considera "dominar esta arma". La puntuación normaliza
+     * contra este número, así que exigir 85% con un arma sin retroceso pesa lo
+     * mismo que exigir 40% con una que sacude: cada arma se juzga contra lo que
+     * es razonable en ella, no contra un listón único.
+     */
+    precisionTarget: 0.85,
     // Arquetipo por defecto: se dispara exactamente como antes de que hubiera
     // armas. Sin patrón, no hay empuje de cámara en absoluto.
     recoil: [],
@@ -327,6 +334,8 @@ export const WEAPONS = {
     magazine: 30,
     reloadMs: 2300,
     supportsSuppressor: false,
+    /** Ver `precisionTarget` de Scalar-2. */
+    precisionTarget: 0.5,
     // Subida vertical marcada durante los primeros ocho disparos —el pico está
     // en el cuarto— y a partir de ahí la vertical se apaga y el arma deriva
     // hacia la izquierda. Techo vertical ≈ 7.2°, deriva ≈ 2.6° a la izquierda.
@@ -356,6 +365,8 @@ export const WEAPONS = {
     magazine: 25,
     reloadMs: 1800,
     supportsSuppressor: true,
+    /** Ver `precisionTarget` de Scalar-2. */
+    precisionTarget: 0.4,
     // Patada más inmediata que la del Axis-7 —el primer disparo ya empuja más—
     // pero con la mitad de techo vertical (≈ 3.9°). El bamboleo lateral
     // alterna lado a lado y suma más recorrido que la vertical (≈ 4.4°), sin

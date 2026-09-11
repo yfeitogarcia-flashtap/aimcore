@@ -12,6 +12,12 @@
  * Que el explosivo detone **no se puntúa**. Es un resultado de fallo aparte, no
  * una estrella baja: quien no llega a desactivar no ha hecho una mala partida,
  * ha hecho otra cosa.
+ *
+ * La precisión se mide **contra el objetivo del arma** (`precisionTarget`), no
+ * en bruto. Una Vertex-9 a 800 RPM con bamboleo lateral no puede acertar como
+ * una Scalar-2 sin retroceso, y puntuarlas con el mismo listón castigaría elegir
+ * el arma difícil. Normalizando, alcanzar el objetivo de cada una da la máxima
+ * en este componente y el peso 0.5 no se toca.
  */
 
 import { OBJECTIVE, SCORING } from '../config.js'
@@ -25,14 +31,26 @@ const clamp01 = (value) => (value < 0 ? 0 : value > 1 ? 1 : value)
  * @param {number} input.shots disparos efectuados
  * @param {number} input.hits impactos
  * @param {number} input.elapsedMs tiempo transcurrido desde que apareció el explosivo
+ * @param {number} [input.precisionTarget] precisión que marca el 100% con el
+ *   arma equipada. 1 = se puntúa la precisión en bruto.
  * @param {number} [input.damageTaken] RESERVADO
  * @param {number} [input.deaths] RESERVADO
  */
-export function scoreParts({ shots, hits, elapsedMs, damageTaken = 0, deaths = 0 }) {
+export function scoreParts({
+  shots,
+  hits,
+  elapsedMs,
+  precisionTarget = 1,
+  damageTaken = 0,
+  deaths = 0,
+}) {
+  // Un objetivo de 0 o negativo dejaría la precisión indefinida; se ignora.
+  const target = precisionTarget > 0 ? precisionTarget : 1
   return {
     // Sin disparos no hay precisión que medir. Se parte de 1 para que el
     // indicador no arranque la sesión en cero y baje: arranca lleno y se gana.
-    accuracy: shots > 0 ? clamp01(hits / shots) : 1,
+    // Con disparos, se mide contra el objetivo del arma: llegar a él es un 1.
+    accuracy: shots > 0 ? clamp01(hits / shots / target) : 1,
     // Cuanto antes se desactive dentro de la cuenta atrás, mejor.
     time: clamp01(1 - elapsedMs / OBJECTIVE.timerMs),
     // RESERVADAS: con peso 0 no entran en la media, pero se calculan igual para

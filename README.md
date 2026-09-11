@@ -168,7 +168,10 @@ dos cosas pasó.
 En modo escenario el HUD muestra **cinco estrellas que se actualizan mientras
 juegas**, no sólo al final. Salen de dos cosas a partes iguales:
 
-- **Precisión** — aciertos entre disparos.
+- **Precisión** — aciertos entre disparos, **medida contra el objetivo de tu
+  arma**. La Scalar-2 pide un 85% para el máximo, la Axis-7 un 50% y la Vertex-9
+  un 40%: un arma que sacude es más indulgente, así que elegir la difícil no te
+  penaliza en la nota.
 - **Tiempo** — cuanto antes desactives dentro de los 45 s, mejor.
 
 Como el tiempo cuenta la mitad, **las estrellas bajan solas según pasan los

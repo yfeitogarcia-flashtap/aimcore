@@ -20,6 +20,12 @@
   /* Gris intermedio para el bloque de arma, que al pasar al centro necesitaba
      leerse mejor sin llegar al blanco de los contadores principales. */
   --text-soft: #a6a6a6;
+
+  /* Estrellas. Sin color a propósito: el naranja es de las dianas y el ámbar
+     del explosivo, y una estrella teñida se confundiría de reojo con alguno de
+     los dos. El contraste lo dan relleno contra contorno. */
+  --star-on: #ffffff;
+  --star-off: #4d4d4d;
   --panel-border: #242424;
 
   --crosshair-gap: 3px;
@@ -102,45 +108,49 @@ body {
 }
 
 /*
- * Estrellas de puntuación. Dibujadas con clip-path y no con un carácter ★: el
- * proyecto no depende de que una fuente concreta tenga el glifo.
+ * Estrellas de puntuación. Ver src/ui/Stars.jsx para el porqué del SVG.
  *
- * Van bajo el bloque central del HUD y, como él, fuera de `.hud`, que se centra
- * con un transform.
+ * La llena va rellena en blanco puro; la vacía es un contorno apagado. La
+ * diferencia es de forma, no sólo de brillo, así que se distinguen de un vistazo
+ * sin necesidad de mirarlas.
  */
+.star {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: var(--star-off);
+  stroke-width: 1.9;
+  stroke-linejoin: round;
+  transition: fill 140ms ease, stroke 140ms ease;
+}
+
+.star--on {
+  fill: var(--star-on);
+  stroke: var(--star-on);
+}
+
+.stars {
+  display: flex;
+  gap: 7px;
+}
+
+.stars--large .star {
+  width: 30px;
+  height: 30px;
+  stroke-width: 1.6;
+}
+
+/* Va fuera de `.hud` —que se centra con un transform— y se centra por su cuenta,
+   con aire suficiente sobre la fila de tiempo/aciertos/fallos para que no se lea
+   como parte de ella. */
 .hud__stars {
   position: absolute;
-  top: 74px;
+  top: 92px;
   left: 50%;
   transform: translateX(-50%);
   z-index: 2;
   display: flex;
-  gap: 5px;
-}
-
-.hud__star {
-  width: 13px;
-  height: 13px;
-  background: var(--text-muted);
-  opacity: 0.35;
-  clip-path: polygon(
-    50% 0%,
-    61% 35%,
-    98% 35%,
-    68% 57%,
-    79% 91%,
-    50% 70%,
-    21% 91%,
-    32% 57%,
-    2% 35%,
-    39% 35%
-  );
-  transition: background-color 140ms ease, opacity 140ms ease;
-}
-
-.hud__star--on {
-  background: var(--text-primary);
-  opacity: 1;
+  gap: 7px;
 }
 
 /* ---------- Resultado del explosivo en el resumen ---------- */
@@ -151,35 +161,6 @@ body {
   align-items: center;
   gap: 8px;
   padding-bottom: 4px;
-}
-
-.summary__stars {
-  display: flex;
-  gap: 7px;
-}
-
-.summary__star {
-  width: 21px;
-  height: 21px;
-  background: var(--text-muted);
-  opacity: 0.3;
-  clip-path: polygon(
-    50% 0%,
-    61% 35%,
-    98% 35%,
-    68% 57%,
-    79% 91%,
-    50% 70%,
-    21% 91%,
-    32% 57%,
-    2% 35%,
-    39% 35%
-  );
-}
-
-.summary__star--on {
-  background: var(--text-primary);
-  opacity: 1;
 }
 
 .summary__failed {
@@ -336,7 +317,10 @@ body {
 /* ---------- Arma y cargador ---------- */
 
 /*
- * Arma y munición, centrados bajo la mira.
+ * Arma y munición, centrados bajo la mira, **en una sola fila**: silueta a un
+ * lado y cargador al otro. Apilados ocupaban el triple de alto para la misma
+ * información, y la silueta ya identifica el arma sin que el nombre compita por
+ * sitio — por eso baja a rótulo secundario debajo.
  *
  * Estaban en la esquina inferior derecha, donde había que apartar la vista del
  * centro para leer el cargador. Aquí caen en el mismo eje que el punto de mira,
@@ -358,18 +342,25 @@ body {
   pointer-events: none;
 }
 
-.weapon {
+.hud__weapon-row {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 2px;
+  gap: 20px;
+}
+
+.hud__weapon-name {
+  font-size: 9px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
 /* Sólo contorno: mismo gris y mismo grosor que el resto del HUD. */
 .weapon__svg {
   /* Proporción del encuadre común que genera scripts/trace-weapons.mjs. */
-  width: 164px;
-  height: 71px;
+  width: 136px;
+  height: 59px;
+  flex: none;
   fill: none;
   /* Mismo blanco que los contadores del HUD: con el gris apagado el trazo se
      quedaba por detrás del resto de elementos. */
@@ -379,14 +370,7 @@ body {
   stroke-linecap: round;
 }
 
-.weapon__label {
-  font-size: 10px;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  /* Un punto más de contraste que el gris apagado del resto de rótulos: ahora
-     que el bloque está en el centro, tiene que leerse de un vistazo. */
-  color: var(--text-soft);
-}
+
 
 .hud__ammo {
   display: flex;
@@ -396,7 +380,7 @@ body {
 }
 
 .hud__ammo-current {
-  font-size: 30px;
+  font-size: 34px;
   line-height: 1;
   color: var(--text-primary);
 }

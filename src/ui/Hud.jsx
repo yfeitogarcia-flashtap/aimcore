@@ -1,5 +1,7 @@
 import { forwardRef, useImperativeHandle, useRef } from 'react'
 import WeaponSilhouette from './WeaponSilhouette.jsx'
+import { STAR_PATH } from './Stars.jsx'
+import { WEAPONS } from '../config.js'
 
 /**
  * HUD de partida: cronómetro, aciertos, fallos, FPS, cargador y arma.
@@ -90,7 +92,7 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
       if (stats.scoring && stats.stars !== last.stars) {
         for (let i = 0; i < starRefs.current.length; i++) {
           const star = starRefs.current[i]
-          if (star) star.classList.toggle('hud__star--on', i < stats.stars)
+          if (star) star.classList.toggle('star--on', i < stats.stars)
         }
         last.stars = stats.stars
       }
@@ -154,13 +156,17 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
 
       <div className="hud__stars" ref={starsRef} hidden>
         {[0, 1, 2, 3, 4].map((i) => (
-          <span
+          <svg
             key={i}
-            className="hud__star"
+            className="star"
+            viewBox="0 0 24 24"
+            role="presentation"
             ref={(node) => {
               starRefs.current[i] = node
             }}
-          />
+          >
+            <path d={STAR_PATH} />
+          </svg>
         ))}
       </div>
 
@@ -188,17 +194,23 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
       </div>
 
       <div className="hud__weapon">
-        <WeaponSilhouette weaponKey={weaponKey} suppressed={suppressed} />
+        {/* Silueta y munición en una sola fila: la silueta ya identifica el
+            arma, así que el nombre sale de la fila y baja a rótulo secundario. */}
+        <div className="hud__weapon-row">
+          <WeaponSilhouette weaponKey={weaponKey} suppressed={suppressed} />
 
-        <div className="hud__ammo" ref={ammoBlockRef}>
-          <span className="hud__ammo-current" ref={ammoRef}>
-            0
-          </span>
-          <span className="hud__ammo-sep">/</span>
-          <span className="hud__ammo-max" ref={magazineRef}>
-            0
-          </span>
+          <div className="hud__ammo" ref={ammoBlockRef}>
+            <span className="hud__ammo-current" ref={ammoRef}>
+              0
+            </span>
+            <span className="hud__ammo-sep">/</span>
+            <span className="hud__ammo-max" ref={magazineRef}>
+              0
+            </span>
+          </div>
         </div>
+
+        <span className="hud__weapon-name">{WEAPONS[weaponKey]?.label}</span>
 
         <div className="hud__reload" ref={reloadRef} hidden>
           <span className="hud__reload-label">recargando</span>

@@ -683,6 +683,8 @@ export class Engine {
       shots: this.shots,
       hits: this.hits,
       elapsedMs: this.elapsedMs,
+      // Cada arma se juzga contra lo que es razonable acertar con ella.
+      precisionTarget: this.weapon.precisionTarget,
       // RESERVADAS: sin mecánica todavía, y con peso 0 no entran en la media.
       damageTaken: 0,
       deaths: 0,

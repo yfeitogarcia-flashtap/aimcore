@@ -1366,6 +1366,70 @@ Va fuera de `.hud` y se centra por su cuenta, por el mismo motivo que el bloque
 de FPS y el de estrellas: `.hud` se centra con un `transform`, y posicionar algo
 dentro de un ancestro transformado lo ancla a ese ancestro (§9.2).
 
+## Ronda 21 — Precisión normalizada por arma, y el HUD en una fila
+
+### 21.1 Cada arma se juzga contra lo que es razonable en ella
+
+La precisión se medía en bruto, y eso **castigaba elegir el arma difícil**: una
+Vertex-9 a 800 RPM con bamboleo lateral no puede acertar como una Scalar-2 sin
+retroceso, así que la mejor estrategia para puntuar era coger siempre la fácil.
+
+Ahora cada arma lleva un `precisionTarget` —lo que se considera dominarla— y el
+componente vale `min(1, bruto / objetivo)`. Con 0.85 / 0.5 / 0.4, un 40% en bruto
+da 0.47 con la Scalar-2, 0.80 con la Axis-7 y 1.00 con la Vertex-9. El **peso 0.5
+no se toca**: lo que cambia es la escala del componente, no cuánto pesa.
+
+Dos detalles:
+
+- **Alcanzar el objetivo da 1 clavado, y pasarse no da más.** El techo es el
+  techo; sobrepasarlo debería notarse en el tiempo, que es la otra mitad.
+- **Sin objetivo, o con objetivo 0, se cae a la precisión en bruto.** Un divisor
+  cero dejaría la nota indefinida, y un arma nueva sin el campo puesto no debería
+  romper la puntuación mientras alguien se acuerda de añadírselo.
+
+### 21.2 Las estrellas pasan de `clip-path` a SVG
+
+El `clip-path` de la ronda 19 recortaba una forma **rellena**, y una forma
+recortada sólo puede estar rellena: la estrella vacía sólo se podía apagar
+bajándole el brillo. Con dos tonos de gris parecidos, llena y vacía se
+distinguían mal de reojo.
+
+En SVG la vacía puede ser un **contorno hueco** de verdad. La diferencia pasa a
+ser de forma, no sólo de brillo, y eso se lee sin mirar. De paso el tamaño sube
+de 13 a 20 px y la fila se separa 21 px de la de tiempo/aciertos/fallos, para que
+no se lea como parte de ella.
+
+**Sin color, a propósito.** El naranja es de las dianas y el ámbar del explosivo;
+una estrella teñida se confundiría de reojo con cualquiera de los dos —justo lo
+que un aim trainer no puede permitirse—. El contraste lo dan relleno blanco puro
+contra contorno `#4d4d4d`.
+
+El componente es compartido (`src/ui/Stars.jsx`): el resumen lo usa declarativo y
+el HUD reutiliza sólo el trazado, porque necesita refs para encender estrellas
+sin pasar por React.
+
+### 21.3 Silueta y munición en una fila
+
+Apilados —silueta, nombre, munición— ocupaban unos 110 px de alto para la misma
+información que ahora cabe en 59. En una sola fila, silueta a un lado y cargador
+al otro, el bloque estorba menos justo donde más se mira.
+
+El **nombre sale de la fila** y baja a rótulo de 9 px debajo. La silueta ya
+identifica el arma de un vistazo; el texto sólo competía por sitio. Por eso
+`WeaponSilhouette` dejó de pintar su propia etiqueta: es un componente de
+silueta, y meter un rótulo dentro rompía cualquier disposición horizontal. Quien
+la coloca decide si hace falta nombre y dónde.
+
+### 21.4 El renombrado arrastró dos suites viejas
+
+Al unificar las estrellas en `.star` y sacar `.weapon__label`, dos suites de
+rondas anteriores fallaron por buscar clases que ya no existen. No era producto
+roto: era la prueba mirando a un sitio que se movió.
+
+Se actualizaron los selectores en lugar de borrar las comprobaciones. Una suite
+que se desactiva al primer renombrado deja de vigilar justo cuando más falta
+hace.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

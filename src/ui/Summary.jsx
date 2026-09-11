@@ -1,4 +1,5 @@
 import { SESSION_DURATION_S } from '../config.js'
+import Stars from './Stars.jsx'
 
 /**
  * Resumen de fin de sesión: precisión, dianas acertadas y dianas/segundo.
@@ -6,17 +7,6 @@ import { SESSION_DURATION_S } from '../config.js'
  * Con explosivo aparecen además el desenlace y las estrellas. Que detone **no
  * es una estrella baja**: es un resultado de fallo aparte, y se enseña como tal.
  */
-
-/** Fila de cinco estrellas, las ganadas encendidas. */
-function Stars({ count }) {
-  return (
-    <div className="summary__stars" aria-label={`${count} de 5 estrellas`}>
-      {[0, 1, 2, 3, 4].map((i) => (
-        <span key={i} className={`summary__star${i < count ? ' summary__star--on' : ''}`} />
-      ))}
-    </div>
-  )
-}
 
 function eyebrow(summary) {
   if (summary.objectiveOutcome === 'defused') return 'explosivo desactivado'
@@ -35,7 +25,7 @@ export default function Summary({ summary, onRestart, onBackToStart }) {
 
       {defused ? (
         <div className="summary__result">
-          <Stars count={summary.stars} />
+          <Stars count={summary.stars} className="stars--large" />
           <span className="summary__result-label">
             {summary.stars} de 5 · nota {(summary.scoreValue * 100).toFixed(0)}
           </span>

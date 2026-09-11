@@ -134,6 +134,15 @@ cuenta hacia arriba**: enseñar lo que queda sería poner el temporizador de la
 bomba en pantalla por la puerta de atrás. El progreso de desactivación sí se ve,
 pero en el mundo —un anillo en el suelo—, no en la interfaz.
 
+**La precisión se puntúa contra el objetivo del arma, no en bruto.** Cada entrada
+de `WEAPONS` lleva `precisionTarget` (0.85 / 0.5 / 0.4) y el componente vale
+`min(1, bruto / objetivo)`. Medir en bruto castigaba elegir el arma difícil. Si
+añades un arma, ponle su objetivo; sin él se cae a la precisión en bruto.
+
+**Las estrellas no llevan color.** El naranja es de las dianas y el ámbar del
+explosivo: una estrella teñida se confunde de reojo con cualquiera de los dos. El
+contraste va por forma —relleno blanco contra contorno apagado—, no por tono.
+
 **La puntuación normaliza por la suma de los pesos, no por el número de
 variables.** Es lo que hace que una variable a peso 0 sea de verdad inerte:
 `damage` y `deaths` están en la fórmula y se calculan, pero no arrastran la nota
@@ -237,9 +246,10 @@ cuenta como acierto ni fallo, no gasta munición ni aplica recoil, y tiene su
 propio sonido de confirmación.
 
 **HUD:** aciertos, fallos, precisión y tiempo arriba (∞ en práctica libre);
-contador de FPS en la esquina; y **bajo la mira**, centrado, el bloque de arma:
-silueta, munición actual/máximo con parpadeo en reserva baja, indicador de
-recarga y mensajes de ayuda contextuales.
+contador de FPS en la esquina; y **bajo la mira**, centrado, el bloque de arma en
+**una sola fila** —silueta a un lado, munición actual/máximo al otro, con
+parpadeo en reserva baja—, con el nombre del arma como rótulo secundario debajo,
+más el indicador de recarga y los mensajes de ayuda.
 
 **Audio espacial:** interruptor en opciones, activado por defecto. Los sonidos
 posicionados suenan con dirección (listener en la cámara, `PositionalAudio` en el
@@ -254,8 +264,9 @@ durante 3 s; soltar cancela el progreso sin penalización. Desactivarlo y que
 detone terminan la sesión, y el resumen dice cuál de las dos.
 
 **Puntuación por estrellas (1-5, sólo con escenario):** precisión y tiempo a peso
-0.5 cada una; daño recibido y muertes **reservadas a peso 0**, ya con su hueco en
-la fórmula. Cortes en `SCORING.starThresholds`. El HUD las enseña **en vivo**, y
+0.5 cada una —la precisión, **normalizada contra el `precisionTarget` del
+arma**—; daño recibido y muertes **reservadas a peso 0**, ya con su hueco en la
+fórmula. Cortes en `SCORING.starThresholds`. El HUD las enseña **en vivo**, y
 bajan solas con el paso del tiempo porque el tiempo es la mitad de la nota.
 
 **Selector de escenario:** plano cenital por escenario dibujado desde los datos,

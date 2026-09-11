@@ -4,6 +4,10 @@ import { WEAPON_PATHS } from './weaponPaths.js'
 /**
  * Silueta del arma para el HUD: perfil lateral, sólo contorno, sin relleno.
  *
+ * Dibuja **sólo la silueta**. El nombre del arma lo pone quien la coloque: en el
+ * HUD la silueta comparte fila con el contador de munición y un rótulo dentro
+ * rompería esa fila.
+ *
  * Los contornos no están dibujados a mano: salen de vectorizar con potrace las
  * referencias recortadas de `Reference/Weapons/` (ver
  * `scripts/trace-weapons.mjs`). Aquí sólo se elige cuál toca y se le da el
@@ -34,11 +38,13 @@ export default function WeaponSilhouette({ weaponKey, suppressed = false }) {
   if (!shape) return null
 
   return (
-    <div className="weapon" aria-label={WEAPONS[weaponKey]?.label}>
-      <svg className="weapon__svg" viewBox={shape.viewBox} role="presentation">
-        <path d={shape.d} />
-      </svg>
-      <span className="weapon__label">{WEAPONS[weaponKey]?.label}</span>
-    </div>
+    <svg
+      className="weapon__svg"
+      viewBox={shape.viewBox}
+      role="img"
+      aria-label={WEAPONS[weaponKey]?.label}
+    >
+      <path d={shape.d} />
+    </svg>
   )
 }
