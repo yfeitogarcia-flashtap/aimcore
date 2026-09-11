@@ -87,8 +87,9 @@ recarga. **Restablecer** vuelve a los valores de `config.js`.
 | Tamaño de diana | escala la figura entera sin deformar sus proporciones |
 | Distancia de aparición | distancia base del cono respecto al jugador |
 | Cadencia | milisegundos entre apariciones. Menos es más difícil |
-| Modo acumulativo | permite varias dianas vivas a la vez |
+| Dianas simultáneas | x1 · x2 · x3 · x5 — cuántas pueden estar vivas a la vez |
 | Modo dinámico | las dianas vivas se desplazan mientras están en pantalla |
+| Límite de fotogramas | 60 · 144 · 240 · Sin límite |
 
 El panel sólo se abre con la partida parada, así que reconstruir las mallas al
 cambiar de tipo o de tamaño nunca cae dentro del bucle de render.
@@ -228,13 +229,39 @@ El modo dinámico no toca cuándo aparece o desaparece una diana: eso lo siguen
 mandando la cadencia y el modo acumulativo. En pausa las dianas se congelan con
 el cronómetro.
 
-### Modo acumulativo
+### Dianas simultáneas
 
-Desactivado (por defecto) hay una sola diana viva y la siguiente espera a que
-caiga la actual — el Gridshot de siempre. Activado sale una diana nueva cada
-`cadencia` milisegundos aunque las anteriores sigan en pie, hasta el tope de
-`TARGET.maxActive` (6). Con cadencias muy bajas se llena en un instante: sube
-la cadencia al activarlo.
+**x1** (por defecto) es el Gridshot de siempre: una sola diana viva, y la
+siguiente se cuenta desde la baja, no desde la aparición. De **x2** en adelante
+van saliendo cada `cadencia` milisegundos aunque las anteriores sigan en pie,
+hasta el número elegido. Con cadencias muy bajas se llena en un instante: sube
+la cadencia al pasar de x1.
+
+El pool de dianas se dimensiona para el mayor valor elegible, así que cambiar
+de opción no obliga a reconstruirlo.
+
+## Rendimiento
+
+El HUD lleva un **contador de FPS** discreto en la esquina superior derecha.
+Mide los fotogramas realmente dibujados —no los ticks de `requestAnimationFrame`—
+promediados sobre los últimos `RENDER.fpsSampleFrames` (30), porque el valor
+instantáneo de un solo frame salta demasiado para leerlo.
+
+El **límite de fotogramas** acota el ritmo de actualización del juego a 60, 144
+o 240; *Sin límite* (por defecto) lo deja atado sólo al refresco del monitor.
+
+No se descartan fotogramas a lo bruto: se acumula el tiempo de cada tick de
+`requestAnimationFrame` y se descuenta un intervalo objetivo cada vez que se
+dibuja, guardando el sobrante. Así el ritmo medio sale exacto aunque el
+objetivo no sea un divisor del refresco —en un monitor de 144 Hz limitado a 60,
+los intervalos alternan 13.9 y 20.8 ms y promedian 16.7— y el movimiento no va
+a tirones. El delta que recibe la lógica de juego es siempre el tiempo real
+transcurrido desde el fotograma anterior dibujado, nunca el intervalo objetivo,
+de modo que el reloj de la partida no se separa del reloj de pared.
+
+Pedir el mismo límite que el refresco de la pantalla lleva una tolerancia: sin
+ella, un tick de 4.166 ms no llegaría por los pelos a un objetivo de 4.167 y el
+ritmo se quedaría a la mitad.
 
 ## Ajustes por defecto
 
@@ -257,6 +284,10 @@ SETTINGS                // valores iniciales y rangos del panel de opciones
 TARGET_TYPES            // formas, daño por zona y distancia base de cada tipo
 TARGET.maxHealth        // vida por diana
 TARGET.maxActive        // tope de dianas vivas en modo acumulativo
+RENDER.fpsSampleFrames  // ventana del contador de FPS
+SIMULTANEOUS_TARGETS    // opciones del selector de dianas a la vez
+FRAME_LIMITS            // opciones del límite de fotogramas
+
 TARGET.moveSpeed        // velocidad de las dianas en modo dinámico
 TARGET.moveMaxSeconds   // tiempo máximo persiguiendo un mismo destino
 
@@ -366,6 +397,8 @@ cuesta ~0.1 ms por frame en p99, frente a los 4.17 ms de presupuesto a 240 Hz.
   mismo muestreo que las apariciones, así que anclar el hitbox al suelo ya
   basta para que sólo se mueva en horizontal: no hay una restricción de ejes
   escrita aparte que pueda desincronizarse.
+- **El contador de FPS mide fotogramas dibujados, no ticks de rAF.** Es el
+  número que hace falta para comprobar que el límite está haciendo su trabajo.
 - **La dispersión desvía la bala, no la mira.** Un temblor aleatorio del
   crosshair sería insufrible y además impediría apuntar; desviando el rayo, el
   jugador ve exactamente dónde apunta y lo que pierde es certeza sobre dónde

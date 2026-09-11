@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { SETTINGS, TARGET_TYPES, WEAPONS } from '../config.js'
+import { FRAME_LIMITS, SETTINGS, SIMULTANEOUS_TARGETS, TARGET_TYPES, WEAPONS } from '../config.js'
 
 /**
  * Panel de opciones. Se abre antes de empezar y también desde la pausa.
@@ -81,6 +81,29 @@ function dynamicHint(targetType) {
     : 'Las dianas se desplazan por todo su volumen de aparición.'
 }
 
+/** Fila de opciones excluyentes, con la etiqueta de cada una del catálogo. */
+function SegmentedRow({ spec, catalog, value, onChange, hint }) {
+  return (
+    <div className="field">
+      <span className="field__label">{spec.label}</span>
+      <div className="segmented">
+        {Object.keys(catalog).map((key) => (
+          <button
+            key={key}
+            type="button"
+            className="segmented__option"
+            aria-pressed={value === key}
+            onClick={() => onChange(key)}
+          >
+            {catalog[key].label}
+          </button>
+        ))}
+      </div>
+      {hint ? <span className="field__hint">{hint}</span> : null}
+    </div>
+  )
+}
+
 /** Fila de interruptor on/off con su explicación al lado. */
 function ToggleRow({ spec, value, onChange, hint }) {
   return (
@@ -109,22 +132,12 @@ export default function Options({ settings, onChange, onReset, onClose }) {
         editable
       />
 
-      <div className="field">
-        <span className="field__label">{SETTINGS.targetType.label}</span>
-        <div className="segmented">
-          {Object.keys(TARGET_TYPES).map((key) => (
-            <button
-              key={key}
-              type="button"
-              className="segmented__option"
-              aria-pressed={settings.targetType === key}
-              onClick={() => onChange({ targetType: key })}
-            >
-              {TARGET_TYPES[key].label}
-            </button>
-          ))}
-        </div>
-      </div>
+      <SegmentedRow
+        spec={SETTINGS.targetType}
+        catalog={TARGET_TYPES}
+        value={settings.targetType}
+        onChange={(targetType) => onChange({ targetType })}
+      />
 
       <div className="field">
         <label className="field__label" htmlFor="opt-weapon">
@@ -169,14 +182,15 @@ export default function Options({ settings, onChange, onReset, onClose }) {
         suffix=" ms"
       />
 
-      <ToggleRow
-        spec={SETTINGS.accumulative}
-        value={settings.accumulative}
-        onChange={(accumulative) => onChange({ accumulative })}
+      <SegmentedRow
+        spec={SETTINGS.simultaneousTargets}
+        catalog={SIMULTANEOUS_TARGETS}
+        value={settings.simultaneousTargets}
+        onChange={(simultaneousTargets) => onChange({ simultaneousTargets })}
         hint={
-          settings.accumulative
-            ? 'Sale una diana nueva cada intervalo aunque las anteriores sigan en pie.'
-            : 'Una sola diana viva: la siguiente espera a que caiga la actual.'
+          settings.simultaneousTargets === 'x1'
+            ? 'Una sola diana viva: la siguiente espera a que caiga la actual.'
+            : `Hasta ${SIMULTANEOUS_TARGETS[settings.simultaneousTargets].count} dianas a la vez, saliendo al ritmo de la cadencia.`
         }
       />
 
@@ -188,6 +202,18 @@ export default function Options({ settings, onChange, onReset, onClose }) {
           settings.dynamic
             ? dynamicHint(settings.targetType)
             : 'Las dianas se quedan quietas donde aparecen.'
+        }
+      />
+
+      <SegmentedRow
+        spec={SETTINGS.frameLimit}
+        catalog={FRAME_LIMITS}
+        value={settings.frameLimit}
+        onChange={(frameLimit) => onChange({ frameLimit })}
+        hint={
+          FRAME_LIMITS[settings.frameLimit].fps > 0
+            ? 'El juego se actualiza a ese ritmo aunque el monitor vaya más rápido.'
+            : 'Al ritmo del monitor, sin limitar.'
         }
       />
 

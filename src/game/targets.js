@@ -24,7 +24,16 @@
  */
 
 import * as THREE from 'three'
-import { COLORS, FEEDBACK, ROOM, SPAWN, TARGET, TARGET_TYPES } from '../config.js'
+import {
+  COLORS,
+  FEEDBACK,
+  MAX_SIMULTANEOUS_TARGETS,
+  ROOM,
+  SIMULTANEOUS_TARGETS,
+  SPAWN,
+  TARGET,
+  TARGET_TYPES,
+} from '../config.js'
 
 const DEG_TO_RAD = Math.PI / 180
 
@@ -115,7 +124,8 @@ export class TargetManager {
     this.radius = TARGET.radius
     this.distance = TARGET_TYPES.classic.defaultDistance
     this.spawnIntervalMs = SPAWN.respawnDelayMs
-    this.accumulative = false
+    /** Dianas vivas permitidas a la vez. Con 1, la siguiente espera a la baja. */
+    this.maxAlive = 1
     this.dynamic = false
 
     this.aliveCount = 0
@@ -134,7 +144,7 @@ export class TargetManager {
   configure(settings) {
     this.distance = settings.spawnDistance
     this.spawnIntervalMs = settings.spawnIntervalMs
-    this.accumulative = settings.accumulative
+    this.maxAlive = SIMULTANEOUS_TARGETS[settings.simultaneousTargets].count
     this.dynamic = settings.dynamic
 
     const geometryChanged =
@@ -217,14 +227,10 @@ export class TargetManager {
 
     if (!this.sessionActive || now < this._nextSpawnAt) return
 
-    if (this.accumulative) {
-      // Cadencia continua: sale una diana cada `spawnIntervalMs` mientras
-      // quede sitio, haya impactado la anterior o no.
-      if (this.aliveCount < TARGET.maxActive) this._spawn(camera, now)
-    } else if (this.aliveCount === 0) {
-      // Una sola diana viva: la siguiente espera a que caiga la actual.
-      this._spawn(camera, now)
-    }
+    // Sale una diana cada `spawnIntervalMs` mientras quede sitio. Con
+    // `maxAlive` a 1 el sitio sólo se libera al caer la que hubiera, que es el
+    // comportamiento de siempre; de 2 en adelante se van acumulando.
+    if (this.aliveCount < this.maxAlive) this._spawn(camera, now)
   }
 
   /** Prepara las matrices de mundo justo antes de un raycast. */
@@ -276,7 +282,10 @@ export class TargetManager {
     const offsetY = this.centerOffsetY
     instance.popCenterY = offsetY === 0 ? 0 : instance.group.position.y + offsetY
     this.aliveCount -= 1
-    if (!this.accumulative) this._nextSpawnAt = now + this.spawnIntervalMs
+    // Con una sola diana viva, la siguiente se cuenta desde la baja: es lo que
+    // hace que la cadencia se sienta como el respawn del Gridshot. Con varias
+    // manda el reloj continuo de las apariciones.
+    if (this.maxAlive === 1) this._nextSpawnAt = now + this.spawnIntervalMs
     return { killed: true, zone: part.zone }
   }
 
@@ -416,7 +425,9 @@ export class TargetManager {
     const type = this.type
     this.partGeometries = type.parts.map((part) => createPartGeometry(part, this.radius))
 
-    const poolSize = TARGET.maxActive + DYING_SLOTS
+    // El pool se dimensiona para el máximo elegible, así que cambiar de opción
+    // en el panel no obliga a reconstruirlo.
+    const poolSize = MAX_SIMULTANEOUS_TARGETS + DYING_SLOTS
     for (let i = 0; i < poolSize; i++) {
       const group = new THREE.Group()
       group.visible = false

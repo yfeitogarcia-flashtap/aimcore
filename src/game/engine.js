@@ -15,6 +15,7 @@ import * as THREE from 'three'
 import {
   ACCURACY,
   CAMERA,
+  FRAME_LIMITS,
   MOVEMENT,
   RECOIL_RESET_MS,
   RENDER,
@@ -113,7 +114,6 @@ export class Engine {
       anchoredAxis: MOVEMENT.enabled,
     })
     this.raycaster = new THREE.Raycaster()
-    this._applySettings(getSettings())
 
     this.phase = PHASE.IDLE
     this.durationMs = SESSION_DURATION_S * 1000
@@ -135,6 +135,7 @@ export class Engine {
     // basura en cada frame.
     this.stats = {
       phase: this.phase,
+      fps: 0,
       timeLeftMs: this.durationMs,
       hits: 0,
       misses: 0,
@@ -146,6 +147,24 @@ export class Engine {
     this._rafId = 0
     this._lastFrameTime = 0
     this._running = false
+
+    /** Intervalo objetivo entre fotogramas, en ms. Cero = sin límite. */
+    this._frameIntervalMs = 0
+    /** Acumulador del limitador: reparte los ticks de rAF entre fotogramas. */
+    this._frameAccumulator = 0
+    this._lastRafTime = 0
+
+    // Media móvil de FPS sobre una ventana corta de fotogramas ya dibujados.
+    this._frameSamples = new Float32Array(RENDER.fpsSampleFrames)
+    this._frameSampleIndex = 0
+    this._frameSampleCount = 0
+    this._frameSampleSum = 0
+    this.fps = 0
+
+    // Al final del constructor a propósito: reparte los ajustes guardados
+    // sobre un estado ya completo. Hacerlo antes dejaba el límite de
+    // fotogramas a cero, pisado por su propia inicialización.
+    this._applySettings(getSettings())
 
     this._onMouseDown = this._onMouseDown.bind(this)
     this._onMouseUp = this._onMouseUp.bind(this)
@@ -176,6 +195,7 @@ export class Engine {
     this._onResize()
 
     this._lastFrameTime = performance.now()
+    this._lastRafTime = this._lastFrameTime
     this._rafId = requestAnimationFrame(this._loop)
   }
 
@@ -247,6 +267,9 @@ export class Engine {
    */
   _applySettings(settings) {
     this.controls.setSensitivity(settings.sensitivity)
+    const limit = FRAME_LIMITS[settings.frameLimit].fps
+    this._frameIntervalMs = limit > 0 ? 1000 / limit : 0
+    this._frameAccumulator = 0
     if (settings.weapon !== this.weaponKey) {
       this.weaponKey = settings.weapon
       this._releaseTrigger()
@@ -458,8 +481,16 @@ export class Engine {
   _loop(now) {
     this._rafId = requestAnimationFrame(this._loop)
 
+    const rafDelta = now - this._lastRafTime
+    this._lastRafTime = now
+    if (!this._dueThisTick(rafDelta)) return
+
+    // El delta del juego es el tiempo real transcurrido desde el fotograma
+    // anterior *dibujado*, no el intervalo objetivo: si se limita a 60 en un
+    // monitor de 240, el reloj del juego tiene que seguir yendo a tiempo real.
     const delta = Math.min(now - this._lastFrameTime, MAX_FRAME_DELTA_MS)
     this._lastFrameTime = now
+    this._sampleFps(delta)
 
     if (this.phase === PHASE.RUNNING) {
       this.elapsedMs += delta
@@ -484,8 +515,48 @@ export class Engine {
     this.renderer.render(this.scene, this.camera)
   }
 
+  /**
+   * Decide si a este tick de rAF le toca dibujar.
+   *
+   * En vez de saltarse fotogramas a lo bruto, se acumula el tiempo y se
+   * descuenta un intervalo objetivo cada vez que se dibuja, guardando el
+   * sobrante. Así el ritmo medio sale exacto aunque el objetivo no sea un
+   * divisor del refresco del monitor, y el movimiento no va a tirones.
+   *
+   * La tolerancia evita el fallo clásico de pedir el mismo límite que el
+   * refresco de la pantalla: un tick de 4.166 ms no llega por los pelos a un
+   * objetivo de 4.167 y el ritmo se quedaría a la mitad.
+   */
+  _dueThisTick(rafDelta) {
+    const interval = this._frameIntervalMs
+    if (interval <= 0) return true
+
+    this._frameAccumulator += rafDelta
+    const tolerance = Math.min(1, interval * 0.1)
+    if (this._frameAccumulator < interval - tolerance) return false
+
+    this._frameAccumulator -= interval
+    // Si el monitor no da para el límite pedido, no se acumula una deuda
+    // imposible de pagar: se dibuja en cada tick y ya está.
+    if (this._frameAccumulator > interval) this._frameAccumulator = interval
+    return true
+  }
+
+  /** Media móvil de los últimos fotogramas dibujados. */
+  _sampleFps(delta) {
+    if (delta <= 0) return
+    const samples = this._frameSamples
+    const index = this._frameSampleIndex
+    this._frameSampleSum += delta - samples[index]
+    samples[index] = delta
+    this._frameSampleIndex = (index + 1) % samples.length
+    if (this._frameSampleCount < samples.length) this._frameSampleCount += 1
+    this.fps = this._frameSampleSum > 0 ? (this._frameSampleCount * 1000) / this._frameSampleSum : 0
+  }
+
   _publishStats() {
     const stats = this.stats
+    stats.fps = this.fps
     stats.timeLeftMs = Math.max(0, this.durationMs - this.elapsedMs)
     stats.hits = this.hits
     stats.shots = this.shots

@@ -10,7 +10,7 @@
  * nadie más tiene que desconfiar de lo que hubiera en localStorage.
  */
 
-import { SETTINGS, TARGET_TYPES, WEAPONS } from './config.js'
+import { FRAME_LIMITS, SETTINGS, SIMULTANEOUS_TARGETS, TARGET_TYPES, WEAPONS } from './config.js'
 
 const STORAGE_KEY = 'aimcore.settings.v1'
 
@@ -21,7 +21,12 @@ const NUMERIC_KEYS = Object.keys(SETTINGS).filter((key) => SETTINGS[key].min !==
  * Ajustes que sólo aceptan una clave de un catálogo. El valor guardado se
  * comprueba contra él: cualquier otra cosa cae al valor por defecto.
  */
-const CATALOGS = { targetType: TARGET_TYPES, weapon: WEAPONS }
+const CATALOGS = {
+  targetType: TARGET_TYPES,
+  weapon: WEAPONS,
+  simultaneousTargets: SIMULTANEOUS_TARGETS,
+  frameLimit: FRAME_LIMITS,
+}
 
 /** Nombres de los interruptores. Se deducen del tipo del valor por defecto. */
 const BOOLEAN_KEYS = Object.keys(SETTINGS).filter(

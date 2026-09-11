@@ -87,8 +87,6 @@ export const TARGET = {
   yRange: { min: 1.0, max: 13.0 },
   /** Vida de cada diana. El daño por zona se descuenta de aquí. */
   maxHealth: 100,
-  /** Tope de dianas vivas a la vez en modo acumulativo. */
-  maxActive: 6,
   /** Velocidad de las dianas en modo dinámico, en unidades por segundo. */
   moveSpeed: 4.0,
   /**
@@ -457,6 +455,39 @@ function computeMaxSpawnDistance(step) {
 }
 
 /**
+ * Cuántas dianas pueden estar vivas a la vez.
+ *
+ * `x1` es el Gridshot de siempre: una sola diana y la siguiente espera a que
+ * caiga. De `x2` en adelante van saliendo al ritmo de la cadencia aunque las
+ * anteriores sigan en pie. Aplica igual a los tres tipos de diana.
+ */
+export const SIMULTANEOUS_TARGETS = {
+  x1: { label: 'x1', count: 1 },
+  x2: { label: 'x2', count: 2 },
+  x3: { label: 'x3', count: 3 },
+  x5: { label: 'x5', count: 5 },
+}
+
+/** El mayor valor elegible. Dimensiona el pool de dianas, que no se rehace al cambiar de opción. */
+export const MAX_SIMULTANEOUS_TARGETS = Math.max(
+  ...Object.values(SIMULTANEOUS_TARGETS).map((option) => option.count),
+)
+
+/**
+ * Límite de fotogramas. `fps: 0` significa sin límite: atado sólo a
+ * requestAnimationFrame, o sea al refresco del monitor.
+ *
+ * Las claves no son numéricas a propósito: JavaScript reordena las claves que
+ * parecen enteros, y aquí el orden de declaración es el que se ve en el panel.
+ */
+export const FRAME_LIMITS = {
+  fps60: { label: '60', fps: 60 },
+  fps144: { label: '144', fps: 144 },
+  fps240: { label: '240', fps: 240 },
+  unlimited: { label: 'Sin límite', fps: 0 },
+}
+
+/**
  * Ajustes editables desde el panel de opciones.
  *
  * A diferencia del resto del archivo, estos valores no se leen directamente:
@@ -511,9 +542,13 @@ export const SETTINGS = {
     step: 10,
     decimals: 0,
   },
-  accumulative: {
-    label: 'Modo acumulativo',
-    default: false,
+  simultaneousTargets: {
+    label: 'Dianas simultáneas',
+    default: 'x1',
+  },
+  frameLimit: {
+    label: 'Límite de fotogramas',
+    default: 'unlimited',
   },
   dynamic: {
     label: 'Modo dinámico',
@@ -553,4 +588,9 @@ export const RENDER = {
   antialias: true,
   /** Tope de devicePixelRatio: proteger el frame rate en pantallas HiDPI. */
   maxPixelRatio: 2,
+  /**
+   * Frames sobre los que se promedia el contador de FPS. El valor instantáneo
+   * de un solo frame salta demasiado para leerlo.
+   */
+  fpsSampleFrames: 30,
 }

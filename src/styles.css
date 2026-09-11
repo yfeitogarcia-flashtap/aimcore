@@ -100,6 +100,28 @@ body {
   color: var(--text-muted);
 }
 
+/* Contador de FPS: presente pero fuera del paso, en la esquina del HUD. */
+.hud__fps {
+  position: absolute;
+  top: 26px;
+  right: 28px;
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  color: var(--text-muted);
+}
+
+.hud__fps-value {
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud__fps-unit {
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
 /* ---------- Crosshair ---------- */
 
 .crosshair {
