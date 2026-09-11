@@ -1,5 +1,11 @@
 import { useState } from 'react'
-import { FRAME_LIMITS, SETTINGS, SIMULTANEOUS_TARGETS, TARGET_TYPES, WEAPONS } from '../config.js'
+import {
+  FRAME_LIMITS,
+  SETTINGS,
+  SIMULTANEOUS_TARGETS,
+  TARGET_TYPES,
+  WEAPONS,
+} from '../config.js'
 
 /**
  * Panel de opciones. Se abre antes de empezar y también desde la pausa.
@@ -160,6 +166,26 @@ export default function Options({ settings, onChange, onReset, onClose }) {
         </div>
       </div>
 
+      {WEAPONS[settings.weapon].supportsSuppressor ? (
+        <ToggleRow
+          spec={SETTINGS.suppressor}
+          value={settings.suppressor}
+          onChange={(suppressor) => onChange({ suppressor })}
+          hint={
+            settings.suppressor
+              ? 'Disparo más apagado. No cambia daño, retroceso ni cadencia.'
+              : 'Sonido de disparo normal.'
+          }
+        />
+      ) : (
+        <div className="field">
+          <span className="field__label">{SETTINGS.suppressor.label}</span>
+          <span className="field__hint">
+            {WEAPONS[settings.weapon].label} no admite silenciador.
+          </span>
+        </div>
+      )}
+
       <SliderRow
         id="opt-radius"
         spec={SETTINGS.targetRadius}
@@ -217,8 +243,19 @@ export default function Options({ settings, onChange, onReset, onClose }) {
         }
       />
 
+      <ToggleRow
+        spec={SETTINGS.helpMessages}
+        value={settings.helpMessages}
+        onChange={(helpMessages) => onChange({ helpMessages })}
+        hint={
+          settings.helpMessages
+            ? 'Avisos breves en el HUD, como el de recargar al quedarte corto.'
+            : 'Sin avisos: el HUD sólo muestra los contadores.'
+        }
+      />
+
       <div className="panel__actions">
-        <button type="button" className="button" onClick={onClose} autoFocus>
+        <button type="button" className="button button--primary" onClick={onClose} autoFocus>
           Volver
         </button>
         <button type="button" className="button button--quiet" onClick={onReset}>

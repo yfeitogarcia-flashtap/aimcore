@@ -17,16 +17,18 @@ import {
   CAMERA,
   FRAME_LIMITS,
   MOVEMENT,
+  HELP,
   RECOIL_RESET_MS,
   RENDER,
   SESSION_DURATION_S,
+  WEAPON_KEYS,
   WEAPONS,
 } from '../config.js'
 import { createScene } from './scene.js'
 import { LookControls } from './lookControls.js'
 import { MovementController } from './movement.js'
 import { TargetManager } from './targets.js'
-import { initAudio, playHit, playShot } from '../audio/sfx.js'
+import { initAudio, playDryFire, playHit, playShot } from '../audio/sfx.js'
 import { getSettings, subscribeSettings } from '../settings.js'
 
 /** Centro exacto de la pantalla: el crosshair no se mueve, así que es constante. */
@@ -131,6 +133,15 @@ export class Engine {
     /** Disparos consecutivos de la ráfaga: indexa el patrón de retroceso. */
     this._sprayIndex = 0
 
+    /** Cargador y recarga. */
+    this.ammo = 0
+    this.reloadEndsAt = 0
+    this.reloadStartedAt = 0
+    /** Si ya se avisó de munición baja en este cargador, para no repetirlo. */
+    this._lowAmmoWarned = false
+    this.suppressorEnabled = false
+    this.helpMessagesEnabled = true
+
     // Objeto de estadísticas reutilizado: el HUD lo lee sin que se genere
     // basura en cada frame.
     this.stats = {
@@ -142,6 +153,10 @@ export class Engine {
       shots: 0,
       kills: 0,
       accuracy: 0,
+      ammo: 0,
+      magazine: 0,
+      reloading: false,
+      reloadProgress: 0,
     }
 
     this._rafId = 0
@@ -168,6 +183,7 @@ export class Engine {
 
     this._onMouseDown = this._onMouseDown.bind(this)
     this._onMouseUp = this._onMouseUp.bind(this)
+    this._onKeyDown = this._onKeyDown.bind(this)
     this._onContextMenu = this._onContextMenu.bind(this)
     this._onPointerLockChange = this._onPointerLockChange.bind(this)
     this._onResize = this._onResize.bind(this)
@@ -183,6 +199,7 @@ export class Engine {
     // El "soltar" se escucha en la ventana: si el botón se libera fuera del
     // canvas, el arma tiene que dejar de disparar igualmente.
     window.addEventListener('mouseup', this._onMouseUp)
+    window.addEventListener('keydown', this._onKeyDown)
     this.canvas.addEventListener('contextmenu', this._onContextMenu)
     document.addEventListener('pointerlockchange', this._onPointerLockChange)
     this.controls.connect(document)
@@ -204,6 +221,7 @@ export class Engine {
     cancelAnimationFrame(this._rafId)
     this.canvas.removeEventListener('mousedown', this._onMouseDown)
     window.removeEventListener('mouseup', this._onMouseUp)
+    window.removeEventListener('keydown', this._onKeyDown)
     this.canvas.removeEventListener('contextmenu', this._onContextMenu)
     document.removeEventListener('pointerlockchange', this._onPointerLockChange)
     this.controls.disconnect()
@@ -270,9 +288,16 @@ export class Engine {
     const limit = FRAME_LIMITS[settings.frameLimit].fps
     this._frameIntervalMs = limit > 0 ? 1000 / limit : 0
     this._frameAccumulator = 0
+    this.helpMessagesEnabled = settings.helpMessages
+    // El silenciador sólo cuenta si el arma lo admite: así dejar el ajuste
+    // puesto y cambiar a un arma que no lo lleva no hace nada raro.
+    this.suppressorEnabled = settings.suppressor && this.weapon.supportsSuppressor
     if (settings.weapon !== this.weaponKey) {
       this.weaponKey = settings.weapon
+      this.suppressorEnabled = settings.suppressor && this.weapon.supportsSuppressor
       this._releaseTrigger()
+      this._cancelReload()
+      this._refillMagazine()
     }
     const hadSession = this.targets.sessionActive
     this.targets.configure(settings)
@@ -282,6 +307,49 @@ export class Engine {
   /** El arma vigente, tal cual está descrita en config.js. */
   get weapon() {
     return WEAPONS[this.weaponKey]
+  }
+
+  /** ¿Hay una recarga en curso? */
+  get reloading() {
+    return this.reloadEndsAt > 0
+  }
+
+  /** Deja el cargador lleno y el aviso de munición baja rearmado. */
+  _refillMagazine() {
+    this.ammo = this.weapon.magazine
+    this._lowAmmoWarned = false
+  }
+
+  /**
+   * Arranca una recarga. No hace nada si ya hay una en curso —pulsar R varias
+   * veces ni la reinicia ni la acumula— ni con el cargador ya lleno.
+   */
+  _startReload(now) {
+    if (this.reloading || this.phase !== PHASE.RUNNING) return
+    if (this.ammo >= this.weapon.magazine) return
+    this.reloadStartedAt = now
+    this.reloadEndsAt = now + this.weapon.reloadMs
+  }
+
+  _cancelReload() {
+    this.reloadEndsAt = 0
+    this.reloadStartedAt = 0
+  }
+
+  /** Cierra la recarga cuando le toca: cargador lleno y patrón desde cero. */
+  _updateReload(now) {
+    if (!this.reloading || now < this.reloadEndsAt) return
+    this._cancelReload()
+    this._refillMagazine()
+    // El patrón de retroceso vuelve al principio: un cargador nuevo es una
+    // ráfaga nueva.
+    this._sprayIndex = 0
+  }
+
+  /** Lanza un aviso temporal al HUD, si el jugador los tiene activados. */
+  _showHelp(text) {
+    if (!this.helpMessagesEnabled) return
+    this.callbacks.onHelp?.(text, HELP.messageDurationMs)
   }
 
   /**
@@ -314,6 +382,8 @@ export class Engine {
     this.kills = 0
     this.controls.enabled = true
     this._releaseTrigger()
+    this._cancelReload()
+    this._refillMagazine()
     this._lastShotAt = -Infinity
     this._nextShotAt = -Infinity
     this.movement.reset()
@@ -365,12 +435,28 @@ export class Engine {
     if (this.phase !== PHASE.RUNNING) return
 
     this._triggerHeld = true
-    this._tryShoot(performance.now())
+    const now = performance.now()
+
+    // Con el cargador vacío el gatillo suena en seco, una vez por pulsación:
+    // el fuego automático no repite el clic, que sería insufrible.
+    if (!this.reloading && this.ammo <= 0) {
+      playDryFire()
+      this._showHelp('Pulsa R para recargar')
+      return
+    }
+    this._tryShoot(now)
   }
 
   _onMouseUp(event) {
     if (event.button !== 0) return
     this._releaseTrigger()
+  }
+
+  _onKeyDown(event) {
+    if (this.phase !== PHASE.RUNNING || !this.isLocked || event.repeat) return
+    if (!WEAPON_KEYS.reload.includes(event.code)) return
+    event.preventDefault()
+    this._startReload(performance.now())
   }
 
   /** Suelta el gatillo y deja el patrón de retroceso listo para otra ráfaga. */
@@ -387,6 +473,10 @@ export class Engine {
    * @returns {boolean} si el disparo llegó a salir
    */
   _tryShoot(now) {
+    // Recargando o sin munición no sale nada. El aviso del cargador vacío lo
+    // da la pulsación del gatillo, no este camino.
+    if (this.reloading || this.ammo <= 0) return false
+
     const weapon = this.weapon
     const intervalMs = 60000 / weapon.rpm
     if (now < this._nextShotAt) return false
@@ -410,7 +500,22 @@ export class Engine {
     this._shoot()
     this._applyRecoil(weapon)
     this._sprayIndex += 1
+    this._consumeAmmo(weapon)
     return true
+  }
+
+  /**
+   * Descuenta la bala y avisa cuando el cargador se queda corto. El aviso sale
+   * una sola vez por cargador: al bajar del umbral, o al vaciarse si se pasó
+   * de largo entre disparos.
+   */
+  _consumeAmmo(weapon) {
+    this.ammo -= 1
+    if (this._lowAmmoWarned) return
+    const lowThreshold = Math.max(1, Math.floor(weapon.magazine * HELP.lowAmmoRatio))
+    if (this.ammo > lowThreshold) return
+    this._lowAmmoWarned = true
+    this._showHelp('Pulsa R para recargar')
   }
 
   /** Empuja la cámara según el disparo que toque del patrón. */
@@ -439,7 +544,7 @@ export class Engine {
     }
 
     // El sonido de disparo suena siempre; el de acierto se superpone.
-    playShot()
+    playShot(this.suppressorEnabled)
     if (hit) {
       this.hits += 1
       const { killed } = this.targets.applyHit(hit, performance.now())
@@ -493,6 +598,7 @@ export class Engine {
     this._sampleFps(delta)
 
     if (this.phase === PHASE.RUNNING) {
+      this._updateReload(now)
       this.elapsedMs += delta
       if (this.elapsedMs >= this.durationMs) {
         this.elapsedMs = this.durationMs
@@ -557,6 +663,12 @@ export class Engine {
   _publishStats() {
     const stats = this.stats
     stats.fps = this.fps
+    stats.ammo = this.ammo
+    stats.magazine = this.weapon.magazine
+    stats.reloading = this.reloading
+    stats.reloadProgress = this.reloading
+      ? Math.min(1, (performance.now() - this.reloadStartedAt) / this.weapon.reloadMs)
+      : 0
     stats.timeLeftMs = Math.max(0, this.durationMs - this.elapsedMs)
     stats.hits = this.hits
     stats.shots = this.shots

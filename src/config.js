@@ -29,6 +29,12 @@ export const COLORS = {
   /** Flash/pop de la diana al ser acertada. */
   targetHit: '#FFFFFF',
   /**
+   * Verde FlickLAB. Color de marca para los botones de acción principal
+   * —JUGAR, REANUDAR, REINICIAR—. No se usa en ningún otro sitio: el naranja
+   * sigue siendo el acento de la interfaz y el HUD se queda en blanco y gris.
+   */
+  action: '#2FCB82',
+  /**
    * Color del crosshair. Punto único de cambio: se publica como la variable CSS
    * `--crosshair-color` (ver src/ui/Crosshair.jsx) y nadie más lo referencia.
    */
@@ -221,11 +227,27 @@ export const TARGET_TYPES = {
  */
 export const RECOIL_RESET_MS = 200
 
+/** Teclas de acción del arma, en códigos físicos. */
+export const WEAPON_KEYS = {
+  reload: ['KeyR'],
+}
+
+/** Mensajes de ayuda del HUD. */
+export const HELP = {
+  /** Fracción del cargador por debajo de la cual se avisa de que toca recargar. */
+  lowAmmoRatio: 0.2,
+  /** Cuánto se queda en pantalla un aviso antes de irse solo. */
+  messageDurationMs: 2600,
+}
+
 /**
  * Roster de armas.
  *
  * - `mode`: `'semi'` dispara una vez por click; `'auto'` dispara en continuo
  *   mientras se mantenga pulsado.
+ * - `magazine`: balas por cargador; `reloadMs`, lo que tarda en recargarse.
+ * - `supportsSuppressor`: si admite silenciador. El interruptor del panel sólo
+ *   aparece con un arma que lo admita.
  * - `rpm`: disparos por minuto. Fija el intervalo mínimo entre disparos, y en
  *   las semiautomáticas actúa además de tope por si se hace clic muy rápido.
  * - `recoil`: patrón de retroceso, un `[pitch, yaw]` en **grados** por cada
@@ -243,6 +265,9 @@ export const WEAPONS = {
     character: 'sin retroceso',
     mode: 'semi',
     rpm: 500,
+    magazine: 18,
+    reloadMs: 1200,
+    supportsSuppressor: true,
     // Arquetipo por defecto: se dispara exactamente como antes de que hubiera
     // armas. Sin patrón, no hay empuje de cámara en absoluto.
     recoil: [],
@@ -252,6 +277,9 @@ export const WEAPONS = {
     character: 'rifle',
     mode: 'auto',
     rpm: 600,
+    magazine: 30,
+    reloadMs: 2300,
+    supportsSuppressor: false,
     // Subida vertical marcada durante los primeros ocho disparos —el pico está
     // en el cuarto— y a partir de ahí la vertical se apaga y el arma deriva
     // hacia la izquierda. Techo vertical ≈ 7.2°, deriva ≈ 2.6° a la izquierda.
@@ -278,6 +306,9 @@ export const WEAPONS = {
     character: 'SMG',
     mode: 'auto',
     rpm: 800,
+    magazine: 25,
+    reloadMs: 1800,
+    supportsSuppressor: true,
     // Patada más inmediata que la del Axis-7 —el primer disparo ya empuja más—
     // pero con la mitad de techo vertical (≈ 3.9°). El bamboleo lateral
     // alterna lado a lado y suma más recorrido que la vertical (≈ 4.4°), sin
@@ -549,6 +580,14 @@ export const SETTINGS = {
   frameLimit: {
     label: 'Límite de fotogramas',
     default: 'unlimited',
+  },
+  suppressor: {
+    label: 'Silenciador',
+    default: false,
+  },
+  helpMessages: {
+    label: 'Mensajes de ayuda',
+    default: true,
   },
   dynamic: {
     label: 'Modo dinámico',

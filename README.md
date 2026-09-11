@@ -25,7 +25,9 @@ Abre la URL que imprime Vite, haz click en el canvas y a disparar.
 
 - **Click** sobre el canvas: captura el ratón (Pointer Lock) y arranca la sesión.
 - **Click izquierdo**: disparar.
-- **Escape**: suelta el ratón y **pausa** el cronómetro. Otro click reanuda.
+- **R**: recargar. Funciona también con el cargador a medias.
+- **Escape**: suelta el ratón y **pausa** el cronómetro. En la pantalla de pausa
+  hay un botón **Reanudar**, y también vale un click en cualquier sitio.
 
 Sólo con la variante de movimiento activa (`MOVEMENT.enabled`):
 
@@ -90,6 +92,8 @@ recarga. **Restablecer** vuelve a los valores de `config.js`.
 | Dianas simultáneas | x1 · x2 · x3 · x5 — cuántas pueden estar vivas a la vez |
 | Modo dinámico | las dianas vivas se desplazan mientras están en pantalla |
 | Límite de fotogramas | 60 · 144 · 240 · Sin límite |
+| Silenciador | sólo con un arma que lo admita |
+| Mensajes de ayuda | avisos breves en el HUD, activados por defecto |
 
 El panel sólo se abre con la partida parada, así que reconstruir las mallas al
 cambiar de tipo o de tamaño nunca cae dentro del bucle de render.
@@ -98,11 +102,11 @@ cambiar de tipo o de tamaño nunca cae dentro del bucle de render.
 
 Tres arquetipos, en el bloque `WEAPONS` de `config.js`.
 
-| arma | modo | RPM | carácter del retroceso |
-| --- | --- | --- | --- |
-| **Scalar-2** | semi | 500 | ninguno — se dispara como antes de que hubiera armas |
-| **Axis-7** | auto | 600 | rifle: subida vertical marcada los primeros ocho disparos, luego deriva a la izquierda |
-| **Vertex-9** | auto | 800 | SMG: patada más inmediata pero la mitad de techo vertical, y más bamboleo lateral que vertical |
+| arma | modo | RPM | cargador | recarga | silenciador | carácter del retroceso |
+| --- | --- | --- | --- | --- | --- | --- |
+| **Scalar-2** | semi | 500 | 18 | 1.2 s | sí | ninguno — se dispara como antes de que hubiera armas |
+| **Axis-7** | auto | 600 | 30 | 2.3 s | no | rifle: subida vertical marcada los primeros ocho disparos, luego deriva a la izquierda |
+| **Vertex-9** | auto | 800 | 25 | 1.8 s | sí | SMG: patada más inmediata pero la mitad de techo vertical, y más bamboleo lateral que vertical |
 
 Scalar-2 es el valor por defecto.
 
@@ -114,6 +118,19 @@ mucho que se haga clic.
 El intervalo se cuenta desde el momento en que *tocaba* cada disparo, no desde
 el frame en que sale. Sin eso, el redondeo al refresco del monitor inflaría el
 intervalo y las RPM reales dependerían de los Hz de la pantalla.
+
+**Cargador y recarga.** Cada arma empieza la sesión con el cargador lleno. Con
+el cargador a cero el gatillo sólo suena en seco —un clic flaco y sin cuerpo,
+distinto del disparo— y lo hace una vez por pulsación: el fuego automático no
+repite el clic. **R** recarga, también a medias; durante la recarga no se
+dispara y volver a pulsar R ni la reinicia ni la acumula. Al completarse, el
+cargador vuelve al máximo y el patrón de retroceso al primer disparo: un
+cargador nuevo es una ráfaga nueva.
+
+**Silenciador.** Interruptor en el panel, presente sólo con un arma que lo
+admita (`supportsSuppressor`). Cambia el sonido y nada más: ni daño, ni
+retroceso, ni cadencia. Si queda activado y se cambia a un arma que no lo
+admite, el motor lo ignora en lugar de aplicarlo a medias.
 
 **Retroceso.** El patrón es un `[pitch, yaw]` en grados por cada disparo
 consecutivo de la ráfaga. Son incrementos, no posiciones: el motor los suma.
@@ -240,6 +257,25 @@ la cadencia al pasar de x1.
 El pool de dianas se dimensiona para el mayor valor elegible, así que cambiar
 de opción no obliga a reconstruirlo.
 
+## HUD
+
+Abajo a la derecha, el bloque del arma: silueta, nombre, cargador `actual/máximo`
+y, durante la recarga, una barra de progreso. Cuando el cargador baja de
+`HELP.lowAmmoRatio` (20%) el contador parpadea en naranja.
+
+Las siluetas son SVG trazados a mano, sólo contorno, sin relleno y con el mismo
+gris y grosor que el resto del HUD — ninguna imagen de por medio. Scalar-2 tiene
+dos variantes, con y sin el cilindro del silenciador, y cambia con el
+interruptor.
+
+### Mensajes de ayuda
+
+Avisos breves que aparecen junto al bloque del arma y se retiran solos pasados
+`HELP.messageDurationMs`. Es un mecanismo genérico —texto y duración— del que
+hoy hay un solo uso: *Pulsa R para recargar*, que salta una vez por cargador al
+bajar del umbral, y otra vez si se aprieta el gatillo en vacío. El interruptor
+**Mensajes de ayuda** del panel los apaga, y con ellos el parpadeo del contador.
+
 ## Rendimiento
 
 El HUD lleva un **contador de FPS** discreto en la esquina superior derecha.
@@ -284,6 +320,11 @@ SETTINGS                // valores iniciales y rangos del panel de opciones
 TARGET_TYPES            // formas, daño por zona y distancia base de cada tipo
 TARGET.maxHealth        // vida por diana
 TARGET.maxActive        // tope de dianas vivas en modo acumulativo
+WEAPON_KEYS             // teclas de acción del arma (R para recargar)
+HELP.lowAmmoRatio       // umbral de aviso de munición baja
+HELP.messageDurationMs  // cuánto dura un aviso en pantalla
+COLORS.action           // verde FlickLAB de los botones de acción
+
 RENDER.fpsSampleFrames  // ventana del contador de FPS
 SIMULTANEOUS_TARGETS    // opciones del selector de dianas a la vez
 FRAME_LIMITS            // opciones del límite de fotogramas
@@ -397,6 +438,11 @@ cuesta ~0.1 ms por frame en p99, frente a los 4.17 ms de presupuesto a 240 Hz.
   mismo muestreo que las apariciones, así que anclar el hitbox al suelo ya
   basta para que sólo se mueva en horizontal: no hay una restricción de ejes
   escrita aparte que pueda desincronizarse.
+- **El verde de marca sólo viste botones de acción.** JUGAR, REANUDAR,
+  REINICIAR y VOLVER. El naranja sigue siendo el acento de la interfaz y el HUD
+  se queda en blanco y gris: tres colores con tres trabajos distintos.
+- **El clic en seco se dispara por pulsación, no por cadencia.** Repetirlo a
+  800 RPM mientras se mantiene el gatillo sería insufrible.
 - **El contador de FPS mide fotogramas dibujados, no ticks de rAF.** Es el
   número que hace falta para comprobar que el límite está haciendo su trabajo.
 - **La dispersión desvía la bala, no la mira.** Un temblor aleatorio del

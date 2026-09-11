@@ -61,26 +61,58 @@ export function setMasterVolume(value) {
   if (master) master.gain.value = Math.max(0, Math.min(1, value))
 }
 
-/** Disparo: transitorio de ruido filtrado + un golpe grave que cae rápido. */
-export function playShot() {
+/**
+ * Perfiles del disparo. El silenciado no cambia daño, retroceso ni cadencia:
+ * sólo suena. Se consigue bajando el pasa-banda del transitorio —menos
+ * chasquido agudo—, acortando su caída y hundiendo el cuerpo en grave.
+ */
+const SHOT_PROFILES = {
+  normal: {
+    bandHz: 2100,
+    bandQ: 1.1,
+    noiseGain: 0.32,
+    noiseDecay: 0.045,
+    bodyFrom: 210,
+    bodyTo: 80,
+    bodyGain: 0.2,
+    bodyDecay: 0.055,
+  },
+  suppressed: {
+    bandHz: 700,
+    bandQ: 2.2,
+    noiseGain: 0.16,
+    noiseDecay: 0.028,
+    bodyFrom: 130,
+    bodyTo: 52,
+    bodyGain: 0.13,
+    bodyDecay: 0.07,
+  },
+}
+
+/**
+ * Disparo: transitorio de ruido filtrado + un golpe grave que cae rápido.
+ * @param {boolean} [suppressed] usa el perfil apagado del silenciador
+ */
+export function playShot(suppressed = false) {
   if (!ctx || !master || !noiseBuffer) return
   const t = ctx.currentTime
   const level = AUDIO.shotVolume
+  const profile = suppressed ? SHOT_PROFILES.suppressed : SHOT_PROFILES.normal
 
-  // Transitorio: ruido pasado por un pasa-banda agudo -> "clic".
+  // Transitorio: ruido pasado por un pasa-banda -> "clic".
   const noise = ctx.createBufferSource()
   noise.buffer = noiseBuffer
   const band = ctx.createBiquadFilter()
   band.type = 'bandpass'
-  band.frequency.value = 2100
-  band.Q.value = 1.1
+  band.frequency.value = profile.bandHz
+  band.Q.value = profile.bandQ
   const noiseGain = ctx.createGain()
   noiseGain.gain.setValueAtTime(0.0001, t)
-  noiseGain.gain.exponentialRampToValueAtTime(0.32 * level, t + 0.002)
-  noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.045)
+  noiseGain.gain.exponentialRampToValueAtTime(profile.noiseGain * level, t + 0.002)
+  noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + profile.noiseDecay)
   noise.connect(band).connect(noiseGain).connect(master)
   noise.start(t)
-  noise.stop(t + 0.06)
+  noise.stop(t + profile.noiseDecay + 0.02)
   noise.onended = () => {
     noise.disconnect()
     band.disconnect()
@@ -90,18 +122,45 @@ export function playShot() {
   // Cuerpo: onda triangular con caída de tono, aporta peso sin retumbar.
   const body = ctx.createOscillator()
   body.type = 'triangle'
-  body.frequency.setValueAtTime(210, t)
-  body.frequency.exponentialRampToValueAtTime(80, t + 0.05)
+  body.frequency.setValueAtTime(profile.bodyFrom, t)
+  body.frequency.exponentialRampToValueAtTime(profile.bodyTo, t + 0.05)
   const bodyGain = ctx.createGain()
   bodyGain.gain.setValueAtTime(0.0001, t)
-  bodyGain.gain.exponentialRampToValueAtTime(0.2 * level, t + 0.003)
-  bodyGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.055)
+  bodyGain.gain.exponentialRampToValueAtTime(profile.bodyGain * level, t + 0.003)
+  bodyGain.gain.exponentialRampToValueAtTime(0.0001, t + profile.bodyDecay)
   body.connect(bodyGain).connect(master)
   body.start(t)
-  body.stop(t + 0.07)
+  body.stop(t + profile.bodyDecay + 0.02)
   body.onended = () => {
     body.disconnect()
     bodyGain.disconnect()
+  }
+}
+
+/**
+ * Clic seco del cargador vacío. Deliberadamente flaco y sin cuerpo: es el
+ * ruido del mecanismo, no un disparo, y tiene que distinguirse al instante.
+ */
+export function playDryFire() {
+  if (!ctx || !master || !noiseBuffer) return
+  const t = ctx.currentTime
+
+  const noise = ctx.createBufferSource()
+  noise.buffer = noiseBuffer
+  const high = ctx.createBiquadFilter()
+  high.type = 'highpass'
+  high.frequency.value = 3200
+  const gain = ctx.createGain()
+  gain.gain.setValueAtTime(0.0001, t)
+  gain.gain.exponentialRampToValueAtTime(0.22 * AUDIO.shotVolume, t + 0.001)
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.02)
+  noise.connect(high).connect(gain).connect(master)
+  noise.start(t)
+  noise.stop(t + 0.04)
+  noise.onended = () => {
+    noise.disconnect()
+    high.disconnect()
+    gain.disconnect()
   }
 }
 

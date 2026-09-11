@@ -30,7 +30,7 @@ export default function Summary({ summary, onRestart }) {
         {summary.hits !== summary.kills && ` · ${summary.hits} impactos`}
       </p>
 
-      <button type="button" className="button" onClick={onRestart} autoFocus>
+      <button type="button" className="button button--primary" onClick={onRestart} autoFocus>
         Reiniciar sesión
       </button>
       <p className="panel__hint">El ratón se captura al reiniciar. Escape para pausar.</p>

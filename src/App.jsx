@@ -6,7 +6,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react'
-import { COLORS, MOVEMENT, SESSION_DURATION_S } from './config.js'
+import { COLORS, MOVEMENT, SESSION_DURATION_S, WEAPONS } from './config.js'
 import { Engine, PHASE } from './game/engine.js'
 import { disposeAudio } from './audio/sfx.js'
 import { getSettings, resetSettings, subscribeSettings, updateSettings } from './settings.js'
@@ -44,6 +44,7 @@ export default function App() {
     root.setProperty('--crosshair-color', COLORS.crosshair)
     root.setProperty('--background-color', COLORS.background)
     root.setProperty('--accent-color', COLORS.target)
+    root.setProperty('--action-color', COLORS.action)
   }, [])
 
   useEffect(() => {
@@ -57,6 +58,7 @@ export default function App() {
         },
         onFrame: (stats) => hudRef.current?.update(stats),
         onShot: () => crosshairRef.current?.flash(),
+        onHelp: (text, durationMs) => hudRef.current?.showHelp(text, durationMs),
         onFinish: setSummary,
       })
       engine.start()
@@ -117,7 +119,13 @@ export default function App() {
     <div className="app">
       <canvas ref={canvasRef} className="app__canvas" />
 
-      {showHud && <Hud ref={hudRef} />}
+      {showHud && (
+        <Hud
+          ref={hudRef}
+          weaponKey={settings.weapon}
+          suppressed={settings.suppressor && WEAPONS[settings.weapon].supportsSuppressor}
+        />
+      )}
       {phase === PHASE.RUNNING && <Crosshair ref={crosshairRef} />}
 
       {engineError && (
@@ -149,8 +157,19 @@ export default function App() {
                   WASD o flechas para moverte · SHIFT camina · CTRL o C agacha · SPACE salta
                 </p>
               )}
-              <p className="panel__hint">Escape para pausar.</p>
-              {optionsButton}
+              <p className="panel__hint">R recarga · Escape pausa.</p>
+              <div className="panel__actions">
+                <button
+                  type="button"
+                  className="button button--primary"
+                  onMouseDown={swallowClick}
+                  onClick={lock}
+                  autoFocus
+                >
+                  Jugar ahora
+                </button>
+                {optionsButton}
+              </div>
             </div>
           )}
         </div>
@@ -163,8 +182,19 @@ export default function App() {
           ) : (
             <div className="panel">
               <h2 className="panel__title panel__title--small">Pausa</h2>
-              <p className="panel__body">Click para continuar.</p>
-              {optionsButton}
+              <p className="panel__body">Click en cualquier sitio para continuar.</p>
+              <div className="panel__actions">
+                <button
+                  type="button"
+                  className="button button--primary"
+                  onMouseDown={swallowClick}
+                  onClick={lock}
+                  autoFocus
+                >
+                  Reanudar
+                </button>
+                {optionsButton}
+              </div>
             </div>
           )}
         </div>

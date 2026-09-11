@@ -12,6 +12,8 @@
   --crosshair-color: #eaeaea;
   --background-color: #0a0a0a;
   --accent-color: #e4462b;
+  /* Verde FlickLAB. Sólo botones de acción principal. */
+  --action-color: #2fcb82;
 
   --text-primary: #f2f2f2;
   --text-muted: #7a7a7a;
@@ -26,6 +28,16 @@
 
 * {
   box-sizing: border-box;
+}
+
+/*
+ * El navegador oculta `[hidden]` con `display: none`, pero cualquier regla de
+ * autor que fije `display` lo pisa: los estilos de la hoja ganan a los del
+ * agente de usuario pase lo que pase con la especificidad. Sin esto, un
+ * elemento flex marcado como oculto se seguía viendo.
+ */
+[hidden] {
+  display: none !important;
 }
 
 html,
@@ -120,6 +132,119 @@ body {
   font-size: 9px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
+}
+
+/* ---------- Arma y cargador ---------- */
+
+.hud__weapon {
+  position: absolute;
+  right: 28px;
+  bottom: 26px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.weapon {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+/* Sólo contorno: mismo gris y mismo grosor que el resto del HUD. */
+.weapon__svg {
+  width: 150px;
+  height: 54px;
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.weapon__label {
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.hud__ammo {
+  display: flex;
+  align-items: baseline;
+  gap: 3px;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud__ammo-current {
+  font-size: 30px;
+  line-height: 1;
+  color: var(--text-primary);
+}
+
+.hud__ammo-sep,
+.hud__ammo-max {
+  font-size: 15px;
+  color: var(--text-muted);
+}
+
+/* Cargador corto: el contador llama la atención por su cuenta. */
+.hud__ammo--low .hud__ammo-current {
+  color: var(--accent-color);
+  animation: ammo-blink 900ms steps(1, end) infinite;
+}
+
+@keyframes ammo-blink {
+  0%,
+  55% {
+    opacity: 1;
+  }
+  56%,
+  100% {
+    opacity: 0.25;
+  }
+}
+
+.hud__reload {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.hud__reload-label {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.hud__reload-track {
+  display: block;
+  width: 150px;
+  height: 2px;
+  background: var(--panel-border);
+}
+
+.hud__reload-bar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--text-primary);
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+.hud__help {
+  margin: 0;
+  max-width: 200px;
+  text-align: right;
+  font-size: 11px;
+  line-height: 1.4;
+  color: var(--accent-color);
 }
 
 /* ---------- Crosshair ---------- */
@@ -489,4 +614,17 @@ body {
   border-color: var(--accent-color);
   color: var(--accent-color);
   outline: none;
+}
+
+/* Acción principal: verde de marca. No se usa en ningún otro sitio. */
+.button--primary {
+  border-color: var(--action-color);
+  color: var(--action-color);
+}
+
+.button--primary:hover,
+.button--primary:focus-visible {
+  border-color: var(--action-color);
+  background: var(--action-color);
+  color: var(--background-color);
 }
