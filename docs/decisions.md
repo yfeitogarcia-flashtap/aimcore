@@ -1285,6 +1285,87 @@ Recalcular en cada frame son cuatro divisiones y una media ponderada, muy por
 debajo de lo que costaría guardar la nota y mantenerla sincronizada con cada
 disparo, cada impacto y el reloj.
 
+## Ronda 20 — Audio espacial de verdad, y el arma al centro
+
+### 20.1 El reparto: `sfx.js` dice cómo suena, `spatial.js` desde dónde
+
+El módulo de audio espacial **no sabe nada del explosivo**, que era el encargo:
+sólo coloca un punto en el mundo y devuelve el nodo al que conectar una voz. Los
+pasos de los dummies o un rival futuro se enganchan igual sin tocarlo.
+
+Eso obligó a decidir la dirección de la dependencia. `spatial.js` importa de
+`sfx.js` —necesita el contexto de audio— y `sfx.js` **no importa `spatial.js`**:
+sus voces aceptan un emisor y le piden `.input` sin saber qué es. Al revés habría
+un ciclo, y con un módulo intermedio para el contexto habría tres ficheros donde
+bastan dos.
+
+### 20.2 Dos trampas de `THREE.PositionalAudio` que no están en la documentación
+
+**La primera cuesta media hora:** `AudioListener` crea su **propio**
+`AudioContext` si no se le dice otra cosa, y nodos de dos contextos distintos no
+se pueden conectar. El síntoma sería un error críptico de Web Audio al conectar
+la voz al panner. Se resuelve pasándole el nuestro con
+`THREE.AudioContext.setContext()` **antes** de construir el listener.
+
+**La segunda es peor porque no falla, simplemente no funciona:**
+
+```js
+updateMatrixWorld( force ) {
+  super.updateMatrixWorld( force );
+  if ( this.hasPlaybackControl === true && this.isPlaying === false ) return;
+  // ...aquí es donde se mueve el panner
+}
+```
+
+`PositionalAudio` está pensado para reproducir un buffer, así que si no estás
+reproduciendo no se molesta en mover el panner. Aquí **nunca** se llama a
+`play()`: la fuente es síntesis en vivo, no un fichero —el proyecto no tiene
+assets—. Sin poner `hasPlaybackControl = false`, el panner se queda clavado en el
+origen y **el audio suena espacial pero siempre desde el mismo sitio**. Se oiría
+raro sin que nada indique por qué.
+
+El test lo comprueba explícitamente: mueve el emisor dos veces y verifica que
+`panner.positionX` le sigue las dos.
+
+### 20.3 Con panner, el volumen por distancia se aplica una sola vez
+
+El pitido ya tenía su propia curva de volumen por proximidad. Dejarla puesta
+además del panner sería atenuar dos veces y el sonido se apagaría el doble de
+rápido.
+
+La voz mira si hay destino espacial: si lo hay, pasa nivel 1 y la distancia la
+pone el panner; si no, usa la curva de siempre. Los parámetros del panner están
+elegidos para que las dos rutas se parezcan: con `distanceModel: 'linear'` la
+ganancia es `1 − rolloff·(d − ref)/(max − ref)`, así que con ref 4, max 55 y
+rolloff 0.9 la curva va de 1 a 0.1 exactamente en el mismo tramo que la manual.
+
+### 20.4 El emisor es perezoso
+
+Se construye en el constructor del explosivo, mucho antes de que exista el
+contexto de audio —que no aparece hasta el primer gesto del usuario—. Si montara
+el `PositionalAudio` ahí, o petaría o habría que ordenar la inicialización a
+mano por todo el motor.
+
+Monta el nodo **la primera vez que alguien le pide `input`**, y devuelve `null`
+mientras no haya listener o el audio espacial esté apagado. Quien lo use cae solo
+a su ruta sin dirección. Ningún caso especial en el llamante.
+
+### 20.5 Munición y arma al centro
+
+Estaban en la esquina inferior derecha, donde leer el cargador obliga a apartar
+la vista del centro de la pantalla — justo lo que un aim trainer no debería pedir.
+Pasan al eje de la mira, 216 px por debajo a 720p: lejos del punto de tiro y a un
+golpe de vista.
+
+De paso, los rótulos y el "/ máximo" suben del gris apagado (`#7a7a7a`) a uno
+intermedio (`#a6a6a6`), nuevo token `--text-soft`. En la esquina el gris apagado
+valía porque era información de fondo; en el centro tiene que leerse. El número
+grande y la silueta se quedan en blanco: ya estaban bien.
+
+Va fuera de `.hud` y se centra por su cuenta, por el mismo motivo que el bloque
+de FPS y el de estrellas: `.hud` se centra con un `transform`, y posicionar algo
+dentro de un ancestro transformado lo ancla a ese ancestro (§9.2).
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

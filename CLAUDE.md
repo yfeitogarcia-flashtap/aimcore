@@ -44,6 +44,7 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 |---|---|---|
 | Motor | `src/game/` | Bucle rAF, input, raycast, dianas, armas, panel de acciones. **Vive fuera de React.** |
 | Escenario | `src/game/scenario.js` | Convierte los datos de `SCENARIOS` en mallas, colisionadores, oclusores y anclajes. |
+| Audio espacial | `src/audio/spatial.js` | Listener en la cámara y emisores posicionados. **Genérico:** no sabe del explosivo. |
 | Explosivo | `src/game/objective.js` | Aparición, cuenta atrás, pitido y desactivación. No publica nada al HUD a propósito. |
 | Puntuación | `src/game/scoring.js` | Variables normalizadas, media ponderada y estrellas. |
 | Transición | `src/game/transition.js` | **Módulo sustituible entero.** Contrato único: `run(build)` tapa la escena, llama a `build()` y destapa. Nada más del motor sabe qué forma tiene. |
@@ -110,6 +111,21 @@ uniforme entre los visibles y de paso ahorra raycasts.
 cada escenario se dibuja en SVG desde `SCENARIOS`, con `coverHeight` y
 `coverEdgeColor` compartidos con la escena 3D. Una captura se desincroniza en
 cuanto alguien mueve una caja y nadie se entera.
+
+**`sfx.js` dice cómo suena algo; `spatial.js`, desde dónde.** La dependencia va
+en un solo sentido —de `spatial` a `sfx`, por el contexto de audio— y las voces
+aceptan un emisor sin importar nada de él. Al revés habría ciclo.
+
+Dos trampas de `THREE.PositionalAudio`, las dos silenciosas:
+`AudioListener` crea su propio `AudioContext` si no se le pasa el nuestro con
+`AudioContext.setContext()` antes de construirlo, y nodos de contextos distintos
+no se conectan. Y `updateMatrixWorld` **no mueve el panner** si
+`hasPlaybackControl` es true y no se está reproduciendo — aquí nunca se llama a
+`play()` porque la fuente es síntesis, así que hay que ponerlo a false o el
+sonido queda clavado en el origen.
+
+Con panner, el volumen por distancia lo aplica **sólo** el panner: pasar además
+la curva manual sería atenuar dos veces.
 
 **El explosivo no tiene ayuda de interfaz.** Ni indicador en el HUD, ni marcador
 en pantalla, ni distancia. La única pista es el pitido: volumen por proximidad,
@@ -220,9 +236,15 @@ Botones Pausa / Reiniciar / Cambiar arma / Silenciador / Opciones. Acertarle no
 cuenta como acierto ni fallo, no gasta munición ni aplica recoil, y tiene su
 propio sonido de confirmación.
 
-**HUD:** aciertos, fallos, precisión, tiempo (∞ en práctica libre), munición
-actual/máximo con parpadeo en reserva baja, indicador de recarga, contador de
-FPS (media móvil), silueta del arma equipada y mensajes de ayuda contextuales.
+**HUD:** aciertos, fallos, precisión y tiempo arriba (∞ en práctica libre);
+contador de FPS en la esquina; y **bajo la mira**, centrado, el bloque de arma:
+silueta, munición actual/máximo con parpadeo en reserva baja, indicador de
+recarga y mensajes de ayuda contextuales.
+
+**Audio espacial:** interruptor en opciones, activado por defecto. Los sonidos
+posicionados suenan con dirección (listener en la cámara, `PositionalAudio` en el
+mundo). Desactivado, se cae a volumen por proximidad sin dirección. Hoy lo usa el
+pitido del explosivo; el módulo es genérico para pasos y rivales.
 
 **Explosivo (sólo con escenario y cronómetro, nunca en práctica libre):** aparece
 en uno de cinco sitios curados del Plano A —uno por zona, ninguno en el
@@ -243,7 +265,7 @@ una transición corta tapa el montaje.
 **Opciones** (accesibles antes de empezar y desde la pausa, persistidas):
 escenario, sensibilidad, tipo de diana, arma, tamaño de diana, distancia de spawn, cadencia
 de aparición, dianas simultáneas, límite de FPS, supresor (sólo si el arma lo
-admite), mensajes de ayuda y modo dinámico.
+admite), **audio espacial**, mensajes de ayuda y modo dinámico.
 
 ---
 

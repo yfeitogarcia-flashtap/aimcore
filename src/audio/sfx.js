@@ -6,6 +6,11 @@
  *  - `playHit()`   tono más alto y brillante al acertar.
  * No hay sonido de fallo a propósito: no queremos penalizar de más.
  *
+ * **Este módulo decide cómo suena algo, no desde dónde.** Las voces que pueden
+ * ir posicionadas aceptan un emisor (ver `spatial.js`) y se conectan a él si lo
+ * hay; si no, van al máster con el volumen que les pasen. No importa `spatial.js`
+ * a propósito: la dependencia va en el otro sentido y así no hay ciclo.
+ *
  * El AudioContext se crea perezosamente dentro de un gesto del usuario
  * (el click que activa el Pointer Lock), que es lo que exigen los navegadores.
  */
@@ -292,12 +297,18 @@ export function playLanding(strength = 1) {
  * confirmación del panel.
  *
  * @param {number} urgency 0..1, cuánto se ha consumido la cuenta atrás
- * @param {number} volume  0..1, cerca del explosivo suena fuerte y lejos flojo
+ * @param {number} volume  0..1, la caída por distancia **sin** audio espacial
+ * @param {{input: AudioNode|null}} [emitter] emisor posicionado, si lo hay
  */
-export function playObjectiveBeep(urgency, volume) {
+export function playObjectiveBeep(urgency, volume, emitter = null) {
   initAudio()
   if (!ctx || !master) return
-  const level = Math.max(0, Math.min(1, volume))
+
+  // Con emisor, la distancia la aplica el panner y el volumen que llega aquí
+  // sobra: aplicarlo además sería atenuar dos veces.
+  const destination = emitter ? emitter.input : null
+  const target = destination ?? master
+  const level = destination ? 1 : Math.max(0, Math.min(1, volume))
   if (level <= 0) return
 
   const beep = OBJECTIVE.beep
@@ -312,7 +323,7 @@ export function playObjectiveBeep(urgency, volume) {
   gain.gain.setValueAtTime(0.0001, t)
   gain.gain.exponentialRampToValueAtTime(AUDIO.objectiveVolume * level, t + 0.004)
   gain.gain.exponentialRampToValueAtTime(0.0001, t + beep.durationS)
-  osc.connect(gain).connect(master)
+  osc.connect(gain).connect(target)
   osc.start(t)
   osc.stop(t + beep.durationS + 0.02)
   osc.onended = () => {

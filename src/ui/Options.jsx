@@ -303,6 +303,17 @@ export default function Options({ settings, onChange, onReset, onClose }) {
       />
 
       <ToggleRow
+        spec={SETTINGS.spatialAudio}
+        value={settings.spatialAudio}
+        onChange={(spatialAudio) => onChange({ spatialAudio })}
+        hint={
+          settings.spatialAudio
+            ? 'Los sonidos del mundo suenan con dirección, no sólo más o menos fuerte.'
+            : 'Sólo volumen por proximidad: sabrás si estás cerca, no hacia dónde.'
+        }
+      />
+
+      <ToggleRow
         spec={SETTINGS.helpMessages}
         value={settings.helpMessages}
         onChange={(helpMessages) => onChange({ helpMessages })}

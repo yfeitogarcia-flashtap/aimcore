@@ -18,6 +18,7 @@
 import * as THREE from 'three'
 import { COLORS, OBJECTIVE } from '../config.js'
 import { playObjectiveBeep } from '../audio/sfx.js'
+import { createEmitter } from '../audio/spatial.js'
 
 /** Cómo acabó, o null si sigue en marcha. */
 export const OUTCOME = {
@@ -64,6 +65,11 @@ export class Objective {
     this.group.visible = false
     this._buildMarker()
     scene.add(this.group)
+
+    // Emisor genérico: el explosivo no sabe de audio espacial más allá de
+    // colocarlo y pasárselo a la voz. Si está apagado, `input` da null y el
+    // pitido cae solo a la ruta de siempre.
+    this.emitter = createEmitter(scene)
   }
 
   _buildMarker() {
@@ -137,6 +143,8 @@ export class Objective {
     const y = resolveY(this.site.y, this.coverHeights)
     this.group.position.set(this.site.x, y, this.site.z)
     this.group.visible = true
+    // El pitido sale de la altura del marcador, no de los pies del sitio.
+    this.emitter.setPosition(this.site.x, y + OBJECTIVE.markerHeight, this.site.z)
 
     this.active = true
     this.outcome = null
@@ -248,7 +256,7 @@ export class Objective {
     const t = span > 0 ? (distance - beep.nearDistance) / span : 0
     const near = 1 - (t < 0 ? 0 : t > 1 ? 1 : t)
     const volume = beep.minVolume + (beep.maxVolume - beep.minVolume) * near
-    playObjectiveBeep(urgency, volume)
+    playObjectiveBeep(urgency, volume, this.emitter)
 
     const interval =
       beep.slowIntervalMs + (beep.fastIntervalMs - beep.slowIntervalMs) * urgency
@@ -256,6 +264,7 @@ export class Objective {
   }
 
   dispose() {
+    this.emitter.dispose()
     this.scene.remove(this.group)
     for (const geometry of this._geometries) geometry.dispose()
     for (const material of this._materials) material.dispose()

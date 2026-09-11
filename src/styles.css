@@ -17,6 +17,9 @@
 
   --text-primary: #f2f2f2;
   --text-muted: #7a7a7a;
+  /* Gris intermedio para el bloque de arma, que al pasar al centro necesitaba
+     leerse mejor sin llegar al blanco de los contadores principales. */
+  --text-soft: #a6a6a6;
   --panel-border: #242424;
 
   --crosshair-gap: 3px;
@@ -332,14 +335,25 @@ body {
 
 /* ---------- Arma y cargador ---------- */
 
+/*
+ * Arma y munición, centrados bajo la mira.
+ *
+ * Estaban en la esquina inferior derecha, donde había que apartar la vista del
+ * centro para leer el cargador. Aquí caen en el mismo eje que el punto de mira,
+ * a suficiente distancia para no estorbar el tiro.
+ *
+ * Va fuera de `.hud` —que se centra con un transform— y se centra por su cuenta,
+ * por el mismo motivo que el bloque de FPS y el de estrellas.
+ */
 .hud__weapon {
   z-index: 2;
   position: absolute;
-  right: 28px;
-  bottom: 26px;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: center;
   gap: 6px;
   pointer-events: none;
 }
@@ -347,7 +361,7 @@ body {
 .weapon {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: center;
   gap: 2px;
 }
 
@@ -369,7 +383,9 @@ body {
   font-size: 10px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  /* Un punto más de contraste que el gris apagado del resto de rótulos: ahora
+     que el bloque está en el centro, tiene que leerse de un vistazo. */
+  color: var(--text-soft);
 }
 
 .hud__ammo {
@@ -388,7 +404,7 @@ body {
 .hud__ammo-sep,
 .hud__ammo-max {
   font-size: 15px;
-  color: var(--text-muted);
+  color: var(--text-soft);
 }
 
 /* Cargador corto: el contador llama la atención por su cuenta. */
@@ -411,7 +427,7 @@ body {
 .hud__reload {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
+  align-items: center;
   gap: 4px;
 }
 
@@ -440,8 +456,8 @@ body {
 
 .hud__help {
   margin: 0;
-  max-width: 200px;
-  text-align: right;
+  max-width: 260px;
+  text-align: center;
   font-size: 11px;
   line-height: 1.4;
   color: var(--accent-color);

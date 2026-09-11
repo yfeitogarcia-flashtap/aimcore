@@ -46,6 +46,7 @@ import {
   playShot,
   playUiConfirm,
 } from '../audio/sfx.js'
+import { attachListener, detachListener, setSpatialEnabled } from '../audio/spatial.js'
 import { ActionPanel } from './actionPanel.js'
 import { getSettings, subscribeSettings, updateSettings } from '../settings.js'
 
@@ -306,6 +307,7 @@ export class Engine {
     this.cssRenderer.domElement.remove()
     this.targets.dispose()
     this.objective.dispose()
+    detachListener()
     this.scenario.dispose()
     this.transition.dispose()
     this._disposeScene()
@@ -325,6 +327,9 @@ export class Engine {
    */
   requestLock() {
     initAudio()
+    // El listener necesita el contexto de audio, que no existe hasta este
+    // gesto. Es idempotente: llamarla en cada click no cuesta nada.
+    attachListener(this.camera)
     const element = this.canvas
     const fallback = () => {
       try {
@@ -399,6 +404,7 @@ export class Engine {
    */
   _applySettings(settings) {
     this._applyScenario(settings.scenario)
+    setSpatialEnabled(settings.spatialAudio)
     this.controls.setSensitivity(settings.sensitivity)
     const limit = FRAME_LIMITS[settings.frameLimit].fps
     this._frameIntervalMs = limit > 0 ? 1000 / limit : 0

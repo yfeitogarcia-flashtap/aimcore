@@ -676,6 +676,15 @@ export const SETTINGS = {
     label: 'Silenciador',
     default: false,
   },
+  spatialAudio: {
+    label: 'Audio espacial',
+    /**
+     * Activado, los sonidos posicionados suenan con dirección (listener en la
+     * cámara). Desactivado, se cae al comportamiento anterior: sólo volumen por
+     * proximidad, sin dirección.
+     */
+    default: true,
+  },
   helpMessages: {
     label: 'Mensajes de ayuda',
     default: true,
@@ -1007,6 +1016,27 @@ export const SCENARIOS = {
  * al acercarse y de tempo y tono según se acaba el tiempo. El marcador existe en
  * el mundo, así que se ve si se mira hacia él, pero hay que buscarlo.
  */
+/**
+ * Audio espacial. Los sonidos que deben percibirse **con dirección** se enrutan
+ * por un `THREE.PositionalAudio` colocado en el mundo, con el listener en la
+ * cámara; el resto sigue yendo directo al máster.
+ *
+ * Los valores del panner están elegidos para que, apagado el audio espacial, la
+ * caída de volumen por distancia se parezca a la que había antes: con el modelo
+ * `linear`, la ganancia es `1 - rolloff·(d − ref)/(max − ref)`, así que a
+ * `maxDistance` queda en 0.1, el mismo mínimo que usa el pitido sin espacializar.
+ */
+export const SPATIAL = {
+  /** HRTF da dirección de verdad; `equalpower` sólo reparte izquierda/derecha. */
+  panningModel: 'HRTF',
+  distanceModel: 'linear',
+  /** A esta distancia o menos, volumen pleno. */
+  refDistance: 4,
+  /** Más allá de aquí ya no baja más. */
+  maxDistance: 55,
+  rolloffFactor: 0.9,
+}
+
 export const OBJECTIVE = {
   /** Cuenta atrás desde que aparece. También es el reloj de la sesión. */
   timerMs: 45000,

@@ -152,6 +152,10 @@ cerca estás, y más rápido y agudo cuanto menos tiempo queda. El marcador —u
 rombo ámbar parpadeante— está en el mundo, así que lo verás si miras hacia él,
 pero hay que buscarlo.
 
+Con **audio espacial** activado (opciones, por defecto sí) el pitido llega
+además **con dirección**: no sólo sabes si estás cerca, sino hacia dónde girar.
+Desactivado se queda en volumen por proximidad, como antes.
+
 Para desactivarlo, ponte al lado y **mantén E unos tres segundos**. Un anillo en
 el suelo se va llenando. Si sueltas, el progreso se pierde entero, pero no hay
 más castigo que el tiempo perdido.
