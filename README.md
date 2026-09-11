@@ -560,5 +560,15 @@ Sin Supabase, sin login y sin cuentas: lo único que persiste son los ajustes,
 en el `localStorage` de este navegador. Las estadísticas de partida siguen en
 memoria y se pierden al recargar.
 
-Fuera de alcance también, por decisión explícita: fuego automático, retroceso
-y escenarios con cobertura. Cuentas, ranking y backend van aparte.
+Fuera de alcance también, por decisión explícita: minimapa, pasos sonoros,
+escenarios con cobertura y colisión con estructuras. Cuentas, ranking y backend
+van aparte.
+
+## Documentación interna
+
+- [`CLAUDE.md`](CLAUDE.md) — contexto operativo del repositorio: arquitectura,
+  convenciones a respetar y avisos de entorno. Corto, para leer entero antes de
+  tocar el código.
+- [`docs/decisions.md`](docs/decisions.md) — historial completo de decisiones de
+  diseño, su razonamiento y las alternativas descartadas. Para consulta puntual
+  cuando haga falta saber por qué algo está como está.
