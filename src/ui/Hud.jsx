@@ -12,6 +12,7 @@ import WeaponSilhouette from './WeaponSilhouette.jsx'
 const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
   const fpsRef = useRef(null)
   const timeRef = useRef(null)
+  const timeLabelRef = useRef(null)
   const hitsRef = useRef(null)
   const missesRef = useRef(null)
   const ammoRef = useRef(null)
@@ -26,6 +27,7 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
   // así que un frame que no cambia nada no genera ni un string.
   const lastValues = useRef({
     deciseconds: -1,
+    endless: null,
     hits: -1,
     misses: -1,
     fps: -1,
@@ -45,10 +47,26 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
         last.fps = fps
       }
 
-      const deciseconds = Math.ceil(stats.timeLeftMs / 100)
-      if (deciseconds !== last.deciseconds && timeRef.current) {
-        timeRef.current.textContent = (deciseconds / 10).toFixed(1)
-        last.deciseconds = deciseconds
+      // Sin cronómetro el hueco lo ocupa el símbolo de infinito, y el rótulo
+      // pasa de "tiempo restante" a decir sólo que la sesión no acaba sola.
+      if (stats.endless !== last.endless) {
+        if (timeRef.current) {
+          timeRef.current.textContent = stats.endless ? '∞' : '0.0'
+          timeRef.current.classList.toggle('hud__value--endless', stats.endless)
+        }
+        if (timeLabelRef.current) {
+          timeLabelRef.current.textContent = stats.endless ? 'libre' : 'tiempo'
+        }
+        last.endless = stats.endless
+        last.deciseconds = -1
+      }
+
+      if (!stats.endless) {
+        const deciseconds = Math.ceil(stats.timeLeftMs / 100)
+        if (deciseconds !== last.deciseconds && timeRef.current) {
+          timeRef.current.textContent = (deciseconds / 10).toFixed(1)
+          last.deciseconds = deciseconds
+        }
       }
       if (stats.hits !== last.hits && hitsRef.current) {
         hitsRef.current.textContent = String(stats.hits)
@@ -113,7 +131,9 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
           <span className="hud__value" ref={timeRef}>
             0.0
           </span>
-          <span className="hud__label">tiempo</span>
+          <span className="hud__label" ref={timeLabelRef}>
+            tiempo
+          </span>
         </div>
         <div className="hud__stat">
           <span className="hud__value" ref={hitsRef}>

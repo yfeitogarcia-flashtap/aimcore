@@ -3,10 +3,12 @@ import { SESSION_DURATION_S } from '../config.js'
 /**
  * Resumen de fin de sesión: precisión, dianas acertadas y dianas/segundo.
  */
-export default function Summary({ summary, onRestart }) {
+export default function Summary({ summary, onRestart, onBackToStart }) {
   return (
     <div className="panel panel--summary">
-      <p className="panel__eyebrow">sesión completada · {SESSION_DURATION_S}s</p>
+      <p className="panel__eyebrow">
+        sesión completada · {summary.endless ? `práctica libre ${summary.durationS.toFixed(0)}s` : `${SESSION_DURATION_S}s`}
+      </p>
 
       <div className="summary__grid">
         <div className="summary__cell summary__cell--primary">
@@ -30,10 +32,15 @@ export default function Summary({ summary, onRestart }) {
         {summary.hits !== summary.kills && ` · ${summary.hits} impactos`}
       </p>
 
-      <button type="button" className="button button--primary" onClick={onRestart} autoFocus>
-        Reiniciar sesión
-      </button>
-      <p className="panel__hint">El ratón se captura al reiniciar. Escape para pausar.</p>
+      <div className="panel__actions">
+        <button type="button" className="button button--primary" onClick={onRestart} autoFocus>
+          Reiniciar sesión
+        </button>
+        <button type="button" className="button button--quiet" onClick={onBackToStart}>
+          Volver al inicio
+        </button>
+      </div>
+      <p className="panel__hint">Reiniciar conserva el modo. Escape para pausar.</p>
     </div>
   )
 }

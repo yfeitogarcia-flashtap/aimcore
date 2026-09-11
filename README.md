@@ -33,6 +33,8 @@ Sólo con la variante de movimiento activa (`MOVEMENT.enabled`):
 
 - **WASD** o **flechas**: desplazamiento horizontal relativo a la cámara. El
   cabeceo no interviene: mirar al suelo o al cielo no cambia hacia dónde andas.
+  Se recorre **la sala entera**; lo único que frena son las paredes, con
+  `MOVEMENT.wallMargin` de holgura.
 - **SHIFT** mantenido: caminar, una marcha intermedia entre correr y agachado
   (`MOVEMENT.walkSpeed`). Es la velocidad más rápida con la que se dispara sin
   penalización — ver *Precisión y movimiento*.
@@ -48,7 +50,21 @@ Sólo con la variante de movimiento activa (`MOVEMENT.enabled`):
 > mapeado también a agacharse; si prefieres sólo CTRL, quita `KeyC` de
 > `MOVEMENT.keys.crouch`.
 
-## Modos
+## Modos de sesión
+
+Dos botones en la pantalla de inicio:
+
+- **Jugar ahora** — sesión cronometrada de `SESSION_DURATION_S`, que termina
+  sola y saca el resumen.
+- **Práctica libre ∞** — sin cronómetro. El HUD pone `∞` donde iría la cuenta
+  atrás y la sesión no acaba nunca por su cuenta: se cierra con **Finalizar
+  sesión** desde el menú de pausa, que saca el mismo resumen. Ahí el ritmo
+  (dianas/s) se mide contra el tiempo realmente jugado.
+
+**Reiniciar** conserva el modo; **Volver al inicio**, en el resumen, devuelve a
+la pantalla de selección.
+
+## Variantes de puntería
 
 Un único interruptor, `MOVEMENT.enabled` en `src/config.js`, cambia entre los
 dos. El motor es el mismo: no hay código duplicado.
@@ -119,11 +135,11 @@ El intervalo se cuenta desde el momento en que *tocaba* cada disparo, no desde
 el frame en que sale. Sin eso, el redondeo al refresco del monitor inflaría el
 intervalo y las RPM reales dependerían de los Hz de la pantalla.
 
-**Cargador y recarga.** Cada arma empieza la sesión con el cargador lleno. Con
-el cargador a cero el gatillo sólo suena en seco —un clic flaco y sin cuerpo,
-distinto del disparo— y lo hace una vez por pulsación: el fuego automático no
-repite el clic. **R** recarga, también a medias; durante la recarga no se
-dispara y volver a pulsar R ni la reinicia ni la acumula. Al completarse, el
+**Cargador y recarga.** Cada arma empieza la sesión con el cargador lleno. Al
+llegar a cero **la recarga arranca sola**: quedarse mirando un gatillo muerto
+no aporta nada. **R** recarga antes de tiempo, también con el cargador a
+medias; durante la recarga no se dispara y volver a pulsar R ni la reinicia ni
+la acumula. Al completarse, el
 cargador vuelve al máximo y el patrón de retroceso al primer disparo: un
 cargador nuevo es una ráfaga nueva.
 
@@ -267,10 +283,11 @@ Las siluetas **no están dibujadas a mano**: se vectorizan con potrace a partir
 de las referencias recortadas de `Reference/Weapons/` (ver abajo). Se dibujan
 sólo a trazo, sin relleno, con el mismo gris y grosor que el resto del HUD.
 
-Scalar-2 tiene dos variantes y cambia con el interruptor del silenciador. La
-referencia está fotografiada **con** silenciador, así que el trazado real es el
-silenciado; la versión corta se deriva de él comprimiendo la zona del cañón, no
-redibujándola.
+Scalar-2 tiene dos variantes y cambia con el interruptor del silenciador. Las
+dos salen de fotos propias —`scalar-2.png` y `scalar-2-nonsilenced.png`—, así
+que ninguna se deriva de la otra. Como están encuadradas distinto, la versión
+sin silenciador se escala para que su **altura** coincida con la silenciada: es
+la misma pistola y el interruptor no debe cambiarla de tamaño.
 
 ### Vectorizar las siluetas
 
@@ -302,9 +319,14 @@ bajar del umbral, y otra vez si se aprieta el gatillo en vacío. El interruptor
 
 ## Panel de acciones rápidas
 
-Un tablero dentro de la sala, pegado a la pared derecha y fuera del abanico de
-aparición de las dianas. No hay gesto para abrirlo: está siempre ahí y se
-acciona **disparándole**. Cinco botones: Pausa, Reiniciar, Arma (cicla el
+Un tablero dentro de la sala, a `ACTION_PANEL.distance` a la derecha del
+**punto de aparición** —no de una coordenada fija de la sala— y fuera del
+abanico de las dianas. Anclarlo al spawn es lo que lo mantiene donde se espera
+ahora que el movimiento cubre los 80×80: una coordenada fija podía quedar a
+medio mapa. Si el jugador se acerca andando, el tablero se aparta para
+conservar `ACTION_PANEL.minDistance` en vez de plantársele delante, y nunca
+pasa de la pared. No hay gesto para abrirlo: está siempre ahí y se acciona
+**disparándole**. Cinco botones: Pausa, Reiniciar, Arma (cicla el
 roster), Silenciador y Opciones, que abre el modal 2D de siempre. El de
 silenciador desaparece —y con él su blanco— cuando el arma no lo admite.
 
@@ -389,6 +411,9 @@ WEAPONS                       // roster: modo, RPM y patrón de retroceso
 RECOIL_RESET_MS               // pausa que cierra la ráfaga y reinicia el patrón
 
 MOVEMENT.walkSpeed            // marcha de SHIFT, entre correr y agachado
+MOVEMENT.wallMargin           // holgura que se deja junto a cada pared
+ACTION_PANEL.distance         // a qué distancia del spawn se ancla el panel
+ACTION_PANEL.minDistance      // distancia mínima que guarda con el jugador
 ACCURACY.speedThreshold       // velocidad a partir de la cual se abre el tiro
 ACCURACY.movementSpreadDeg    // radio angular máximo del desvío aleatorio
 
@@ -491,6 +516,14 @@ cuesta ~0.1 ms por frame en p99, frente a los 4.17 ms de presupuesto a 240 Hz.
   mismo muestreo que las apariciones, así que anclar el hitbox al suelo ya
   basta para que sólo se mueva en horizontal: no hay una restricción de ejes
   escrita aparte que pueda desincronizarse.
+- **La recarga automática no quita la manual.** R sigue sirviendo para
+  recargar antes de quedarse seco, que es la decisión táctica; automatizar lo
+  que no tiene decisión —el cargador vacío— es sólo quitar fricción.
+- **El tope del slider de distancia se ancla al spawn, no al movimiento.**
+  Ahora que se recorre la sala entera, atarlo al peor caso posible lo habría
+  dejado en nada. Se garantiza el margen para el juego normal, cerca del punto
+  de partida; quien se pegue a una pared verá las apariciones comprimirse
+  contra ella, que es lo que el muestreo ya hacía por su cuenta.
 - **Las siluetas se vectorizan, no se dibujan.** La vuelta anterior las trazó
   a ojo y no eran fieles. Sacarlas del canal alfa del recorte quita de en medio
   mi interpretación de la forma.

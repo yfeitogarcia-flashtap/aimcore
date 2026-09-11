@@ -237,21 +237,32 @@ export const WEAPON_KEYS = {
  * tiros, sin gesto para abrirlo.
  *
  * Se dibuja con CSS3DRenderer —es DOM de verdad colocado en el espacio— para
- * reutilizar la tipografía y el verde de marca sin repintarlos en WebGL. Va
- * pegado a la pared derecha, fuera del abanico de aparición de las dianas, y a
- * una altura desde la que se ve girando la cabeza sin buscarlo.
+ * reutilizar la tipografía y el verde de marca sin repintarlos en WebGL. Va a
+ * la derecha del punto de aparición, fuera del abanico de las dianas, y a una
+ * altura desde la que se ve girando la cabeza sin buscarlo.
  */
 export const ACTION_PANEL = {
   /** Tamaño del tablero en píxeles CSS. */
   widthPx: 1800,
-  heightPx: 340,
+  heightPx: 300,
   /**
    * Unidades de mundo por píxel CSS. Con la sala a 80 de ancho, la pared queda
    * lejos: el tablero tiene que ser grande para leerse desde el centro.
    */
-  scale: 0.023,
+  scale: 0.011,
   /** Altura del centro del tablero sobre el suelo. */
-  height: 5,
+  height: 4,
+  /**
+   * Distancia a la derecha del punto de aparición. El tablero se ancla al
+   * spawn y no a una esquina de la sala: ahora que el jugador la recorre
+   * entera, una coordenada fija podía quedar a medio mapa o en las narices.
+   */
+  distance: 18,
+  /**
+   * Nunca más cerca del jugador que esto. Si se acerca andando, el tablero se
+   * aparta manteniendo la distancia en lugar de plantársele delante.
+   */
+  minDistance: 11,
   /** Separación respecto a la pared, para que no haga z-fighting con la grilla. */
   wallOffset: 0.6,
   /**
@@ -403,10 +414,11 @@ export const MOVEMENT = {
   gravity: 18.0,
 
   /**
-   * Radio máximo de desplazamiento desde el centro de la sala, en unidades.
-   * Coincide con una línea de acento de la grilla, así que el límite se ve.
+   * Margen que se deja libre junto a cada pared. El desplazamiento ya no está
+   * acotado a un radio artificial: el jugador recorre la sala entera y lo
+   * único que lo frena son las paredes.
    */
-  radius: 5,
+  wallMargin: 1.5,
 
   /**
    * Teclas por acción, en códigos físicos (`KeyboardEvent.code`): funcionan
@@ -490,14 +502,26 @@ export const SPAWN = {
 const WALL_CLEARANCE = 5
 
 /**
- * Tope del slider de distancia de aparición. Se calcula, no se escribe a mano,
- * para que siga siendo correcto si algún día cambian la sala, el radio de
- * movimiento o las horquillas de distancia.
+ * Radio alrededor del punto de aparición que se tiene en cuenta al acotar el
+ * slider.
  *
- * El peor caso es un jugador desplazado hasta el borde de su radio de
- * movimiento, con un dummy sorteado a la distancia máxima posible y justo en
- * la dirección contraria a la pared más cercana. Incluso así tienen que
- * sobrar `WALL_CLEARANCE` unidades.
+ * El jugador puede alejarse mucho más —se mueve por toda la sala—, pero el
+ * cono de aparición está anclado al centro y lo razonable es garantizar el
+ * margen para el juego normal, cerca del punto de partida. Quien se vaya a
+ * pegar a una pared verá las apariciones comprimirse contra ella en vez de
+ * salirse de la sala, que es lo que ya hace el muestreo por su cuenta.
+ */
+const SPAWN_ANCHOR_MARGIN = 5
+
+/**
+ * Tope del slider de distancia de aparición. Se calcula, no se escribe a mano,
+ * para que siga siendo correcto si algún día cambian la sala, los márgenes o
+ * las horquillas de distancia.
+ *
+ * El peor caso es un jugador desplazado hasta el borde de `SPAWN_ANCHOR_MARGIN`
+ * con un dummy sorteado a la distancia máxima posible y justo en la dirección
+ * contraria a la pared más cercana. Incluso así tienen que sobrar
+ * `WALL_CLEARANCE` unidades.
  *
  * Se toma el más restrictivo de los dos regímenes de distancia, porque el
  * slider es uno solo y vale para los tres tipos de diana:
@@ -507,7 +531,7 @@ const WALL_CLEARANCE = 5
 function computeMaxSpawnDistance(step) {
   const halfRoom = Math.min(ROOM.width, ROOM.depth) / 2
   // Distancia máxima que puede haber entre jugador y diana sin comerse el margen.
-  const reach = halfRoom - WALL_CLEARANCE - MOVEMENT.radius
+  const reach = halfRoom - WALL_CLEARANCE - SPAWN_ANCHOR_MARGIN
   const generalMax = reach - TARGET.distanceSpread
   const hitboxMax = reach / HITBOX.distanceScale.max
   // Redondeo hacia abajo al escalón del slider, para que el tope sea alcanzable.

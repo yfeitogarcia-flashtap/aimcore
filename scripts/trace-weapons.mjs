@@ -38,15 +38,18 @@ const POTRACE_OPTIONS = {
   turnPolicy: potrace.Potrace.TURNPOLICY_MINORITY,
 }
 
-const WEAPONS = ['axis-7', 'vertex-9', 'scalar-2']
-
 /**
- * Fracción del ancho del arma que ocupa el silenciador de la Scalar-2, medida
- * sobre la referencia. La variante sin silenciador comprime esa zona.
+ * Cada entrada es una silueta a vectorizar. `matchHeightOf` escala el trazado
+ * para que su altura coincida con la de otra: las dos variantes de Scalar-2
+ * son la misma pistola fotografiada aparte, así que sin esto el interruptor
+ * del silenciador la cambiaría de tamaño.
  */
-const SCALAR_BARREL_SPLIT = 0.57
-/** Cuánto queda de esa zona al acortar el cañón. */
-const SCALAR_BARREL_SHRINK = 0.13
+const WEAPONS = [
+  { key: 'axis-7', file: 'axis-7.png' },
+  { key: 'vertex-9', file: 'vertex-9.png' },
+  { key: 'scalar-2', file: 'scalar-2.png' },
+  { key: 'scalar-2-plain', file: 'scalar-2-nonsilenced.png', matchHeightOf: 'scalar-2' },
+]
 
 /** Máscara en blanco y negro a partir del alfa del recorte. */
 async function buildMask(file) {
@@ -131,32 +134,35 @@ function boundsOf(d) {
   return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY }
 }
 
-/**
- * Acorta el cañón comprimiendo todo lo que quede por delante del corte. Es una
- * deformación del trazado real, no un dibujo nuevo: el cuerpo del arma queda
- * intacto y sólo se encoge la zona del silenciador.
- */
-function shortenBarrel(d, bounds) {
-  const split = bounds.minX + bounds.width * SCALAR_BARREL_SPLIT
+/** Escala un trazado alrededor del centro de su caja. */
+function scalePath(d, bounds, factor) {
+  const centerX = bounds.minX + bounds.width / 2
+  const centerY = bounds.minY + bounds.height / 2
   return mapPath(d, (x, y) => [
-    x < split ? split - (split - x) * SCALAR_BARREL_SHRINK : x,
-    y,
+    centerX + (x - centerX) * factor,
+    centerY + (y - centerY) * factor,
   ])
 }
 
 const traced = {}
-for (const key of WEAPONS) {
-  const mask = await buildMask(resolve(SOURCE_DIR, `${key}.png`))
-  const d = await traceToPath(mask)
-  traced[key] = { d, bounds: boundsOf(d) }
-  const { width, height } = traced[key].bounds
-  console.log(`${key.padEnd(10)} ${d.length} caracteres | caja ${Math.round(width)}x${Math.round(height)} px`)
-}
+for (const { key, file, matchHeightOf } of WEAPONS) {
+  const mask = await buildMask(resolve(SOURCE_DIR, file))
+  let d = await traceToPath(mask)
+  let bounds = boundsOf(d)
 
-// La Scalar-2 sin silenciador sale del trazado real, no de un dibujo aparte.
-const plain = shortenBarrel(traced['scalar-2'].d, traced['scalar-2'].bounds)
-traced['scalar-2-plain'] = { d: plain, bounds: boundsOf(plain) }
-console.log(`${'scalar-2-plain'.padEnd(10)} derivada: caja ${Math.round(traced['scalar-2-plain'].bounds.width)}x${Math.round(traced['scalar-2-plain'].bounds.height)} px`)
+  if (matchHeightOf) {
+    // Las fotos están encuadradas de forma distinta, así que el tamaño en
+    // píxeles no dice nada del tamaño real. Igualar la altura con la otra
+    // variante es lo que mantiene la misma arma del mismo tamaño.
+    const factor = traced[matchHeightOf].bounds.height / bounds.height
+    d = scalePath(d, bounds, factor)
+    bounds = boundsOf(d)
+    console.log(`${key.padEnd(14)} escalada x${factor.toFixed(3)} para igualar a ${matchHeightOf}`)
+  }
+
+  traced[key] = { d, bounds }
+  console.log(`${key.padEnd(14)} ${d.length} caracteres | caja ${Math.round(bounds.width)}x${Math.round(bounds.height)} px`)
+}
 
 // Un único encuadre para las cuatro, con margen: así conservan su tamaño
 // relativo —una pistola no se ve tan larga como un fusil— y se centran solas.
@@ -185,8 +191,9 @@ const file = `/**
  *
  * Las cuatro entradas comparten el tamaño de \`viewBox\` y sólo cambian de
  * origen, de modo que se dibujan a la misma escala y cada una queda centrada.
- * \`scalar-2-plain\` se deriva del trazado con silenciador comprimiendo la zona
- * del cañón.
+ * Las dos variantes de Scalar-2 salen de fotos distintas de la misma pistola,
+ * así que la versión sin silenciador se escala para que su altura coincida con
+ * la silenciada y el interruptor no la cambie de tamaño.
  */
 export const WEAPON_PATHS = {
 ${entries.join('\n')}

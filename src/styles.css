@@ -174,6 +174,12 @@ body {
   font-size: 34px;
 }
 
+/* El símbolo de infinito necesita algo más de cuerpo para pesar lo mismo. */
+.hud__value--endless {
+  font-size: 40px;
+  line-height: 0.85;
+}
+
 .hud__label {
   font-size: 10px;
   letter-spacing: 0.18em;
@@ -231,7 +237,9 @@ body {
   width: 164px;
   height: 71px;
   fill: none;
-  stroke: var(--text-muted);
+  /* Mismo blanco que los contadores del HUD: con el gris apagado el trazo se
+     quedaba por detrás del resto de elementos. */
+  stroke: var(--text-primary);
   stroke-width: 1.5;
   stroke-linejoin: round;
   stroke-linecap: round;
@@ -616,6 +624,7 @@ body {
 
 .panel__actions {
   display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 10px;
   margin-top: 4px;

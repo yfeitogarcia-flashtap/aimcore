@@ -17,7 +17,7 @@
  */
 
 import * as THREE from 'three'
-import { MOVEMENT } from '../config.js'
+import { MOVEMENT, ROOM } from '../config.js'
 
 // Vectores de módulo: el bucle no aloca nada.
 const _forward = new THREE.Vector3()
@@ -165,14 +165,14 @@ export class MovementController {
     position.x += (_forward.x * z + _right.x * x) * step
     position.z += (_forward.z * z + _right.z * x) * step
 
-    // Acotado al radio, cada frame.
-    const distanceSq = position.x * position.x + position.z * position.z
-    const radius = MOVEMENT.radius
-    if (distanceSq > radius * radius) {
-      const scale = radius / Math.sqrt(distanceSq)
-      position.x *= scale
-      position.z *= scale
-    }
+    // Acotado a las paredes de la sala, cada frame. El único límite es el
+    // real: se recorre entera menos el margen que se deja junto al muro.
+    const limitX = ROOM.width / 2 - MOVEMENT.wallMargin
+    const limitZ = ROOM.depth / 2 - MOVEMENT.wallMargin
+    if (position.x > limitX) position.x = limitX
+    else if (position.x < -limitX) position.x = -limitX
+    if (position.z > limitZ) position.z = limitZ
+    else if (position.z < -limitZ) position.z = -limitZ
   }
 
   _updateVertical(dt) {

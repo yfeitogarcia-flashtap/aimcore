@@ -135,6 +135,9 @@ export class Engine {
 
     this.phase = PHASE.IDLE
     this.durationMs = SESSION_DURATION_S * 1000
+    /** Sesión sin cronómetro: no termina sola, la cierra el jugador. */
+    this.endless = false
+    this._pendingEndless = false
     this.elapsedMs = 0
     this.shots = 0
     this.hits = 0
@@ -163,6 +166,7 @@ export class Engine {
     this.stats = {
       phase: this.phase,
       fps: 0,
+      endless: false,
       timeLeftMs: this.durationMs,
       hits: 0,
       misses: 0,
@@ -292,8 +296,44 @@ export class Engine {
    * cuando llega el evento de pointerlock.
    */
   restart() {
+    // Reiniciar conserva el modo: quien estaba en práctica libre sigue en ella.
+    this._pendingEndless = this.endless
     this.controls.reset()
     this.requestLock()
+  }
+
+  /**
+   * Pide la captura del ratón para arrancar una sesión en el modo indicado.
+   * El modo se guarda aquí y lo recoge `_beginSession` cuando llega el evento
+   * de pointerlock, que es cuando la sesión empieza de verdad.
+   */
+  requestStart(endless = false) {
+    this._pendingEndless = endless
+    this.controls.reset()
+    this.requestLock()
+  }
+
+  /**
+   * Vuelve a la pantalla de inicio. Con dos modos de sesión hace falta un
+   * camino de vuelta: desde el resumen sólo se podía reiniciar el mismo modo.
+   */
+  goToStart() {
+    this.controls.enabled = false
+    this.movement.setEnabled(false)
+    this._releaseTrigger()
+    this._cancelReload()
+    this.targets.clear()
+    if (this.isLocked) document.exitPointerLock()
+    this._setPhase(PHASE.IDLE)
+  }
+
+  /**
+   * Cierra la sesión a mano y saca el resumen. Es la única forma de terminar
+   * una práctica libre, y también vale para abandonar una cronometrada.
+   */
+  finishSession() {
+    if (this.phase !== PHASE.RUNNING && this.phase !== PHASE.PAUSED) return
+    this._finishSession()
   }
 
   /**
@@ -402,6 +442,8 @@ export class Engine {
   }
 
   _beginSession() {
+    this.endless = this._pendingEndless
+    this.stats.endless = this.endless
     this.elapsedMs = 0
     this.shots = 0
     this.hits = 0
@@ -428,8 +470,10 @@ export class Engine {
     this._setPhase(PHASE.FINISHED)
     if (this.isLocked) document.exitPointerLock()
 
-    const seconds = this.durationMs / 1000
+    // En práctica libre el ritmo se mide contra lo que haya durado de verdad.
+    const seconds = (this.endless ? this.elapsedMs : this.durationMs) / 1000
     this.callbacks.onFinish?.({
+      endless: this.endless,
       hits: this.hits,
       misses: this.shots - this.hits,
       shots: this.shots,
@@ -584,7 +628,7 @@ export class Engine {
     this._shoot()
     this._applyRecoil(weapon)
     this._sprayIndex += 1
-    this._consumeAmmo(weapon)
+    this._consumeAmmo(weapon, now)
     return true
   }
 
@@ -593,8 +637,14 @@ export class Engine {
    * una sola vez por cargador: al bajar del umbral, o al vaciarse si se pasó
    * de largo entre disparos.
    */
-  _consumeAmmo(weapon) {
+  _consumeAmmo(weapon, now) {
     this.ammo -= 1
+    // Al vaciarse, la recarga arranca sola: quedarse mirando un gatillo muerto
+    // no aporta nada. R sigue sirviendo para recargar antes de tiempo.
+    if (this.ammo <= 0) {
+      this._startReload(now)
+      return
+    }
     if (this._lowAmmoWarned) return
     const lowThreshold = Math.max(1, Math.floor(weapon.magazine * HELP.lowAmmoRatio))
     if (this.ammo > lowThreshold) return
@@ -685,7 +735,7 @@ export class Engine {
     if (this.phase === PHASE.RUNNING) {
       this._updateReload(now)
       this.elapsedMs += delta
-      if (this.elapsedMs >= this.durationMs) {
+      if (!this.endless && this.elapsedMs >= this.durationMs) {
         this.elapsedMs = this.durationMs
         this._finishSession()
       } else {
@@ -704,6 +754,7 @@ export class Engine {
     // pero los pops en curso siguen apagándose porque van con `now`.
     const targetDelta = this.phase === PHASE.RUNNING ? delta / 1000 : 0
     this.targets.update(now, targetDelta, this.camera)
+    this.actionPanel.follow(this.camera)
     this.actionPanel.syncLayout()
     this._publishStats()
     this.renderer.render(this.scene, this.camera)
@@ -758,7 +809,11 @@ export class Engine {
     stats.reloadProgress = this.reloading
       ? Math.min(1, (performance.now() - this.reloadStartedAt) / this.weapon.reloadMs)
       : 0
-    stats.timeLeftMs = Math.max(0, this.durationMs - this.elapsedMs)
+    stats.endless = this.endless
+    // Sin cronómetro el HUD enseña el tiempo jugado, no el que queda.
+    stats.timeLeftMs = this.endless
+      ? this.elapsedMs
+      : Math.max(0, this.durationMs - this.elapsedMs)
     stats.hits = this.hits
     stats.shots = this.shots
     stats.misses = this.shots - this.hits

@@ -56,11 +56,9 @@ export class ActionPanel {
       this.buttons.set(definition.id, { element: button, value, mesh: null })
     }
 
-    // Tablero: posición y orientación contra la pared derecha (+X), mirando
-    // hacia el centro de la sala.
-    const x = ROOM.width / 2 - ACTION_PANEL.wallOffset
+    // Tablero: a la derecha del punto de aparición, mirando hacia él.
     this.object = new CSS3DObject(this.element)
-    this.object.position.set(x, ACTION_PANEL.height, 0)
+    this.object.position.set(ACTION_PANEL.distance, ACTION_PANEL.height, 0)
     this.object.rotation.y = -Math.PI / 2
     this.object.scale.setScalar(ACTION_PANEL.scale)
     cssScene.add(this.object)
@@ -75,6 +73,23 @@ export class ActionPanel {
 
     this._hitMaterial = new THREE.MeshBasicMaterial()
     this._activeMeshes = []
+    this._maxX = ROOM.width / 2 - ACTION_PANEL.wallOffset
+  }
+
+  /**
+   * Mantiene la distancia con el jugador.
+   *
+   * El tablero se queda donde lo pone el anclaje al spawn mientras el jugador
+   * ande por su sitio. Si se acerca, se aparta en lugar de plantársele delante
+   * —ahora que la sala se recorre entera, se puede llegar hasta él—, y nunca
+   * pasa de la pared.
+   */
+  follow(camera) {
+    const wanted = Math.max(ACTION_PANEL.distance, camera.position.x + ACTION_PANEL.minDistance)
+    const x = Math.min(wanted, this._maxX)
+    if (x === this.object.position.x) return
+    this.object.position.x = x
+    this.group.position.x = x
   }
 
   /** Refresca etiquetas y qué botones están disponibles. */

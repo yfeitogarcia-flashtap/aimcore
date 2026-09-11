@@ -82,9 +82,17 @@ export default function App() {
     }
   }, [])
 
-  /** Captura el ratón: arranca una sesión nueva o reanuda la pausada. */
+  /** Captura el ratón: reanuda una pausada o arranca donde toque. */
   const lock = useCallback(() => {
     engineRef.current?.requestLock()
+  }, [])
+
+  const startTimed = useCallback(() => engineRef.current?.requestStart(false), [])
+  const startEndless = useCallback(() => engineRef.current?.requestStart(true), [])
+  const finishSession = useCallback(() => engineRef.current?.finishSession(), [])
+  const backToStart = useCallback(() => {
+    setSummary(null)
+    engineRef.current?.goToStart()
   }, [])
 
   // Seguimos dentro del gesto del usuario (el click del botón), así que el
@@ -164,10 +172,18 @@ export default function App() {
                   type="button"
                   className="button button--primary"
                   onMouseDown={swallowClick}
-                  onClick={lock}
+                  onClick={startTimed}
                   autoFocus
                 >
                   Jugar ahora
+                </button>
+                <button
+                  type="button"
+                  className="button button--primary"
+                  onMouseDown={swallowClick}
+                  onClick={startEndless}
+                >
+                  Práctica libre ∞
                 </button>
                 {optionsButton}
               </div>
@@ -195,6 +211,14 @@ export default function App() {
                   Reanudar
                 </button>
                 {optionsButton}
+                <button
+                  type="button"
+                  className="button button--quiet"
+                  onMouseDown={swallowClick}
+                  onClick={finishSession}
+                >
+                  Finalizar sesión
+                </button>
               </div>
             </div>
           )}
@@ -203,7 +227,7 @@ export default function App() {
 
       {phase === PHASE.FINISHED && summary && (
         <div className="overlay">
-          <Summary summary={summary} onRestart={restart} />
+          <Summary summary={summary} onRestart={restart} onBackToStart={backToStart} />
         </div>
       )}
     </div>
