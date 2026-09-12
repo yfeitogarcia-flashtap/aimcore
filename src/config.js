@@ -567,11 +567,12 @@ export const SPAWN = {
   forwardBiasChance: 0.85,
 
   /**
-   * Con anclajes curados, lo que se espera antes de reintentar cuando ninguno
-   * está visible desde donde está el jugador. Sin esta espera el motor volvería
-   * a comprobar visibilidad en cada frame, que es justo lo que no debe hacer.
+   * Con rutas curadas, lo que se espera antes de reintentar cuando ningún punto
+   * válido está visible desde donde está el jugador. Sin esta espera el motor
+   * volvería a comprobar visibilidad en cada frame, que es justo lo que no debe
+   * hacer.
    */
-  anchorRetryMs: 150,
+  pointRetryMs: 150,
 
   /** Semiángulo del cono frente a la cámara (cono total ≈ 36°). */
   coneHalfAngleDeg: 18,
@@ -1093,103 +1094,202 @@ export const SCENARIOS = {
     ],
 
     /**
-     * Grupos de patrulla para los muñecos con movimiento dinámico.
+     * **Rutas.** Un escenario con cobertura declara rutas, y una ruta es un
+     * conjunto de puntos donde **cada par es alcanzable en línea recta** sin
+     * cruzar geometría ni cambiar de nivel de suelo.
      *
-     * **Cada par de puntos de un mismo grupo está verificado como alcanzable en
-     * línea recta**, sin cruzar cobertura y sin salirse del nivel de suelo. Eso
-     * es lo que permite caminar de cualquiera a cualquiera sin pathfinding: el
-     * muñeco elige otro punto al azar y va, y no hay forma de que se quede
-     * encajado en un muro.
+     * No hay dos clases de punto: **cualquier punto de cualquier ruta es un
+     * sitio de aparición**, y el mismo punto sirve de destino de patrulla. Antes
+     * eran dos listas —anclajes curados por un lado, grupos de patrulla por
+     * otro— con dos vocabularios y dos auditorías para lo mismo, y con el efecto
+     * raro de que un muñeco podía patrullar por sitios donde nunca nacía.
      *
-     * Los anclajes no son miembros del grupo, son **entradas**: el muñeco nace
-     * en su anclaje y de ahí sale al grupo, así que lo que se verifica es que el
-     * anclaje vea a todos los puntos. Al grupo no se vuelve. Es lo que permite
-     * que las dos troneras del Balcón compartan grupo aunque el parapeto se
-     * interponga entre ellas.
+     * Lo que garantiza la ruta es lo que permite mover sin pathfinding: elegir
+     * otro punto y andar, sin comprobaciones en el bucle ni atascos posibles.
      *
-     * Un anclaje sin `cluster` da un muñeco quieto, que es el comportamiento de
-     * antes. La geometría manda: donde no hay un conjunto limpio, no hay patrulla.
+     * Cuántas rutas y cuántos puntos caben **no se decidió, se midió**. Barriendo
+     * la sala en rejilla de 1 u y exigiendo a la vez: suelo a nivel, cuerpo de
+     * 0.6 u libre de geometría, fuera del volumen del tablero de acciones, a más
+     * de `sala/8` del punto de aparición del jugador, 2.5 u de separación entre
+     * puntos, 10 u de diámetro máximo por ruta —una ruta es una zona de patrulla,
+     * no una carrera de punta a punta— y áreas de rutas disjuntas, en el Plano A
+     * a 40×40 entran **14 rutas y 69 puntos**. Ésos son.
+     *
+     * `zone` y `peek` son de la ruta entera, no del punto: describen dónde está
+     * y si obliga a asomarse. `y` eleva la ruta a una plataforma.
      */
-    patrolClusters: {
-      largo: [
-        { id: 'largo-a', x: -12.5, z: -7 },
-        { id: 'largo-b', x: -15.5, z: -7 },
-        { id: 'largo-c', x: -17, z: -4 },
-        { id: 'largo-d', x: -14, z: -4 },
-      ],
-      cajonesOeste: [
-        { id: 'cajon-o-a', x: -2.5, z: 5.5 },
-        { id: 'cajon-o-b', x: 0, z: 3 },
-        { id: 'cajon-o-c', x: 2, z: 0.5 },
-        { id: 'cajon-o-d', x: 4, z: -2 },
-      ],
-      cajonesEste: [
-        { id: 'cajon-e-a', x: 18, z: -6 },
-        { id: 'cajon-e-b', x: 8.5, z: 0.5 },
-        { id: 'cajon-e-c', x: 10.5, z: -5.5 },
-        { id: 'cajon-e-d', x: 15, z: -1 },
-      ],
-      puertaOeste: [
-        { id: 'puerta-o-a', x: -9, z: 4 },
-        { id: 'puerta-o-b', x: -10, z: -1 },
-        { id: 'puerta-o-c', x: -13.5, z: 2 },
-        { id: 'puerta-o-d', x: -18, z: -1 },
-      ],
-      puertaEste: [
-        { id: 'puerta-e-a', x: -1.5, z: -6 },
-        { id: 'puerta-e-b', x: 1.5, z: -11 },
-        { id: 'puerta-e-c', x: -5, z: -2 },
-        { id: 'puerta-e-d', x: -6, z: -8.5 },
-      ],
-      balcon: [
-        { id: 'balcon-a', x: -8.5, y: 'plataforma', z: -18.5 },
-        { id: 'balcon-b', x: -12, y: 'plataforma', z: -18.5 },
-        { id: 'balcon-c', x: -8, y: 'plataforma', z: -15.5 },
-        { id: 'balcon-d', x: -5.5, y: 'plataforma', z: -18.5 },
-      ],
-      vestibulo: [
-        { id: 'vest-a', x: -13.5, z: 18 },
-        { id: 'vest-b', x: -17.5, z: 12.5 },
-        { id: 'vest-c', x: -4, z: 15.5 },
-        { id: 'vest-d', x: -10, z: 12.5 },
-      ],
-    },
-
-    anchors: [
-      // --- El Largo: lo lejano, detrás de la cobertura escalonada.
-      { id: 'largo-1', x: -16, y: 0, z: -6, zone: 'El Largo', peek: true, cluster: 'largo' },
-      { id: 'largo-2', x: -10, y: 0, z: -10, zone: 'El Largo', peek: true },
-      { id: 'largo-3', x: -17, y: 0, z: 1, zone: 'El Largo', peek: true, cluster: 'largo' },
-
-      // --- Troneras del Balcón: elevadas, en los huecos del parapeto.
-      { id: 'tronera-o', x: -11.5, y: 'plataforma', z: -12.6, zone: 'El Balcón', peek: false, cluster: 'balcon' },
-      { id: 'tronera-e', x: -4.5, y: 'plataforma', z: -12.6, zone: 'El Balcón', peek: false, cluster: 'balcon' },
-
-      // --- Bocas de La Puerta, una a cada lado de la Espina.
-      { id: 'puerta-o', x: -9.5, y: 0, z: -1, zone: 'La Puerta', peek: false, cluster: 'puertaOeste' },
-      { id: 'puerta-e', x: -4.5, y: 0, z: -1, zone: 'La Puerta', peek: false, cluster: 'puertaEste' },
-
-      // --- Los Cajones: corta distancia, asomada agachado.
-      { id: 'cajon-1', x: -3, y: 0, z: 7, zone: 'Los Cajones', peek: true, cluster: 'cajonesOeste' },
-      { id: 'cajon-2', x: 2.5, y: 0, z: 1, zone: 'Los Cajones', peek: true, cluster: 'cajonesOeste' },
-      { id: 'cajon-3', x: 12, y: 0, z: 3, zone: 'Los Cajones', peek: true, cluster: 'cajonesEste' },
-      { id: 'cajon-4', x: 17, y: 0, z: -1, zone: 'Los Cajones', peek: false, cluster: 'cajonesEste' },
-
-      // --- Vestíbulo. Los dos tienen que verse **desde el propio spawn**: son
-      // los que garantizan que la sesión no arranque con la sala a la vista y
-      // ninguna diana en ella.
-      //
-      // Lo que ya no cargan es con el cono frontal. Antes del reescalado la
-      // divisoria tapaba **todo** lo que había de frente, así que la primera
-      // diana de cada sesión salía por fuerza de estos dos y hubo que meterlos a
-      // la fuerza dentro del cono, a 8.8 y 4 u (docs/decisions.md §23). Ahora la
-      // divisoria arranca al este del spawn y el paso central queda abierto: de
-      // frente se ven `tronera-e` y `cajon-2`, a distancia de verdad, y de ahí
-      // sale la primera diana el 85% de las veces. Liberados de eso, estos dos
-      // vuelven a su trabajo —flanquear y obligar a girarse, que en un aim
-      // trainer no sobra—.
-      { id: 'vestibulo-o', x: -9, y: 0, z: 13, zone: 'Vestíbulo', peek: false, cluster: 'vestibulo' },
-      { id: 'vestibulo-e', x: 2, y: 0, z: 18, zone: 'Vestíbulo', peek: false },
+    routes: [
+      {
+        id: 'balcon-1',
+        zone: 'El Balcón',
+        y: 'plataforma',
+        peek: false,
+        points: [
+          { id: 'balcon-1-a', x: 6.5, z: -17.5 },
+          { id: 'balcon-1-b', x: 9.5, z: -18.5 },
+          { id: 'balcon-1-c', x: 12.5, z: -18.5 },
+          { id: 'balcon-1-d', x: 10.5, z: -14.5 },
+          { id: 'balcon-1-e', x: 6.5, z: -14.5 },
+          { id: 'balcon-1-f', x: 3.5, z: -14.5 },
+        ],
+      },
+      {
+        id: 'balcon-2',
+        zone: 'El Balcón',
+        y: 'plataforma',
+        peek: false,
+        points: [
+          { id: 'balcon-2-a', x: -9.5, z: -16.5 },
+          { id: 'balcon-2-b', x: -6.5, z: -16.5 },
+          { id: 'balcon-2-c', x: -3.5, z: -17.5 },
+          { id: 'balcon-2-d', x: 0.5, z: -16.5 },
+          { id: 'balcon-2-e', x: -1.5, z: -14.5 },
+          { id: 'balcon-2-f', x: -5.5, z: -13.5 },
+        ],
+      },
+      {
+        id: 'balcon-3',
+        zone: 'El Balcón',
+        y: 'plataforma',
+        peek: false,
+        points: [
+          { id: 'balcon-3-a', x: -18.5, z: -17.5 },
+          { id: 'balcon-3-b', x: -12.5, z: -18.5 },
+          { id: 'balcon-3-c', x: -14.5, z: -16.5 },
+          { id: 'balcon-3-d', x: -12.5, z: -14.5 },
+          { id: 'balcon-3-e', x: -16.5, z: -14.5 },
+        ],
+      },
+      {
+        id: 'balcon-4',
+        zone: 'El Balcón',
+        y: 'plataforma',
+        peek: false,
+        points: [
+          { id: 'balcon-4-a', x: 15.5, z: -18.5 },
+          { id: 'balcon-4-b', x: 18.5, z: -18.5 },
+          { id: 'balcon-4-c', x: 18.5, z: -12.5 },
+          { id: 'balcon-4-d', x: 16.5, z: -15.5 },
+        ],
+      },
+      {
+        id: 'cajones-1',
+        zone: 'Los Cajones',
+        peek: true,
+        points: [
+          { id: 'cajones-1-a', x: 3.5, z: -1.5 },
+          { id: 'cajones-1-b', x: 6.5, z: -1.5 },
+          { id: 'cajones-1-c', x: 5.5, z: 1.5 },
+          { id: 'cajones-1-d', x: 1.5, z: 1.5 },
+        ],
+      },
+      {
+        id: 'cajones-2',
+        zone: 'Los Cajones',
+        peek: true,
+        points: [
+          { id: 'cajones-2-a', x: 15.5, z: 4.5 },
+          { id: 'cajones-2-b', x: 18.5, z: 4.5 },
+          { id: 'cajones-2-c', x: 18.5, z: 7.5 },
+          { id: 'cajones-2-d', x: 15.5, z: 7.5 },
+        ],
+      },
+      {
+        id: 'cajones-3',
+        zone: 'Los Cajones',
+        peek: true,
+        points: [
+          { id: 'cajones-3-a', x: -5.5, z: 3.5 },
+          { id: 'cajones-3-b', x: -2.5, z: 4.5 },
+          { id: 'cajones-3-c', x: -0.5, z: 7.5 },
+          { id: 'cajones-3-d', x: -4.5, z: 6.5 },
+        ],
+      },
+      {
+        id: 'largo-1',
+        zone: 'El Largo',
+        peek: false,
+        points: [
+          { id: 'largo-1-a', x: -13.5, z: 10.5 },
+          { id: 'largo-1-b', x: -11.5, z: 5.5 },
+          { id: 'largo-1-c', x: -11.5, z: 8.5 },
+          { id: 'largo-1-d', x: -9.5, z: 12.5 },
+          { id: 'largo-1-e', x: -14.5, z: 13.5 },
+          { id: 'largo-1-f', x: -17.5, z: 13.5 },
+        ],
+      },
+      {
+        id: 'largo-2',
+        zone: 'El Largo',
+        peek: false,
+        points: [
+          { id: 'largo-2-a', x: -16.5, z: -0.5 },
+          { id: 'largo-2-b', x: -18.5, z: -3.5 },
+          { id: 'largo-2-c', x: -13.5, z: -0.5 },
+          { id: 'largo-2-d', x: -10.5, z: 1.5 },
+          { id: 'largo-2-e', x: -18.5, z: 1.5 },
+        ],
+      },
+      {
+        id: 'pasillo-1',
+        zone: 'Pasillo trasero',
+        peek: false,
+        points: [
+          { id: 'pasillo-1-a', x: 10.5, z: -4.5 },
+          { id: 'pasillo-1-b', x: 14.5, z: -5.5 },
+          { id: 'pasillo-1-c', x: 18.5, z: -5.5 },
+          { id: 'pasillo-1-d', x: 17.5, z: -2.5 },
+          { id: 'pasillo-1-e', x: 11.5, z: 0.5 },
+          { id: 'pasillo-1-f', x: 12.5, z: -2.5 },
+        ],
+      },
+      {
+        id: 'pasillo-2',
+        zone: 'Pasillo trasero',
+        peek: false,
+        points: [
+          { id: 'pasillo-2-a', x: 0.5, z: -9.5 },
+          { id: 'pasillo-2-b', x: 3.5, z: -9.5 },
+          { id: 'pasillo-2-c', x: 6.5, z: -10.5 },
+          { id: 'pasillo-2-d', x: 9.5, z: -9.5 },
+          { id: 'pasillo-2-e', x: 7.5, z: -7.5 },
+        ],
+      },
+      {
+        id: 'puerta-1',
+        zone: 'La Puerta',
+        peek: true,
+        points: [
+          { id: 'puerta-1-a', x: -4.5, z: -9.5 },
+          { id: 'puerta-1-b', x: -2.5, z: -5.5 },
+          { id: 'puerta-1-c', x: -2.5, z: -2.5 },
+          { id: 'puerta-1-d', x: -4.5, z: -0.5 },
+          { id: 'puerta-1-e', x: -5.5, z: -4.5 },
+        ],
+      },
+      {
+        id: 'vestibulo-1',
+        zone: 'Vestíbulo',
+        peek: false,
+        points: [
+          { id: 'vestibulo-1-a', x: 6.5, z: 12.5 },
+          { id: 'vestibulo-1-b', x: 7.5, z: 15.5 },
+          { id: 'vestibulo-1-c', x: 5.5, z: 17.5 },
+          { id: 'vestibulo-1-d', x: 2.5, z: 18.5 },
+        ],
+      },
+      {
+        id: 'vestibulo-2',
+        zone: 'Vestíbulo',
+        peek: false,
+        points: [
+          { id: 'vestibulo-2-a', x: -5.5, z: 15.5 },
+          { id: 'vestibulo-2-b', x: -4.5, z: 18.5 },
+          { id: 'vestibulo-2-c', x: -8.5, z: 18.5 },
+          { id: 'vestibulo-2-d', x: -11.5, z: 18.5 },
+          { id: 'vestibulo-2-e', x: -14.5, z: 18.5 },
+        ],
+      },
     ],
   },
 }

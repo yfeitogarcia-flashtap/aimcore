@@ -144,11 +144,14 @@ export class TargetManager {
      * Anclajes curados de un escenario con cobertura. Mientras esté vacío se
      * usa el muestreo por cono de siempre.
      */
-    this.anchors = []
+    this.points = []
+    this.routes = []
     this._occluders = []
     this._visibilityRay = new THREE.Raycaster()
     /** Orden barajado de anclajes. Preasignado: barajar no aloca. */
-    this._anchorOrder = new Int32Array(0)
+    this._pointOrder = new Int32Array(0)
+    /** Sello de la elección en curso, para no repetir raycasts. Ver `_pickPoint`. */
+    this._visibilityStamp = 0
     /** Subconjunto de los que caen delante del jugador. Mismo tamaño, se llena en parte. */
     this._forwardOrder = new Int32Array(0)
     this.cosForwardBias = Math.cos((SPAWN.forwardBiasConeDeg / 2) * DEG_TO_RAD)
@@ -186,29 +189,34 @@ export class TargetManager {
    * —una tronera, una boca de paso, la esquina de un cajón—, que es justo lo
    * que un cono no sabe hacer.
    *
-   * @param {Array<object>} anchors
+   * @param {Array<object>} routes rutas ya resueltas por el escenario
+   * @param {Array<object>} points todos sus puntos, en plano
    * @param {Array<THREE.Object3D>} occluders geometría contra la que se
    *   comprueba la visibilidad
    * @param {object} [room] sala del escenario, que es la que acota el muestreo
-   *   por cono cuando no hay anclajes
+   *   por cono cuando no hay rutas
    */
-  setAnchors(anchors, occluders, room = ROOM) {
-    this.anchors = anchors && anchors.length ? anchors : []
+  setRoutes(routes, points, occluders, room = ROOM) {
+    this.routes = routes && routes.length ? routes : []
+    this.points = points && points.length ? points : []
     this._occluders = occluders || []
     this.room = room
-    if (this._anchorOrder.length !== this.anchors.length) {
-      this._anchorOrder = new Int32Array(this.anchors.length)
-      this._forwardOrder = new Int32Array(this.anchors.length)
+    if (this._pointOrder.length !== this.points.length) {
+      this._pointOrder = new Int32Array(this.points.length)
+      this._forwardOrder = new Int32Array(this.points.length)
     }
-    for (let i = 0; i < this.anchors.length; i++) {
-      this._anchorOrder[i] = i
-      this.anchors[i].occupied = false
+    for (let i = 0; i < this.points.length; i++) {
+      this._pointOrder[i] = i
+      this.points[i].occupied = false
+      this.points[i].visibilityStamp = -1
+      this.points[i].visible = false
     }
+    for (let i = 0; i < this.routes.length; i++) this.routes[i].liveCount = 0
   }
 
-  /** ¿Estamos en un escenario con anclajes curados? */
-  get useAnchors() {
-    return this.anchors.length > 0
+  /** ¿Estamos en un escenario con rutas curadas? */
+  get useRoutes() {
+    return this.points.length > 0
   }
 
   /** El tipo de diana vigente, tal cual está descrito en config.js. */
@@ -253,7 +261,8 @@ export class TargetManager {
     // Reconstruir el pool descarta instancias sin soltarlas, así que los
     // anclajes se liberan también por su lado: si no, un cambio de tamaño de
     // diana dejaría medio escenario marcado como ocupado para siempre.
-    for (let i = 0; i < this.anchors.length; i++) this.anchors[i].occupied = false
+    for (let i = 0; i < this.points.length; i++) this.points[i].occupied = false
+    for (let i = 0; i < this.routes.length; i++) this.routes[i].liveCount = 0
     this.aliveCount = 0
     this.sessionActive = false
     this._hasLastSpawn = false
@@ -277,7 +286,7 @@ export class TargetManager {
         // punto al azar acabaría dentro de un muro—, pero un muñeco con grupo de
         // patrulla sí se mueve: entre puntos verificados como alcanzables en
         // línea recta. Clásica y cono se quedan quietas en escenario.
-        if (this.dynamic && deltaSeconds > 0 && (!this.useAnchors || instance.cluster)) {
+        if (this.dynamic && deltaSeconds > 0 && (!this.useRoutes || instance.route)) {
           this._updateMotion(instance, deltaSeconds, now, camera)
         }
       }
@@ -361,26 +370,27 @@ export class TargetManager {
     }
     if (!instance) return
 
-    if (this.useAnchors) {
-      const anchor = this._pickAnchor(camera)
-      if (!anchor) {
+    if (this.useRoutes) {
+      const point = this._pickPoint(camera, instance)
+      if (!point) {
         // Nada visible desde donde está el jugador. Se reintenta en un rato,
         // nunca en el frame siguiente: el test de visibilidad es de activación.
-        this._nextSpawnAt = now + SPAWN.anchorRetryMs
+        this._nextSpawnAt = now + SPAWN.pointRetryMs
         return
       }
-      anchor.occupied = true
-      instance.anchor = anchor
+      point.occupied = true
+      point.route.liveCount += 1
+      instance.point = point
       // Sólo patrullan los muñecos que se apoyan en el suelo: una esfera
       // flotante caminando entre cajas no tendría ningún sentido.
-      instance.cluster = this.anchoredToFloor ? anchor.cluster : null
-      instance.clusterIndex = -1
-      _candidate.copy(anchor.position)
+      instance.route = this.anchoredToFloor ? point.route : null
+      instance.routeIndex = point.route.points.indexOf(point)
+      _candidate.copy(point.position)
       if (!this.anchoredToFloor) _candidate.y += COVER.targetStandY
     } else {
-      instance.anchor = null
-      instance.cluster = null
-      instance.clusterIndex = -1
+      instance.point = null
+      instance.route = null
+      instance.routeIndex = -1
       this._samplePosition(camera, _candidate)
     }
     instance.group.position.copy(_candidate)
@@ -412,46 +422,71 @@ export class TargetManager {
   _release(instance) {
     instance.state = 'free'
     instance.group.visible = false
-    if (instance.anchor) {
-      instance.anchor.occupied = false
-      instance.anchor = null
+    if (instance.point) {
+      instance.point.occupied = false
+      instance.point.route.liveCount -= 1
+      // Dónde cayó. Al volver, este muñeco no repite sitio: reaparecer en el
+      // mismo punto en el que acaban de matarte es lo que convierte una ruta en
+      // una galería de tiro.
+      instance.lastPoint = instance.point
+      instance.point = null
     }
+    instance.route = null
+    instance.routeIndex = -1
   }
 
   /**
-   * Elige un anclaje libre y **visible** desde la cámara, sesgado hacia delante.
+   * Elige un punto libre y **visible** desde la cámara, con tres preferencias
+   * encadenadas. En orden, porque cada una puede quedarse sin candidatos:
    *
-   * Sortear entre todos los visibles por igual hacía que la mitad de las dianas
-   * naciera a la espalda, y girarse a ciegas no es apuntar. Con probabilidad
-   * `SPAWN.forwardBiasChance` se sortea sólo entre los que caen dentro del cono
-   * de `SPAWN.forwardBiasConeDeg`; el resto de las veces, entre todos. No es
-   * siempre a propósito: una sorpresa ocasional a la espalda mantiene la
-   * atención, siempre que no sea lo normal.
+   *  1. **Delante.** Sortear entre todos los visibles por igual hacía que la
+   *     mitad de las dianas naciera a la espalda, y girarse a ciegas no es
+   *     apuntar. Con probabilidad `SPAWN.forwardBiasChance` se mira sólo dentro
+   *     del cono de `SPAWN.forwardBiasConeDeg`; el resto de las veces, todo. No
+   *     es siempre a propósito: una sorpresa ocasional a la espalda mantiene la
+   *     atención, siempre que no sea lo normal.
+   *  2. **Rutas libres.** Entre los candidatos se prefieren los de rutas por las
+   *     que no patrulle ya otro muñeco. Dos muñecos en la misma ruta se pisan el
+   *     recorrido; repartirlos es lo que hace que el mapa se lea.
+   *  3. **Nunca donde caíste.** El punto en el que murió este mismo muñeco queda
+   *     descartado. Es una regla dura: si no hay otro sitio, no se aparece y se
+   *     reintenta, que es preferible a reaparecer bajo el punto de mira.
    *
-   * Si el grupo de delante no da ninguno visible, se cae al conjunto completo —
-   * antes quedarse sin diana que ser fiel al sesgo.
+   * Si una preferencia no da ninguno visible se pasa a la siguiente — antes
+   * quedarse sin diana que ser fiel al sesgo.
    */
-  _pickAnchor(camera) {
+  _pickPoint(camera, instance) {
+    const avoid = instance.lastPoint ?? null
+    // Las pasadas se solapan —un punto descartado por no estar visible en la
+    // primera se volvería a mirar en la segunda—, y cada comprobación es un
+    // raycast contra toda la geometría. Un sello por llamada hace que cada punto
+    // se mire **como mucho una vez** por aparición: con 69 puntos, el peor caso
+    // pasó de 148 raycasts a 69.
+    this._visibilityStamp += 1
     if (Math.random() < SPAWN.forwardBiasChance) {
-      const forward = this._collectForward(camera)
-      const picked = this._firstVisible(camera, this._forwardOrder, forward)
-      if (picked) return picked
+      const forward = this._collectForward(camera, avoid)
+      const free = this._firstVisible(camera, this._forwardOrder, forward, true)
+      if (free) return free
+      const any = this._firstVisible(camera, this._forwardOrder, forward, false)
+      if (any) return any
     }
 
-    const order = this._anchorOrder
+    const order = this._pointOrder
     for (let i = 0; i < order.length; i++) order[i] = i
-    return this._firstVisible(camera, order, order.length)
+    const free = this._firstVisible(camera, order, order.length, true, avoid)
+    if (free) return free
+    return this._firstVisible(camera, order, order.length, false, avoid)
   }
 
   /**
-   * Índices de los anclajes que caen delante del jugador, en `_forwardOrder`.
+   * Índices de los puntos que caen delante del jugador, en `_forwardOrder`.
    *
    * El ángulo se mide **sólo en horizontal**: mirar al suelo no debe dejar de
    * considerar "delante" lo que tienes delante.
    *
    * @returns {number} cuántos hay
    */
-  _collectForward(camera) {
+  _collectForward(camera, avoid) {
     camera.getWorldDirection(_viewForward)
     _viewForward.y = 0
     const length = _viewForward.length()
@@ -460,10 +495,10 @@ export class TargetManager {
     _viewForward.multiplyScalar(1 / length)
 
     let count = 0
-    for (let i = 0; i < this.anchors.length; i++) {
-      const anchor = this.anchors[i]
-      if (anchor.occupied) continue
-      _direction.subVectors(anchor.position, camera.position)
+    for (let i = 0; i < this.points.length; i++) {
+      const point = this.points[i]
+      if (point.occupied || point === avoid) continue
+      _direction.subVectors(point.position, camera.position)
       _direction.y = 0
       const distance = _direction.length()
       if (distance < 1e-4) continue
@@ -474,12 +509,15 @@ export class TargetManager {
   }
 
   /**
-   * Baraja los `count` primeros índices de `order` y devuelve el primer anclaje
+   * Baraja los `count` primeros índices de `order` y devuelve el primer punto
    * libre y visible. El primer elemento visible de una permutación uniforme
    * está distribuido uniformemente entre los visibles, así que el sorteo sale
    * gratis — y de paso ahorra raycasts: se dejan de mirar en cuanto uno acierta.
+   *
+   * @param {boolean} onlyFreeRoutes limitar a rutas sin nadie patrullando
+   * @param {object} [avoid] punto descartado (donde cayó este mismo muñeco)
    */
-  _firstVisible(camera, order, count) {
+  _firstVisible(camera, order, count, onlyFreeRoutes, avoid = null) {
     for (let i = count - 1; i > 0; i--) {
       const j = (Math.random() * (i + 1)) | 0
       const tmp = order[i]
@@ -487,22 +525,34 @@ export class TargetManager {
       order[j] = tmp
     }
     for (let i = 0; i < count; i++) {
-      const anchor = this.anchors[order[i]]
-      if (anchor.occupied) continue
-      if (this._isAnchorVisible(camera, anchor)) return anchor
+      const point = this.points[order[i]]
+      if (point.occupied || point === avoid) continue
+      if (onlyFreeRoutes && point.route.liveCount > 0) continue
+      if (this._isVisibleCached(camera, point)) return point
     }
     return null
   }
 
   /**
-   * Línea de visión entre el jugador y un anclaje. Sólo se llama al activar un
-   * anclaje, nunca por frame: con cobertura por medio esto es un raycast contra
+   * Visibilidad de un punto, con memoria dentro de una misma elección. Ver el
+   * sello en `_pickPoint`: sin él, las pasadas encadenadas repiten raycasts.
+   */
+  _isVisibleCached(camera, point) {
+    if (point.visibilityStamp === this._visibilityStamp) return point.visible
+    point.visibilityStamp = this._visibilityStamp
+    point.visible = this._isPointVisible(camera, point)
+    return point.visible
+  }
+
+  /**
+   * Línea de visión entre el jugador y un punto. Sólo se llama al activar un
+   * punto, nunca por frame: con cobertura por medio esto es un raycast contra
    * toda la geometría y no cabe en el presupuesto de un frame.
    */
-  _isAnchorVisible(camera, anchor) {
+  _isPointVisible(camera, point) {
     if (this._occluders.length === 0) return true
 
-    _anchorProbe.copy(anchor.position)
+    _anchorProbe.copy(point.position)
     _anchorProbe.y +=
       this.anchoredToFloor ? this.type.halfHeight * this.radius : COVER.targetStandY
 
@@ -545,8 +595,8 @@ export class TargetManager {
    * recibe destinos a nivel de suelo y nunca cambia de altura estando viva.
    */
   _pickDestination(instance, camera, now) {
-    if (instance.cluster) {
-      this._pickClusterDestination(instance, now)
+    if (instance.route) {
+      this._pickRouteDestination(instance, now)
       return
     }
 
@@ -578,24 +628,24 @@ export class TargetManager {
   }
 
   /**
-   * Siguiente punto del grupo de patrulla, distinto del que se acaba de dejar.
+   * Siguiente punto de la ruta, distinto del que se acaba de dejar.
    *
-   * No hace falta comprobar nada: **cada par del grupo está verificado como
+   * No hace falta comprobar nada: **cada par de la ruta está verificado como
    * alcanzable en línea recta** al definir el escenario, así que cualquier
    * elección es válida y no hay forma de que el muñeco se encaje en un muro.
    * Esa verificación es lo que permite prescindir de pathfinding entero.
    */
-  _pickClusterDestination(instance, now) {
-    const points = instance.cluster
+  _pickRouteDestination(instance, now) {
+    const points = instance.route.points
     if (points.length === 0) return
 
     let index = (Math.random() * points.length) | 0
-    if (points.length > 1 && index === instance.clusterIndex) {
+    if (points.length > 1 && index === instance.routeIndex) {
       // Un solo salto basta para no repetir, y reparte uniforme entre el resto.
       index = (index + 1 + ((Math.random() * (points.length - 1)) | 0)) % points.length
     }
 
-    instance.clusterIndex = index
+    instance.routeIndex = index
     instance.destination.copy(points[index].position)
 
     // El plazo se calcula del tramo, no es el tope genérico: un muñeco de
@@ -690,12 +740,14 @@ export class TargetManager {
         popCenterY: 0,
         destination: new THREE.Vector3(),
         destinationUntil: 0,
-        /** Anclaje que ocupa, si el escenario los usa. */
-        anchor: null,
-        /** Grupo de patrulla, si lo hay. Null = se queda donde nace. */
-        cluster: null,
-        /** Punto del grupo hacia el que camina, para no repetirlo al llegar. */
-        clusterIndex: -1,
+        /** Punto de ruta que ocupa, si el escenario las usa. */
+        point: null,
+        /** Ruta por la que patrulla, si la hay. Null = se queda donde nace. */
+        route: null,
+        /** Punto de la ruta hacia el que camina, para no repetirlo al llegar. */
+        routeIndex: -1,
+        /** Dónde cayó la última vez. No vuelve a nacer ahí. */
+        lastPoint: null,
       }
       for (let p = 0; p < parts.length; p++) parts[p].mesh.userData.instance = instance
 

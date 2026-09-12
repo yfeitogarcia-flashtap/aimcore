@@ -43,7 +43,7 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Capa | Dónde | Qué hace |
 |---|---|---|
 | Motor | `src/game/` | Bucle rAF, input, raycast, dianas, armas, panel de acciones. **Vive fuera de React.** |
-| Escenario | `src/game/scenario.js` | Convierte los datos de `SCENARIOS` en mallas, colisionadores, oclusores y anclajes. **Y publica su sala** (`scenario.room`). |
+| Escenario | `src/game/scenario.js` | Convierte los datos de `SCENARIOS` en mallas, colisionadores, oclusores y **rutas**. Y publica su sala (`scenario.room`). |
 | Sala | `src/game/scene.js` | Rejilla y paredes, reconstruibles con `setRoom`: cada escenario tiene su tamaño. |
 | Audio espacial | `src/audio/spatial.js` | Listener en la cámara y emisores posicionados. **Genérico:** no sabe del explosivo. |
 | Explosivo | `src/game/objective.js` | Aparición, cuenta atrás, pitido y desactivación. No publica nada al HUD a propósito. |
@@ -135,11 +135,19 @@ parábola —`t = (v0 + velocidadDeImpacto) / g`— en lugar del frame que lo de
 que llega hasta un frame tarde. Medido: el umbral sale en 130.00 ms a 60, 144 y
 240 Hz, con una diferencia de 0.000 ms entre ellos.
 
-**Con cobertura, las dianas salen en anclajes curados, no por muestreo.** Un
-cono no sabe poner una diana en una tronera. Cada anclaje lleva su zona, su
-suelo y si obliga a asomarse, y se sortea **entre los visibles**: se baraja el
-orden y se coge el primero que pase el test de visibilidad, que es un sorteo
-uniforme entre los visibles y de paso ahorra raycasts.
+**Con cobertura, las dianas salen en puntos de ruta, no por muestreo.** Un cono
+no sabe poner una diana en una tronera. Un escenario declara **rutas**, y una
+ruta es un conjunto de puntos donde cada par es alcanzable en línea recta. **No
+hay dos clases de punto:** cualquier punto de cualquier ruta sirve para nacer y
+para patrullar. Antes eran dos listas —anclajes por un lado, grupos de patrulla
+por otro— con dos vocabularios y dos auditorías para lo mismo, y con el efecto
+raro de que un muñeco podía patrullar por sitios donde nunca nacía.
+
+Se sortea **entre los visibles**: se baraja el orden y se coge el primero que
+pase el test de visibilidad, que es un sorteo uniforme entre los visibles y de
+paso ahorra raycasts. Con 69 puntos las pasadas encadenadas repetirían el mismo
+raycast varias veces, así que cada elección lleva un **sello** y ningún punto se
+mira dos veces: peor caso medido, 33 raycasts y 0.4 ms p99 por aparición.
 
 El sorteo va **sesgado hacia delante**: con `SPAWN.forwardBiasChance` se restringe
 a los que caen en el cono de `SPAWN.forwardBiasConeDeg`, medido **sólo en
@@ -151,20 +159,35 @@ antes una diana a la espalda que ninguna diana.
 desde el punto de aparición sale la primera diana de la sesión, y con el sesgo a
 0.85 sale del subconjunto que cae en el cono frontal: si ese subconjunto está
 vacío, lo primero que ve quien prueba el mapa es una sala vacía. Lo guardan dos
-tests (`fixes.mjs` y `live.mjs`) exigiendo **al menos un anclaje visible dentro
-del cono y a `room.width / 4` o más**. Hoy lo cumplen `tronera-e` a 27 u y
-`cajon-2` a 13. Los dos del Vestíbulo siguen viéndose, pero a los flancos: ya no
-cargan ellos con el cono. Antes del reescalado la divisoria lo sellaba y hubo que
-meterlos dentro a la fuerza, pegados al jugador — el porqué, en
-`docs/decisions.md` §23 y §24.
+tests (`fixes.mjs` y `live.mjs`) exigiendo **al menos un punto visible dentro del
+cono y a `room.width / 4` o más**. Desde el spawn del Plano A se ven 31 de los 69
+puntos, con los más lejanos del Balcón a 30 u. Antes del reescalado la divisoria
+sellaba el cono y hubo que meter dos anclajes a la fuerza dentro, pegados al
+jugador — el porqué, en `docs/decisions.md` §23 y §24.
 
-**Los muñecos que patrullan lo hacen entre puntos de un grupo cuyos pares están
-verificados** como alcanzables en línea recta. Eso es lo que permite mover sin
-pathfinding: elegir otro punto y andar, sin comprobaciones en el bucle ni atascos
-posibles. Los anclajes son **entradas** al grupo, no miembros —lo que se verifica
-es que la entrada vea todos los puntos, no que las entradas se vean entre sí—.
-Si tocas geometría, **vuelve a pasar la auditoría de pares**: donde no hay
-conjunto limpio, no hay patrulla.
+**Tres preferencias encadenadas al elegir dónde nace una diana**, en este orden,
+porque cada una puede quedarse sin candidatos: (1) **delante**, el sesgo de
+siempre; (2) **rutas libres**, sin otro muñeco patrullando ya por ellas; (3)
+**nunca donde caíste** — el punto donde murió ese mismo muñeco queda descartado,
+y es regla dura: si no hay otro sitio no se aparece y se reintenta, antes que
+reaparecer bajo el punto de mira. El sesgo manda sobre la preferencia de ruta, no
+al revés: dentro del cono caben 2-5 rutas y con cinco muñecos vivos no siempre
+hay una libre delante — medido, se reparte el 42% de las veces con el sesgo
+puesto y el **100%** con el sesgo apagado.
+
+**Las rutas se miden, no se eligen a ojo.** Cuántas caben y de cuántos puntos lo
+dice un barrido (`rutas-buscar.mjs`) que exige a la vez: suelo a nivel, cuerpo de
+0.6 u libre de geometría, fuera del volumen del tablero, a más de `sala/8` del
+spawn del jugador, 2.5 u entre puntos, 10 u de diámetro máximo por ruta y áreas
+de rutas disjuntas. En el Plano A a 40×40 entran **14 rutas y 69 puntos**. Si
+tocas geometría, vuelve a pasar `rutas.mjs`: donde no hay conjunto limpio, no hay
+ruta.
+
+**Hay un fondo de saco en el Largo** —entre el extremo sur de la Espina (z −11) y
+la plataforma (z −12) queda una ranura de 1 u por la que pasa el jugador (cuerpo
+0.8) y no un muñeco (1.2)—. Dentro no cabe ninguna ruta y no se ve ni un punto:
+3 de 361 puestos del mapa. Está medido en `spawner.mjs` y anotado aquí a
+propósito; arreglarlo es tocar el Plano A.
 
 **Lo que se dibuja de unos datos no se guarda como imagen.** La miniatura de
 cada escenario se dibuja en SVG desde `SCENARIOS`, con `coverHeight` y
@@ -259,8 +282,8 @@ andando y 0.40 en el aire, contra un radio de 0.40.
 
 **El test de visibilidad es de activación, nunca por frame.** Es un raycast
 contra toda la geometría del escenario y no cabe en el presupuesto de un frame.
-Si no hay ningún anclaje visible se reintenta tras `SPAWN.anchorRetryMs`, jamás
-al frame siguiente.
+Si no hay ningún punto visible se reintenta tras `SPAWN.pointRetryMs`, jamás al
+frame siguiente.
 
 **El límite de FPS usa un acumulador de delta con arrastre del resto y
 tolerancia** (`tolerance = min(1, interval * 0.1)`), no salto crudo de frames.
@@ -300,8 +323,9 @@ por zona: cabeza 100 / torso 50 / piernas 34; cono de aparición más ancho y
 distancia variable por muñeco). Modo dinámico opcional: destino aleatorio a
 velocidad constante, con comprobación de separación para evitar solapes.
 Selector de dianas simultáneas x1 / x2 / x3 / x5 / x8. **Ojo:** con cobertura, el
-nivel es un *techo*, no una cantidad — el número real lo pone cuántos anclajes se
-ven desde donde está el jugador (en el Plano A, entre 2 y 6 según la zona).
+nivel es un *techo*, no una cantidad — el número real lo pone cuántos puntos de
+ruta se ven desde donde está el jugador. Con 69 puntos, en el Plano A se llena
+casi siempre.
 
 **Escenarios:** variante activable desde opciones, no reemplazo. *Sala vacía*
 (Gridshot de siempre, muestreo por cono, 80×80) y **Largo y Puerta**, el primer
@@ -311,20 +335,19 @@ distancia, el Balcón elevado (+2.6) con **una rampa en cada extremo** y parapet
 con dos troneras de 4 u, y un Vestíbulo con la divisoria entera al este del
 spawn —el paso central queda abierto, que es de donde sale la primera diana—.
 Veinte piezas, las mismas de siempre: lo que se recortó es el suelo entre ellas.
-Cruzarlo en diagonal cuesta **8.1 s** en vez de 16.8. Trece anclajes curados. El
-vocabulario de piezas y la rampa de grises están en `COVER`; la geometría, en
-`SCENARIOS`.
+Cruzarlo en diagonal cuesta **8.1 s** en vez de 16.8. El vocabulario de piezas y
+la rampa de grises están en `COVER`; la geometría, en `SCENARIOS`.
 
-Siete **grupos de patrulla** de 4 puntos cada uno —dos para Los Cajones y dos
-para La Puerta, porque la divisoria y la Espina las parten en bolsas que ninguna
-recta cruza—. Once de los trece anclajes tienen grupo; los otros dos dan muñecos
-quietos.
+**Catorce rutas y 69 puntos**, de 4 a 6 puntos cada una, repartidas por las seis
+zonas: El Balcón 4, Los Cajones 3, El Largo 2, Pasillo trasero 2, Vestíbulo 2 y
+La Puerta 1. Cualquiera de los 69 es sitio de aparición **y** destino de
+patrulla.
 
 Con un escenario montado: el jugador **colisiona** contra las cajas (resuelto un
 eje cada vez, con soporte de suelo y rampas), los **disparos se paran en la
 cobertura**, y la **distancia de aparición no se aplica**. El **modo dinámico**
-sólo mueve a los muñecos *hitbox* con grupo de patrulla; clásica y cono se quedan
-en su anclaje, porque un destino aleatorio las metería dentro de un muro.
+sólo mueve a los muñecos *hitbox*, que patrullan por su ruta; clásica y cono se
+quedan en su punto, porque un destino aleatorio las metería dentro de un muro.
 
 **Movimiento:** WASD, tres marchas (correr / SHIFT andar / CTRL o C agachado,
 gana la más lenta), salto sin doble salto **resuelto en forma cerrada** —misma

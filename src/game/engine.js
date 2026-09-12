@@ -166,7 +166,7 @@ export class Engine {
 
     this.actionPanel = new ActionPanel(this.scene, this.cssScene)
     this.actionPanel.setAnchor(this.scenario.spawn, this.scenario.room)
-    this.targets.setAnchors(this.scenario.anchors, this.scenario.occluders, this.scenario.room)
+    this.targets.setRoutes(this.scenario.routes, this.scenario.points, this.scenario.occluders, this.scenario.room)
     /** Última activación del panel, para el antirrebote. */
     this._lastPanelActionAt = -Infinity
     /** Si la pulsación en curso ya se gastó en el panel, no dispara. */
@@ -468,7 +468,7 @@ export class Engine {
     this.movement.reset()
     this.camera.updateMatrixWorld()
     this.actionPanel.setAnchor(this.scenario.spawn, this.scenario.room)
-    this.targets.setAnchors(this.scenario.anchors, this.scenario.occluders, this.scenario.room)
+    this.targets.setRoutes(this.scenario.routes, this.scenario.points, this.scenario.occluders, this.scenario.room)
     this.objective.setSites(this.scenario.objectiveSites)
 
     // Las dianas vivas estaban ancladas a un mundo que ya no existe. Si había

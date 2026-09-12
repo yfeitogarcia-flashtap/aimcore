@@ -100,16 +100,21 @@ export class Scenario {
     this.boxes = []
     /** Rampas: no frenan, sólo levantan el suelo. */
     this.ramps = []
-    /** Mallas contra las que se comprueba la visibilidad de un anclaje. */
+    /** Mallas contra las que se comprueba la visibilidad de un punto. */
     this.occluders = []
-    /** Anclajes de aparición ya resueltos. */
-    this.anchors = []
     /**
-     * Grupos de patrulla por id, con sus puntos ya resueltos. Cada anclaje
-     * apunta al suyo con `cluster`; los que no tienen dan muñecos quietos.
-     * @type {Map<string, Array<{id: string, position: THREE.Vector3}>>}
+     * Rutas ya resueltas. Cada una es un conjunto de puntos mutuamente
+     * alcanzables en línea recta, y lleva la cuenta de cuántos muñecos patrullan
+     * por ella ahora mismo.
+     * @type {Array<{id: string, zone: string, requiresPeek: boolean, floorY: number, points: Array<object>, liveCount: number}>}
      */
-    this.patrolClusters = new Map()
+    this.routes = []
+    /**
+     * Todos los puntos de todas las rutas, en plano. **No hay dos clases de
+     * punto**: cualquiera de éstos vale para que aparezca un muñeco y para que
+     * patrulle hacia él.
+     */
+    this.points = []
 
     this._build()
     scene.add(this.group)
@@ -214,29 +219,32 @@ export class Scenario {
       this.geometries.push(edgeGeometry)
     }
 
-    const clusters = definition.patrolClusters ?? {}
-    for (const id of Object.keys(clusters)) {
-      this.patrolClusters.set(
-        id,
-        clusters[id].map((point) => ({
-          id: point.id,
-          position: new THREE.Vector3(point.x, coverHeight(point.y ?? 0), point.z),
-        })),
-      )
-    }
-
-    for (const anchor of definition.anchors) {
-      this.anchors.push({
-        id: anchor.id,
-        zone: anchor.zone,
-        /** Suelo sobre el que se apoya la diana: 0 o la altura de la plataforma. */
-        floorY: coverHeight(anchor.y),
+    for (const definitionRoute of definition.routes ?? []) {
+      const floorY = coverHeight(definitionRoute.y)
+      const route = {
+        id: definitionRoute.id,
+        zone: definitionRoute.zone,
         /** ¿Obliga a asomarse a descubierto para tirarle? */
-        requiresPeek: Boolean(anchor.peek),
-        /** Grupo de patrulla al que sale este muñeco, o null si se queda quieto. */
-        cluster: anchor.cluster ? this.patrolClusters.get(anchor.cluster) ?? null : null,
-        position: new THREE.Vector3(anchor.x, coverHeight(anchor.y), anchor.z),
-      })
+        requiresPeek: Boolean(definitionRoute.peek),
+        /** Suelo sobre el que se apoyan sus puntos: 0 o la altura de la plataforma. */
+        floorY,
+        points: [],
+        /** Cuántos muñecos patrullan por ella ahora mismo. */
+        liveCount: 0,
+      }
+      for (const point of definitionRoute.points) {
+        route.points.push({
+          id: point.id,
+          route,
+          zone: route.zone,
+          requiresPeek: route.requiresPeek,
+          floorY,
+          position: new THREE.Vector3(point.x, floorY, point.z),
+          occupied: false,
+        })
+      }
+      this.routes.push(route)
+      for (const point of route.points) this.points.push(point)
     }
   }
 
@@ -452,6 +460,7 @@ export class Scenario {
     this.occluders.length = 0
     this.boxes.length = 0
     this.ramps.length = 0
-    this.anchors.length = 0
+    this.routes.length = 0
+    this.points.length = 0
   }
 }

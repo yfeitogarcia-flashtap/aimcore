@@ -1873,6 +1873,102 @@ atravesamiento. Medido: 0.373 u andando y 0.400 en el aire, contra un radio de
 
 Cero atravesamientos en los tres estados.
 
+## Ronda 26 — Rutas con puntos-spawner
+
+### 26.1 Dos listas para lo mismo
+
+Había dos vocabularios: **anclajes** curados —dónde nace una diana— y **grupos de
+patrulla** —por dónde camina—, cada uno con sus datos, su resolución en
+`scenario.js` y su auditoría. Y un efecto raro de tener los dos: un muñeco
+patrullaba por sitios donde nunca podía nacer, y nacía en sitios por los que nunca
+pasaba. Los grupos eran además la única parte del escenario que no se podía
+auditar entera con la misma regla, porque los anclajes eran «entradas» y no
+miembros.
+
+Ahora hay una sola cosa. Un escenario declara **rutas**, una ruta es un conjunto
+de puntos con cada par alcanzable en línea recta, y **cualquier punto de
+cualquier ruta es a la vez sitio de aparición y destino de patrulla**. La
+garantía de la ruta es la que permite mover sin pathfinding —elegir otro punto y
+andar— y ahora se le exige además lo que se les exigía a los anclajes: suelo a
+nivel, cuerpo libre de geometría, fuera del volumen del tablero, lejos del spawn
+del jugador y dentro del área jugable.
+
+`zone` y `peek` pasan a ser de la ruta, que es de quien eran de verdad: describen
+una zona del mapa, no un punto suelto.
+
+### 26.2 Cuántas caben: 14 rutas y 69 puntos, medidas
+
+No se eligió una cifra. Se barrió el mapa con el mismo método que todo lo
+geométrico en este proyecto: rejilla de 1 u sobre el área jugable, candidatos que
+pasen las cinco condiciones de aparición, grafo de alcanzabilidad en recta y
+partición voraz en cliques, con cuatro restricciones de diseño:
+
+- **4 a 6 puntos por ruta**, que es el tamaño con el que ya se trabajaba.
+- **2.5 u de separación** entre puntos: dos muñecos no se solapan.
+- **10 u de diámetro máximo** por ruta. Sin este tope el barrido junta puntos a
+  21 u —alcanzables en recta, sí, pero cinco segundos de carrera—: una ruta es una
+  zona de patrulla, no una travesía.
+- **Áreas de rutas disjuntas.** Sin esto salían 17 rutas entrelazadas, y dos
+  rutas entrelazadas son dos muñecos patrullando encima el uno del otro, que tira
+  por tierra lo único que el sistema promete.
+
+Resultado: **14 rutas, 69 puntos**, repartidos por las seis zonas —El Balcón 4,
+Los Cajones 3, El Largo 2, Pasillo trasero 2, Vestíbulo 2, La Puerta 1—. Para
+comparar: con el sistema viejo había 13 anclajes y 28 puntos de patrulla, y sólo
+los 13 servían para aparecer.
+
+*Sin el tope de diámetro y sin áreas disjuntas el barrido llega a 18 rutas y 92
+puntos. Se anota porque es el techo real de la geometría, no porque sirva.*
+
+### 26.3 Tres preferencias, en orden
+
+Al elegir dónde nace una diana:
+
+1. **Delante**, con `SPAWN.forwardBiasChance` — el sesgo de la ronda 22, intacto.
+2. **Rutas libres**: entre los candidatos, los de rutas por las que no patrulle ya
+   otro muñeco.
+3. **Nunca donde caíste**: el punto donde murió ese mismo muñeco queda
+   descartado. Es regla dura — si no queda otro sitio no se aparece y se
+   reintenta, antes que reaparecer bajo el punto de mira de quien te acaba de
+   matar. Medido: 594 muertes y reapariciones, **cero** repeticiones.
+
+El orden importa y es una decisión, no un descuido: **el sesgo manda sobre la
+preferencia de ruta**. Dentro del cono caben 2-5 rutas, y con cinco muñecos vivos
+no siempre hay una libre delante; anteponer la ruta libre habría significado
+mandar dianas a la espalda para repartir mejor. Medido: con el sesgo apagado se
+reparte el **100%** de las veces que hay rutas libres visibles, y con el sesgo
+puesto el **42%**. Si algún día se prefiere lo contrario, es cambiar el orden de
+dos pasadas.
+
+### 26.4 El sello de visibilidad
+
+Las pasadas encadenadas —delante-libre, delante-cualquiera, todo-libre,
+todo-cualquiera— vuelven a mirar puntos ya descartados, y cada comprobación es un
+raycast contra toda la geometría. Con 13 anclajes daba igual; con 69 no: el peor
+caso medido eran **148 raycasts y 2 ms** en el frame de una aparición, diez veces
+el presupuesto de frame del proyecto.
+
+Un sello por elección —un entero que se incrementa y se compara— hace que cada
+punto se mire como mucho una vez. Peor caso: **33 raycasts, 0.4 ms p99**. Sin
+asignar memoria y sin cambiar el resultado del sorteo.
+
+### 26.5 Un fondo de saco que el barrido encontró solo
+
+Barriendo desde dónde se ve algo —361 puestos del mapa— salieron **3 ciegos**,
+los tres en el mismo sitio: el fondo del Largo, entre el extremo sur de la Espina
+(z −11) y la plataforma del Balcón (z −12). Queda una ranura de **1 u** por la que
+pasa el jugador —cuerpo de 0.8— y no pasa un muñeco —1.2—, y el hueco libre entre
+la Media del fondo y la plataforma mide 0.8 u de ancho, así que ahí no cabe
+ninguna ruta ni se ve ninguna.
+
+De propina, el sitio del explosivo `largo-fondo` está justo dentro.
+
+No se ha tocado: es geometría del Plano A y esta vuelta era de colisión y de
+rutas. Queda medido en `spawner.mjs` con su aserción —«los ciegos que haya están
+todos en el mismo sitio»— para que se note el día que se mueva algo, y anotado en
+`CLAUDE.md`. Arreglarlo es subir el extremo sur de la Espina o bajar el borde de
+la plataforma un par de unidades.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

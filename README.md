@@ -131,9 +131,15 @@ Balcón**: una plataforma elevada con **una rampa en cada extremo** y un parapet
 con dos troneras que miran El Largo de punta a punta.
 
 Desde el punto de aparición se ve el paso central, así que la sesión arranca con
-dianas **de frente y a distancia** —la tronera del Balcón al fondo, los Cajones a
-media sala— además de las dos del propio Vestíbulo, que quedan a los flancos y
-obligan a girarse.
+dianas **de frente y a distancia** —el Balcón al fondo, los Cajones a media
+sala— y con varias a los flancos, que obligan a girarse.
+
+Las dianas no salen de un puñado de sitios fijos: el mapa declara **rutas**, y
+cualquier punto de una ruta vale a la vez para que nazca una diana y para que
+camine hacia él. En Largo y Puerta son **14 rutas y 69 puntos**, repartidos por
+las seis zonas. Dos detalles que se notan jugando: una diana nunca reaparece en
+el punto exacto donde la acabas de matar, y mientras queden rutas libres los
+muñecos se reparten en vez de amontonarse en la misma.
 
 ### Cómo leer las estructuras
 
