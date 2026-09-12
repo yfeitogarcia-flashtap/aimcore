@@ -2254,6 +2254,104 @@ Fiel a §13.6, los dos primeros fallos rojos eran del test:
 
 ---
 
+## Ronda 30 — El logotipo, vectorizado como las armas
+
+### 30.1 Un pipeline, no dos
+
+Las siluetas de armas ya se vectorizaban con potrace desde `Reference/Weapons/`.
+Hacer lo mismo con el logo tenía dos caminos: copiar el script y cambiarle las
+rutas, o extraer lo común. Se extrajo (`scripts/lib/trace.mjs`): máscara,
+opciones de potrace y utilidades de trazado. Dos pipelines con dos juegos de
+constantes es exactamente cómo acaban saliendo contornos con distinto nivel de
+detalle según de qué carpeta venga el dibujo.
+
+La prueba de que el refactor no cambió nada es la de siempre en este proyecto:
+volver a generar `src/ui/weaponPaths.js` y comprobar que sale **byte a byte
+idéntico** al que ya estaba versionado.
+
+De paso se arregló algo que estaba roto sin que se notara: `jimp` se usaba en el
+script de armas y **no estaba en `devDependencies`**. Funcionaba porque estaba
+instalado de refilón; un `npm ci` limpio habría dejado `trace:weapons` sin poder
+arrancar.
+
+### 30.2 Dos tintas que el alfa no separa
+
+El logo completo es la marca en blanco con «VEKTOR» en naranja dentro. El
+pipeline de las armas saca la máscara del **canal alfa** —opaco es dibujo— y eso
+aquí da una sola silueta con las dos tintas fundidas.
+
+La salida es trazar **la misma imagen dos veces**, filtrando por saturación: el
+blanco no tiene y el naranja de marca tiene 185 de diferencia entre su canal más
+alto y el más bajo, así que un corte por la mitad no puede equivocarse de lado.
+Medido sobre la referencia: **0.00% de píxeles a medio camino** entre los dos
+colores, porque las letras flotan dentro del triángulo sin tocar sus líneas.
+
+Lo importante de hacerlo así y no trazar la marca por un lado y las letras por
+otro: los dos trazados salen de la **misma imagen**, o sea de las mismas
+coordenadas, así que comparten `viewBox` y se superponen solos. No hay ni un
+número de ajuste manual entre las dos tintas.
+
+Es el único punto del pipeline donde el color decide algo, y decide **partir**
+una imagen en dos trazados, no inventar una forma.
+
+### 30.3 `fill-rule: evenodd`, o un disco blanco
+
+Primer render del logo: un círculo blanco macizo con «VEKTOR» encima. El trazado
+era correcto; lo que faltaba era la regla de relleno. Potrace mete los huecos en
+el **mismo** trazado contando con `evenodd`; con la de por defecto (`nonzero`)
+las dos circunferencias y el triángulo se rellenan enteros.
+
+No se había visto nunca porque las siluetas de armas son manchas macizas sin
+huecos, y además se dibujan con `fill: none` y un `stroke`.
+
+Va como **atributo del SVG** —en el componente y en el favicon generado— y no en
+la hoja de estilos: es parte de cómo se lee el trazado, no una decisión de
+aspecto que alguien pueda quitar en un refactor de CSS sin ver qué rompe. Y lo
+guarda un test que no mira píxeles: `isPointInFill` respeta la regla de relleno,
+así que preguntar si el **centro de la marca está hueco** distingue las dos
+situaciones sin ambigüedad. Medido también que una línea horizontal por el medio
+sólo toca un 20.5% de tinta: es dibujo de línea, no una mancha.
+
+### 30.4 Relleno, no trazo — al revés que las armas
+
+Las siluetas de armas se dibujan con `stroke` porque su contorno es el borde de
+una mancha: pintarlo a trazo da una línea alrededor del arma.
+
+La marca es distinta: **ya es un dibujo de línea**. El contorno que devuelve
+potrace rodea cada línea por sus dos lados, así que **rellenarlo** reproduce
+exactamente las líneas del original. Ponerle un `stroke` dibujaría dos filos por
+cada línea, que a 26 px del HUD es un borrón.
+
+### 30.5 Reducir antes de trazar
+
+Las referencias son de 2000×2000 y el dibujo está hecho a mano alzada. A tamaño
+completo potrace persigue el temblor del rotulador: **18.3 KB de trazado** por
+marca. Reduciendo a 600 px antes de trazar salen **5.7 KB** con la misma forma a
+los tamaños en que se usa (26 px en el HUD, 184 en la pantalla de inicio, 16-32
+en la pestaña). El `TRACE_SIZE` está en el script, con el porqué al lado.
+
+### 30.6 Dónde va cada variante
+
+- **Favicon**: la marca en naranja (`#E4462B`, leído de `COLORS.target` para que
+  el color de marca no tenga un segundo sitio donde vivir) sobre fondo
+  transparente. El favicon anterior era un dibujo provisional hecho a mano en
+  SVG; lo sustituye la marca de verdad.
+- **HUD**: la marca sola, sin texto, arriba a la izquierda, en el mismo gris
+  apagado que el contador de FPS de la esquina de enfrente. Es firma, no
+  información: por eso no lleva rótulo y por eso va en el gris apagado y no en el
+  blanco de los contadores.
+- **Pantalla de inicio**: el logotipo completo a 184 px **sustituyendo** al
+  rótulo de texto «VEKTOR». Ya lleva la palabra dentro; repetirla debajo sería
+  decirla dos veces. Sigue siendo el `h1` de la pantalla y el SVG lleva su
+  `aria-label`, así que para un lector de pantalla no ha cambiado nada. El
+  crédito «by FlickLAB» se queda donde estaba, que es lo que acompaña al nombre.
+
+Las dos variantes negras del logo no se usan en el juego —el fondo es
+`#0A0A0A`—; se quedan en `Reference/Logo/` como material de marca para fondos
+claros.
+
+---
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

@@ -6,37 +6,25 @@
  * y lo que se versiona es su salida, de modo que ni potrace ni las imágenes
  * llegan al navegador.
  *
+ * La máscara, las opciones de potrace y las utilidades de trazado viven en
+ * `scripts/lib/trace.mjs`, compartidas con `trace-logo.mjs`: dos pipelines de
+ * vectorización con dos juegos de constantes es como acaban saliendo contornos
+ * con distinto nivel de detalle según de qué carpeta vengan.
+ *
  * Las referencias vienen con el arma recortada sobre fondo transparente, así
- * que la máscara que se le da a potrace sale del canal alfa: opaco es arma,
- * transparente es fondo. Es un umbral exacto, no una interpretación del color,
- * y por eso el contorno resultante es el del recorte y no una lectura mía de
- * la silueta.
+ * que la máscara sale del canal alfa: opaco es arma, transparente es fondo. Es
+ * un umbral exacto, no una interpretación del color, y por eso el contorno
+ * resultante es el del recorte y no una lectura mía de la silueta.
  */
 
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import Jimp from 'jimp'
-import potrace from 'potrace'
+import { boundsOf, buildMask, scalePath, traceToPath } from './lib/trace.mjs'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const SOURCE_DIR = resolve(ROOT, 'Reference/Weapons')
 const OUTPUT = resolve(ROOT, 'src/ui/weaponPaths.js')
-
-/** Píxeles con alfa por debajo de esto cuentan como fondo. */
-const ALPHA_THRESHOLD = 128
-
-const POTRACE_OPTIONS = {
-  threshold: 128,
-  blackOnWhite: true,
-  // Descarta motas sueltas del recorte sin comerse detalles reales.
-  turdSize: 24,
-  // Menos nodos, curvas más limpias: a tamaño de HUD el detalle fino sobra.
-  alphaMax: 1,
-  optCurve: true,
-  optTolerance: 0.4,
-  turnPolicy: potrace.Potrace.TURNPOLICY_MINORITY,
-}
 
 /**
  * Cada entrada es una silueta a vectorizar. `matchHeightOf` escala el trazado
@@ -50,99 +38,6 @@ const WEAPONS = [
   { key: 'scalar-2', file: 'scalar-2.png' },
   { key: 'scalar-2-plain', file: 'scalar-2-nonsilenced.png', matchHeightOf: 'scalar-2' },
 ]
-
-/** Máscara en blanco y negro a partir del alfa del recorte. */
-async function buildMask(file) {
-  const image = await Jimp.read(file)
-  const { data } = image.bitmap
-  for (let i = 0; i < data.length; i += 4) {
-    const opaque = data[i + 3] >= ALPHA_THRESHOLD
-    const value = opaque ? 0 : 255
-    data[i] = value
-    data[i + 1] = value
-    data[i + 2] = value
-    data[i + 3] = 255
-  }
-  return image.getBufferAsync(Jimp.MIME_PNG)
-}
-
-function traceToPath(buffer) {
-  return new Promise((resolvePath, reject) => {
-    const tracer = new potrace.Potrace(POTRACE_OPTIONS)
-    tracer.loadImage(buffer, (error) => {
-      if (error) return reject(error)
-      // `getPathTag` devuelve sólo el trazado, sin el <svg> que lo envuelve.
-      const tag = tracer.getPathTag()
-      const match = /\sd="([^"]+)"/.exec(tag)
-      if (!match) return reject(new Error('potrace no devolvió datos de trazado'))
-      resolvePath(match[1])
-    })
-  })
-}
-
-/**
- * Recorre las coordenadas de un trazado absoluto (M/L/C/Z, que es lo que
- * emite potrace) y llama a `visit(x, y)` con cada par. Si `visit` devuelve un
- * par nuevo, se escribe en su sitio.
- */
-function mapPath(d, visit) {
-  const tokens = d.match(/[MLCZmlczHhVv]|-?[\d.]+(?:e-?\d+)?/g) ?? []
-  const output = []
-  let command = null
-  let pending = []
-
-  const flushPair = () => {
-    const [x, y] = pending
-    const replaced = visit(x, y)
-    output.push(replaced ? replaced[0] : x, replaced ? replaced[1] : y)
-    pending = []
-  }
-
-  for (const token of tokens) {
-    if (/[A-Za-z]/.test(token)) {
-      if (/[hvHV]/.test(token)) throw new Error(`Comando no soportado: ${token}`)
-      if (/[mlcz]/.test(token)) throw new Error(`Trazado relativo no soportado: ${token}`)
-      command = token
-      output.push(token)
-      continue
-    }
-    if (command === 'Z') throw new Error('Coordenadas tras Z')
-    pending.push(Number(token))
-    if (pending.length === 2) flushPair()
-  }
-  if (pending.length) throw new Error('Coordenadas sueltas al final del trazado')
-
-  // Reconstruye con los comandos en su sitio.
-  return output
-    .map((item) => (typeof item === 'number' ? +item.toFixed(2) : item))
-    .join(' ')
-    .replace(/\s+/g, ' ')
-    .trim()
-}
-
-function boundsOf(d) {
-  let minX = Infinity
-  let minY = Infinity
-  let maxX = -Infinity
-  let maxY = -Infinity
-  mapPath(d, (x, y) => {
-    if (x < minX) minX = x
-    if (x > maxX) maxX = x
-    if (y < minY) minY = y
-    if (y > maxY) maxY = y
-  })
-  return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY }
-}
-
-/** Escala un trazado alrededor del centro de su caja. */
-function scalePath(d, bounds, factor) {
-  const centerX = bounds.minX + bounds.width / 2
-  const centerY = bounds.minY + bounds.height / 2
-  return mapPath(d, (x, y) => [
-    centerX + (x - centerX) * factor,
-    centerY + (y - centerY) * factor,
-  ])
-}
 
 const traced = {}
 for (const { key, file, matchHeightOf } of WEAPONS) {

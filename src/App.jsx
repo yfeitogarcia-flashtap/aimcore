@@ -11,6 +11,7 @@ import { Engine, PHASE } from './game/engine.js'
 import { disposeAudio } from './audio/sfx.js'
 import { getSettings, resetSettings, subscribeSettings, updateSettings } from './settings.js'
 import Crosshair from './ui/Crosshair.jsx'
+import { VektorLogo } from './ui/Logo.jsx'
 import Hud from './ui/Hud.jsx'
 import Options from './ui/Options.jsx'
 import Summary from './ui/Summary.jsx'
@@ -155,7 +156,12 @@ export default function App() {
             optionsPanel
           ) : (
             <div className="panel">
-              <h1 className="panel__title">Vektor</h1>
+              {/* El logotipo **es** el título: lleva «VEKTOR» dentro, así que
+                  repetirlo debajo en texto sería decirlo dos veces. El rótulo
+                  sigue siendo un h1 y el SVG lleva su `aria-label`. */}
+              <h1 className="panel__logo">
+                <VektorLogo />
+              </h1>
               <p className="panel__byline">by FlickLAB</p>
               <p className="panel__eyebrow">gridshot · {SESSION_DURATION_S}s</p>
               <p className="panel__body">

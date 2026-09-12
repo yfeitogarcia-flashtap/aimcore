@@ -291,6 +291,18 @@ body {
   color: var(--text-muted);
 }
 
+/* La marca, en la esquina de enfrente del contador de FPS y con su mismo gris.
+   Va rellena y no a trazo: ya es un dibujo de línea (ver src/ui/Logo.jsx). */
+.hud__mark {
+  z-index: 2;
+  position: absolute;
+  top: 24px;
+  left: 28px;
+  width: 26px;
+  height: 26px;
+  fill: var(--text-muted);
+}
+
 /* Contador de FPS: presente pero fuera del paso, en la esquina del HUD. */
 .hud__fps {
   z-index: 2;
@@ -568,6 +580,29 @@ body {
 
 .panel__title--small {
   font-size: 20px;
+}
+
+/* El logotipo ocupa el sitio del rótulo de texto en la pantalla de inicio, y a
+   un tamaño con presencia: es lo primero que se ve del producto. Sigue siendo
+   el h1 de la página, así que no lleva estilos de texto, sólo su caja. */
+.panel__logo {
+  margin: 0 0 2px;
+  line-height: 0;
+}
+
+.panel__logo .vektor-logo {
+  width: 184px;
+  height: auto;
+}
+
+/* Las dos tintas del logotipo. El blanco y el naranja son los mismos que usan
+   el HUD y las dianas: el logo no trae paleta propia. */
+.vektor-logo__mark {
+  fill: var(--text-primary);
+}
+
+.vektor-logo__word {
+  fill: var(--accent-color);
 }
 
 /*

@@ -1,4 +1,5 @@
 import { forwardRef, useImperativeHandle, useRef } from 'react'
+import { VektorMark } from './Logo.jsx'
 import WeaponSilhouette from './WeaponSilhouette.jsx'
 import { STAR_PATH } from './Stars.jsx'
 import { WEAPONS } from '../config.js'
@@ -179,6 +180,10 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
     // centra con un `transform`, y un elemento posicionado dentro de un
     // ancestro transformado se ancla a ese ancestro, no a la ventana.
     <>
+      {/* La marca, discreta y sin texto, en la esquina de enfrente del contador
+          de FPS. Es firma, no información: mismo gris apagado y ni un rótulo. */}
+      <VektorMark className="hud__mark" />
+
       <div className="hud__fps">
         <span className="hud__fps-value" ref={fpsRef}>
           0

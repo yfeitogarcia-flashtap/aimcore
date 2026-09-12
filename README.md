@@ -466,6 +466,10 @@ de opción no obliga a reconstruirlo.
 
 ## HUD
 
+Arriba a la izquierda, la **marca de Vektor**: un icono discreto, sin texto, en
+el mismo gris apagado que el contador de FPS de la esquina de enfrente. Es una
+firma, no información — ver *Logotipo*.
+
 Arriba a la derecha, bajo el contador de FPS, un **engranaje con la palabra
 ESC**: la marca de dónde están las opciones ahora que no hay tablero en la sala.
 Es un rótulo, no un botón —con el ratón capturado no habría dónde pulsarlo—, y
@@ -496,7 +500,9 @@ npm run trace:weapons
 `scripts/trace-weapons.mjs` es un script puntual —**no forma parte del build**—
 que lee cada PNG de `Reference/Weapons/`, lo vectoriza y escribe
 `src/ui/weaponPaths.js`. Lo que se versiona es esa salida, de modo que ni
-potrace ni las imágenes llegan al navegador: `dist/` no contiene ni un PNG.
+potrace ni las imágenes llegan al navegador: `dist/` no contiene ni un PNG. La
+máscara, las opciones de potrace y las utilidades de trazado viven en
+`scripts/lib/trace.mjs`, compartidas con el script del logotipo.
 
 Las referencias vienen con el arma recortada sobre fondo transparente, así que
 la máscara que recibe potrace sale del **canal alfa** —opaco es arma,
@@ -514,6 +520,49 @@ Avisos breves que aparecen junto al bloque del arma y se retiran solos pasados
 hoy hay un solo uso: *Pulsa R para recargar*, que salta una vez por cargador al
 bajar del umbral, y otra vez si se aprieta el gatillo en vacío. El interruptor
 **Mensajes de ayuda** del panel los apaga, y con ellos el parpadeo del contador.
+
+## Logotipo
+
+La marca de Vektor aparece en tres sitios, y ninguno de ellos es una imagen:
+
+| dónde | qué se ve | de dónde sale |
+| --- | --- | --- |
+| Pestaña del navegador | la marca en naranja, fondo transparente | `vektor-mark-orange.png` |
+| HUD, arriba a la izquierda | la marca sola, gris apagado, 26 px | `vektor-mark-white.png` |
+| Pantalla de inicio | el logotipo completo, 184 px | `vektor-logo-white-orange.png` |
+
+```bash
+npm run trace:logo
+```
+
+`scripts/trace-logo.mjs` vectoriza las referencias de `Reference/Logo/` con el
+mismo pipeline de potrace que las armas y escribe `src/ui/logoPaths.js` y
+`public/favicon.svg`. Como allí, lo que se versiona es la salida: las PNG no
+llegan al navegador.
+
+Tres detalles que no se ven en el resultado pero lo explican:
+
+- **El logotipo lleva dos tintas y el canal alfa no las separa** — la marca es
+  blanca y «VEKTOR» naranja, y las dos son píxeles opacos. Se traza dos veces la
+  misma imagen filtrando por saturación, y como los dos trazados salen de ella
+  comparten `viewBox` y se superponen solos, sin cuadrar nada a mano. Medido:
+  0.00% de píxeles a medio camino entre los dos colores, porque las letras
+  flotan dentro del triángulo sin tocar sus líneas.
+- **Se pinta relleno, no a trazo.** La marca ya es un dibujo de línea, así que el
+  contorno de potrace rodea cada línea por sus dos lados: rellenarlo devuelve el
+  original. Ponerle un `stroke`, como se hace con las siluetas de las armas
+  —que son manchas macizas—, dibujaría dos filos por línea.
+- **Con `fill-rule: evenodd`, obligatorio.** Potrace mete los huecos en el mismo
+  trazado contando con esa regla; con la de por defecto, dos circunferencias y un
+  triángulo se rellenan enteros y sale un disco.
+
+En la pantalla de inicio el logotipo **sustituye** al rótulo de texto: ya lleva
+«VEKTOR» dentro, así que repetirlo debajo sería decirlo dos veces. Sigue siendo
+el `h1` de la pantalla y el SVG lleva su `aria-label`, así que para un lector de
+pantalla no ha cambiado nada. El crédito «by FlickLAB» se queda donde estaba.
+
+`vektor-logo-black.png` y `vektor-logo-black-orange.png` no se usan en el juego:
+están en el repositorio como material de marca para fondos claros.
 
 ## Panel de acciones rápidas (apagado)
 

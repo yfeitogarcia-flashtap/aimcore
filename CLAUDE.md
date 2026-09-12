@@ -31,11 +31,15 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 - **Audio:** todo sintetizado en tiempo real con la Web Audio API
   (`src/audio/sfx.js`): osciladores + un buffer de ruido pregenerado. No hay
   ficheros de sonido en el repositorio ni los habrá.
-- **Siluetas de armas:** vectorizadas con `potrace` a partir de las imágenes de
-  `Reference/Weapons/` mediante el script *one-off* `npm run trace:weapons`, que
-  emite `src/ui/weaponPaths.js`. Las PNG de referencia **nunca** entran en el
-  build: son material de trazado, no assets. Verifica que no aparezcan en
-  `dist/` si tocas esa zona.
+- **Siluetas de armas y logotipo:** vectorizados con `potrace` a partir de
+  `Reference/Weapons/` y `Reference/Logo/` mediante los scripts *one-off*
+  `npm run trace:weapons` y `npm run trace:logo`, que emiten
+  `src/ui/weaponPaths.js`, `src/ui/logoPaths.js` y `public/favicon.svg`. Los dos
+  scripts comparten máscara, opciones de potrace y utilidades en
+  `scripts/lib/trace.mjs`: dos pipelines de vectorización acaban dando contornos
+  con distinto detalle según la carpeta de origen. Las PNG de referencia
+  **nunca** entran en el build: son material de trazado, no assets. Verifica que
+  no aparezcan en `dist/` si tocas esa zona.
 - **Geometría y texturas:** todo procedural (rejilla, dianas, sala).
 
 **Reparto de responsabilidades:**
@@ -214,6 +218,30 @@ la plataforma (z −12) queda una ranura de 1 u por la que pasa el jugador (cuer
 0.8) y no un muñeco (1.2)—. Dentro no cabe ninguna ruta y no se ve ni un punto:
 3 de 361 puestos del mapa. Está medido en `spawner.mjs` y anotado aquí a
 propósito; arreglarlo es tocar el Plano A.
+
+**El logo se vectoriza, no se incrusta, y se pinta relleno con `fill-rule:
+evenodd`.** Tres cosas que hay que saber antes de tocarlo:
+
+- La marca es un **dibujo de línea**, así que el contorno que devuelve potrace
+  rodea cada línea por sus dos lados: se pinta **rellena** y sale exactamente el
+  original. Un `stroke` —lo que sí llevan las siluetas de armas, que son manchas
+  macizas— dibujaría dos filos por línea. `colision.mjs` no lo ve; a 26 px se ve
+  enseguida.
+- **`evenodd` no es decoración.** Potrace mete los huecos en el mismo trazado
+  contando con esa regla; con la de por defecto (`nonzero`) la marca se rellena
+  entera y sale **un disco blanco**. Va como atributo del SVG —en el componente y
+  en el favicon generado— y no en la hoja de estilos, para que no se caiga en un
+  refactor de CSS. `logo.mjs` lo guarda midiendo con `isPointInFill` que el
+  centro de la marca está hueco.
+- **Las referencias son de 2000 px y se reducen a 600 antes de trazar**
+  (`TRACE_SIZE`). A tamaño completo potrace persigue el temblor del rotulador:
+  18 KB de trazado por marca que a 26 px no se distinguen de 5.7 KB.
+
+El logo completo lleva **dos tintas** y el canal alfa no las separa: se traza dos
+veces la misma imagen filtrando por saturación —el blanco no tiene, el naranja
+sí—, y como los dos trazados salen de la misma imagen comparten `viewBox` y se
+superponen solos. Es el único sitio del pipeline donde el color decide algo, y
+decide **partir** una imagen en dos, no inventar una forma.
 
 **Lo que se dibuja de unos datos no se guarda como imagen.** La miniatura de
 cada escenario se dibuja en SVG desde `SCENARIOS`, con `coverHeight` y
@@ -434,9 +462,10 @@ planos WebGL invisibles para el raycast, y botones Pausa / Reiniciar / Cambiar
 arma / Silenciador / Opciones—, pero no hay tablero en la sala: disparar hacia
 su sitio es un disparo normal. Su hueco reservado se sigue auditando.
 
-**HUD:** aciertos, fallos, precisión y tiempo arriba (∞ en práctica libre);
-contador de FPS en la esquina y, **justo debajo, un engranaje con la palabra
-ESC** —contorno gris sin relleno, calculado como la estrella y no pegado como un
+**HUD:** la **marca de Vektor** arriba a la izquierda —icono discreto, sin
+texto, en el mismo gris apagado que el contador—; aciertos, fallos, precisión y
+tiempo arriba; contador de FPS en la esquina de enfrente y, **justo debajo, un
+engranaje con la palabra ESC** —contorno gris sin relleno, calculado como la estrella y no pegado como un
 `d` a mano— que es la única pista en pantalla de dónde están las opciones ahora
 que no hay tablero; y **bajo la mira**, centrado, el bloque de arma en
 **una sola fila** —silueta a un lado, munición actual/máximo al otro, con
@@ -460,6 +489,11 @@ detone terminan la sesión, y el resumen dice cuál de las dos.
 arma**—; daño recibido y muertes **reservadas a peso 0**, ya con su hueco en la
 fórmula. Cortes en `SCORING.starThresholds`. El HUD las enseña **en vivo**, y
 bajan solas con el paso del tiempo porque el tiempo es la mitad de la nota.
+
+**Pantalla de inicio:** el **logotipo completo** ocupa el sitio del rótulo de
+texto —marca en blanco y «VEKTOR» en naranja, 184 px— y es el `h1` de la
+pantalla; debajo se queda el crédito «by FlickLAB». El favicon es la marca en
+naranja sobre fondo transparente (`public/favicon.svg`, generado).
 
 **Selector de escenario:** plano cenital por escenario dibujado desde los datos,
 más la ficha —entrena / riesgo / rejugabilidad— del que esté elegido. Al cambiar,
