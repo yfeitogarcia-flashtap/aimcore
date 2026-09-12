@@ -157,6 +157,18 @@ export class TargetManager {
     /** Subconjunto de los que caen delante del jugador. Mismo tamaño, se llena en parte. */
     this._forwardOrder = new Int32Array(0)
     this.cosForwardBias = Math.cos((SPAWN.forwardBiasConeDeg / 2) * DEG_TO_RAD)
+    /**
+     * Cuántos muñecos vivos tiene cada zona ahora mismo, y cuántos admite una
+     * como mucho. Se rellena al elegir sitio (ver `_measureZoneLoad`); el Map
+     * se crea una vez y se reutiliza, que aparecer no está en el bucle caliente
+     * pero tampoco hace falta ensuciar el montón.
+     */
+    this._zoneLoad = new Map()
+    this._zoneQuota = Infinity
+    /** Zona que esta elección está intentando evitar, o null. */
+    this._skipZone = null
+    /** Zona del último muñeco que salió, para no repetirla si hay alternativa. */
+    this._recentZone = null
 
     this.configure(settings)
   }
@@ -215,6 +227,7 @@ export class TargetManager {
       this.points[i].visible = false
     }
     for (let i = 0; i < this.routes.length; i++) this.routes[i].liveCount = 0
+    this._recentZone = null
   }
 
   /** ¿Estamos en un escenario con rutas curadas? */
@@ -269,6 +282,7 @@ export class TargetManager {
     this.aliveCount = 0
     this.sessionActive = false
     this._hasLastSpawn = false
+    this._recentZone = null
   }
 
   /**
@@ -383,6 +397,7 @@ export class TargetManager {
       }
       point.occupied = true
       point.route.liveCount += 1
+      this._recentZone = point.zone
       instance.point = point
       // Sólo patrullan los muñecos que se apoyan en el suelo: una esfera
       // flotante caminando entre cajas no tendría ningún sentido.
@@ -457,6 +472,15 @@ export class TargetManager {
    *
    * Si una preferencia no da ninguno visible se pasa a la siguiente — antes
    * quedarse sin diana que ser fiel al sesgo.
+   *
+   * Por encima de las tres manda el **cupo de zona** (`_measureZoneLoad`), que
+   * no es una preferencia sino un límite: una zona con el cupo lleno queda
+   * fuera del sorteo pase lo que pase. Y por debajo de las tres hay una cuarta,
+   * blanda: **no repetir la zona del último que salió** si hay alternativa.
+   *
+   * Las pasadas son relajaciones de la **misma** elección, no elecciones
+   * distintas, así que la moneda del sesgo se echa una sola vez y vale para
+   * todas.
    */
   _pickPoint(camera, instance) {
     const avoid = instance.lastPoint ?? null
@@ -466,19 +490,123 @@ export class TargetManager {
     // se mire **como mucho una vez** por aparición: con 69 puntos, el peor caso
     // pasó de 148 raycasts a 69.
     this._visibilityStamp += 1
-    if (Math.random() < SPAWN.forwardBiasChance) {
+    this._measureZoneLoad()
+    const biased = Math.random() < SPAWN.forwardBiasChance
+
+    // 1. Con la zona del último descartada, que es lo que evita que una racha
+    //    de reapariciones se quede viviendo en la misma esquina del mapa. Esta
+    //    pasada **exige ruta libre**: cambiar de zona no vale tanto como para
+    //    meter a dos muñecos en el mismo recorrido, y sin esa condición la
+    //    rotación se comía la preferencia de ruta (medido: el reparto por rutas
+    //    bajaba del 100% al 97%).
+    if (this._recentZone !== null) {
+      this._skipZone = this._recentZone
+      const rotated = this._pickVisible(camera, avoid, biased, true)
+      if (rotated) return rotated
+    }
+
+    // 2. Sin esa preferencia: repetir zona es peor que quedarse sin diana, pero
+    //    sólo un poco.
+    this._skipZone = null
+    const visible = this._pickVisible(camera, avoid, biased, false)
+    if (visible) return visible
+
+    // 3. Y si con el cupo puesto no queda **nada visible**, sale donde no se ve.
+    //    Es el único caso en que un muñeco aparece fuera de la vista, y es
+    //    deliberado: significa que el jugador está plantado en un sitio desde el
+    //    que sólo se ve una zona, y la alternativa sería dárselos todos ahí —que
+    //    es exactamente el fallo que esto arregla—. Que haya que ir a buscarlos
+    //    es la respuesta al campeo, no un efecto secundario.
+    return this._pickUnseen(avoid)
+  }
+
+  /**
+   * Las tres preferencias de siempre, todas sobre puntos visibles.
+   *
+   * @param {boolean} onlyFree exigir ruta libre y rendirse si no la hay, en vez
+   *   de caer en una ruta ya ocupada. Lo usa la pasada de rotación de zona.
+   */
+  _pickVisible(camera, avoid, biased, onlyFree) {
+    if (biased) {
       const forward = this._collectForward(camera, avoid)
       const free = this._firstVisible(camera, this._forwardOrder, forward, true)
       if (free) return free
-      const any = this._firstVisible(camera, this._forwardOrder, forward, false)
-      if (any) return any
+      if (!onlyFree) {
+        const any = this._firstVisible(camera, this._forwardOrder, forward, false)
+        if (any) return any
+      }
     }
 
     const order = this._pointOrder
     for (let i = 0; i < order.length; i++) order[i] = i
     const free = this._firstVisible(camera, order, order.length, true, avoid)
     if (free) return free
+    if (onlyFree) return null
     return this._firstVisible(camera, order, order.length, false, avoid)
+  }
+
+  /**
+   * Reparto por zonas de los que están vivos, y cuántos admite una zona.
+   *
+   * El cupo se mide sobre los que **habrá** cuando salga éste, así que con dos
+   * vivos y `zoneShare` a 0.5 el cupo es 1: el segundo no puede caer donde está
+   * el primero. De ahí sale la garantía, que es de bulto y no estadística: en
+   * cuanto hay dos muñecos, hay dos zonas.
+   *
+   * Los que se están muriendo no cuentan —ya no suman en `aliveCount`—, pero su
+   * punto sigue ocupado hasta que termine el pop, así que tampoco estorban.
+   */
+  _measureZoneLoad() {
+    const load = this._zoneLoad
+    load.clear()
+    for (let i = 0; i < this.instances.length; i++) {
+      const instance = this.instances[i]
+      if (instance.state !== 'alive' || !instance.point) continue
+      const zone = instance.point.zone
+      load.set(zone, (load.get(zone) ?? 0) + 1)
+    }
+    this._zoneQuota = Math.max(1, Math.ceil((this.aliveCount + 1) * SPAWN.zoneShare))
+  }
+
+  /** ¿Este punto está en una zona que ahora mismo no admite a nadie más? */
+  _isZoneBlocked(point) {
+    if (point.zone === this._skipZone) return true
+    return (this._zoneLoad.get(point.zone) ?? 0) >= this._zoneQuota
+  }
+
+  /**
+   * Último recurso: un punto libre de una zona con cupo, **sin mirar si se ve**.
+   * No se le pide visibilidad porque justo aquí es donde la visibilidad es el
+   * problema: si desde donde está plantado el jugador sólo se ven puntos de una
+   * zona, respetar la visibilidad y el cupo a la vez es imposible, y de los dos
+   * el que sostiene el mapa es el cupo.
+   */
+  _pickUnseen(avoid) {
+    const order = this._pointOrder
+    for (let i = 0; i < order.length; i++) order[i] = i
+    this._shuffle(order, order.length)
+    // Aquí tampoco se tira por la borda la preferencia de ruta: primero las
+    // libres, y sólo si no queda ninguna se comparte recorrido.
+    for (let pasada = 0; pasada < 2; pasada++) {
+      for (let i = 0; i < order.length; i++) {
+        const point = this.points[order[i]]
+        if (point.occupied || point === avoid) continue
+        if (this._isZoneBlocked(point)) continue
+        if (pasada === 0 && point.route.liveCount > 0) continue
+        return point
+      }
+    }
+    return null
+  }
+
+  /** Baraja los `count` primeros índices. Fisher-Yates, sin alocar. */
+  _shuffle(order, count) {
+    for (let i = count - 1; i > 0; i--) {
+      const j = (Math.random() * (i + 1)) | 0
+      const tmp = order[i]
+      order[i] = order[j]
+      order[j] = tmp
+    }
   }
 
   /**
@@ -501,6 +629,7 @@ export class TargetManager {
     for (let i = 0; i < this.points.length; i++) {
       const point = this.points[i]
       if (point.occupied || point === avoid) continue
+      if (this._isZoneBlocked(point)) continue
       _direction.subVectors(point.position, camera.position)
       _direction.y = 0
       const distance = _direction.length()
@@ -521,15 +650,11 @@ export class TargetManager {
    * @param {object} [avoid] punto descartado (donde cayó este mismo muñeco)
    */
   _firstVisible(camera, order, count, onlyFreeRoutes, avoid = null) {
-    for (let i = count - 1; i > 0; i--) {
-      const j = (Math.random() * (i + 1)) | 0
-      const tmp = order[i]
-      order[i] = order[j]
-      order[j] = tmp
-    }
+    this._shuffle(order, count)
     for (let i = 0; i < count; i++) {
       const point = this.points[order[i]]
       if (point.occupied || point === avoid) continue
+      if (this._isZoneBlocked(point)) continue
       if (onlyFreeRoutes && point.route.liveCount > 0) continue
       if (this._isVisibleCached(camera, point)) return point
     }

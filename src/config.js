@@ -626,6 +626,22 @@ export const SPAWN = {
    * hacer.
    */
   pointRetryMs: 150,
+  /**
+   * **Cupo de zona.** Fracción de los muñecos vivos que puede acumular una
+   * misma zona del mapa. Con 0.5 —la mitad, redondeando hacia arriba— una zona
+   * nunca puede tenerlos a todos en cuanto hay dos o más, así que el mapa
+   * siempre está repartido entre dos zonas como mínimo.
+   *
+   * Nace de un fallo concreto: plantado en la pasarela del Balcón sólo se ven
+   * puntos de dos zonas, y como se sortea entre los visibles, las reapariciones
+   * iban cayendo todas ahí hasta vaciar el resto del mapa. Medido antes del
+   * cupo: campando en el Balcón con cinco muñecos, el 10% del tiempo estaban
+   * los cinco en la misma zona y sólo dos zonas del mapa llegaron a usarse.
+   *
+   * Subirlo a 1 devuelve el comportamiento viejo; bajarlo de 0.5 obliga a
+   * repartir entre tres zonas o más, a costa de sacar muñecos donde no se ven.
+   */
+  zoneShare: 0.5,
 
   /** Semiángulo del cono frente a la cámara (cono total ≈ 36°). */
   coneHalfAngleDeg: 18,

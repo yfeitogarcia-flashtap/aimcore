@@ -2352,6 +2352,117 @@ claros.
 
 ---
 
+## Ronda 31 — El clic que no se podía oír, y el mapa que se vaciaba
+
+### 31.1 Un sonido que existía y no se podía oír
+
+El parte era «vaciar el cargador y seguir haciendo click no produce ningún
+sonido». La vuelta 28 lo había dado por bueno contando nodos de audio: el clic
+seco es el único sonido con filtro paso alto, así que contarlos identificaba la
+voz. Aquello demostraba que **la función sonaba**; no que un jugador pudiera
+oírla.
+
+Midiendo esta vez amplitud en el máster con un `AnalyserNode`, y jugando de
+verdad —vaciar el cargador a base de clicks con las tres armas—, salieron dos
+datos:
+
+- El clic seco **no es flojo**: pico 0.0993 contra 0.0719 de un disparo, o sea
+  **2.8 dB por encima**. El volumen nunca fue el problema.
+- Tras vaciar el cargador, tres clicks seguidos daban **0.0000**. Silencio
+  absoluto, con Scalar-2, Axis-7 y Vertex-9.
+
+La causa no era una regresión: nunca se pudo oír. La última bala llama a
+`_consumeAmmo`, que **arranca la recarga sola**, y la condición del clic pedía
+`!this.reloading`. El estado que la función necesitaba —cargador a cero y sin
+recargar— es un estado que el juego no produce en ningún momento. La prueba de
+la vuelta 28 lo fabricaba a mano (`e.ammo = 0; e.reloading = false`) y por eso
+pasaba.
+
+**La lección, que va a convenciones:** una prueba que monta a mano el estado que
+quiere observar puede estar probando una rama inalcanzable. Cuando lo que se
+promete es que algo *se oye*, la prueba tiene que salir del juego —pulsar,
+vaciar, medir señal— y no de llamar a la función y mirar si hizo lo suyo.
+
+El arreglo es quitar la condición: con el cargador a cero el gatillo suena,
+recargando o no. El aviso de «Pulsa R» sí se calla durante la recarga, que ya
+está en marcha y el HUD lo enseña. Medido después: los clicks con el cargador
+vacío pican a 0.1137 con las tres armas, a un pelo del nivel de un disparo.
+
+### 31.2 El mapa se vaciaba: cupo de zona
+
+Repro del encargo: plantarse en la pasarela del Balcón y no moverse. Medido
+antes de tocar nada, campando en las seis zonas con cinco muñecos:
+
+| desde | zonas que llegan a usarse | tiempo con los cinco en una sola zona |
+|---|---|---|
+| El Balcón | **2** de 6 | **10%** |
+| Los Cajones | 5 | 0% |
+| El Largo | 4 | 0% |
+| Pasillo trasero | 5 | 0% |
+| La Puerta | 5 | 0% |
+| Vestíbulo | 6 | 0% |
+
+El Balcón es el caso malo y se ve por qué en cuanto se mide la visibilidad desde
+allí: **sólo se ven puntos de dos zonas** (20 del Balcón y 4 del Vestíbulo, de 69
+puntos). Como las dianas se sortean entre las visibles, el sorteo se queda sin
+mapa. No era el sesgo hacia delante: era la visibilidad.
+
+**El mecanismo: un cupo, no una preferencia.** Una zona no puede tener más de
+`SPAWN.zoneShare` (0.5) de los muñecos vivos, redondeando hacia arriba, y el cupo
+se mide sobre los que **habrá** cuando salga éste. Con dos vivos el cupo es 1, así
+que el segundo no puede caer donde está el primero: la garantía es de bulto y no
+estadística —en cuanto hay dos muñecos hay dos zonas— y no depende de cuántas
+veces se sortee.
+
+Se eligió un cupo y no «repartir a partes iguales» porque el encargo pedía
+explícitamente que el sesgo hacia delante siguiera haciendo una zona más
+probable. Un cupo no reparte: sólo pone un techo. Dentro de él, el sesgo sigue
+mandando exactamente igual.
+
+**La salida de emergencia.** Si con el cupo puesto no queda ningún punto visible,
+el muñeco sale **donde no se ve**. Es el único caso en que eso pasa, y es la
+respuesta al campeo: significa que el jugador está en un sitio desde el que sólo
+se ve una zona, y la alternativa era dárselos todos ahí. Medido: con el cupo de
+serie esa salida no llega a hacer falta en ninguno de los seis puestos; apretando
+`zoneShare` a 0.34 —tres zonas obligatorias con cinco muñecos— sí, y entonces el
+27% de las apariciones son a ciegas y caen a 9.6 u del jugador, más lejos que el
+más cercano de los normales (1.8 u, que es lo que ya había antes de esta vuelta).
+
+**Una cuarta preferencia, blanda: no repetir la zona del último.** El cupo no
+dice nada cuando sólo hay un muñeco vivo, y con x1 todas las reapariciones
+seguían cayendo arriba. Se intenta primero descartando la zona del último que
+salió; si no hay sitio, se relaja. Con x1 desde el Balcón el reparto pasó a ser
+**60/60** entre las dos zonas visibles.
+
+Esa pasada **exige ruta libre**: cambiar de zona no vale tanto como para meter a
+dos muñecos en el mismo recorrido. Sin esa condición el reparto por rutas caía
+del 100% al 97%; con ella, y esto fue una sorpresa agradable, el reparto **con el
+sesgo puesto** subió del 42% al 98%.
+
+**Resultado.** Campando en las seis zonas con x2, x5 y x8, y en el Balcón con 150
+muertes seguidas: **ni una sola muestra** con todos los muñecos en la misma zona,
+frente al 10% de antes. Desde el Balcón el reparto entre las dos zonas visibles
+es 81/73, cuando antes era 88/36 a favor de la de arriba.
+
+**Lo que cuesta.** Descartar la zona llena obliga a mirar más lejos: de 3.3 a
+12.6 raycasts por aparición, y de 0.4 a 0.7 ms p99 **por aparición** —no por
+frame— medidos en la misma página y la misma máquina. Un frame a 240 Hz son
+4.17 ms, así que una aparición sigue cabiendo de sobra.
+
+### 31.3 Dos fallos de las pruebas viejas, los dos legítimos
+
+- `spawner.mjs` exigía que sin sesgo cada muñeco fuese a su ruta **siempre**. Con
+  el cupo puesto ya no: cuando las rutas libres visibles caen todas en una zona
+  llena, se comparte ruta antes que romper el reparto del mapa. Es la prioridad
+  correcta —una es garantía, la otra preferencia— y ahora el test lo mide contra
+  sí mismo: suelta el cupo en la misma pasada y comprueba que sin él vuelve al
+  100%.
+- `logo.mjs` fijaba la marca del HUD en 32 px como máximo. Jugando se veía
+  pequeña y sube a 44; el test pasa a acotar entre 36 y 56, que es donde se lee
+  sin competir con los contadores.
+
+---
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

@@ -195,15 +195,34 @@ puntos, con los más lejanos del Balcón a 30 u. Antes del reescalado la divisor
 sellaba el cono y hubo que meter dos anclajes a la fuerza dentro, pegados al
 jugador — el porqué, en `docs/decisions.md` §23 y §24.
 
-**Tres preferencias encadenadas al elegir dónde nace una diana**, en este orden,
-porque cada una puede quedarse sin candidatos: (1) **delante**, el sesgo de
-siempre; (2) **rutas libres**, sin otro muñeco patrullando ya por ellas; (3)
+**Un límite duro por encima de las preferencias: el cupo de zona.** Una zona del
+mapa no puede acumular más de `SPAWN.zoneShare` (0.5, la mitad redondeando hacia
+arriba) de los muñecos vivos, así que **en cuanto hay dos, hay dos zonas**. No es
+una preferencia con la que se negocie: una zona en su cupo queda fuera del sorteo
+aunque sea la única que se vea. Nació de un fallo real —plantado en la pasarela
+del Balcón sólo se ven puntos de dos zonas, y las reapariciones acababan todas
+allí— y la garantía es de bulto, no estadística: el cupo se mide sobre los que
+**habrá** cuando salga éste, de modo que con dos vivos el cupo es 1.
+
+Si con el cupo puesto no queda **nada visible**, el muñeco sale donde no se ve.
+Es el único caso en que eso pasa y es deliberado: significa que el jugador está
+plantado donde sólo se ve una zona, y la alternativa era dárselos todos ahí. Ir a
+buscarlos es la respuesta al campeo, no un efecto secundario. Medido: con el cupo
+de serie esa salida no hace falta en ningún puesto del Plano A (0% de
+apariciones a ciegas); apretando `zoneShare` a 0.34 sí, y entonces los que salen
+sin verse caen a 9.6 u frente a los 1.8 u del más cercano normal.
+
+**Cuatro preferencias encadenadas al elegir dónde nace una diana**, en este
+orden, porque cada una puede quedarse sin candidatos: (1) **delante**, el sesgo
+de siempre; (2) **rutas libres**, sin otro muñeco patrullando ya por ellas; (3)
 **nunca donde caíste** — el punto donde murió ese mismo muñeco queda descartado,
 y es regla dura: si no hay otro sitio no se aparece y se reintenta, antes que
-reaparecer bajo el punto de mira. El sesgo manda sobre la preferencia de ruta, no
-al revés: dentro del cono caben 2-5 rutas y con cinco muñecos vivos no siempre
-hay una libre delante — medido, se reparte el 42% de las veces con el sesgo
-puesto y el **100%** con el sesgo apagado.
+reaparecer bajo el punto de mira; (4) **no repetir la zona del último que salió**,
+blanda, y sólo se intenta **exigiendo ruta libre**: cambiar de zona no vale tanto
+como para meter a dos muñecos en el mismo recorrido. Medido, esa condición no
+sólo no costó reparto de rutas sino que lo subió: con el sesgo puesto se reparte
+el **98%** de las veces (antes el 42%), y el cupo de zona apenas lo toca —98.2%
+contra el 100% de soltarlo—.
 
 **Las rutas se miden, no se eligen a ojo.** Cuántas caben y de cuántos puntos lo
 dice un barrido (`rutas-buscar.mjs`) que exige a la vez: suelo a nivel, cuerpo de
@@ -262,6 +281,15 @@ sonido queda clavado en el origen.
 
 Con panner, el volumen por distancia lo aplica **sólo** el panner: pasar además
 la curva manual sería atenuar dos veces.
+
+**El gatillo en seco suena también durante la recarga, y no es un detalle.** La
+última bala arranca la recarga sola (`_consumeAmmo`), así que «cargador vacío y
+sin recargar» es un estado que el juego **no produce nunca**: mientras la
+condición del clic seco pedía `!this.reloading`, el sonido existía, sonaba en una
+prueba que ponía ese estado a mano, y no había forma de oírlo jugando. Lo que se
+mide de un sonido es que se oiga **desde el juego**: la prueba de la vuelta 31
+vacía el cargador a base de clicks con las tres armas y mide amplitud en el
+máster, no llamadas a funciones.
 
 **El explosivo no tiene ayuda de interfaz.** Ni indicador en el HUD, ni marcador
 en pantalla, ni distancia. La única pista es el pitido: volumen por proximidad,

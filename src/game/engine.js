@@ -646,9 +646,17 @@ export class Engine {
 
     // Con el cargador vacío el gatillo suena en seco, una vez por pulsación:
     // el fuego automático no repite el clic, que sería insufrible.
-    if (!this.reloading && this.ammo <= 0) {
+    //
+    // **Y suena también durante la recarga**, que es lo único que hay con el
+    // cargador a cero: la última bala arranca la recarga sola (`_consumeAmmo`),
+    // así que «vacío y sin recargar» es un estado que el juego no produce nunca.
+    // Mientras esta condición pedía `!this.reloading`, el clic existía, sonaba
+    // en una prueba que ponía ese estado a mano, y no se podía oír jugando.
+    if (this.ammo <= 0) {
       playDryFire()
-      this._showHelp('Pulsa R para recargar')
+      // Pedir R mientras la recarga ya corre sería un mal consejo: el HUD
+      // enseña su barra y no hay nada que pulsar.
+      if (!this.reloading) this._showHelp('Pulsa R para recargar')
       return
     }
     this._tryShoot(now)

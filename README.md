@@ -93,9 +93,11 @@ dentro del campo de visión. Es el modo original y no ha cambiado nada.
 
 ### Gridshot con movimiento (`MOVEMENT.enabled: true`)
 
-El jugador se desplaza dentro de un radio de `MOVEMENT.radius` unidades desde
-el centro (5 por defecto, que cae justo sobre una línea de acento de la
-grilla, así que el límite se ve). Salta y se agacha.
+El jugador recorre **la sala entera**: no hay radio artificial que lo ate al
+centro —lo hubo, `MOVEMENT.radius`, y desapareció cuando el movimiento pasó a
+cubrir todo el mapa—. Lo único que lo frena son las paredes, con
+`MOVEMENT.wallMargin` de holgura. Salta, encadena saltos, hace air-strafe y se
+agacha.
 
 El cono de aparición cambia de régimen: **el vértice es la posición actual del
 jugador** —incluida su altura real, esté agachado o en el aire— pero **la
@@ -145,9 +147,28 @@ sala— y con varias a los flancos, que obligan a girarse.
 Las dianas no salen de un puñado de sitios fijos: el mapa declara **rutas**, y
 cualquier punto de una ruta vale a la vez para que nazca una diana y para que
 camine hacia él. En Largo y Puerta son **14 rutas y 69 puntos**, repartidos por
-las seis zonas. Dos detalles que se notan jugando: una diana nunca reaparece en
-el punto exacto donde la acabas de matar, y mientras queden rutas libres los
-muñecos se reparten en vez de amontonarse en la misma.
+las seis zonas. Tres detalles que se notan jugando: una diana nunca reaparece en
+el punto exacto donde la acabas de matar, mientras queden rutas libres los
+muñecos se reparten en vez de amontonarse en la misma, y **el mapa nunca se queda
+en una sola zona**.
+
+### Quedarse quieto no vacía el mapa
+
+Una zona no puede acumular más de la mitad de los muñecos vivos
+(`SPAWN.zoneShare`). En cuanto hay dos vivos hay dos zonas, te quedes donde te
+quedes y por mucho que tardes en moverte.
+
+No es un adorno: plantado en la pasarela del Balcón sólo se ven puntos de **dos**
+de las seis zonas, y como las dianas se sortean entre las que ves, las
+reapariciones acababan cayendo todas arriba hasta dejar el resto del mapa vacío.
+Medido antes: el 10% del tiempo los cinco muñecos estaban en la misma zona, y
+sólo dos zonas del mapa llegaban a usarse. Después: **ni una sola vez**, campando
+en las seis zonas y con x2, x5 y x8.
+
+El sesgo hacia delante sigue haciendo más probable la zona que estás mirando —eso
+no ha cambiado—, pero ya no puede dejar las demás a cero. Y si te plantas en un
+sitio desde el que sólo se ve una zona, los que no caben salen **donde no los
+ves**: tendrás que ir a buscarlos, que es justo el punto.
 
 ### Cómo leer las estructuras
 
@@ -528,7 +549,7 @@ La marca de Vektor aparece en tres sitios, y ninguno de ellos es una imagen:
 | dónde | qué se ve | de dónde sale |
 | --- | --- | --- |
 | Pestaña del navegador | la marca en naranja, fondo transparente | `vektor-mark-orange.png` |
-| HUD, arriba a la izquierda | la marca sola, gris apagado, 26 px | `vektor-mark-white.png` |
+| HUD, arriba a la izquierda | la marca sola, gris apagado, 44 px | `vektor-mark-white.png` |
 | Pantalla de inicio | el logotipo completo, 184 px | `vektor-logo-white-orange.png` |
 
 ```bash
@@ -802,7 +823,10 @@ cuesta ~0.1 ms por frame en p99, frente a los 4.17 ms de presupuesto a 240 Hz.
   REINICIAR y VOLVER. El naranja sigue siendo el acento de la interfaz y el HUD
   se queda en blanco y gris: tres colores con tres trabajos distintos.
 - **El clic en seco se dispara por pulsación, no por cadencia.** Repetirlo a
-  800 RPM mientras se mantiene el gatillo sería insufrible.
+  800 RPM mientras se mantiene el gatillo sería insufrible. Y suena **también
+  durante la recarga**, que es lo único que hay con el cargador a cero: la última
+  bala arranca la recarga sola, así que «vacío y sin recargar» es un estado que
+  el juego no llega a producir nunca.
 - **El contador de FPS mide fotogramas dibujados, no ticks de rAF.** Es el
   número que hace falta para comprobar que el límite está haciendo su trabajo.
 - **La dispersión desvía la bala, no la mira.** Un temblor aleatorio del
