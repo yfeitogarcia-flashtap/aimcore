@@ -46,10 +46,13 @@ Sólo con la variante de movimiento activa (`MOVEMENT.enabled`):
   arranca con la marcha que traías en el aire en lugar de recalcularla desde el
   suelo. Encadenando mantienes el ritmo aunque llegues agachado; el control
   aéreo sigue siendo el de siempre.
-  No es un acelerador: se **conserva** lo que llevabas, nunca se multiplica, así
-  que por muchos saltos que encadenes no pasas de la marcha de carrera. Y sólo
-  cuenta si aciertas el tiempo: dejar la tecla apoyada rebota, pero con saltos
-  normales.
+  No es un acelerador: se **conserva** lo que llevabas, nunca se multiplica. Lo
+  que acelera es el *air-strafe* (abajo), y encadenar es lo que deja seguir
+  usando lo ganado. Y sólo cuenta si aciertas el tiempo: dejar la tecla apoyada
+  rebota, pero con saltos normales.
+- **A o D en el aire, girando el ratón hacia ese mismo lado**: **air-strafe**.
+  Ganas velocidad por encima de tu carrera mientras estrafeas sin avanzar. Ver
+  la sección propia más abajo.
 - **C** mantenido: agacharse. Baja la altura de la cámara y reduce la velocidad
   mientras se mantiene. Con SHIFT y C a la vez manda la marcha más lenta de las
   dos, o sea agachado.
@@ -223,6 +226,36 @@ aparte. No llegar a desactivar no es jugar mal, es no terminar.
 Los pesos y los cortes de estrella están en `SCORING`, en `src/config.js`. Hay
 además dos variables preparadas a peso cero —daño recibido y muertes— para
 cuando esas mecánicas existan.
+
+## Air-strafe: acelerar en el aire
+
+En el aire, con **A o D pulsados y W suelta**, mover el ratón **hacia el mismo
+lado que la tecla** te acelera por encima de tu carrera. Es la maniobra de
+siempre del bunny-hop: se aprende con el ritmo, no machacando teclas.
+
+Cuatro reglas, y son el mecanismo entero:
+
+- **Se paga por ángulo, no por tiempo.** Lo que acelera es girar; mantener la
+  tecla con la vista quieta no da nada. Por lo mismo, un giro vale igual en
+  cualquier monitor: el ángulo total es el mismo se dibuje en 35 frames o en 140.
+- **Girar más rápido no da más.** Por encima de `MOVEMENT.airStrafeMaxYawRateDeg`
+  (140°/s) el exceso no cuenta. Un *flick* de 90° en un frame vale exactamente lo
+  que un frame, no un giro entero.
+- **Dejar de cumplir las condiciones no frena.** Sueltas el estrafe, paras el
+  ratón o pulsas W: dejas de sumar y te quedas con lo que llevabas.
+- **El techo es duro.** `MOVEMENT.airStrafeMaxSpeed` (9.5 frente a los 6.5 de
+  carrera) no se pasa nunca, encadenes los saltos que encadenes. Con un giro
+  sostenido se llega en unos tres saltos: 6.5 → 7.8 → 9.0 → 9.5.
+
+Al aterrizar sigue mandando la regla de siempre: lo ganado se conserva **sólo si
+encadenas** dentro de `MOVEMENT.chainJumpWindowMs`. Fuera de esa ventana el
+siguiente salto vuelve a salir a marcha de carrera.
+
+Ojo con leer el 46% como «cruzo el mapa un 46% antes»: girar **curva la
+trayectoria**, así que en línea recta se gana bastante menos que en el número.
+
+El salto en sí no cambia — misma altura (1.2528 u) y misma duración (578 ms) con
+la maniobra puesta o sin ella. Esto sólo toca la marcha horizontal.
 
 ## Aterrizaje
 
@@ -606,7 +639,11 @@ MOVEMENT.standHeight    // altura de ojos de pie (también en el modo estático)
 MOVEMENT.crouchHeight   // altura de ojos agachado
 MOVEMENT.jumpSpeed      // impulso vertical del salto
 MOVEMENT.gravity        // gravedad constante
-MOVEMENT.radius         // radio máximo de desplazamiento
+MOVEMENT.chainJumpWindowMs     // ventana del salto encadenado, a cada lado
+MOVEMENT.airStrafeMaxSpeed     // techo duro de la aceleración en el aire
+MOVEMENT.airStrafeGainPerRad   // cuánto se gana por radián girado
+MOVEMENT.airStrafeMaxYawRateDeg // giro máximo que cuenta, en grados/s
+MOVEMENT.wallMargin     // holgura que se deja junto a cada pared
 MOVEMENT.keys           // mapeo de teclas, por código físico
 ```
 

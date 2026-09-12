@@ -2165,6 +2165,95 @@ frente a los 279 de antes (ratio 0.51), y **el mismo 142 con seis escenarios**.
 
 ---
 
+## Ronda 29 — Acelerar en el aire
+
+### 29.1 Por qué esto es una ganancia escalar y no un vector
+
+El air-strafe de Quake o de Source sale de que la velocidad es un **vector**: la
+dirección deseada se proyecta sobre la velocidad actual y, si el ángulo entre
+las dos es el adecuado, la componente tangencial se suma y el módulo crece. Aquí
+no hay vector. Lo horizontal de este juego es una **marcha escalar** más una
+dirección que se recalcula cada frame desde las teclas y el yaw — no hay inercia
+que proyectar.
+
+Rehacerlo con vector de velocidad sería tocar la colisión, el salto encadenado,
+la marcha congelada en el aire y el acotado de la sala: justamente lo que el
+encargo dejaba fuera. Así que la maniobra se implementa donde vive la marcha:
+`_airSpeed` sube mientras se cumplan las condiciones. Se pierde la sutileza de
+que el ángulo óptimo dependa de la velocidad actual; se conserva lo que hace la
+maniobra reconocible —estrafear sin avanzar, girar hacia el lado de la tecla,
+ritmo en lugar de machaqueo— y el resto del movimiento no se toca.
+
+### 29.2 Se paga por ángulo, no por tiempo
+
+La ganancia es proporcional a los **radianes girados** en la dirección correcta,
+no a los segundos con la tecla pulsada. Dos consecuencias, y las dos se querían:
+
+1. Lo que acelera es mover el ratón. Mantener A con la vista clavada no da nada,
+   que es exactamente lo que separa la maniobra de «una tecla que corre más».
+2. Sale gratis la independencia del refresco, que en este proyecto es regla: el
+   ángulo total de un giro es el mismo se dibuje en 35 frames o en 140. Medido:
+   **0.942478 u/s de ganancia en 500 ms a 60, 144 y 240 Hz**, diferencia 0 entre
+   los tres, y exactamente `airStrafeGainPerRad × ángulo`.
+
+El tope de velocidad angular (`airStrafeMaxYawRateDeg`, 140°/s) se aplica como
+`rate · dt` y no «tanto por frame» por el mismo motivo: acotar por frame haría
+que a 60 Hz cupiese cuatro veces más giro por segundo que a 240. Y sin tope, un
+flick de un frame regalaría el techo entero: medido, 90° de golpe dan
+`0.009163` u/s, que es justo lo de un frame a 240 Hz.
+
+### 29.3 El techo, y por qué es una propiedad y no una comprobación
+
+«No debe ser posible ganar velocidad de forma indefinida» se puede intentar por
+dos caminos: comprobarlo en cada sitio que toque la velocidad, o hacer que sólo
+haya un sitio. Aquí hay uno: **`_updateAirStrafe` es la única función que sube
+`_airSpeed`**. Nace de `currentSpeed` (≤ `MOVEMENT.speed`) o de un
+`_landingSpeed` anterior, que a su vez fue un `_airSpeed`; por inducción, ningún
+camino pasa de `airStrafeMaxSpeed`. `_takeOff` no clampa nada a propósito: un
+segundo tope ahí sería una segunda fuente de verdad que se puede desincronizar.
+
+Medido en el peor caso imaginable: **120 saltos encadenados girando a 600°/s**
+—cuatro veces más rápido de lo que cuenta— terminan en 9.5 clavado.
+
+### 29.4 Los números
+
+`airStrafeMaxSpeed: 9.5` contra los 6.5 de carrera, un 46% más.
+`airStrafeGainPerRad: 0.9` con el tope de 140°/s dan ~1.26 u/s por vuelo
+completo, así que subir de la carrera al techo cuesta **tres saltos**: 6.5 →
+7.76 → 9.03 → 9.5. Se nota el progreso sin que un salto suelto lo regale.
+
+Conviene no leer el 46% como «se cruza el mapa un 46% antes». Girar **curva la
+trayectoria**: en el vuelo medido, el recorrido sube de 3.765 a 4.131 unidades
+mientras el desplazamiento en línea recta **baja** a 3.464. Se va más rápido; no
+se va más lejos en la misma dirección.
+
+### 29.5 Qué cuenta como «mover el ratón»
+
+El giro se mide sobre `camera.rotation.y`, que además del ratón lleva el empuje
+del arma. Se podría haber separado —que `lookControls` acumulase un yaw «sólo de
+ratón»— y se ha decidido que no: el retroceso mueve la mira de verdad, su aporte
+son décimas de grado con el signo alternando, y separarlo ataría el movimiento a
+los controles para nada. Queda anotado por si algún día hay un arma con un
+retroceso grande y de un solo sentido.
+
+La regla de activación es la del encargo, literal: **A o D, con W suelta**. S+A
+también acelera, porque la regla es «sin avanzar», no «sin nada más». A y D a la
+vez no, porque no hay lado.
+
+### 29.6 Dos fallos del banco de pruebas, ninguno del juego
+
+Fiel a §13.6, los dos primeros fallos rojos eran del test:
+
+- La ganancia parecía depender del refresco (0.911 / 0.929 / 0.935). Era el
+  frame del **despegue**, en el que el ratón todavía no se ha movido: contarlo
+  dentro de la ventana de 500 ms dejaba 29 frames de giro a 60 Hz y 119 a 240.
+  Excluyéndolo, los tres dan el mismo número hasta el último decimal.
+- El vuelo acelerado parecía cubrir **menos** terreno. Se estaba midiendo el
+  desplazamiento en línea recta, y girando el camino es un arco. Midiendo el
+  recorrido frame a frame, sale lo que tenía que salir.
+
+---
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

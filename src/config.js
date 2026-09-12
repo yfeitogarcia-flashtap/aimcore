@@ -514,6 +514,39 @@ export const MOVEMENT = {
   chainJumpWindowMs: 130,
 
   /**
+   * **Aceleración en el aire (air-strafe).** Techo de velocidad horizontal que
+   * se puede alcanzar estrafeando en el aire, en unidades por segundo. Es un
+   * límite duro, no una sugerencia: `_airSpeed` no lo pasa nunca, así que por
+   * muchos saltos que se encadenen la marcha máxima del juego es ésta.
+   *
+   * 9.5 frente a los 6.5 de carrera: un 46% más. Ojo con leerlo como «se cruza
+   * el mapa un 46% antes»: el techo sólo se toca encadenando bien y girando
+   * todo el rato, y girar **curva la trayectoria**, así que en línea recta se
+   * gana bastante menos de lo que dice el número.
+   */
+  airStrafeMaxSpeed: 9.5,
+  /**
+   * Cuánta velocidad se gana por **radián girado** en la dirección correcta.
+   * La ganancia va con el ángulo recorrido y no con el tiempo: lo que acelera
+   * es girar el ratón hacia el lado de la tecla de estrafe, no mantenerla
+   * pulsada.
+   *
+   * Con 0.9 y el tope de giro de abajo, un vuelo entero bien hecho (578 ms)
+   * da ~1.25 u/s, así que subir de 6.5 al techo cuesta dos o tres saltos
+   * seguidos: se nota el progreso sin que un salto suelto lo regale.
+   */
+  airStrafeGainPerRad: 0.9,
+  /**
+   * Velocidad angular máxima que **cuenta** para la ganancia, en grados por
+   * segundo. Girar más rápido que esto no da más: lo que se premia es un giro
+   * sostenido y limpio, no un flick.
+   *
+   * Además es lo que hace la maniobra independiente del refresco: se acota
+   * `rate · dt`, así que medio segundo de giro vale lo mismo a 60 que a 240 Hz.
+   */
+  airStrafeMaxYawRateDeg: 140,
+
+  /**
    * Margen que se deja libre junto a cada pared. El desplazamiento ya no está
    * acotado a un radio artificial: el jugador recorre la sala entera y lo
    * único que lo frena son las paredes.

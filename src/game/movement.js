@@ -31,6 +31,12 @@
  * resolver y(t) = suelo, no del frame que lo detecta—, y la ventana de
  * encadenado se puede medir en milisegundos reales contra ese instante.
  *
+ * Lo horizontal **no tiene vector de velocidad**: hay una marcha escalar y una
+ * dirección que sale de las teclas y del yaw. Por eso la aceleración en el aire
+ * (`_updateAirStrafe`) es una ganancia sobre esa marcha —`_airSpeed`— y no una
+ * suma de vectores: es la única pieza que puede subirla por encima de la
+ * carrera, y lo hace contra un techo duro (`MOVEMENT.airStrafeMaxSpeed`).
+ *
  * Todo esto es inerte si `MOVEMENT.enabled` es false: la cámara se queda
  * clavada en el centro a la altura de pie, que es la línea base de puntería.
  */
@@ -41,6 +47,9 @@ import { COVER, LANDING, MOVEMENT, ROOM } from '../config.js'
 // Vectores de módulo: el bucle no aloca nada.
 const _forward = new THREE.Vector3()
 const _right = new THREE.Vector3()
+
+const DEG_TO_RAD = Math.PI / 180
+const TWO_PI = Math.PI * 2
 
 /** Invierte MOVEMENT.keys a un mapa código de tecla -> acción. */
 function buildKeyMap(keys) {
@@ -76,8 +85,22 @@ export class MovementController {
     this.airborne = false
     /** Altura de los ojos sobre los pies. Sólo el agachado la mueve. */
     this.eyeHeight = MOVEMENT.standHeight
-    /** Marcha congelada mientras se está en el aire. Ver `currentSpeed`. */
+    /**
+     * Marcha congelada mientras se está en el aire. Ver `currentSpeed`.
+     *
+     * Congelada salvo por una cosa: el **air-strafe** la sube mientras se
+     * estrafea girando bien (ver `_updateAirStrafe`), siempre por debajo de
+     * `MOVEMENT.airStrafeMaxSpeed`.
+     */
     this._airSpeed = MOVEMENT.speed
+    /** Yaw del frame anterior: de su diferencia sale el giro del air-strafe. */
+    this._lastYaw = camera.rotation.y
+    /**
+     * ¿La maniobra de air-strafe está activa este frame? Informativo —dice que
+     * se cumplen las condiciones, no que quede techo por ganar—. No lo lee
+     * nadie del juego: está para poder medirlo.
+     */
+    this.airStrafing = false
 
     // Estado del despegue: con esto y el tiempo de vuelo sale toda la parábola.
     this._airTime = 0
@@ -235,6 +258,9 @@ export class MovementController {
     this._landedAt = -Infinity
     this._landingSpeed = MOVEMENT.speed
     this.chainedJump = false
+    this._airSpeed = MOVEMENT.speed
+    this._lastYaw = this.camera.rotation.y
+    this.airStrafing = false
     this._safeX = this.spawnX
     this._safeZ = this.spawnZ
     this._safeFeetY = this.feetY
@@ -264,6 +290,8 @@ export class MovementController {
    */
   update(dt, now = performance.now()) {
     if (!this.enabled) return
+    // Antes que la horizontal: lo que se gane este frame ya mueve este frame.
+    this._updateAirStrafe(dt)
     this._updateHorizontal(dt)
     this._updateVertical(dt, now)
     this._updateLandingDip(dt)
@@ -321,6 +349,7 @@ export class MovementController {
     this._launchVelocity = 0
     this._airSpeed = MOVEMENT.speed
     this._landingSpeed = MOVEMENT.speed
+    this.airStrafing = false
     this._landedAt = -Infinity
     this._jumpPressedAt = -Infinity
     this.eyeHeight = MOVEMENT.standHeight
@@ -349,6 +378,65 @@ export class MovementController {
     }
     const eased = 1 - (1 - t) * (1 - t)
     this.landingDip = this._dipFrom * (1 - eased)
+  }
+
+  /**
+   * **Aceleración en el aire.** La maniobra clásica de bunny-hop: en el aire,
+   * con un estrafe puro —A o D, sin avanzar— y girando el ratón hacia el mismo
+   * lado que la tecla, la marcha sube por encima de la de carrera.
+   *
+   * Cuatro decisiones, y las cuatro son el mecanismo:
+   *
+   * - **Se paga por ángulo, no por tiempo.** La ganancia es proporcional a los
+   *   radianes girados en la dirección correcta, así que lo que acelera es
+   *   mover el ratón; mantener la tecla con la vista quieta no da nada. Es
+   *   también lo que la hace independiente del refresco: el ángulo total de un
+   *   giro es el mismo se dibuje en 35 frames o en 140.
+   * - **El giro que cuenta está acotado por velocidad angular**
+   *   (`airStrafeMaxYawRateDeg`), no por frame. Sin ese tope un flick de un
+   *   frame regalaría el techo entero; con él, medio segundo de giro vale lo
+   *   mismo a 60 que a 240 Hz porque el límite es `rate · dt`.
+   * - **El techo es duro.** `airStrafeMaxSpeed` no se pasa nunca, así que
+   *   encadenar saltos no puede acelerar indefinidamente: la marcha máxima del
+   *   juego es ésa, y este método es el **único** sitio donde `_airSpeed` sube.
+   * - **Dejar de cumplir las condiciones no frena.** Soltar el estrafe, parar
+   *   el ratón o pulsar W dejan de sumar; lo ganado se conserva hasta aterrizar
+   *   —y de ahí en adelante sólo lo conserva un encadenado, como siempre.
+   *
+   * El giro se mide sobre el yaw de la cámara, que incluye el empuje del arma.
+   * Es deliberado: el retroceso mueve la mira de verdad, y su aporte es de
+   * décimas de grado con el signo alternando, contra los 140°/s que cuentan.
+   */
+  _updateAirStrafe(dt) {
+    const yaw = this.camera.rotation.y
+    // Diferencia normalizada a (−π, π]: aquí el yaw viene acumulado sin
+    // envolver, pero esto lo deja a salvo de quien lo coloque de otra manera.
+    let delta = yaw - this._lastYaw
+    if (delta > Math.PI) delta -= TWO_PI
+    else if (delta < -Math.PI) delta += TWO_PI
+    this._lastYaw = yaw
+    this.airStrafing = false
+
+    if (!this.airborne || !(dt > 0)) return
+
+    // Estrafe puro: A o D —no las dos— y sin avanzar. Con W pulsada esto es
+    // correr en el aire, que no acelera y nunca lo ha hecho.
+    const keys = this.keys
+    const x = (keys.right ? 1 : 0) - (keys.left ? 1 : 0)
+    if (x === 0 || keys.forward) return
+
+    // Hacia el mismo lado que la tecla: mover el ratón a la derecha **resta**
+    // yaw (ver lookControls), así que D (+1) pide delta negativo y A (−1),
+    // positivo. Producto negativo = giro y estrafe van del mismo lado.
+    if (x * delta >= 0) return
+    this.airStrafing = true
+
+    const max = MOVEMENT.airStrafeMaxSpeed
+    if (this._airSpeed >= max) return
+    const cap = MOVEMENT.airStrafeMaxYawRateDeg * DEG_TO_RAD * dt
+    const turned = Math.abs(delta) < cap ? Math.abs(delta) : cap
+    const gained = this._airSpeed + MOVEMENT.airStrafeGainPerRad * turned
+    this._airSpeed = gained < max ? gained : max
   }
 
   _updateHorizontal(dt) {
@@ -497,9 +585,12 @@ export class MovementController {
    * En un **encadenado** la única diferencia es de dónde sale la marcha: en
    * lugar de recalcularla desde el suelo se conserva la que se traía al
    * aterrizar. Nada más — ni empuje vertical extra, ni multiplicador, ni
-   * ganancia por encadenar otra vez. Y como `_airSpeed` sólo puede nacer de
-   * `currentSpeed`, que nunca pasa de `MOVEMENT.speed`, por inducción ninguna
-   * cadena puede superar la marcha de carrera: conservar no es acelerar.
+   * ganancia por encadenar otra vez. **Encadenar sigue sin acelerar**: lo que
+   * acelera es el air-strafe, y lo hace contra su techo. Por inducción,
+   * `_airSpeed` nace de `currentSpeed` (≤ `MOVEMENT.speed`) o de un
+   * `_landingSpeed` anterior, y el único sitio que lo sube es
+   * `_updateAirStrafe`, que no pasa de `MOVEMENT.airStrafeMaxSpeed`: ninguna
+   * cadena, por larga que sea, puede superar ese techo.
    *
    * @param {number} velocity velocidad vertical inicial (0 al salirse de un borde)
    * @param {boolean} [chained] si el salto encadena con el aterrizaje anterior

@@ -123,9 +123,8 @@ bordillo. Si tocas `jumpSpeed` o `gravity`, revisa esa tabla.
 `MOVEMENT.chainJumpWindowMs` —a cada lado del aterrizaje— arranca el vuelo nuevo
 con la marcha que se traía al tocar el suelo en vez de recalcularla desde el
 suelo. Nada más: ni impulso vertical extra, ni factor, ni ganancia por
-encadenar. Como `_airSpeed` sólo puede nacer de `currentSpeed`, que nunca pasa
-de `MOVEMENT.speed`, por inducción **ninguna cadena puede acelerar** por encima
-de la marcha de carrera. Y la pulsación se **gasta** al despegar, así que dejar
+encadenar. Lo que acelera es el air-strafe, y encadenar es lo que deja seguir
+usando lo ganado. Y la pulsación se **gasta** al despegar, así que dejar
 SPACE apoyada sigue rebotando con saltos normales: encadenar es acertar el
 tiempo, no apoyar la tecla.
 
@@ -134,6 +133,33 @@ Los dos extremos de la ventana se miden en tiempo real: la pulsación sale de
 parábola —`t = (v0 + velocidadDeImpacto) / g`— en lugar del frame que lo detecta,
 que llega hasta un frame tarde. Medido: el umbral sale en 130.00 ms a 60, 144 y
 240 Hz, con una diferencia de 0.000 ms entre ellos.
+
+**El air-strafe es el único sitio donde sube `_airSpeed`, y tiene techo duro.**
+En el aire, con estrafe puro —A o D, con **W suelta**— y girando el ratón hacia
+el mismo lado que la tecla, la marcha sube. Cuatro propiedades, y las cuatro son
+el mecanismo:
+
+- **Se paga por ángulo, no por tiempo** (`airStrafeGainPerRad`): lo que acelera
+  es mover el ratón, no mantener la tecla. De ahí sale gratis la independencia
+  del refresco — el ángulo de un giro es el mismo se dibuje en 35 frames o en
+  140. Medido: 0.942478 u/s de ganancia en 500 ms a 60, 144 y 240 Hz, con
+  diferencia **0** entre ellos.
+- **El giro que cuenta va acotado por velocidad angular**
+  (`airStrafeMaxYawRateDeg`), y el tope se aplica como `rate · dt`, nunca por
+  frame. Sin eso un flick de un frame regalaría el techo entero; medido, 90° de
+  golpe dan exactamente lo de un frame.
+- **El techo es duro** (`airStrafeMaxSpeed`): 120 saltos encadenados girando el
+  doble de rápido de lo que cuenta acaban en 9.5 clavado. Por inducción,
+  `_airSpeed` nace de `currentSpeed` o de un `_landingSpeed` anterior, y el
+  **único** sitio que lo sube es `_updateAirStrafe`, que no pasa del techo.
+- **Dejar de cumplir las condiciones no frena**: se deja de sumar y ya. Perder
+  la marcha es cosa del aterrizaje, y ahí manda la regla de siempre —sólo la
+  conserva un encadenado dentro de la ventana—.
+
+El giro se mide sobre el yaw de la **cámara**, que incluye el empuje del arma.
+Es deliberado: el retroceso mueve la mira de verdad y aporta décimas de grado con
+el signo alternando, contra los 140°/s que cuentan. Si algún día el recoil se
+hace grande y de un solo sentido, esto hay que revisarlo.
 
 **Con cobertura, las dianas salen en puntos de ruta, no por muestreo.** Un cono
 no sabe poner una diana en una tronera. Un escenario declara **rutas**, y una
@@ -383,8 +409,11 @@ quedan en su punto, porque un destino aleatorio las metería dentro de un muro.
 no, ver convenciones—, gana la más lenta), salto sin doble salto **resuelto en forma cerrada** —misma
 trayectoria a cualquier refresco—, **salto encadenado** con SPACE dentro de
 `MOVEMENT.chainJumpWindowMs` (130 ms a cada lado del aterrizaje exacto), que
-conserva la marcha del aterrizaje sin poder acelerar por encima de la de
-carrera, límites reales de la sala con margen de seguridad. Por encima de `ACCURACY.speedThreshold` y
+conserva la marcha del aterrizaje, y **air-strafe**: en el aire, con A o D y W
+suelta, girar el ratón hacia el lado de la tecla acelera hasta
+`MOVEMENT.airStrafeMaxSpeed` (9.5 contra 6.5 de carrera), en unos tres saltos
+bien encadenados —6.5 → 7.8 → 9.0 → 9.5— y sin pasar de ahí nunca. Límites
+reales de la sala con margen de seguridad. Por encima de `ACCURACY.speedThreshold` y
 siempre en el aire se aplica dispersión de disparo (dirección y magnitud
 aleatorias, sumada al recoil, sin mover la cámara).
 
