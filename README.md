@@ -149,6 +149,11 @@ El gris dice la altura, y la altura dice lo que puedes hacer:
 
 Más claro, más alto, menos se pasa.
 
+Ninguna pieza se atraviesa, en ningún estado: ni de pie, ni agachado, ni en el
+aire. Las rampas tampoco — son sólidas por debajo y por los costados, y sólo se
+pasa por encima. La única holgura es el escalón de 0.25 u, que es lo que te deja
+subirte a un bordillo sin saltar.
+
 ### Qué cambia al jugar con cobertura
 
 - **Chocas con las estructuras.** Rozar un muro desliza, no frena en seco.

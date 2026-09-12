@@ -216,10 +216,46 @@ de ella.
 mientras `airborne`. Cambiarla a media trayectoria deja el vuelo igual de largo y
 la mitad de recorrido, que se siente como flotar.
 
-**La colisión frena en el sentido del avance, no hacia la cara más cercana**, y a
-quien ya esté dentro de una caja no se le expulsa. Con cajas grandes —la
-plataforma del Balcón ocupa la sala entera— "salir por el lado más próximo" son
-cuarenta unidades de teletransporte.
+**La colisión nunca empuja hacia atrás.** Resolver un eje devuelve siempre una
+posición **entre de donde se venía y a donde se iba**; a quien ya esté metido en
+una pieza se le deja salir por la cara que tenga más cerca. Con cajas grandes
+—la plataforma del Balcón ocupa la sala entera— "sacarlo por el lado más
+próximo" son cuarenta unidades de teletransporte.
+
+**Y no se compara la posición contra la caja engordada por el radio.** En cada
+eje la pieza ocupa la banda `[minA − radio, maxA + radio]` y lo único que se
+decide es si el paso **mete más** al jugador en ella. Preguntar «¿estaba ya
+dentro?» como `from + radius > minA` parece equivalente y no lo es: al frenar,
+`from` queda en `minA − radio`, y sumarle el radio no siempre devuelve `minA` en
+coma flotante —con la Media de x −1, −1.4 + 0.4 da −0.9999999999999999— y el muro
+dejaba de bloquear al segundo frame de contacto. Tampoco vale la banda como «ya
+estaba dentro»: tras un salto se aterriza rozando una pieza, con el centro fuera
+y el cilindro dentro, y eso abría la puerta entera.
+
+**Las rampas son sólidas, y sólo por arriba.** Vivían únicamente en
+`groundHeightAt`, así que no bloqueaban nada: se entraba andando dentro de la
+cuña, de pie y agachado. Estorban cuando su superficie en el punto de llegada
+sube más de un escalón por encima de lo que el jugador ya pisa, **más lo que la
+propia rampa gana de altura en ese tramo** —sin ese término la subida depende del
+tamaño del paso y a pocos FPS se atasca—. El crédito de pendiente sólo cuenta si
+ya se está encima: al entrar desde fuera no, o este test sería más permisivo que
+`groundHeightAt` y se podría poner un pie donde el suelo luego se niega a
+levantarte.
+
+**La horizontal y la vertical tienen que admitir los mismos sitios.** La
+horizontal corre antes, así que usa la altura de pies **más baja del frame**
+(`_feetYAfter`, de la misma parábola cerrada). Sin eso, dar por bueno un paso por
+encima de un cajón y caer un frame después dejaba al jugador hundido dentro. Por
+lo mismo, `groundHeightAt` **no** descarta una caja por alta: si el centro cae en
+su huella es que se entró por arriba —la colisión mantiene el centro a un radio
+de cualquier cara— y lo que se pisa es su techo.
+
+**La única holgura admitida es el escalón** (`COVER.stepHeight`), y es la que
+hace saltable la cobertura Baja. Lo que la resolución por ejes sí deja es un
+**roce** del cilindro contra una esquina con el centro fuera; está acotado por el
+radio del cuerpo y no puede crecer más, porque en cuanto el centro entra en la
+huella el jugador aparece encima de la pieza. `colision.mjs` lo mide: 0.37 u
+andando y 0.40 en el aire, contra un radio de 0.40.
 
 **El test de visibilidad es de activación, nunca por frame.** Es un raycast
 contra toda la geometría del escenario y no cabe en el presupuesto de un frame.

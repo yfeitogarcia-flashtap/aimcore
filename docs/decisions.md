@@ -1764,6 +1764,115 @@ Medido por bisección sobre el offset de la pulsación: el umbral sale en
 **130.00 ms** a 60, 144 y 240 Hz, a los dos lados, con una diferencia de
 **0.000 ms** entre refrescos. Contra los 16.67 ms que dura un frame a 60 Hz.
 
+## Ronda 25 — La colisión, de verdad
+
+### 25.1 Tres fallos distintos disfrazados de uno
+
+El parte era «el jugador entra dentro de la cobertura de pie y agachado, y
+atraviesa la rampa», con la sospecha de que `COVER.stepHeight` se estuviera
+aplicando demasiado suelto o chocando con la altura de agachado.
+
+**La sospecha se descartó con el código.** `stepHeight` entra en la colisión como
+`reach = feetY + stepHeight`, y `reach` no depende de la altura de ojos: agachado
+sólo cambia `headY`, que afecta a piezas cuyo **suelo** queda por encima de la
+cabeza —en el Plano A, sólo los parapetos, y el jugador los pisa desde la
+plataforma—. De pie en el suelo, `reach` vale 0.25 y la pieza más baja del plano
+mide 0.6: ninguna se vuelve pasable. Un barrido de 136 embestidas frontales lo
+confirmó: cero.
+
+Lo que sí había eran tres cosas, y ninguna era la sospechada:
+
+**(a) Una cara de muro que dejaba de bloquear por coma flotante.** La regla «a
+quien ya estaba dentro no se le empuja» se comprobaba como
+`from + radius > minA && from - radius < maxA`. Al frenar contra una cara, `from`
+queda exactamente en `minA - radius`; volver a sumarle el radio **no siempre
+devuelve `minA`**. Con la Media de x −1: `-1.4 + 0.4` da `-0.9999999999999999`,
+que es mayor que −1, así que al segundo frame de contacto el muro se declaraba
+«ya atravesado» y dejaba pasar. Medido en las 34 caras del plano: **le pasaba a
+una**, y a las demás no porque redondeaban al otro lado. Un bug que se mueve de
+sitio cada vez que se toca la geometría.
+
+**(b) Las rampas no eran colisión.** Vivían sólo en `this.ramps`, que consume
+`groundHeightAt`; `resolveAxis` ni las miraba. 148 de 5088 recorridos acababan
+dentro de la cuña. No es que la rampa fuera blanda: es que no existía para la
+colisión.
+
+**(c) La horizontal y la vertical no admitían los mismos sitios.** La horizontal
+corre primero y decide con los pies donde están; la vertical corre después, con
+los pies un frame más abajo. Saltando contra un cajón Baja, la horizontal daba
+por bueno el paso «por encima» y la vertical, ya caída, se negaba a levantar: el
+jugador se quedaba **hundido dentro del cajón**. Es exactamente el síntoma del
+parte, y el único de los tres en el que `stepHeight` tenía algo que ver — no por
+ser laxo, sino por medirse en dos instantes distintos.
+
+### 25.2 Una sola cuenta para las dos reglas de siempre
+
+Las dos reglas que ya había —no empujar hacia atrás, dejar salir a quien esté
+dentro— se reescriben como una: en cada eje la pieza ocupa la banda
+`[minA − radio, maxA + radio]` y lo único que se decide es si el paso **mete más**
+al jugador en ella.
+
+- Si el destino no toca la banda, no hay choque.
+- Si venía de fuera, se frena en la cara por la que entraba.
+- Si ya estaba dentro de la banda, no se le empuja: sólo se le impide hundirse
+  más hacia la cara que tiene más cerca.
+
+Nada compara la posición con la caja engordada, así que (a) desaparece por
+construcción. Y el tercer caso es el que cierra un agujero que el diseño anterior
+tenía abierto: **aterrizar rozando una pieza** —centro fuera, cilindro dentro— se
+trataba como «ya estaba dentro» y abría la puerta de par en par. Con la regla
+nueva, rozar sólo impide hundirse más.
+
+La garantía vieja se conserva y ahora se comprueba entera, no con un caso suelto:
+resolver un eje devuelve **siempre** una posición entre el origen y el destino.
+1904 casos en la auditoría.
+
+### 25.3 La rampa: sólida por debajo y por los costados
+
+Estorba cuando su superficie en el punto de llegada sube más de un escalón por
+encima de lo que el jugador ya pisa. Dos matices que costaron una vuelta cada uno:
+
+- **Más lo que la rampa gana de altura en el tramo recorrido.** Sin ese término,
+  el margen se lo come el tamaño del paso: a 60 Hz la rampa sube 0.05 u por
+  frame y cabe en el escalón, pero con el delta máximo que admite el bucle sube
+  0.28 y no cabe. La rampa se volvía intransitable a pocos FPS. Verificado a 20,
+  30, 60, 144 y 240 Hz.
+- **Pero sólo si ya estás encima.** Al entrar desde fuera no hay crédito de
+  pendiente, porque `groundHeightAt` tampoco lo tiene: con él, se podía poner un
+  pie en un punto de la cuña que el suelo luego se negaba a levantar.
+
+Y la altura se mide en el **centro** del jugador, no medio cuerpo por delante, por
+la misma razón: `groundHeightAt` decide por el centro, y mirar más allá hacía este
+test más severo que aquél — a 20 Hz el primer paso dentro de la rampa ya veía
+0.26 u de cuña y declaraba muro.
+
+### 25.4 Lo que la resolución por ejes sigue dejando pasar, y por qué está bien
+
+Resolver un eje cada vez valida cada uno con la coordenada del otro a medias, así
+que una diagonal puede acabar con el **cilindro** solapando una esquina mientras
+el centro sigue fuera. Eso no se ha eliminado, y no se va a eliminar empujando:
+empujar es el teletransporte de la ronda 18.
+
+Lo que sí se puede es acotarlo, y está acotado **por el radio del cuerpo**: en
+cuanto el centro entra en la huella, `groundHeightAt` devuelve el techo de la
+pieza y el jugador aparece encima. Un roce nunca crece hasta ser un
+atravesamiento. Medido: 0.373 u andando y 0.400 en el aire, contra un radio de
+0.400.
+
+### 25.5 La auditoría
+
+`colision.mjs`, con el mismo método que las de geometría: barrer y medir.
+
+- **7584 recorridos** a pie y agachado, a 60 y 144 Hz, desde una rejilla de 3 u
+  por todo el mapa y en 12 direcciones.
+- **238 saltos** contra cada pieza desde 8 ángulos, a 60 y 240 Hz.
+- Las dos rampas, subidas a 20, 30, 60, 144 y 240 Hz.
+- Sus costados, embestidos a media altura.
+- Y los dos fallos concretos como guardia de regresión: frenar contra cada una de
+  las 34 caras del plano y volver a empujar, y cruzar la rampa por el costado.
+
+Cero atravesamientos en los tres estados.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

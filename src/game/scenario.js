@@ -58,6 +58,26 @@ function buildRampGeometry(ramp) {
   return geometry
 }
 
+/** Acota un valor a un intervalo. El bucle de colisión lo usa por frame. */
+function clamp(value, min, max) {
+  return value < min ? min : value > max ? max : value
+}
+
+/**
+ * Frena `to` contra la banda `[lo, hi]` de un obstáculo, viniendo de `from`.
+ *
+ * Nunca devuelve una posición **más metida** en la banda que `from`, y nunca
+ * empuja hacia atrás: lo peor que puede pasar es quedarse donde se estaba.
+ */
+function clampAgainstBand(to, from, lo, hi) {
+  if (to <= lo || to >= hi) return to
+  if (from <= lo) return Math.min(to, lo)
+  if (from >= hi) return Math.max(to, hi)
+  // `from` ya estaba dentro de la banda: se impide hundirse más hacia la cara
+  // que tiene más cerca, y salir por la otra sigue siendo libre.
+  return from - lo <= hi - from ? Math.min(to, from) : Math.max(to, from)
+}
+
 /**
  * Un escenario ya montado. Mientras `key` sea `empty` no hay geometría, no hay
  * colisión y no hay anclajes: el motor se comporta exactamente como antes.
@@ -221,9 +241,20 @@ export class Scenario {
   }
 
   /**
-   * Altura del suelo bajo un punto. Sólo cuentan las superficies que el jugador
-   * podría pisar desde donde está: una caja cuyo techo le queda por encima de la
-   * cabeza es un muro, no un suelo.
+   * Altura del suelo bajo un punto.
+   *
+   * Para las **cajas** no hay nada que decidir: si el punto cae dentro de la
+   * huella, lo que hay bajo los pies es su techo. Estar dentro de la huella de
+   * una caja sólo puede pasar habiendo entrado por arriba —la colisión mantiene
+   * el centro del jugador a un radio de cualquier cara—, así que tratarlas como
+   * muro ahí no protegía de nada y sí dejaba un agujero: la horizontal admite el
+   * paso cuando el techo queda a menos de un escalón de los pies, pero corre
+   * **antes** que la vertical, y un frame de caída bastaba para que al llegar ya
+   * no diese el escalón. El jugador se quedaba hundido dentro del cajón en vez
+   * de aterrizar encima. Los dos sistemas tienen que admitir los mismos sitios.
+   *
+   * Para las **rampas** sí se mira el escalón: su huella es transitable de
+   * verdad por la parte baja, y la cuña no puede levantar a nadie de golpe.
    *
    * @param {number} feetY altura actual de los pies, para decidir qué pisa
    */
@@ -234,7 +265,7 @@ export class Scenario {
     for (let i = 0; i < this.boxes.length; i++) {
       const box = this.boxes[i]
       if (x < box.minX || x > box.maxX || z < box.minZ || z > box.maxZ) continue
-      if (box.top > reach || box.top <= ground) continue
+      if (box.top <= ground) continue
       ground = box.top
     }
 
@@ -263,15 +294,34 @@ export class Scenario {
    * eje —primero X con la Z vieja, luego Z con la X ya corregida— es lo que
    * hace que rozar un muro deslice en lugar de frenar en seco.
    *
-   * El bloqueo va **en el sentido del avance**, no hacia la cara más cercana.
-   * Sacar al jugador por la cara más próxima parece razonable hasta que la caja
-   * es enorme: la plataforma del Balcón ocupa el ancho entero de la sala, así
-   * que a quien quedara dentro de su huella lo escupía cuarenta unidades de
-   * golpe, contra la pared. Se leía como un teletransporte.
+   * Dos reglas que vienen de bugs reales y siguen en pie: **nunca se empuja
+   * hacia atrás** —sacar al jugador por la cara más próxima parece razonable
+   * hasta que la caja es enorme: la plataforma del Balcón ocupa el ancho entero
+   * de la sala, y a quien quedara dentro de su huella lo escupía cuarenta
+   * unidades de golpe, contra la pared— y **a quien ya esté metido se le deja
+   * salir**, por la cara que tenga más cerca.
    *
-   * Por lo mismo, a quien ya estuviera dentro de una caja antes de moverse no
-   * se le empuja: se le deja salir. Un empujón ahí es siempre peor que el
-   * problema que arregla.
+   * Las dos reglas salen de una sola cuenta. En cada eje la caja ocupa la banda
+   * `[minA - radio, maxA + radio]` —la huella, engordada el cuerpo del jugador—
+   * y lo único que se decide es si el paso **mete más** al jugador en ella:
+   *
+   *  - si el destino no toca la banda, no hay choque;
+   *  - si venía de fuera, se frena en la cara por la que entraba;
+   *  - si ya estaba dentro de la banda, no se le empuja: sólo se le impide
+   *    hundirse más hacia la cara que tiene más cerca. Salir siempre se puede.
+   *
+   * Nada de esto compara la caja expandida con la posición de partida, que es
+   * donde estaba el fallo: `from + radius > minA` parece equivalente a «ya
+   * estaba dentro» y no lo es. Al frenar, `from` queda exactamente en
+   * `minA - radius`, y sumarle el radio **no siempre devuelve `minA`** en coma
+   * flotante — con la Media de x −1, −1.4 + 0.4 da −0.9999999999999999, mayor
+   * que −1. El muro dejaba de bloquear al segundo frame de contacto y se entraba
+   * andando. Pasaba en esa cara y no en las demás, que redondeaban al otro lado.
+   *
+   * Y la banda tampoco vale como «ya estaba dentro»: tras un salto se aterriza
+   * rozando una pieza —el centro fuera, el cilindro dentro—, y tratar eso como
+   * «dentro» abría la puerta de par en par. Por eso la regla no es «dentro o
+   * fuera» sino «más adentro o no».
    *
    * @param {'x'|'z'} axis
    * @param {number} from posición en ese eje antes de moverse
@@ -295,21 +345,102 @@ export class Scenario {
       // corta a la altura del cuerpo.
       if (box.top <= reach || box.bottom >= headY) continue
 
-      const minA = axis === 'x' ? box.minX : box.minZ
-      const maxA = axis === 'x' ? box.maxX : box.maxZ
       const minB = axis === 'x' ? box.minZ : box.minX
       const maxB = axis === 'x' ? box.maxZ : box.maxX
-
       if (other + radius <= minB || other - radius >= maxB) continue
-      if (resolved + radius <= minA || resolved - radius >= maxA) continue
-      // Ya estaba dentro en este eje antes de moverse: no es un choque.
-      if (from + radius > minA && from - radius < maxA) continue
 
-      resolved =
-        delta > 0 ? Math.min(resolved, minA - radius) : Math.max(resolved, maxA + radius)
+      const lo = (axis === 'x' ? box.minX : box.minZ) - radius
+      const hi = (axis === 'x' ? box.maxX : box.maxZ) + radius
+      resolved = clampAgainstBand(resolved, from, lo, hi)
+    }
+
+    // Las rampas también son sólidas. No estaban en `boxes` —sólo las usaba
+    // `groundHeightAt`— así que no bloqueaban nada: se entraba andando dentro de
+    // la cuña, de pie y agachado, y se salía por el otro lado.
+    for (let i = 0; i < this.ramps.length; i++) {
+      const ramp = this.ramps[i]
+      const minA = axis === 'x' ? ramp.minX : ramp.minZ
+      const maxA = axis === 'x' ? ramp.maxX : ramp.maxZ
+      const minB = axis === 'x' ? ramp.minZ : ramp.minX
+      const maxB = axis === 'x' ? ramp.maxZ : ramp.maxX
+      if (other + radius <= minB || other - radius >= maxB) continue
+
+      const lo = minA - radius
+      const hi = maxA + radius
+      if (resolved <= lo || resolved >= hi) continue
+
+      // El punto de la cuña que el jugador pisaría, acotado a su huella. Se
+      // mide en el **centro**, no en el borde del cilindro: `groundHeightAt`
+      // decide el suelo por el centro, y si aquí se mirase medio cuerpo por
+      // delante este test sería más severo que aquél — a pocos FPS el primer
+      // paso dentro de la rampa veía ya 0.26 u de cuña y la declaraba muro,
+      // dejando la subida bloqueada desde el primer escalón.
+      const leadA = clamp(resolved, minA, maxA)
+      const sideB = clamp(other, minB, maxB)
+      const toX = axis === 'x' ? leadA : sideB
+      const toZ = axis === 'x' ? sideB : leadA
+      const fromX = axis === 'x' ? from : other
+      const fromZ = axis === 'x' ? other : from
+      if (!this._rampBlocks(ramp, toX, toZ, fromX, fromZ, feetY)) continue
+
+      resolved = clampAgainstBand(resolved, from, lo, hi)
     }
 
     return resolved
+  }
+
+  /** Cuánto sube una rampa por unidad recorrida. */
+  _rampSlope(ramp) {
+    const span = Math.abs(ramp.toZ - ramp.fromZ)
+    return span === 0 ? Infinity : ramp.top / span
+  }
+
+  /**
+   * ¿La cuña `ramp` corta el cuerpo al ir de (fromX,fromZ) a (x,z)?
+   *
+   * La regla es **sólo por encima**: estorba cuando su superficie en el punto de
+   * llegada sube por encima de lo que el jugador ya pisa más de lo que puede
+   * subir en ese tramo — un escalón, más lo que la propia rampa gana de altura
+   * en la distancia recorrida.
+   *
+   * Ese segundo término es lo que hace que subir la rampa **no dependa del
+   * refresco**: a 60 Hz el paso es 0.11 u y la rampa gana 0.05, pero con el
+   * delta máximo que admite el bucle el paso es 0.65 y gana 0.28, más que el
+   * escalón. Sin el término, la rampa se volvía intransitable a pocos FPS.
+   *
+   * Pero **sólo cuenta si ya se está encima**: al entrar desde fuera no hay
+   * crédito de pendiente. Si lo hubiera, este test sería más permisivo que
+   * `groundHeightAt` —que no lo tiene— y se podría poner un pie en un punto de
+   * la cuña que el suelo luego se niega a levantar: el jugador se quedaba
+   * enterrado unos centímetros. Los dos sistemas tienen que admitir exactamente
+   * los mismos sitios.
+   *
+   * Y el término de comparación es la altura de la rampa **donde está** el
+   * jugador, no su altura de pies a secas — salvo que esté enterrado en ella,
+   * en cuyo caso mandan los pies y no puede seguir hundiéndose.
+   */
+  _rampBlocks(ramp, x, z, fromX, fromZ, feetY) {
+    const ahead = this._rampHeightAt(ramp, x, z)
+    if (ahead === null) return false
+    const under = this._rampHeightAt(ramp, fromX, fromZ)
+    const supported = under !== null && under <= feetY + COVER.stepHeight
+    const base = supported ? Math.max(feetY, under) : feetY
+    const climb = supported ? this._rampSlope(ramp) * Math.abs(z - fromZ) : 0
+    return ahead > base + COVER.stepHeight + climb
+  }
+
+  /**
+   * ¿Acabar en (x,z) viniendo de (fromX,fromZ) dejaría el cuerpo dentro de una
+   * cuña? La colisión se resuelve **un eje cada vez**, y eso valida cada eje con
+   * la coordenada del otro a medias: una diagonal contra el costado de una rampa
+   * podía colarse una fracción de paso por la esquina. Esto es el cierre: lo que
+   * la resolución por ejes deje pasar, no se admite.
+   */
+  rampBlocksMove(x, z, fromX, fromZ, feetY) {
+    for (let i = 0; i < this.ramps.length; i++) {
+      if (this._rampBlocks(this.ramps[i], x, z, fromX, fromZ, feetY)) return true
+    }
+    return false
   }
 
   dispose() {

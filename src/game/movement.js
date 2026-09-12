@@ -299,11 +299,34 @@ export class MovementController {
       // Un eje cada vez: X contra la Z vieja, y luego Z contra la X ya
       // corregida. Resolver los dos a la vez dejaría al jugador clavado en
       // cuanto rozara una esquina.
-      const headY = this.feetY + this.eyeHeight
+      //
+      // La altura que se usa es la **más baja del frame**, no la de ahora. La
+      // horizontal corre antes que la vertical, así que dar por bueno un paso
+      // con los pies donde están y caer después es cómo se acababa dentro de un
+      // cajón: la horizontal admitía pasar por encima de una pieza que la
+      // vertical, un frame más abajo, ya no dejaba pisar. Los dos sistemas
+      // tienen que admitir lo mismo, y manda el más restrictivo.
+      const feetY = Math.min(this.feetY, this._feetYAfter(dt))
+      const headY = feetY + this.eyeHeight
       const fromX = position.x
       const fromZ = position.z
-      position.x = this.scenario.resolveAxis('x', fromX, wantedX, fromZ, this.feetY, headY)
-      position.z = this.scenario.resolveAxis('z', fromZ, wantedZ, position.x, this.feetY, headY)
+      position.x = this.scenario.resolveAxis('x', fromX, wantedX, fromZ, feetY, headY)
+      position.z = this.scenario.resolveAxis('z', fromZ, wantedZ, position.x, feetY, headY)
+      // Cierre contra las cuñas: resolver por ejes valida cada uno con la
+      // coordenada del otro a medias, y una diagonal contra el costado de una
+      // rampa se colaba una fracción de paso por la esquina. Se intenta
+      // conservar el deslizamiento —primero un eje, luego el otro— y sólo si
+      // ninguno vale se queda donde estaba.
+      if (this.scenario.rampBlocksMove(position.x, position.z, fromX, fromZ, feetY)) {
+        if (!this.scenario.rampBlocksMove(position.x, fromZ, fromX, fromZ, feetY)) {
+          position.z = fromZ
+        } else if (!this.scenario.rampBlocksMove(fromX, position.z, fromX, fromZ, feetY)) {
+          position.x = fromX
+        } else {
+          position.x = fromX
+          position.z = fromZ
+        }
+      }
     } else {
       position.x = wantedX
       position.z = wantedZ
@@ -317,6 +340,17 @@ export class MovementController {
     else if (position.x < -limitX) position.x = -limitX
     if (position.z > limitZ) position.z = limitZ
     else if (position.z < -limitZ) position.z = -limitZ
+  }
+
+  /**
+   * Dónde estarán los pies al final de este frame. Sale de la misma parábola
+   * cerrada que usa `_updateVertical`, así que no es una estimación: es el valor
+   * que `feetY` va a tomar dentro de un momento.
+   */
+  _feetYAfter(dt) {
+    if (!this.airborne) return this.feetY
+    const t = this._airTime + dt
+    return this._launchY + this._launchVelocity * t - 0.5 * MOVEMENT.gravity * t * t
   }
 
   _updateVertical(dt, now) {
