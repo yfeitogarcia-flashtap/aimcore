@@ -12,6 +12,12 @@
  *
  * El DOM no recibe eventos de puntero: con el ratón capturado no habría
  * clicks, y la única forma de accionarlo es dispararle.
+ *
+ * Con `ACTION_PANEL.enabled` a false la instancia sigue existiendo y midiendo
+ * —`clearVolume` es lo que mantiene su hueco libre de geometría—, pero no entra
+ * en ninguna de las dos escenas y todo lo que cuesta por frame se queda en un
+ * `return`. Se apaga aquí y no en el motor para no sembrar de `if` los siete
+ * sitios desde los que se le habla.
  */
 
 import * as THREE from 'three'
@@ -35,6 +41,7 @@ export class ActionPanel {
   constructor(scene, cssScene) {
     this.scene = scene
     this.cssScene = cssScene
+    this.enabled = ACTION_PANEL.enabled
     this._needsLayout = true
 
     this.element = document.createElement('div')
@@ -59,13 +66,18 @@ export class ActionPanel {
     // Tablero: a la derecha del punto de aparición, mirando hacia él.
     this.object = new CSS3DObject(this.element)
     this.object.rotation.y = -Math.PI / 2
-    cssScene.add(this.object)
 
     // Los planos viven en un grupo con la misma transformación, de modo que
     // basta colocarlos en coordenadas de píxel del tablero.
     this.group = new THREE.Group()
     this.group.rotation.copy(this.object.rotation)
-    scene.add(this.group)
+
+    // Apagado, nada de esto llega a la escena: el tablero se construye y se
+    // mide, pero no se dibuja ni se le puede disparar.
+    if (this.enabled) {
+      cssScene.add(this.object)
+      scene.add(this.group)
+    }
 
     this._hitMaterial = new THREE.MeshBasicMaterial()
     this._activeMeshes = []
@@ -130,6 +142,7 @@ export class ActionPanel {
   }
 
   follow(camera) {
+    if (!this.enabled) return
     const wanted = Math.max(this._metrics.distance, camera.position.x + this._metrics.minDistance)
     const x = Math.min(wanted, this._maxX)
     if (x === this.object.position.x) return
@@ -139,6 +152,7 @@ export class ActionPanel {
 
   /** Refresca etiquetas y qué botones están disponibles. */
   update({ weaponLabel, suppressorSupported, suppressorEnabled }) {
+    if (!this.enabled) return
     const weapon = this.buttons.get('weapon')
     if (weapon.value.textContent !== weaponLabel) {
       weapon.value.textContent = weaponLabel
@@ -163,6 +177,7 @@ export class ActionPanel {
    * blanco sigue al diseño aunque cambien los estilos.
    */
   syncLayout() {
+    if (!this.enabled) return
     if (!this._needsLayout) return
     // El CSS3DRenderer inserta el elemento al primer render; hasta entonces no
     // hay maquetación de la que leer.
@@ -206,6 +221,7 @@ export class ActionPanel {
    *   el tablero. Es un raycast aparte del de las dianas.
    */
   raycast(raycaster) {
+    if (!this.enabled) return null
     if (this._activeMeshes.length === 0) return null
     const hits = raycaster.intersectObjects(this._activeMeshes, false)
     if (hits.length === 0) return null

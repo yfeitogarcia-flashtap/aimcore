@@ -112,7 +112,9 @@ sigue ahí sin cambiar.
 Cada escenario se presenta con su **plano cenital** —dibujado a partir de la
 geometría real, así que siempre coincide con lo que vas a jugar— y, el que tenga
 cobertura, con una ficha corta de qué entrena, qué tiene de exigente y cuánto se
-deja rejugar. Al cambiar de escenario hay una transición breve mientras se monta
+deja rejugar. Los planos van en **columna fija de 140 px**, la mitad de lo que
+medían cuando se repartían el ancho entre dos: el selector crece en filas a
+medida que haya más escenarios, en vez de encoger los que ya estaban. Al cambiar de escenario hay una transición breve mientras se monta
 el nuevo.
 
 **Sala vacía** — el Gridshot de siempre. Las dianas salen por muestreo dentro del
@@ -234,20 +236,33 @@ Es sólo sensación: no toca la gravedad ni la fuerza del salto.
 
 Botón **Opciones** en la pantalla de inicio y en la de pausa. Los cambios se
 aplican al momento y se guardan en `localStorage`, así que sobreviven a una
-recarga. **Restablecer** vuelve a los valores de `config.js`.
+recarga. **Restablecer**, al final del panel, vuelve a los valores de
+`config.js` de golpe.
+
+Cada ajuste lleva además **su propio botón «por defecto»**, en la misma línea
+que su etiqueta, que restablece **sólo ese**: trastear con la sensibilidad y
+querer volver atrás no debería costar también el escenario, el arma y la
+cadencia. El botón se queda a la vista y apagado mientras el ajuste esté en su
+valor de fábrica —si apareciera y desapareciera, la fila cambiaría de alto cada
+vez que se roza un slider— y el valor sale del mismo `SETTINGS[clave].default`
+del que parte el saneado, así que no hay una segunda lista que se pueda quedar
+vieja.
 
 | ajuste | qué hace |
 | --- | --- |
 | Sensibilidad | slider y campo numérico sobre el mismo valor |
+| Escenario | Sala vacía · Largo y Puerta, con su plano y su ficha |
 | Tipo de diana | Clásica · Cono · Hitbox completo |
 | Arma | Scalar-2 · Axis-7 · Vertex-9 |
 | Tamaño de diana | escala la figura entera sin deformar sus proporciones |
 | Distancia de aparición | distancia base del cono respecto al jugador |
 | Cadencia | milisegundos entre apariciones. Menos es más difícil |
-| Dianas simultáneas | x1 · x2 · x3 · x5 — cuántas pueden estar vivas a la vez |
+| Dianas simultáneas | x1 · x2 · x3 · x5 · x8 — cuántas pueden estar vivas a la vez |
 | Modo dinámico | las dianas vivas se desplazan mientras están en pantalla |
+| Velocidad de patrulla | 1.5 a 8 u/s, sólo con el modo dinámico puesto |
 | Límite de fotogramas | 60 · 144 · 240 · Sin límite |
 | Silenciador | sólo con un arma que lo admita |
+| Audio espacial | los sonidos del mundo suenan con dirección |
 | Mensajes de ayuda | avisos breves en el HUD, activados por defecto |
 
 El panel sólo se abre con la partida parada, así que reconstruir las mallas al
@@ -418,6 +433,13 @@ de opción no obliga a reconstruirlo.
 
 ## HUD
 
+Arriba a la derecha, bajo el contador de FPS, un **engranaje con la palabra
+ESC**: la marca de dónde están las opciones ahora que no hay tablero en la sala.
+Es un rótulo, no un botón —con el ratón capturado no habría dónde pulsarlo—, y
+va al mismo trazo gris y sin relleno que el resto del HUD. El engranaje se
+**calcula** (ocho dientes entre dos radios, más el eje) en vez de pegar un `d`
+de treinta y dos puntos escrito a mano.
+
 Abajo a la derecha, el bloque del arma: silueta, nombre, cargador `actual/máximo`
 y, durante la recarga, una barra de progreso. Cuando el cargador baja de
 `HELP.lowAmmoRatio` (20%) el contador parpadea en naranja.
@@ -460,7 +482,16 @@ hoy hay un solo uso: *Pulsa R para recargar*, que salta una vez por cargador al
 bajar del umbral, y otra vez si se aprieta el gatillo en vacío. El interruptor
 **Mensajes de ayuda** del panel los apaga, y con ellos el parpadeo del contador.
 
-## Panel de acciones rápidas
+## Panel de acciones rápidas (apagado)
+
+**Hoy no está en el mundo:** `ACTION_PANEL.enabled` está a `false`. Apagado, el
+tablero no entra ni en la escena WebGL ni en la capa CSS3D, no se sigue al
+jugador ni se maqueta por frame, y un disparo hacia donde estaba es un disparo
+normal —cuenta, gasta bala y aplica retroceso—. Lo único que se conserva es su
+**hueco reservado** (`clearVolume`): las auditorías del mapa siguen comprobando
+que ningún punto de ruta cae dentro, así que volver a encenderlo es cambiar el
+flag y no encontrárselo dentro de una caja. Lo que sigue describe cómo funciona
+cuando está encendido.
 
 Un tablero dentro de la sala, a `ACTION_PANEL.distance` a la derecha del
 **punto de aparición** —no de una coordenada fija de la sala— y fuera del
@@ -537,7 +568,7 @@ SETTINGS                // valores iniciales y rangos del panel de opciones
 TARGET_TYPES            // formas, daño por zona y distancia base de cada tipo
 TARGET.maxHealth        // vida por diana
 TARGET.maxActive        // tope de dianas vivas en modo acumulativo
-ACTION_PANEL            // tamaño, escala, sitio y antirrebote del panel
+ACTION_PANEL            // interruptor, tamaño, escala, sitio y antirrebote del panel
 WEAPON_KEYS             // teclas de acción del arma (R para recargar)
 HELP.lowAmmoRatio       // umbral de aviso de munición baja
 HELP.messageDurationMs  // cuánto dura un aviso en pantalla

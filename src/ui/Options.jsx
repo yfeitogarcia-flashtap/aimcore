@@ -17,6 +17,13 @@ import {
  * lo que se ve viene de vuelta desde ahí, así que el slider, el campo numérico
  * y lo que aplica el motor no pueden desincronizarse. La única excepción es el
  * borrador del campo numérico, que necesita dejar escribir valores a medias.
+ *
+ * Cada fila se identifica por la **clave del ajuste**, no por su descriptor: de
+ * la clave salen la etiqueta, el rango, el valor de fábrica y el parche que se
+ * escribe en el store. Con el descriptor suelto había que repetir el nombre del
+ * ajuste en cada llamada —una vez en `spec` y otra en el `onChange`—, que es
+ * justo la duplicación por la que un botón de restablecer podía apuntar a un
+ * ajuste distinto del que enseña la fila.
  */
 
 /** Campo numérico enlazado al mismo valor que su slider. */
@@ -44,13 +51,71 @@ function NumberField({ spec, value, onCommit }) {
   )
 }
 
+/**
+ * Devuelve un solo ajuste a su valor de fábrica.
+ *
+ * Va en todas las filas porque el botón general del final es todo o nada:
+ * trastear con la sensibilidad y querer volver atrás no debería costar también
+ * el escenario, el arma y la cadencia. El valor sale de `SETTINGS[clave].default`,
+ * el mismo del que parte `sanitizeSettings`, así que no hay una segunda lista de
+ * valores por defecto que se pueda quedar vieja.
+ *
+ * Se queda **deshabilitado, no oculto**, cuando el ajuste ya está en fábrica: un
+ * botón que aparece y desaparece mueve la fila entera de sitio cada vez que se
+ * roza un slider.
+ */
+function DefaultButton({ setting, value, onChange }) {
+  const spec = SETTINGS[setting]
+  const fallback = spec.default
+  // Los numéricos pasan por el slider y por el campo de texto, así que se
+  // comparan con holgura: 4 y 4.000000000000001 son el mismo ajuste.
+  const atDefault =
+    typeof fallback === 'number' ? Math.abs(value - fallback) < 1e-9 : value === fallback
+
+  return (
+    <button
+      type="button"
+      className="field__default"
+      disabled={atDefault}
+      title={`Restablece sólo «${spec.label}»`}
+      onClick={() => onChange({ [setting]: fallback })}
+    >
+      por defecto
+    </button>
+  )
+}
+
+/**
+ * Cabecera de una fila: su etiqueta y su botón de restablecer.
+ *
+ * El botón va arriba y no pegado al control porque los controles no tienen la
+ * misma forma —un slider deja hueco, una fila de segmentos ocupa el ancho
+ * entero— y colgarlo de cada uno lo dejaría en un sitio distinto por fila.
+ */
+function FieldHead({ setting, value, onChange, htmlFor = null }) {
+  const label = SETTINGS[setting].label
+  return (
+    <div className="field__head">
+      {htmlFor ? (
+        <label className="field__label" htmlFor={htmlFor}>
+          {label}
+        </label>
+      ) : (
+        <span className="field__label">{label}</span>
+      )}
+      <DefaultButton setting={setting} value={value} onChange={onChange} />
+    </div>
+  )
+}
+
 /** Fila con etiqueta, slider y lectura del valor (o campo editable). */
-function SliderRow({ id, spec, value, onChange, suffix = '', editable = false, hint = null }) {
+function SliderRow({ id, setting, value, onChange, suffix = '', editable = false, hint = null }) {
+  const spec = SETTINGS[setting]
+  const commit = (next) => onChange({ [setting]: next })
+
   return (
     <div className="field">
-      <label className="field__label" htmlFor={id}>
-        {spec.label}
-      </label>
+      <FieldHead setting={setting} value={value} onChange={onChange} htmlFor={id} />
       <div className="field__control">
         <input
           id={id}
@@ -60,10 +125,10 @@ function SliderRow({ id, spec, value, onChange, suffix = '', editable = false, h
           max={spec.max}
           step={spec.step}
           value={value}
-          onChange={(event) => onChange(Number(event.target.value))}
+          onChange={(event) => commit(Number(event.target.value))}
         />
         {editable ? (
-          <NumberField spec={spec} value={value} onCommit={onChange} />
+          <NumberField spec={spec} value={value} onCommit={commit} />
         ) : (
           <span className="field__value">
             {value.toFixed(spec.decimals)}
@@ -84,11 +149,11 @@ function weaponHint(weaponKey) {
   return `${FIRE_MODES[weapon.mode]} · ${weapon.rpm} RPM · ${weapon.character}`
 }
 
-/** Explica en qué ejes se mueve el tipo de diana elegido. */
+/** Explica de dónde salen las dianas en el escenario elegido. */
 function scenarioHint(scenario) {
   return scenario === 'empty'
     ? 'Las dianas salen por muestreo dentro del cono de siempre.'
-    : 'Las dianas salen en anclajes fijos y sólo si los ves. El modo dinámico y la distancia de aparición no se aplican aquí.'
+    : 'Las dianas salen en puntos de ruta y sólo si los ves. La distancia de aparición no se aplica aquí.'
 }
 
 /**
@@ -104,7 +169,7 @@ function ScenarioRow({ value, onChange }) {
 
   return (
     <div className="field">
-      <span className="field__label">{SETTINGS.scenario.label}</span>
+      <FieldHead setting="scenario" value={value} onChange={onChange} />
 
       <div className="scenarios">
         {Object.keys(SCENARIOS).map((key) => (
@@ -113,7 +178,7 @@ function ScenarioRow({ value, onChange }) {
             type="button"
             className="scenarios__option"
             aria-pressed={value === key}
-            onClick={() => onChange(key)}
+            onClick={() => onChange({ scenario: key })}
           >
             <ScenarioThumbnail scenarioKey={key} />
             <span className="scenarios__name">{SCENARIOS[key].label}</span>
@@ -158,10 +223,10 @@ function dynamicHint(targetType) {
 }
 
 /** Fila de opciones excluyentes, con la etiqueta de cada una del catálogo. */
-function SegmentedRow({ spec, catalog, value, onChange, hint }) {
+function SegmentedRow({ setting, catalog, value, onChange, hint = null }) {
   return (
     <div className="field">
-      <span className="field__label">{spec.label}</span>
+      <FieldHead setting={setting} value={value} onChange={onChange} />
       <div className="segmented">
         {Object.keys(catalog).map((key) => (
           <button
@@ -169,7 +234,7 @@ function SegmentedRow({ spec, catalog, value, onChange, hint }) {
             type="button"
             className="segmented__option"
             aria-pressed={value === key}
-            onClick={() => onChange(key)}
+            onClick={() => onChange({ [setting]: key })}
           >
             {catalog[key].label}
           </button>
@@ -181,12 +246,17 @@ function SegmentedRow({ spec, catalog, value, onChange, hint }) {
 }
 
 /** Fila de interruptor on/off con su explicación al lado. */
-function ToggleRow({ spec, value, onChange, hint }) {
+function ToggleRow({ setting, value, onChange, hint }) {
   return (
     <div className="field">
-      <span className="field__label">{spec.label}</span>
+      <FieldHead setting={setting} value={value} onChange={onChange} />
       <div className="field__control">
-        <button type="button" className="toggle" aria-pressed={value} onClick={() => onChange(!value)}>
+        <button
+          type="button"
+          className="toggle"
+          aria-pressed={value}
+          onClick={() => onChange({ [setting]: !value })}
+        >
           {value ? 'Activado' : 'Desactivado'}
         </button>
         <span className="field__hint">{hint}</span>
@@ -202,28 +272,28 @@ export default function Options({ settings, onChange, onReset, onClose }) {
 
       <SliderRow
         id="opt-sensitivity"
-        spec={SETTINGS.sensitivity}
+        setting="sensitivity"
         value={settings.sensitivity}
-        onChange={(sensitivity) => onChange({ sensitivity })}
+        onChange={onChange}
         editable
       />
 
-      <ScenarioRow
-        value={settings.scenario}
-        onChange={(scenario) => onChange({ scenario })}
-      />
+      <ScenarioRow value={settings.scenario} onChange={onChange} />
 
       <SegmentedRow
-        spec={SETTINGS.targetType}
+        setting="targetType"
         catalog={TARGET_TYPES}
         value={settings.targetType}
-        onChange={(targetType) => onChange({ targetType })}
+        onChange={onChange}
       />
 
       <div className="field">
-        <label className="field__label" htmlFor="opt-weapon">
-          {SETTINGS.weapon.label}
-        </label>
+        <FieldHead
+          setting="weapon"
+          value={settings.weapon}
+          onChange={onChange}
+          htmlFor="opt-weapon"
+        />
         <div className="field__control">
           <select
             id="opt-weapon"
@@ -243,9 +313,9 @@ export default function Options({ settings, onChange, onReset, onClose }) {
 
       {WEAPONS[settings.weapon].supportsSuppressor ? (
         <ToggleRow
-          spec={SETTINGS.suppressor}
+          setting="suppressor"
           value={settings.suppressor}
-          onChange={(suppressor) => onChange({ suppressor })}
+          onChange={onChange}
           hint={
             settings.suppressor
               ? 'Disparo más apagado. No cambia daño, retroceso ni cadencia.'
@@ -253,6 +323,8 @@ export default function Options({ settings, onChange, onReset, onClose }) {
           }
         />
       ) : (
+        // Sin botón de restablecer: con un arma que no lo admite, el ajuste no
+        // se aplica, y un botón que no cambia nada visible confunde más que ayuda.
         <div className="field">
           <span className="field__label">{SETTINGS.suppressor.label}</span>
           <span className="field__hint">
@@ -263,31 +335,31 @@ export default function Options({ settings, onChange, onReset, onClose }) {
 
       <SliderRow
         id="opt-radius"
-        spec={SETTINGS.targetRadius}
+        setting="targetRadius"
         value={settings.targetRadius}
-        onChange={(targetRadius) => onChange({ targetRadius })}
+        onChange={onChange}
       />
 
       <SliderRow
         id="opt-distance"
-        spec={SETTINGS.spawnDistance}
+        setting="spawnDistance"
         value={settings.spawnDistance}
-        onChange={(spawnDistance) => onChange({ spawnDistance })}
+        onChange={onChange}
       />
 
       <SliderRow
         id="opt-cadence"
-        spec={SETTINGS.spawnIntervalMs}
+        setting="spawnIntervalMs"
         value={settings.spawnIntervalMs}
-        onChange={(spawnIntervalMs) => onChange({ spawnIntervalMs })}
+        onChange={onChange}
         suffix=" ms"
       />
 
       <SegmentedRow
-        spec={SETTINGS.simultaneousTargets}
+        setting="simultaneousTargets"
         catalog={SIMULTANEOUS_TARGETS}
         value={settings.simultaneousTargets}
-        onChange={(simultaneousTargets) => onChange({ simultaneousTargets })}
+        onChange={onChange}
         hint={
           settings.simultaneousTargets === 'x1'
             ? 'Una sola diana viva: la siguiente espera a que caiga la actual.'
@@ -296,9 +368,9 @@ export default function Options({ settings, onChange, onReset, onClose }) {
       />
 
       <ToggleRow
-        spec={SETTINGS.dynamic}
+        setting="dynamic"
         value={settings.dynamic}
-        onChange={(dynamic) => onChange({ dynamic })}
+        onChange={onChange}
         hint={
           settings.dynamic
             ? dynamicHint(settings.targetType)
@@ -308,18 +380,18 @@ export default function Options({ settings, onChange, onReset, onClose }) {
 
       <SliderRow
         id="opt-patrol-speed"
-        spec={SETTINGS.patrolSpeed}
+        setting="patrolSpeed"
         value={settings.patrolSpeed}
-        onChange={(patrolSpeed) => onChange({ patrolSpeed })}
+        onChange={onChange}
         suffix=" u/s"
         hint={patrolSpeedHint(settings)}
       />
 
       <SegmentedRow
-        spec={SETTINGS.frameLimit}
+        setting="frameLimit"
         catalog={FRAME_LIMITS}
         value={settings.frameLimit}
-        onChange={(frameLimit) => onChange({ frameLimit })}
+        onChange={onChange}
         hint={
           FRAME_LIMITS[settings.frameLimit].fps > 0
             ? 'El juego se actualiza a ese ritmo aunque el monitor vaya más rápido.'
@@ -328,9 +400,9 @@ export default function Options({ settings, onChange, onReset, onClose }) {
       />
 
       <ToggleRow
-        spec={SETTINGS.spatialAudio}
+        setting="spatialAudio"
         value={settings.spatialAudio}
-        onChange={(spatialAudio) => onChange({ spatialAudio })}
+        onChange={onChange}
         hint={
           settings.spatialAudio
             ? 'Los sonidos del mundo suenan con dirección, no sólo más o menos fuerte.'
@@ -339,9 +411,9 @@ export default function Options({ settings, onChange, onReset, onClose }) {
       />
 
       <ToggleRow
-        spec={SETTINGS.helpMessages}
+        setting="helpMessages"
         value={settings.helpMessages}
-        onChange={(helpMessages) => onChange({ helpMessages })}
+        onChange={onChange}
         hint={
           settings.helpMessages
             ? 'Avisos breves en el HUD, como el de recargar al quedarte corto.'

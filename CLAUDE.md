@@ -233,7 +233,17 @@ hasta que se les dé peso. Detonar **no puntúa**: es "Fallido", no 1★.
 **Bajo el punto de mira gana lo más cercano, siempre.** El tablero de acciones no
 tiene prioridad por ser interfaz: se compara su distancia con la de la diana y la
 del escenario. Cualquier candidato nuevo se suma a esa comparación, nunca delante
-de ella.
+de ella. El tablero está **apagado** desde la vuelta 28, pero la regla y su
+prueba siguen vivas —`fixes.mjs` [1] lo enciende a mano— porque es la regla, no
+el tablero, lo que hay que conservar.
+
+**Lo que se apaga se apaga en su módulo, no en quien lo usa.** `ActionPanel` lee
+`ACTION_PANEL.enabled` y se vuelve inerte por dentro: no entra en ninguna de las
+dos escenas, `raycast` devuelve null y `follow`/`syncLayout`/`update` son un
+`return`. El motor le sigue hablando desde los mismos siete sitios de siempre.
+Lo único que conserva encendido es `clearVolume`: el hueco reservado del tablero
+se sigue auditando contra los puntos de ruta, así que volver a encenderlo no lo
+mete dentro de una caja.
 
 **En el aire la marcha se congela.** `currentSpeed` devuelve la del despegue
 mientras `airborne`. Cambiarla a media trayectoria deja el vuelo igual de largo y
@@ -389,14 +399,17 @@ con sonido propio.
 | Axis-7 | auto | 600 | 30 | 2300 ms | no |
 | Vertex-9 | auto | 800 | 25 | 1800 ms | sí |
 
-**Panel de acciones disparable:** DOM en 3D vía `CSS3DRenderer` anclado respecto
-al spawn del jugador, con planos WebGL invisibles paralelos para el raycast.
-Botones Pausa / Reiniciar / Cambiar arma / Silenciador / Opciones. Acertarle no
-cuenta como acierto ni fallo, no gasta munición ni aplica recoil, y tiene su
-propio sonido de confirmación.
+**Panel de acciones disparable: apagado** (`ACTION_PANEL.enabled: false`). El
+código se queda entero —DOM en 3D vía `CSS3DRenderer` anclado al spawn, con
+planos WebGL invisibles para el raycast, y botones Pausa / Reiniciar / Cambiar
+arma / Silenciador / Opciones—, pero no hay tablero en la sala: disparar hacia
+su sitio es un disparo normal. Su hueco reservado se sigue auditando.
 
 **HUD:** aciertos, fallos, precisión y tiempo arriba (∞ en práctica libre);
-contador de FPS en la esquina; y **bajo la mira**, centrado, el bloque de arma en
+contador de FPS en la esquina y, **justo debajo, un engranaje con la palabra
+ESC** —contorno gris sin relleno, calculado como la estrella y no pegado como un
+`d` a mano— que es la única pista en pantalla de dónde están las opciones ahora
+que no hay tablero; y **bajo la mira**, centrado, el bloque de arma en
 **una sola fila** —silueta a un lado, munición actual/máximo al otro, con
 parpadeo en reserva baja—, con el nombre del arma como rótulo secundario debajo,
 más el indicador de recarga y los mensajes de ayuda.
@@ -421,7 +434,10 @@ bajan solas con el paso del tiempo porque el tiempo es la mitad de la nota.
 
 **Selector de escenario:** plano cenital por escenario dibujado desde los datos,
 más la ficha —entrena / riesgo / rejugabilidad— del que esté elegido. Al cambiar,
-una transición corta tapa el montaje.
+una transición corta tapa el montaje. Los planos van en **rejilla de columna
+fija** (140 px de plano, la mitad que cuando se repartían el ancho entre dos): el
+selector crece en filas con cada escenario nuevo en vez de encoger los que ya
+estaban.
 
 **Opciones** (accesibles antes de empezar y desde la pausa, persistidas):
 escenario, sensibilidad, tipo de diana, arma, tamaño de diana, distancia de spawn, cadencia
@@ -429,6 +445,13 @@ de aparición, dianas simultáneas, límite de FPS, supresor (sólo si el arma l
 admite), **audio espacial**, mensajes de ayuda, modo dinámico y **velocidad de
 patrulla** (1.5–8 u/s, por defecto 4: `TARGET.moveSpeed` pasa a ser sólo el valor
 por defecto del ajuste, y el motor lee el del store).
+
+Cada ajuste lleva **su propio botón «por defecto»** junto a su etiqueta, que
+restablece sólo ese; el **Restablecer** del final sigue restableciéndolos todos.
+El valor sale de `SETTINGS[clave].default`, el mismo del que parte
+`sanitizeSettings`: no hay una segunda lista de valores de fábrica. Las filas del
+panel se identifican por **clave de ajuste**, no por descriptor, justo para que
+el botón no pueda apuntar a un ajuste distinto del que enseña la fila.
 
 ---
 

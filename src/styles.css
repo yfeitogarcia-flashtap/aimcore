@@ -314,6 +314,34 @@ body {
   text-transform: uppercase;
 }
 
+/* Marca de opciones, justo debajo del contador y alineada con él por la
+   derecha. Mismo gris apagado y mismo trazo sin relleno que la estrella vacía:
+   es una indicación de tecla, no un elemento con el que se pueda interactuar. */
+.hud__options {
+  z-index: 2;
+  position: absolute;
+  top: 50px;
+  right: 28px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-muted);
+}
+
+.hud__gear {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linejoin: round;
+}
+
+.hud__options-key {
+  font-size: 9px;
+  letter-spacing: 0.16em;
+}
+
 /* ---------- Arma y cargador ---------- */
 
 /*
@@ -597,6 +625,42 @@ body {
   gap: 6px;
 }
 
+/* Etiqueta y botón de restablecer de la fila, en la misma línea y a los dos
+   extremos: el botón queda siempre en el mismo sitio caiga lo que caiga debajo. */
+.field__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.field__default {
+  padding: 3px 7px;
+  border: 1px solid var(--panel-border);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 9px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease, opacity 120ms ease;
+}
+
+.field__default:hover:not(:disabled),
+.field__default:focus-visible:not(:disabled) {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+  outline: none;
+}
+
+/* Ya está en su valor de fábrica: se queda a la vista, apagado, para que la
+   fila no cambie de alto cada vez que se toca un slider. */
+.field__default:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
 .field__label {
   font-size: 10px;
   letter-spacing: 0.18em;
@@ -725,13 +789,18 @@ body {
 
 /* ---------- Selector de escenario ---------- */
 
+/* Rejilla de columna fija en lugar de una fila que se reparte el ancho: con dos
+   escenarios los planos salían a media columna cada uno —casi 280 px— y cada
+   escenario nuevo los habría ido encogiendo a un tamaño distinto. Con la columna
+   fija el plano mide siempre 140 px, la mitad que antes, y el selector crece
+   hacia abajo en filas en vez de estrujar lo que ya había. */
 .scenarios {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 158px);
   gap: 8px;
 }
 
 .scenarios__option {
-  flex: 1;
   display: flex;
   flex-direction: column;
   gap: 7px;

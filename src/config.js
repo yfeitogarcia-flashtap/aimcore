@@ -267,8 +267,19 @@ export const WEAPON_KEYS = {
  * reutilizar la tipografía y el verde de marca sin repintarlos en WebGL. Va a
  * la derecha del punto de aparición, fuera del abanico de las dianas, y a una
  * altura desde la que se ve girando la cabeza sin buscarlo.
+ *
+ * **Hoy está apagado** (`enabled: false`). Las medidas se quedan enteras a
+ * propósito: `clearVolume` sigue reservando su hueco y las auditorías del mapa
+ * lo siguen comprobando, así que volver a encenderlo es cambiar este flag y no
+ * encontrarse el tablero dentro de una caja.
  */
 export const ACTION_PANEL = {
+  /**
+   * Si el tablero existe en el mundo. Apagado no entra en ninguna de las dos
+   * escenas —ni DOM en 3D ni planos de impacto—, no se sigue al jugador ni se
+   * maqueta por frame, y un disparo sobre su sitio es un disparo normal.
+   */
+  enabled: false,
   /** Tamaño del tablero en píxeles CSS. */
   widthPx: 1800,
   heightPx: 300,

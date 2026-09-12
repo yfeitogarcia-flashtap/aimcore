@@ -2055,6 +2055,116 @@ El motor lee `this.patrolSpeed` del store, no la constante, para que el slider
 tenga efecto en caliente. Medido: a 2, 4 y 7 u/s un muñeco en ruta recorre 2.00,
 4.00 y 6.98 unidades por segundo.
 
+## Ronda 28 — El tablero se apaga, y cada ajuste se restablece solo
+
+### 28.1 `ACTION_PANEL.enabled` no existía
+
+El encargo empezaba con una comprobación, no con un cambio: «oculta el panel de
+acciones **de verdad**, por si el aviso anterior no llegó a aplicarse; comprueba
+el estado actual de `ACTION_PANEL.enabled` antes de nada». No había tal estado.
+`ACTION_PANEL` no tenía ningún interruptor y el tablero seguía entero: DOM en 3D
+en la sala, cinco planos de impacto, `follow` y `syncLayout` cada frame y un
+raycast propio en cada click. El aviso anterior no llegó al repositorio.
+
+Vale la pena anotarlo por lo que enseña sobre el formato de estas vueltas: un
+«por si acaso» del encargo es una hipótesis que hay que verificar contra el
+código, no un recordatorio de algo ya hecho. Aquí una de las dos comprobaciones
+—el interruptor— era falsa y la otra —el disparo en seco (§28.3)— era cierta.
+
+### 28.2 Apagarlo en el módulo, no en el motor
+
+El motor le habla al tablero desde siete sitios: lo construye, lo ancla al
+spawn, lo reancla al cambiar de escenario, le pasa el arma, lo sigue, lo maqueta
+y lo consulta en cada disparo. Sembrar esos siete sitios de `if
+(ACTION_PANEL.enabled)` deja el interruptor repartido por el fichero más grande
+del proyecto, con la garantía de que el octavo sitio se olvidará.
+
+`ActionPanel` lee el flag en su constructor y se vuelve **inerte por dentro**:
+no se añade ni a la escena WebGL ni a la del `CSS3DRenderer`, `raycast` devuelve
+`null` y `follow` / `syncLayout` / `update` son un `return`. El motor no cambia
+ni una línea.
+
+Lo que **no** se apaga es `clearVolume`. El volumen que el tablero reserva en la
+sala sigue midiéndose y las auditorías del mapa lo siguen comprobando contra los
+69 puntos de ruta. Un tablero apagado cuyo hueco se deja de auditar es un
+tablero que, el día que se encienda, aparece dentro de una caja. Cuesta cero y
+se conserva la propiedad.
+
+Por lo mismo, la regla «bajo el punto de mira gana lo más cercano» conserva su
+prueba: `fixes.mjs` [1] **enciende el tablero a mano** —lo mete en las dos
+escenas, lo maqueta y lo vuelve a sacar—, porque lo que hay que preservar es la
+regla, no el tablero. Al encenderlo a mano hizo falta un `updateMatrixWorld` que
+el juego normal no necesita: dentro de un `evaluate` no pasa ningún frame entre
+añadir el grupo y disparar contra él, así que su matriz de mundo seguía en
+blanco y los planos quedaban en el origen.
+
+### 28.3 El disparo en seco ya estaba, y ahora está medido
+
+La segunda comprobación del encargo sí estaba aplicada: `playDryFire()` se
+llamaba desde `_onMouseDown` una vez por pulsación con el cargador a cero. Pero
+estaba comprobada leyendo el código, que es exactamente lo que no basta.
+
+Ahora hay medida. El clic seco es el **único** sonido del juego que usa un
+filtro paso alto, así que contar los `BiquadFilterNode` de tipo `highpass`
+creados durante una pulsación identifica la voz sin tener que oírla. Medido: 0
+con balas, 1 por clic con el cargador vacío, 3 con tres clics, y **3 tras 30
+llamadas al bucle de disparo con el gatillo mantenido** — el fuego automático no
+lo repite a 600 RPM, que es la parte que de verdad se podía romper.
+
+### 28.4 Un engranaje en el HUD porque ya no hay tablero
+
+Apagar el tablero deja las opciones sin puerta visible: el único camino es ESC.
+Bajo el contador de FPS va ahora un **engranaje con la palabra ESC**, al mismo
+trazo gris sin relleno que la estrella vacía y la silueta del arma. Es un
+rótulo, no un botón: con el ratón capturado no hay dónde pulsarlo.
+
+El engranaje se **calcula** —ocho dientes de cuatro puntos entre dos radios, más
+el eje— en vez de pegar un `d` de treinta y dos coordenadas. Un path escrito a
+mano no dice de dónde sale ninguno de sus números y cambiar el número de dientes
+obliga a redibujarlo entero.
+
+Queda una imprecisión que conviene tener escrita: **ESC pausa**, y el panel de
+opciones está a un click desde la pausa. No es que ESC abra las opciones. El
+navegador suelta el pointer lock con ESC antes de que la página vea la tecla, así
+que hacer que ESC abra directamente las opciones es una decisión de diseño de la
+pausa, no un detalle del rótulo.
+
+### 28.5 Un «por defecto» por ajuste
+
+El botón **Restablecer** del final es todo o nada. Trastear con la sensibilidad
+y querer volver atrás costaba también el escenario, el arma y la cadencia, así
+que en la práctica no se usaba: se volvía a mover el slider a ojo.
+
+Ahora cada fila lleva su propio botón «por defecto», junto a su etiqueta, que
+restablece **sólo** ese ajuste. Tres decisiones dentro:
+
+- **El valor sale de `SETTINGS[clave].default`**, el mismo del que parte
+  `sanitizeSettings`. Una segunda lista de valores de fábrica es una lista que
+  se queda vieja.
+- **Deshabilitado, no oculto**, cuando el ajuste ya está en fábrica. Un botón
+  que aparece y desaparece cambia el alto de la fila cada vez que se roza un
+  slider.
+- **Las filas se identifican por clave de ajuste, no por descriptor.** Antes
+  cada llamada repetía el nombre del ajuste dos veces —`spec={SETTINGS.x}` y
+  `onChange={(x) => onChange({ x })}`—, que es justo la duplicación por la que
+  un botón de restablecer puede acabar apuntando a un ajuste distinto del que
+  enseña su fila. Con la clave, la etiqueta, el rango, el valor de fábrica y el
+  parche salen todos del mismo sitio.
+
+El botón general se queda como estaba.
+
+### 28.6 Miniaturas a la mitad, en columna fija
+
+Los planos cenitales se repartían el ancho del panel entre los escenarios que
+hubiera: con dos, casi 280 px cada uno. Eso no es un tamaño, es un reparto — con
+cinco escenarios cada plano mediría otra cosa, y los que ya estaban encogerían.
+
+Ahora la rejilla es de **columna fija**: 140 px de plano, la mitad que antes, y
+el selector crece **en filas**. Medido en el panel de 598 px: 142 px de plano
+frente a los 279 de antes (ratio 0.51), y **el mismo 142 con seis escenarios**.
+
+---
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

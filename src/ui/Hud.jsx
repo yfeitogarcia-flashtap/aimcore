@@ -4,6 +4,38 @@ import { STAR_PATH } from './Stars.jsx'
 import { WEAPONS } from '../config.js'
 
 /**
+ * Engranaje de la marca de opciones, en el mismo lienzo de 24×24 que la
+ * estrella. Se calcula en vez de pegar un `d` de treinta y dos puntos escrito a
+ * mano: así se lee de dónde sale cada número y cambiar el número de dientes no
+ * obliga a redibujar nada. Es contorno puro, sin relleno, como el resto del HUD.
+ */
+const GEAR_PATH = (() => {
+  const teeth = 8
+  const cx = 12
+  const cy = 12
+  const outer = 10.1
+  const root = 7.6
+  // Media separación entre dientes. El diente ocupa la parte de arriba y el
+  // valle la de abajo, con los flancos inclinados entre medias.
+  const half = Math.PI / teeth
+  const tip = half * 0.36
+  const base = half * 0.66
+  const points = []
+  for (let i = 0; i < teeth; i++) {
+    const a = (i * 2 * Math.PI) / teeth
+    for (const [angle, radius] of [
+      [a - base, root],
+      [a - tip, outer],
+      [a + tip, outer],
+      [a + base, root],
+    ]) {
+      points.push(`${(cx + Math.cos(angle) * radius).toFixed(2)} ${(cy + Math.sin(angle) * radius).toFixed(2)}`)
+    }
+  }
+  return `M${points.join(' L')} Z`
+})()
+
+/**
  * HUD de partida: cronómetro, aciertos, fallos, FPS, cargador y arma.
  *
  * Se actualiza escribiendo directamente en el DOM desde el bucle del motor, no
@@ -152,6 +184,18 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
           0
         </span>
         <span className="hud__fps-unit">fps</span>
+      </div>
+
+      {/* Sin tablero de acciones en la sala, las opciones sólo se alcanzan por
+          teclado: el engranaje recuerda con qué tecla, sin ocupar más sitio que
+          el contador que tiene encima. Es un rótulo, no un botón — con el ratón
+          capturado no habría dónde pulsarlo. */}
+      <div className="hud__options">
+        <svg className="hud__gear" viewBox="0 0 24 24" role="presentation">
+          <path d={GEAR_PATH} />
+          <circle cx="12" cy="12" r="3.2" />
+        </svg>
+        <span className="hud__options-key">ESC</span>
       </div>
 
       <div className="hud__stars" ref={starsRef} hidden>
