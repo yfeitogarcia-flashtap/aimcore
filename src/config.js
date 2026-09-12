@@ -514,10 +514,53 @@ export const MOVEMENT = {
   chainJumpWindowMs: 130,
 
   /**
+   * **Qué modelo de aire se usa**, mientras se decide cuál se queda:
+   *
+   * - `true` — **vector de velocidad**. En el aire el jugador tiene una
+   *   velocidad horizontal de verdad, con dirección: sueltas W en pleno vuelo y
+   *   la marcha que llevabas **sigue apuntando a donde ibas**, y el estrafe la
+   *   va girando poco a poco. Es el bunny-hop de verdad.
+   * - `false` — **marcha escalar**, lo que había hasta la vuelta 31: una
+   *   velocidad sin dirección, que se recalcula cada frame desde las teclas. La
+   *   ganancia funciona, pero soltar W te deja en lateral puro al instante.
+   *
+   * Los dos modelos conviven a propósito y **uno de los dos se borrará**: esto
+   * es un interruptor de prueba, no una opción de juego (no está en el panel de
+   * ajustes). Se lee cada frame, así que cambiarlo en caliente desde la consola
+   * vale — el cambio se nota a partir del salto siguiente.
+   *
+   * Con el vector cambia una cosa más allá del air-strafe, y conviene saberlo:
+   * **hay inercia**. Hoy, soltar las teclas en el aire te deja clavado; con el
+   * vector sigues volando, como en cualquier FPS con física.
+   */
+  airVector: true,
+  /**
+   * **Aceleración aérea** del modelo vectorial, el `sv_airaccelerate` de
+   * siempre. Multiplica a `airWishFactor · speed · dt` para dar la ganancia
+   * por frame, y el resultado se acota además por lo que falte para llegar a la
+   * velocidad deseada.
+   */
+  airAccel: 10,
+  /**
+   * Tope de la **velocidad deseada** en el aire, como fracción de la carrera.
+   * Es la pieza que hace que el air-strafe funcione: el aire sólo acelera
+   * mientras la proyección de tu velocidad sobre la dirección que pides sea
+   * menor que esto, así que apuntar la dirección deseada casi perpendicular a
+   * tu marcha —lo que se consigue girando— es lo único que deja seguir
+   * sumando. Con W pulsada mirando a donde vas, la proyección ya es 6.5 y no
+   * gana nada: la condición «W suelta» del modelo escalar aquí no hace falta
+   * porque **sale sola de la geometría**.
+   *
+   * 0.12 es la proporción de Source (30 u/s de tope sobre 250 de carrera).
+   * Aquí son 0.78 u/s. Punto de partida, para calibrar jugando.
+   */
+  airWishFactor: 0.12,
+  /**
    * **Aceleración en el aire (air-strafe).** Techo de velocidad horizontal que
    * se puede alcanzar estrafeando en el aire, en unidades por segundo. Es un
-   * límite duro, no una sugerencia: `_airSpeed` no lo pasa nunca, así que por
-   * muchos saltos que se encadenen la marcha máxima del juego es ésta.
+   * límite duro para **los dos modelos**: ni `_airSpeed` en el escalar ni el
+   * módulo del vector lo pasan nunca, así que por muchos saltos que se
+   * encadenen la marcha máxima del juego es ésta.
    *
    * 9.5 frente a los 6.5 de carrera: un 46% más. Ojo con leerlo como «se cruza
    * el mapa un 46% antes»: el techo sólo se toca encadenando bien y girando
@@ -536,6 +579,7 @@ export const MOVEMENT = {
    * seguidos: se nota el progreso sin que un salto suelto lo regale.
    */
   airStrafeGainPerRad: 0.9,
+  // (sólo lo usa el modelo escalar: con vector la ganancia sale de la geometría)
   /**
    * Velocidad angular máxima que **cuenta** para la ganancia, en grados por
    * segundo. Girar más rápido que esto no da más: lo que se premia es un giro
@@ -545,6 +589,7 @@ export const MOVEMENT = {
    * `rate · dt`, así que medio segundo de giro vale lo mismo a 60 que a 240 Hz.
    */
   airStrafeMaxYawRateDeg: 140,
+  // (sólo lo usa el modelo escalar, por el mismo motivo)
 
   /**
    * Margen que se deja libre junto a cada pared. El desplazamiento ya no está

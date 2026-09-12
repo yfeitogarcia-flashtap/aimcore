@@ -250,33 +250,62 @@ cuando esas mecánicas existan.
 
 ## Air-strafe: acelerar en el aire
 
-En el aire, con **A o D pulsados y W suelta**, mover el ratón **hacia el mismo
-lado que la tecla** te acelera por encima de tu carrera. Es la maniobra de
-siempre del bunny-hop: se aprende con el ritmo, no machacando teclas.
+En el aire, mover el ratón **hacia el mismo lado que la tecla de estrafe** te
+acelera por encima de tu carrera. Es la maniobra de siempre del bunny-hop: se
+aprende con el ritmo, no machacando teclas.
 
-Cuatro reglas, y son el mecanismo entero:
+Hay **dos modelos conviviendo** tras `MOVEMENT.airVector`, mientras se decide
+cuál se queda. No es un ajuste de juego y no está en el panel de opciones: es un
+interruptor para comparar jugando.
 
-- **Se paga por ángulo, no por tiempo.** Lo que acelera es girar; mantener la
-  tecla con la vista quieta no da nada. Por lo mismo, un giro vale igual en
-  cualquier monitor: el ángulo total es el mismo se dibuje en 35 frames o en 140.
-- **Girar más rápido no da más.** Por encima de `MOVEMENT.airStrafeMaxYawRateDeg`
-  (140°/s) el exceso no cuenta. Un *flick* de 90° en un frame vale exactamente lo
-  que un frame, no un giro entero.
-- **Dejar de cumplir las condiciones no frena.** Sueltas el estrafe, paras el
-  ratón o pulsas W: dejas de sumar y te quedas con lo que llevabas.
-- **El techo es duro.** `MOVEMENT.airStrafeMaxSpeed` (9.5 frente a los 6.5 de
-  carrera) no se pasa nunca, encadenes los saltos que encadenes. Con un giro
-  sostenido se llega en unos tres saltos: 6.5 → 7.8 → 9.0 → 9.5.
+### `airVector: true` — vector de velocidad (por defecto)
 
-Al aterrizar sigue mandando la regla de siempre: lo ganado se conserva **sólo si
-encadenas** dentro de `MOVEMENT.chainJumpWindowMs`. Fuera de esa ventana el
-siguiente salto vuelve a salir a marcha de carrera.
+En el aire tienes una velocidad de verdad, con dirección. Lo que cambia:
 
-Ojo con leer el 46% como «cruzo el mapa un 46% antes»: girar **curva la
-trayectoria**, así que en línea recta se gana bastante menos que en el número.
+- **Sueltas W en pleno vuelo y sigues yendo hacia donde ibas.** El estrafe va
+  girando esa marcha poco a poco en vez de tirarte a lateral puro. Medido:
+  corriendo de frente y girando a 40°/s, el rumbo pasa de 0° a −29° en un vuelo.
+- **Hay inercia.** Sin teclas se sigue volando; ya no te quedas clavado en el
+  aire al soltarlas. Es la otra cara de tener dirección, y se nota en todos los
+  saltos.
+- **El ritmo de giro es la habilidad.** 40°/s es el óptimo y sube de 6.5 a 8.3
+  u/s en seis saltos; girar como un molino (140-220°/s) **te frena** hasta por
+  debajo de tu carrera. Justo al revés que el otro modelo.
+- **Mirar a donde vas no acelera**, y no hace falta prohibirlo: con la vista en
+  la dirección de la marcha ya no cabe ganancia. Sale de la geometría.
+- **El techo sigue siendo duro:** `MOVEMENT.airStrafeMaxSpeed`, 9.5 u/s.
 
-El salto en sí no cambia — misma altura (1.2528 u) y misma duración (578 ms) con
-la maniobra puesta o sin ella. Esto sólo toca la marcha horizontal.
+Rozar la cara de un cajón bajo mientras subes **no** te quita la marcha —vas a
+pasar por encima—, pero chocar con un muro sí: se pierde la componente que choca
+y la otra desliza entera.
+
+### `airVector: false` — marcha escalar (lo de antes)
+
+Una velocidad sin dirección, recalculada cada frame desde las teclas. Acelera por
+**ángulo girado** con A o D y W suelta, hasta `airStrafeMaxYawRateDeg` (140°/s:
+girar más no da más), y no depende del refresco. Funciona, pero soltar W te deja
+en lateral puro al instante — que es justo lo que llevó al modelo vectorial.
+
+### Lo que vale para los dos
+
+Al aterrizar manda la regla de siempre: lo ganado se conserva **sólo si
+encadenas** dentro de `MOVEMENT.chainJumpWindowMs` (con vector, se conserva
+también la dirección). Fuera de esa ventana el siguiente salto sale a marcha de
+carrera.
+
+Ojo con leer el 46% del techo como «cruzo el mapa un 46% antes»: girar **curva la
+trayectoria**, así que en línea recta se gana bastante menos.
+
+El salto en sí no cambia — misma altura (1.2528 u) y misma duración (578 ms) en
+los dos modelos. Esto sólo toca la marcha horizontal.
+
+**Una excepción conocida, y medida:** el modelo vectorial es una integración
+—la entrada es el ratón, que se muestrea una vez por frame— así que el resultado
+depende un poco del refresco: **1.38%** entre 60 y 240 Hz encadenando durante
+cuatro segundos. De eso, 0.57 puntos ya existían con el modelo escalar, porque el
+contacto con el suelo entre saltos se cuantiza al frame. Es el único sitio del
+juego donde el refresco cambia el resultado; el porqué está en
+`docs/decisions.md` §32.
 
 ## Aterrizaje
 

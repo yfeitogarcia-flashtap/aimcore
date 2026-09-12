@@ -31,25 +31,39 @@
  * resolver y(t) = suelo, no del frame que lo detecta—, y la ventana de
  * encadenado se puede medir en milisegundos reales contra ese instante.
  *
- * Lo horizontal **no tiene vector de velocidad**: hay una marcha escalar y una
- * dirección que sale de las teclas y del yaw. Por eso la aceleración en el aire
- * (`_updateAirStrafe`) es una ganancia sobre esa marcha —`_airSpeed`— y no una
- * suma de vectores: es la única pieza que puede subirla por encima de la
- * carrera, y lo hace contra un techo duro (`MOVEMENT.airStrafeMaxSpeed`).
+ * **Dos modelos para el aire, tras el interruptor `MOVEMENT.airVector`**, y uno
+ * de los dos acabará borrándose:
+ *
+ * - **Vector** (`true`): en el aire hay una velocidad horizontal de verdad,
+ *   `_airVelX`/`_airVelZ`, que se siembra al despegar y se acelera con el
+ *   `airAccelerate` clásico —proyectar la velocidad sobre la dirección pedida,
+ *   acotar, sumar—. De ahí sale que soltar W conserve **hacia dónde ibas** y que
+ *   el estrafe vaya girando la marcha en vez de saltar a lateral puro. Trae
+ *   inercia de regalo: sin teclas se sigue volando.
+ * - **Escalar** (`false`): lo de antes. Una marcha sin dirección
+ *   (`_airSpeed`) y una dirección recalculada cada frame desde las teclas y el
+ *   yaw. `_updateAirStrafe` sube esa marcha por ángulo girado.
+ *
+ * **El suelo es el mismo en los dos casos** y no se ha tocado: sin aceleración
+ * ni fricción, la dirección sale de las teclas y la marcha de `currentSpeed`.
+ *
+ * El techo (`MOVEMENT.airStrafeMaxSpeed`) vale para los dos.
  *
  * Todo esto es inerte si `MOVEMENT.enabled` es false: la cámara se queda
  * clavada en el centro a la altura de pie, que es la línea base de puntería.
  */
 
-import * as THREE from 'three'
 import { COVER, LANDING, MOVEMENT, ROOM } from '../config.js'
-
-// Vectores de módulo: el bucle no aloca nada.
-const _forward = new THREE.Vector3()
-const _right = new THREE.Vector3()
 
 const DEG_TO_RAD = Math.PI / 180
 const TWO_PI = Math.PI * 2
+/**
+ * Holgura para decidir si un eje llegó a donde quería. `resolveAxis` devuelve
+ * el destino **exacto** cuando no hay nada delante, así que cualquier diferencia
+ * de verdad es mucho mayor que esto: el margen sólo evita comparar dos coma
+ * flotante con `===`.
+ */
+const CLIP_EPSILON = 1e-9
 
 /** Invierte MOVEMENT.keys a un mapa código de tecla -> acción. */
 function buildKeyMap(keys) {
@@ -93,6 +107,22 @@ export class MovementController {
      * `MOVEMENT.airStrafeMaxSpeed`.
      */
     this._airSpeed = MOVEMENT.speed
+    /**
+     * Velocidad horizontal en el aire del **modelo vectorial**, en componentes
+     * sueltas para no alocar. Nace al despegar, la mueve `_updateAirAccel` y la
+     * recorta la colisión; en el suelo no existe.
+     */
+    this._airVelX = 0
+    this._airVelZ = 0
+    /** La que se traía al aterrizar, que es lo que conserva un encadenado. */
+    this._landingVelX = 0
+    this._landingVelZ = 0
+    /** Dirección pedida por las teclas, unitaria. La escribe `_readWish`. */
+    this._wishX = 0
+    this._wishZ = 0
+    /** ¿Frenó la pared de la sala este frame? Lo anota `_moveTo`. */
+    this._wallClampedX = false
+    this._wallClampedZ = false
     /** Yaw del frame anterior: de su diferencia sale el giro del air-strafe. */
     this._lastYaw = camera.rotation.y
     /**
@@ -209,7 +239,9 @@ export class MovementController {
     // agacharse a media trayectoria bajaba la velocidad de 6.5 a 2.6 de golpe
     // —el vuelo dura lo mismo pero recorres la mitad—, y eso se siente
     // exactamente como quedarse flotando a cámara lenta.
-    if (this.airborne) return this._airSpeed
+    if (this.airborne) {
+      return MOVEMENT.airVector ? Math.hypot(this._airVelX, this._airVelZ) : this._airSpeed
+    }
     let speed = MOVEMENT.speed
     if (this.keys.walk && MOVEMENT.walkSpeed < speed) speed = MOVEMENT.walkSpeed
     if (this.keys.crouch && MOVEMENT.crouchSpeed < speed) speed = MOVEMENT.crouchSpeed
@@ -224,9 +256,45 @@ export class MovementController {
    */
   get horizontalSpeed() {
     if (!this.enabled) return 0
+    // Con vector, en el aire la marcha no depende de las teclas: hay inercia, y
+    // soltarlas no te para. Preguntar por las teclas diría que está quieto
+    // alguien que va cruzando la sala por el aire.
+    if (this.airborne && MOVEMENT.airVector) return this.currentSpeed
     const keys = this.keys
     const moving = keys.forward || keys.back || keys.left || keys.right
     return moving ? this.currentSpeed : 0
+  }
+
+  /**
+   * Dirección que piden las teclas, unitaria y en el plano XZ, en `_wishX` y
+   * `_wishZ`. El cabeceo no interviene: mirar al suelo o al cielo no cambia
+   * hacia dónde se anda. Normalizar evita que la diagonal corra más que un eje.
+   *
+   * Es **el único sitio** donde se convierte «qué teclas hay pulsadas» en una
+   * dirección: la usan el paso por el suelo, la siembra del vector al despegar y
+   * la aceleración aérea. Tres copias de esta trigonometría es como acaban
+   * andando y volando hacia sitios distintos.
+   *
+   * @returns {boolean} si se pide alguna dirección
+   */
+  _readWish() {
+    const keys = this.keys
+    const x = (keys.right ? 1 : 0) - (keys.left ? 1 : 0)
+    const z = (keys.forward ? 1 : 0) - (keys.back ? 1 : 0)
+    if (x === 0 && z === 0) return false
+    const yaw = this.camera.rotation.y
+    const sin = Math.sin(yaw)
+    const cos = Math.cos(yaw)
+    // forward = (−sin, −cos); right = (cos, −sin).
+    const inverse = 1 / Math.hypot(x, z)
+    this._wishX = (-sin * z + cos * x) * inverse
+    this._wishZ = (-cos * z - sin * x) * inverse
+    return true
+  }
+
+  /** ¿Manda el vector de velocidad ahora mismo? Sólo en el aire y con el flag. */
+  get usingAirVector() {
+    return MOVEMENT.airVector && this.airborne
   }
 
   /**
@@ -259,6 +327,10 @@ export class MovementController {
     this._landingSpeed = MOVEMENT.speed
     this.chainedJump = false
     this._airSpeed = MOVEMENT.speed
+    this._airVelX = 0
+    this._airVelZ = 0
+    this._landingVelX = 0
+    this._landingVelZ = 0
     this._lastYaw = this.camera.rotation.y
     this.airStrafing = false
     this._safeX = this.spawnX
@@ -291,7 +363,8 @@ export class MovementController {
   update(dt, now = performance.now()) {
     if (!this.enabled) return
     // Antes que la horizontal: lo que se gane este frame ya mueve este frame.
-    this._updateAirStrafe(dt)
+    if (MOVEMENT.airVector) this._updateAirAccel(dt)
+    else this._updateAirStrafe(dt)
     this._updateHorizontal(dt)
     this._updateVertical(dt, now)
     this._updateLandingDip(dt)
@@ -328,7 +401,11 @@ export class MovementController {
       Number.isFinite(this._airTime) &&
       Number.isFinite(this._launchY) &&
       Number.isFinite(this._launchVelocity) &&
-      Number.isFinite(this._airSpeed)
+      Number.isFinite(this._airSpeed) &&
+      // El vector es **estado guardado**: al contrario que la marcha escalar,
+      // que se recalcula cada frame desde las teclas, un NaN aquí se queda.
+      Number.isFinite(this._airVelX) &&
+      Number.isFinite(this._airVelZ)
 
     if (sano) {
       this._safeX = position.x
@@ -349,6 +426,10 @@ export class MovementController {
     this._launchVelocity = 0
     this._airSpeed = MOVEMENT.speed
     this._landingSpeed = MOVEMENT.speed
+    this._airVelX = 0
+    this._airVelZ = 0
+    this._landingVelX = 0
+    this._landingVelZ = 0
     this.airStrafing = false
     this._landedAt = -Infinity
     this._jumpPressedAt = -Infinity
@@ -439,27 +520,177 @@ export class MovementController {
     this._airSpeed = gained < max ? gained : max
   }
 
+  /**
+   * **Aceleración aérea del modelo vectorial**, el `airAccelerate` de toda la
+   * vida: se proyecta la velocidad actual sobre la dirección pedida, se mira
+   * cuánto falta para la velocidad deseada y se suma esa diferencia acotada por
+   * `accel · wishSpeed · dt`.
+   *
+   * Todo el mecanismo está en la proyección. Con la vista puesta donde vas, la
+   * proyección ya vale toda tu marcha —muy por encima de los 0.78 u/s de
+   * `wishSpeed`—, no falta nada y no se gana nada: por eso **aquí no hace falta
+   * la condición «W suelta»** del modelo escalar, sale sola. Y con la dirección
+   * pedida casi perpendicular a la marcha, la proyección es casi cero, cabe
+   * ganancia entera y lo que se suma es perpendicular: la velocidad crece y
+   * **gira**. Girar el ratón es lo que mantiene esa perpendicularidad mientras
+   * la marcha rota; de ahí que air-strafear sea un ritmo de giro y no una tecla.
+   *
+   * Dos consecuencias que conviene tener escritas:
+   *
+   * - **Girar demasiado rápido frena.** Si el giro se adelanta, la dirección
+   *   pedida se va por detrás de la marcha y lo que se suma resta. Medido en la
+   *   simulación previa: seis saltos a 40°/s dan 8.33 u/s y los mismos a 140°/s
+   *   dan 3.84. Es justo al revés que en el modelo escalar, que premiaba girar
+   *   rápido hasta su tope.
+   * - **Esto es una integración y no tiene forma cerrada**, porque la entrada es
+   *   el ratón. Medido: 0.38% de diferencia entre 60 y 1000 Hz en seis saltos
+   *   encadenados. Es una excepción aceptada a la regla del refresco —ver
+   *   `docs/decisions.md` §32—, no un descuido: el ratón se muestrea una vez por
+   *   frame y subdividir la integración no lo arregla (medido, no cambia ni el
+   *   cuarto decimal).
+   */
+  _updateAirAccel(dt) {
+    this.airStrafing = false
+    // El yaw se sigue anotando aunque este modelo no lo use: si se apaga el
+    // interruptor en caliente, el escalar necesita un `_lastYaw` fresco o su
+    // primera diferencia sería el giro acumulado de todo el rato anterior.
+    this._lastYaw = this.camera.rotation.y
+    if (!this.airborne || !(dt > 0)) return
+    if (!this._readWish()) return
+
+    // Sólo cuenta el trozo de frame que se pasa en el aire. En el frame del
+    // aterrizaje eso es una fracción, y cobrarlo entero hacía que un vuelo
+    // acelerase más cuanto menos refresco hubiera.
+    const left = this._airTimeLeft()
+    const step = dt < left ? dt : left
+    if (!(step > 0)) return
+
+    const wishSpeed = MOVEMENT.speed * MOVEMENT.airWishFactor
+    const current = this._airVelX * this._wishX + this._airVelZ * this._wishZ
+    const missing = wishSpeed - current
+    if (missing <= 0) return
+
+    let gain = MOVEMENT.airAccel * wishSpeed * step
+    if (gain > missing) gain = missing
+    this._airVelX += this._wishX * gain
+    this._airVelZ += this._wishZ * gain
+    this.airStrafing = true
+
+    // El techo, igual de duro que en el modelo escalar: aquí se acota el módulo
+    // del vector, que es el **único** sitio donde puede crecer.
+    const max = MOVEMENT.airStrafeMaxSpeed
+    const speed = Math.hypot(this._airVelX, this._airVelZ)
+    if (speed > max) {
+      const scale = max / speed
+      this._airVelX *= scale
+      this._airVelZ *= scale
+    }
+  }
+
+  /**
+   * Siembra la velocidad del vuelo con lo que se llevaba al despegar: la marcha
+   * de suelo en la dirección que pidan las teclas. Sin teclas se despega sin
+   * velocidad horizontal, que es lo mismo que hacía el modelo escalar.
+   */
+  _seedAirVelocity() {
+    if (!this._readWish()) {
+      this._airVelX = 0
+      this._airVelZ = 0
+      return
+    }
+    const speed = this.currentSpeed
+    this._airVelX = this._wishX * speed
+    this._airVelZ = this._wishZ * speed
+  }
+
+  /**
+   * El paso horizontal del frame. Decide **a dónde se quería ir** —que es lo
+   * único que cambia entre los dos modelos— y deja que el mismo bloque de
+   * colisión resuelva a dónde se llega.
+   */
   _updateHorizontal(dt) {
-    const keys = this.keys
-    const x = (keys.right ? 1 : 0) - (keys.left ? 1 : 0)
-    const z = (keys.forward ? 1 : 0) - (keys.back ? 1 : 0)
-    if (x === 0 && z === 0) return
-
-    // Base en el plano XZ a partir del yaw: el cabeceo no interviene, así que
-    // mirar al suelo o al cielo no cambia hacia dónde se anda.
-    const yaw = this.camera.rotation.y
-    const sin = Math.sin(yaw)
-    const cos = Math.cos(yaw)
-    _forward.set(-sin, 0, -cos)
-    _right.set(cos, 0, -sin)
-
-    // Normalizar el input evita que la diagonal sea más rápida que un eje.
-    const inverse = 1 / Math.hypot(x, z)
-    const step = this.currentSpeed * dt * inverse
-
     const position = this.camera.position
-    const wantedX = position.x + (_forward.x * z + _right.x * x) * step
-    const wantedZ = position.z + (_forward.z * z + _right.z * x) * step
+    const fromX = position.x
+    const fromZ = position.z
+    let wantedX
+    let wantedZ
+
+    if (this.usingAirVector) {
+      // En el aire manda la velocidad guardada, no las teclas: el input ya se
+      // ha gastado en `_updateAirAccel`, que es quien la dobla.
+      if (this._airVelX === 0 && this._airVelZ === 0) return
+      wantedX = fromX + this._airVelX * dt
+      wantedZ = fromZ + this._airVelZ * dt
+    } else {
+      if (!this._readWish()) return
+      const step = this.currentSpeed * dt
+      wantedX = fromX + this._wishX * step
+      wantedZ = fromZ + this._wishZ * step
+    }
+
+    this._moveTo(fromX, fromZ, wantedX, wantedZ, dt)
+    if (this.usingAirVector) this._clipAirVelocity(fromX, fromZ, wantedX, wantedZ)
+  }
+
+  /**
+   * Qué le pasa a la velocidad cuando algo frena el paso. La componente
+   * bloqueada se anula y la otra sobrevive entera: eso es lo que hace que rozar
+   * una esquina deslice conservando la marcha en vez de pararse en seco, y lo
+   * que evita que empujar contra un muro guarde velocidad para soltarla de
+   * golpe al doblarlo.
+   *
+   * **Con una excepción que no es un parche, es la regla entera:** sólo se
+   * pierde la marcha contra lo que **seguiría parando en lo alto del salto**. Un
+   * cajón bajo deja de estorbar en cuanto los pies pasan de su techo menos el
+   * escalón, así que rozarle la cara subiendo no es chocar, es rasparlo de paso:
+   * matar ahí la marcha rompía saltar encima de la cobertura baja —medido, de
+   * subirse 12 de 12 a no subirse ninguna—. Para distinguir una cosa de otra no
+   * hace falta saber qué pieza fue: se le vuelve a preguntar **a la misma
+   * colisión** con los pies donde van a estar en el ápice.
+   *
+   * La pared de la sala no entra en ese trato: no tiene techo que superar.
+   */
+  _clipAirVelocity(fromX, fromZ, wantedX, wantedZ) {
+    const position = this.camera.position
+    if (Math.abs(position.x - wantedX) > CLIP_EPSILON) {
+      if (this._wallClampedX || !this._clearsAtApex('x', fromX, wantedX, fromZ)) this._airVelX = 0
+    }
+    if (Math.abs(position.z - wantedZ) > CLIP_EPSILON) {
+      if (this._wallClampedZ || !this._clearsAtApex('z', fromZ, wantedZ, position.x)) this._airVelZ = 0
+    }
+  }
+
+  /**
+   * ¿Lo que acaba de frenar este paso dejará de estorbar en lo alto del vuelo?
+   * Se resuelve el **mismo** paso contra la **misma** colisión, cambiando sólo la
+   * altura de los pies por la del ápice. Sólo se llama en el frame en que algo
+   * bloquea, así que no está en el camino caliente.
+   */
+  _clearsAtApex(axis, from, wanted, other) {
+    if (!this.scenario) return false
+    const apex = this._apexFeetY()
+    const resolved = this.scenario.resolveAxis(axis, from, wanted, other, apex, apex + this.eyeHeight)
+    return Math.abs(resolved - wanted) <= CLIP_EPSILON
+  }
+
+  /**
+   * Altura de pies en lo más alto que le queda al vuelo. Sale de la parábola
+   * cerrada: subiendo, el ápice es `y0 + v0²/2g`; bajando, lo más alto que queda
+   * es donde se está.
+   */
+  _apexFeetY() {
+    const v0 = this._launchVelocity
+    if (v0 <= 0) return this.feetY
+    return this._launchY + (v0 * v0) / (2 * MOVEMENT.gravity)
+  }
+
+  /**
+   * Resuelve el paso contra el escenario y las paredes. **Idéntico para los dos
+   * modelos de aire y para el suelo**: la colisión no sabe de dónde salió la
+   * intención, sólo de dónde se venía y a dónde se iba.
+   */
+  _moveTo(fromX, fromZ, wantedX, wantedZ, dt) {
+    const position = this.camera.position
 
     if (this.scenario) {
       // Un eje cada vez: X contra la Z vieja, y luego Z contra la X ya
@@ -474,8 +705,6 @@ export class MovementController {
       // tienen que admitir lo mismo, y manda el más restrictivo.
       const feetY = Math.min(this.feetY, this._feetYAfter(dt))
       const headY = feetY + this.eyeHeight
-      const fromX = position.x
-      const fromZ = position.z
       position.x = this.scenario.resolveAxis('x', fromX, wantedX, fromZ, feetY, headY)
       position.z = this.scenario.resolveAxis('z', fromZ, wantedZ, position.x, feetY, headY)
       // Cierre contra las cuñas: resolver por ejes valida cada uno con la
@@ -502,10 +731,47 @@ export class MovementController {
     // real: se recorre entera menos el margen que se deja junto al muro.
     const limitX = this.room.width / 2 - MOVEMENT.wallMargin
     const limitZ = this.room.depth / 2 - MOVEMENT.wallMargin
+    // Se anota quién frenó: contra la pared de la sala no hay ápice que valga,
+    // y la velocidad se pierde siempre (ver `_clipAirVelocity`).
+    this._wallClampedX = position.x > limitX || position.x < -limitX
+    this._wallClampedZ = position.z > limitZ || position.z < -limitZ
     if (position.x > limitX) position.x = limitX
     else if (position.x < -limitX) position.x = -limitX
     if (position.z > limitZ) position.z = limitZ
     else if (position.z < -limitZ) position.z = -limitZ
+  }
+
+  /**
+   * Velocidad con la que se llegaría al suelo desde el vuelo en curso, por
+   * conservación de energía sobre la parábola: v² = v0² + 2·g·(y0 − suelo).
+   * De aquí salen **las dos** cosas que necesitan saber cuándo acaba el vuelo:
+   * la fuerza del aterrizaje y cuánto queda de aire. Una sola copia de la
+   * fórmula, que es como no se desincronizan.
+   */
+  _fallSpeedFrom(ground) {
+    const drop = this._launchY - ground
+    const impactSq = this._launchVelocity * this._launchVelocity + 2 * MOVEMENT.gravity * drop
+    return impactSq > 0 ? Math.sqrt(impactSq) : 0
+  }
+
+  /**
+   * Segundos que le quedan al vuelo. Despejando la parábola, tocar el suelo es
+   * `t = (v0 + velocidadDeImpacto) / g`, y lo que queda es eso menos lo volado.
+   *
+   * Sirve para que la aceleración aérea cobre **el tiempo que de verdad se pasa
+   * en el aire** y no un frame entero: sin esto, el último frame del vuelo
+   * acelera de más y cuánto de más depende del refresco, que es justo lo que
+   * este proyecto no se permite.
+   */
+  _airTimeLeft() {
+    if (!this.airborne) return 0
+    const position = this.camera.position
+    const ground = this.scenario
+      ? this.scenario.groundHeightAt(position.x, position.z, this.feetY)
+      : 0
+    const total = (this._launchVelocity + this._fallSpeedFrom(ground)) / MOVEMENT.gravity
+    const left = total - this._airTime
+    return left > 0 ? left : 0
   }
 
   /**
@@ -533,7 +799,7 @@ export class MovementController {
 
     // Salto: sólo desde el suelo, así que no hay doble salto posible.
     if (this.keys.jump && !this.airborne) {
-      this._takeOff(MOVEMENT.jumpSpeed, this._isChainPress())
+      this._takeOff(MOVEMENT.jumpSpeed, this._isChainPress(), dt)
       // La pulsación se gasta al despegar: mantener SPACE sigue rebotando en
       // cada aterrizaje, como siempre, pero esos rebotes son saltos normales.
       // Encadenar es acertar el tiempo, no dejar la tecla apoyada.
@@ -548,7 +814,7 @@ export class MovementController {
         return
       }
       // Se ha salido de un borde andando: cae desde parado.
-      this._takeOff(0)
+      this._takeOff(0, false, dt)
     }
 
     const g = MOVEMENT.gravity
@@ -584,25 +850,44 @@ export class MovementController {
    *
    * En un **encadenado** la única diferencia es de dónde sale la marcha: en
    * lugar de recalcularla desde el suelo se conserva la que se traía al
-   * aterrizar. Nada más — ni empuje vertical extra, ni multiplicador, ni
-   * ganancia por encadenar otra vez. **Encadenar sigue sin acelerar**: lo que
-   * acelera es el air-strafe, y lo hace contra su techo. Por inducción,
-   * `_airSpeed` nace de `currentSpeed` (≤ `MOVEMENT.speed`) o de un
-   * `_landingSpeed` anterior, y el único sitio que lo sube es
-   * `_updateAirStrafe`, que no pasa de `MOVEMENT.airStrafeMaxSpeed`: ninguna
-   * cadena, por larga que sea, puede superar ese techo.
+   * aterrizar —el número en el modelo escalar, el vector entero en el otro, y
+   * ahí «conservar» incluye **hacia dónde ibas**—. Nada más: ni empuje vertical
+   * extra, ni multiplicador, ni ganancia por encadenar otra vez.
+   *
+   * **Encadenar sigue sin acelerar** en los dos modelos, y por el mismo
+   * argumento: la marcha aérea nace de `currentSpeed` (≤ `MOVEMENT.speed`) o de
+   * un aterrizaje anterior, y el único sitio que puede subirla es la
+   * aceleración aérea —`_updateAirStrafe` o `_updateAirAccel`—, que acaba
+   * acotando a `MOVEMENT.airStrafeMaxSpeed`. Por inducción, ninguna cadena, por
+   * larga que sea, supera ese techo.
    *
    * @param {number} velocity velocidad vertical inicial (0 al salirse de un borde)
    * @param {boolean} [chained] si el salto encadena con el aterrizaje anterior
+   * @param {number} [dt] el frame en curso. El despegue ocurre dentro del paso
+   *   vertical, que corre **después** del aéreo, así que sin esto el primer
+   *   frame de cada vuelo se quedaba sin acelerar — un frame entero, o sea 16.7
+   *   ms a 60 Hz contra 4.2 a 240: una diferencia por refresco de las que aquí
+   *   se arreglan, no se documentan.
    */
-  _takeOff(velocity, chained = false) {
+  _takeOff(velocity, chained = false, dt = 0) {
+    // `currentSpeed` se lee **antes** de marcar `airborne`, así que devuelve la
+    // marcha de suelo: es la que se congela (escalar) o la que siembra el
+    // vector.
     this._airSpeed = chained ? this._landingSpeed : this.currentSpeed
+    if (chained) {
+      this._airVelX = this._landingVelX
+      this._airVelZ = this._landingVelZ
+    } else {
+      this._seedAirVelocity()
+    }
     this.chainedJump = chained
     this._airTime = 0
     this._launchY = this.feetY
     this._launchVelocity = velocity
     this.verticalVelocity = velocity
     this.airborne = true
+    // Ya está en el aire: este frame le toca acelerar como a cualquier otro.
+    if (dt > 0 && MOVEMENT.airVector) this._updateAirAccel(dt)
   }
 
   /**
@@ -617,9 +902,7 @@ export class MovementController {
    */
   _land(ground, now) {
     const g = MOVEMENT.gravity
-    const drop = this._launchY - ground
-    const impactSq = this._launchVelocity * this._launchVelocity + 2 * g * drop
-    const fallSpeed = impactSq > 0 ? Math.sqrt(impactSq) : 0
+    const fallSpeed = this._fallSpeedFrom(ground)
 
     // Instante exacto del contacto, por el mismo motivo que la velocidad de
     // impacto: el frame que lo detecta llega pasado de largo y llega más tarde
@@ -630,6 +913,13 @@ export class MovementController {
     // sería un frame más generosa a 240 Hz que a 60.
     this._landedAt = now - (this._airTime - (this._launchVelocity + fallSpeed) / g) * 1000
     this._landingSpeed = this._airSpeed
+    // Lo que conserva un encadenado con vector no es un número, es a dónde ibas
+    // y a qué marcha. Fuera de la ventana esto no lo lee nadie: el salto
+    // siguiente vuelve a sembrar desde el suelo.
+    this._landingVelX = this._airVelX
+    this._landingVelZ = this._airVelZ
+    this._airVelX = 0
+    this._airVelZ = 0
 
     this.feetY = ground
     this.verticalVelocity = 0

@@ -138,7 +138,58 @@ parábola —`t = (v0 + velocidadDeImpacto) / g`— en lugar del frame que lo de
 que llega hasta un frame tarde. Medido: el umbral sale en 130.00 ms a 60, 144 y
 240 Hz, con una diferencia de 0.000 ms entre ellos.
 
-**El air-strafe es el único sitio donde sube `_airSpeed`, y tiene techo duro.**
+**Hay dos modelos de aire conviviendo tras `MOVEMENT.airVector`, y uno se
+borrará.** El interruptor es de prueba, no un ajuste de juego: no está en el
+panel. `true` (por defecto) es el **vector de velocidad**; `false`, la **marcha
+escalar** de antes de la vuelta 32. **El suelo es el mismo en los dos** —medido:
+un paseo largo por el Plano A acaba en la misma coordenada hasta el último
+decimal—, y el techo (`airStrafeMaxSpeed`) también.
+
+**Modelo vectorial: la marcha tiene dirección, y eso trae inercia.** En el aire
+hay una velocidad de verdad (`_airVelX`/`_airVelZ`) que se siembra al despegar y
+se acelera con el `airAccelerate` clásico: proyectar la velocidad sobre la
+dirección pedida, mirar cuánto falta para `airWishFactor · speed`, sumar esa
+diferencia acotada por `airAccel · wishSpeed · dt`. Cuatro consecuencias que son
+el mecanismo entero:
+
+- **Soltar W conserva hacia dónde ibas**, que es para lo que se hizo. Medido:
+  corriendo de frente y estrafeando a 40°/s, el rumbo gira de 0° a −29° en un
+  vuelo; con el escalar saltaba a −90° en el primer frame.
+- **La condición «W suelta» desaparece porque sobra.** Con la vista puesta donde
+  vas, la proyección ya vale 6.5 —muy por encima de los 0.78 de `wishSpeed`— y no
+  se gana nada. Sale de la geometría, no de un `if`.
+- **Girar rápido frena.** Medido en seis saltos: 40°/s → 8.32 u/s, 140°/s → 3.82.
+  Es justo al revés que en el escalar, que premiaba girar hasta su tope.
+- **Hay inercia**: sin teclas se sigue volando. Es lo que hace que el aire tenga
+  dirección, y toca a todos los saltos, no sólo al air-strafe.
+
+**Con vector, sólo pierde la marcha lo que te seguiría parando en el ápice.**
+Anular la componente bloqueada es lo correcto contra un muro —si no, empujar
+contra él guarda velocidad para soltarla al doblar la esquina— pero rompía saltar
+encima de la cobertura baja: se le roza la cara subiendo, y con `stepHeight` a
+0.25 esa caja bloquea hasta que los pies pasan de 1.0. Medido, la regresión era
+de 12 de 12 a **0 de 12**. La regla que lo arregla no necesita saber qué pieza
+frenó: se resuelve **el mismo paso contra la misma colisión** con los pies en el
+ápice (`_clearsAtApex`), y si allí pasa, no se pierde nada. La pared de la sala
+va aparte: no tiene techo que superar, así que siempre corta. Medido después, la
+ventana para subirse a la Baja vuelve a ser idéntica en los dos modelos (de 0.6 a
+2.7 u de anticipo, a 60, 144 y 240 Hz).
+
+**La excepción del refresco, aceptada y medida.** El vector es una integración y
+no tiene forma cerrada, porque la entrada es el ratón. Medido con un jugador que
+gira sin parar y encadena durante 4 s: **1.38%** de diferencia entre 60 y 240 Hz.
+De eso, **0.57 puntos ya existían** con el modelo escalar en el mismo banco: el
+contacto con el suelo entre saltos se cuantiza al frame y a 60 Hz se vuela 75 ms
+menos. Lo que añade el vector es el resto. Dos cosas que **sí** se arreglaron
+porque eran cuantización evitable: el frame del despegue no aceleraba (se corrige
+pasando `dt` a `_takeOff`) y el del aterrizaje aceleraba de más (se acota al
+tiempo que queda de vuelo, `_airTimeLeft`, de la misma parábola cerrada que el
+resto). Subdividir la integración **no** ayuda: medido en simulación, no cambia
+ni el cuarto decimal, porque el residuo es que el ratón se muestrea una vez por
+frame. Ver `docs/decisions.md` §32.
+
+**Modelo escalar (`airVector: false`): el air-strafe es el único sitio donde sube
+`_airSpeed`, y tiene techo duro.**
 En el aire, con estrafe puro —A o D, con **W suelta**— y girando el ratón hacia
 el mismo lado que la tecla, la marcha sube. Cuatro propiedades, y las cuatro son
 el mecanismo:
@@ -402,6 +453,12 @@ tolerancia** (`tolerance = min(1, interval * 0.1)`), no salto crudo de frames.
 Sin la tolerancia, un tope igual al refresco del monitor lo parte por la mitad
 (tick de 4.166 ms contra objetivo de 4.167 ms).
 
+**Una suite sin aserciones no es una prueba, es un informe.** `baja.mjs` imprimía
+«se sube en 12/12» y salía en verde pasara lo que pasara; con aserciones de
+verdad cazó a la primera una regresión de 12/12 a 0/12. Si un test no puede
+fallar, no está guardando nada. (`x8.mjs` sigue siendo un informe a propósito: no
+afirma, mide.)
+
 **Mantén este fichero al día como parte del trabajo normal**, en el mismo commit
 que introduce el cambio que lo afecta. No es una tarea aparte ni de "limpieza
 al final". Lo mismo vale para `README.md` (cara al usuario) y para
@@ -465,10 +522,13 @@ quedan en su punto, porque un destino aleatorio las metería dentro de un muro.
 no, ver convenciones—, gana la más lenta), salto sin doble salto **resuelto en forma cerrada** —misma
 trayectoria a cualquier refresco—, **salto encadenado** con SPACE dentro de
 `MOVEMENT.chainJumpWindowMs` (130 ms a cada lado del aterrizaje exacto), que
-conserva la marcha del aterrizaje, y **air-strafe**: en el aire, con A o D y W
-suelta, girar el ratón hacia el lado de la tecla acelera hasta
-`MOVEMENT.airStrafeMaxSpeed` (9.5 contra 6.5 de carrera), en unos tres saltos
-bien encadenados —6.5 → 7.8 → 9.0 → 9.5— y sin pasar de ahí nunca. Límites
+conserva la marcha del aterrizaje —con vector, también **la dirección**—, y
+**air-strafe**: en el aire, girar el ratón hacia el lado de la tecla de estrafe
+acelera hasta `MOVEMENT.airStrafeMaxSpeed` (9.5 contra 6.5 de carrera) y sin
+pasar de ahí nunca. Con el modelo vectorial (por defecto) el ritmo de giro
+importa —40°/s es el óptimo, 140°/s frena— y en el aire hay inercia; con el
+escalar, tres saltos bien encadenados llevan de 6.5 a 9.5 girando todo lo rápido
+que se pueda. Límites
 reales de la sala con margen de seguridad. Por encima de `ACCURACY.speedThreshold` y
 siempre en el aire se aplica dispersión de disparo (dirección y magnitud
 aleatorias, sumada al recoil, sin mover la cámara).

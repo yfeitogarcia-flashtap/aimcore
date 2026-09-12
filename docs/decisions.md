@@ -2463,6 +2463,123 @@ frame— medidos en la misma página y la misma máquina. Un frame a 240 Hz son
 
 ---
 
+## Ronda 32 — El aire tiene dirección
+
+### 32.1 Por qué el modelo escalar no podía dar bunny-hop
+
+El air-strafe de la vuelta 29 subía una **marcha escalar** y la dirección se
+recalculaba cada frame desde las teclas. Funcionaba como acelerador y no como
+maniobra: sueltas W en pleno vuelo y el juego, que no guarda hacia dónde ibas,
+te manda a lateral puro en el primer frame. Probándolo se ve enseguida; era la
+limitación que ya se había anticipado al implementarlo.
+
+El modelo vectorial guarda una velocidad horizontal de verdad en el aire
+(`_airVelX`/`_airVelZ`) y la acelera con el `airAccelerate` clásico: proyectar la
+velocidad sobre la dirección pedida, ver cuánto falta para `wishSpeed`, sumar esa
+diferencia acotada por `airAccel · wishSpeed · dt`.
+
+Medido en el juego, corriendo de frente y estrafeando a la izquierda un vuelo:
+
+| giro | marcha | rumbo al acabar |
+|---|---|---|
+| escalar | 6.50 u/s | −90° (de golpe, primer frame) |
+| vector, 40°/s | 6.78 u/s | −29° (girando con él) |
+| vector, 140°/s | 4.98 u/s | −39°, y **frenando** |
+
+Lo último es la inversión que trae el modelo: en el escalar girar rápido era lo
+óptimo hasta su tope; aquí pasarse de giro deja la dirección pedida por detrás de
+la marcha y lo que se suma resta. Seis saltos encadenados: 40°/s → 8.32 u/s,
+220°/s → 2.79.
+
+**Y la condición «W suelta» desaparece porque sobra.** Con la vista puesta donde
+vas, la proyección de tu velocidad sobre la dirección pedida ya vale 6.5, muy por
+encima de los 0.78 de `wishSpeed`: no falta nada y no se gana nada. Lo que antes
+era un `if` ahora sale de la geometría.
+
+### 32.2 Lo que costó: inercia, y toca a todos los saltos
+
+Tener dirección en el aire y tener inercia son la misma cosa. Con el modelo
+escalar, soltar las teclas en pleno vuelo te dejaba clavado; ahora sigues. No es
+un efecto secundario que se pueda quitar: es el modelo.
+
+### 32.3 El fallo que encontró una suite sin aserciones
+
+`baja.mjs` —la prueba de que la cobertura baja es saltable, que es lo que sostiene
+la tabla de alturas de `COVER`— **imprimía el resultado y salía en verde pasara lo
+que pasara**. Ni un `ok()`. Al ponerle aserciones apareció, en el primer intento,
+una regresión de bulto: con el vector no se subía a la Baja **ninguna vez** (0 de
+12, contra 12 de 12 del modelo escalar).
+
+La causa: al chocar, se anulaba la componente de velocidad bloqueada. Eso es lo
+correcto contra un muro —si no, empujar contra él guarda velocidad para soltarla
+de golpe al doblar la esquina— pero con `COVER.stepHeight` a 0.25 una caja de
+1.25 bloquea hasta que los pies pasan de 1.0, y al saltarle encima **se le roza la
+cara mientras se sube**. Matar ahí la marcha dejaba al jugador colgado contra la
+caja y cayendo.
+
+La regla que lo arregla es una sola frase: **se pierde la marcha contra lo que
+seguiría parando en lo alto del salto, no contra lo que se va a superar**. Y no
+hace falta saber qué pieza frenó ni tocar la colisión: se resuelve **el mismo
+paso contra la misma colisión** cambiando la altura de pies por la del ápice
+—que sale de la parábola cerrada de siempre— y si allí pasa, la velocidad se
+queda. La pared de la sala va aparte porque no tiene techo que superar.
+
+Medido después: la ventana para subirse a la Baja vuelve a ser **idéntica en los
+dos modelos** —de 0.6 a 2.7 u de anticipo al salto, a 60, 144 y 240 Hz—, y la
+regla queda guardada por sus dos lados (rozar una pieza de 1.25 conserva la
+marcha; chocar con una de 3.6 la pierde).
+
+**Lección, que va a convenciones:** una suite sin aserciones no es una prueba, es
+un informe. Ésta llevaba rondas dando por buena la frase «verificado 12 de 12».
+
+### 32.4 La excepción del refresco: el número de verdad
+
+Al evaluar esto se estimó una dispersión del **0.38%** con una simulación aparte,
+y con ese número se aceptó la excepción. Medido en el juego sale **1.38%** entre
+60 y 240 Hz, encadenando cuatro segundos. La diferencia no era del modelo sino de
+la simulación, que daba por exacta la duración del vuelo.
+
+Desglose, midiendo los dos modelos en el mismo banco:
+
+- **0.57 puntos ya existían** con el modelo escalar. El contacto con el suelo
+  entre salto y salto se cuantiza al frame: a 60 Hz se vuela 3900 ms de cada
+  4000, y a 240 Hz, 3975. Eso lo sufren los dos por igual.
+- El resto lo pone la integración del vector.
+
+Dos cuantizaciones **sí** se arreglaron, porque eran evitables y de la misma
+familia que las que este proyecto ya había corregido:
+
+- El frame del despegue no aceleraba: `_takeOff` ocurre dentro del paso vertical,
+  que corre después del aéreo. Un frame entero por salto, o sea 16.7 ms a 60 Hz
+  contra 4.2 a 240. Se corrige pasándole `dt`.
+- El frame del aterrizaje aceleraba de más: se acota al tiempo que queda de
+  vuelo, despejado de la misma parábola que ya usaba `_land` —y de paso las dos
+  cuentas pasan a compartir función, que es como no se desincronizan.
+
+Lo que **no** ayuda es subdividir la integración: medido en simulación con pasos
+de 8, 4 y 2 ms, no cambia ni el cuarto decimal. El residuo es que el ratón se
+muestrea una vez por frame, y eso no tiene arreglo desde aquí.
+
+Queda como la **única** excepción del proyecto a «el tiempo del juego no puede
+depender de cuándo dibuja el monitor», aceptada explícitamente y con su número.
+
+### 32.5 Qué se tocó, y qué no
+
+Cabe entero en `movement.js`. **La colisión no se ha tocado**: su API es
+posicional —`resolveAxis` recibe de dónde vienes y a dónde vas, y devuelve dónde
+acabas— y le da igual si esa intención salió de una marcha escalar o de un
+vector. El mismo bloque de colisión sirve para los dos modelos y para el suelo,
+que es lo que garantiza que no se desincronicen: medido, un paseo largo por el
+Plano A acaba en la misma coordenada **hasta el último decimal** con el
+interruptor en cualquier posición.
+
+Los dos modelos viven a la vez tras `MOVEMENT.airVector` para poder compararlos
+jugando, y **uno de los dos se borrará**. Cada uno tiene su suite —`vector.mjs` y
+`airstrafe.mjs`— y cada una fuerza el interruptor que le toca, así que las dos
+valen esté como esté el config.
+
+---
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
