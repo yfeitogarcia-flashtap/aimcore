@@ -133,6 +133,8 @@ export class TargetManager {
     /** Dianas vivas permitidas a la vez. Con 1, la siguiente espera a la baja. */
     this.maxAlive = 1
     this.dynamic = false
+    /** Velocidad de patrulla vigente. La pone el ajuste, no la constante. */
+    this.patrolSpeed = TARGET.moveSpeed
 
     this.aliveCount = 0
     this.sessionActive = false
@@ -168,6 +170,7 @@ export class TargetManager {
     this.spawnIntervalMs = settings.spawnIntervalMs
     this.maxAlive = SIMULTANEOUS_TARGETS[settings.simultaneousTargets].count
     this.dynamic = settings.dynamic
+    this.patrolSpeed = settings.patrolSpeed
 
     const geometryChanged =
       settings.targetType !== this.typeKey || settings.targetRadius !== this.radius
@@ -578,7 +581,7 @@ export class TargetManager {
     const position = instance.group.position
     _motion.subVectors(instance.destination, position)
     const remaining = _motion.length()
-    const step = TARGET.moveSpeed * deltaSeconds
+    const step = this.patrolSpeed * deltaSeconds
 
     if (remaining <= step) {
       position.copy(instance.destination)
@@ -653,7 +656,7 @@ export class TargetManager {
     // "al llegar a un punto, elige otro". Se deja margen sólo como red de
     // seguridad, por si algo lo empuja fuera de su recta.
     const distance = instance.group.position.distanceTo(instance.destination)
-    const travelMs = (distance / TARGET.moveSpeed) * 1000
+    const travelMs = (distance / this.patrolSpeed) * 1000
     instance.destinationUntil = now + travelMs * 2 + 500
   }
 

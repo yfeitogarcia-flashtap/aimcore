@@ -285,6 +285,26 @@ contra toda la geometría del escenario y no cabe en el presupuesto de un frame.
 Si no hay ningún punto visible se reintenta tras `SPAWN.pointRetryMs`, jamás al
 frame siguiente.
 
+**Ninguna acción del juego se mapea a un modificador, y CTRL no agacha.**
+Agacharse avanzando era Ctrl+W, y **Ctrl+W cierra la pestaña** en Chrome y en
+Edge: el navegador resuelve ese atajo antes de que el evento llegue a la página,
+así que `preventDefault` no lo toca —sí neutraliza Ctrl+A/S/D, las otras tres
+direcciones, pero con W no hay nada que hacer—. Se manifestaba como un cierre
+intermitente «sin motivo»: sólo pasaba con W pulsada en el instante de agacharse.
+Agacharse es **C**. `estabilidad.mjs` lo guarda: ninguna tecla de `MOVEMENT.keys`
+puede ser un modificador.
+
+**Ningún frame sale del movimiento con un valor que no sea finito.**
+`_guardState()` comprueba posición, pies, velocidad vertical, altura de ojos,
+hundimiento y estado del despegue, y si algo no es finito vuelve al último estado
+sano —que se guarda cada frame que lo es— y suma en `recoveries`. No tapa ningún
+bug conocido: medio millón de frames de alternancia rápida de salto y agachado,
+con deltas de 0 a 100 ms, no han producido ni uno. Está porque un NaN en la
+posición viaja a la matriz de la cámara, de ahí al `matrix3d` que el
+CSS3DRenderer escribe en el tablero, y de ahí al compositor del navegador, que es
+el único punto de la cadena donde un número roto se puede llevar la pestaña
+entera. En juego normal `recoveries` vale cero y las auditorías lo comprueban.
+
 **El límite de FPS usa un acumulador de delta con arrastre del resto y
 tolerancia** (`tolerance = min(1, interval * 0.1)`), no salto crudo de frames.
 Sin la tolerancia, un tope igual al refresco del monitor lo parte por la mitad
@@ -349,8 +369,8 @@ cobertura**, y la **distancia de aparición no se aplica**. El **modo dinámico*
 sólo mueve a los muñecos *hitbox*, que patrullan por su ruta; clásica y cono se
 quedan en su punto, porque un destino aleatorio las metería dentro de un muro.
 
-**Movimiento:** WASD, tres marchas (correr / SHIFT andar / CTRL o C agachado,
-gana la más lenta), salto sin doble salto **resuelto en forma cerrada** —misma
+**Movimiento:** WASD, tres marchas (correr / SHIFT andar / **C** agachado —CTRL
+no, ver convenciones—, gana la más lenta), salto sin doble salto **resuelto en forma cerrada** —misma
 trayectoria a cualquier refresco—, **salto encadenado** con SPACE dentro de
 `MOVEMENT.chainJumpWindowMs` (130 ms a cada lado del aterrizaje exacto), que
 conserva la marcha del aterrizaje sin poder acelerar por encima de la de
@@ -406,7 +426,9 @@ una transición corta tapa el montaje.
 **Opciones** (accesibles antes de empezar y desde la pausa, persistidas):
 escenario, sensibilidad, tipo de diana, arma, tamaño de diana, distancia de spawn, cadencia
 de aparición, dianas simultáneas, límite de FPS, supresor (sólo si el arma lo
-admite), **audio espacial**, mensajes de ayuda y modo dinámico.
+admite), **audio espacial**, mensajes de ayuda, modo dinámico y **velocidad de
+patrulla** (1.5–8 u/s, por defecto 4: `TARGET.moveSpeed` pasa a ser sólo el valor
+por defecto del ajuste, y el motor lee el del store).
 
 ---
 

@@ -2,6 +2,7 @@ import { useState } from 'react'
 import ScenarioThumbnail from './ScenarioThumbnail.jsx'
 import {
   FRAME_LIMITS,
+  MOVEMENT,
   SCENARIOS,
   SETTINGS,
   SIMULTANEOUS_TARGETS,
@@ -44,7 +45,7 @@ function NumberField({ spec, value, onCommit }) {
 }
 
 /** Fila con etiqueta, slider y lectura del valor (o campo editable). */
-function SliderRow({ id, spec, value, onChange, suffix = '', editable = false }) {
+function SliderRow({ id, spec, value, onChange, suffix = '', editable = false, hint = null }) {
   return (
     <div className="field">
       <label className="field__label" htmlFor={id}>
@@ -70,6 +71,7 @@ function SliderRow({ id, spec, value, onChange, suffix = '', editable = false })
           </span>
         )}
       </div>
+      {hint ? <span className="field__hint">{hint}</span> : null}
     </div>
   )
 }
@@ -133,6 +135,20 @@ function ScenarioRow({ value, onChange }) {
       <span className="field__hint">{scenarioHint(value)}</span>
     </div>
   )
+}
+
+/**
+ * La velocidad sólo se nota con el modo dinámico puesto, y la referencia útil no
+ * es el número sino la carrera del jugador: por encima de ella los muñecos
+ * dejan de poder seguirse andando.
+ */
+function patrolSpeedHint(settings) {
+  if (!settings.dynamic) return 'Sólo se aplica con el modo dinámico activado.'
+  const mia = MOVEMENT.speed
+  if (settings.patrolSpeed < mia * 0.55) return `Paseo: muy por debajo de tu carrera (${mia} u/s).`
+  if (settings.patrolSpeed < mia) return `Por debajo de tu carrera (${mia} u/s): los alcanzas.`
+  if (settings.patrolSpeed < mia * 1.05) return `A la par de tu carrera (${mia} u/s).`
+  return `Más rápidos que tú (${mia} u/s): no los alcanzas corriendo.`
 }
 
 function dynamicHint(targetType) {
@@ -288,6 +304,15 @@ export default function Options({ settings, onChange, onReset, onClose }) {
             ? dynamicHint(settings.targetType)
             : 'Las dianas se quedan quietas donde aparecen.'
         }
+      />
+
+      <SliderRow
+        id="opt-patrol-speed"
+        spec={SETTINGS.patrolSpeed}
+        value={settings.patrolSpeed}
+        onChange={(patrolSpeed) => onChange({ patrolSpeed })}
+        suffix=" u/s"
+        hint={patrolSpeedHint(settings)}
       />
 
       <SegmentedRow

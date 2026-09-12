@@ -116,7 +116,11 @@ export const TARGET = {
   yRange: { min: 1.0, max: 13.0 },
   /** Vida de cada diana. El daño por zona se descuenta de aquí. */
   maxHealth: 100,
-  /** Velocidad de las dianas en modo dinámico, en unidades por segundo. */
+  /**
+   * Velocidad de las dianas en modo dinámico, en unidades por segundo. Es el
+   * **valor por defecto** del ajuste `patrolSpeed`: el motor lee el del store,
+   * no esta constante, para que el slider tenga efecto en caliente.
+   */
   moveSpeed: 4.0,
   /**
    * Tiempo máximo persiguiendo un mismo destino antes de elegir otro. Sin
@@ -509,11 +513,16 @@ export const MOVEMENT = {
    * Teclas por acción, en códigos físicos (`KeyboardEvent.code`): funcionan
    * igual en QWERTY, AZERTY o Dvorak.
    *
-   * Ojo con CTRL: el navegador se queda con algunos atajos. `preventDefault`
-   * neutraliza Ctrl+A/S/D, pero **Ctrl+W cierra la pestaña en Chrome y no hay
-   * forma de impedirlo desde la página** — y agacharse avanzando es
-   * justamente Ctrl+W. Por eso `KeyC` va también mapeado a agacharse. Quítalo
-   * de la lista si prefieres sólo CTRL.
+   * **CTRL ya no agacha, y no es una preferencia: cerraba la pestaña.**
+   * Agacharse avanzando es Ctrl+W, y Ctrl+W es cerrar pestaña en Chrome y en
+   * Edge. Ese atajo lo resuelve el navegador antes de que el evento llegue a la
+   * página, así que `preventDefault` no lo toca — sí neutraliza Ctrl+A/S/D, que
+   * son las otras tres direcciones, pero con W no hay nada que hacer. Se
+   * manifestaba como un cierre intermitente «sin motivo»: sólo pasaba cuando W
+   * estaba pulsada en el instante de agacharse.
+   *
+   * Agacharse es **C**. Si alguien prefiere CTRL, es añadir `'ControlLeft'` y
+   * `'ControlRight'` aquí — sabiendo que vuelve el cierre de pestaña.
    */
   keys: {
     forward: ['KeyW', 'ArrowUp'],
@@ -522,7 +531,7 @@ export const MOVEMENT = {
     right: ['KeyD', 'ArrowRight'],
     jump: ['Space'],
     walk: ['ShiftLeft', 'ShiftRight'],
-    crouch: ['ControlLeft', 'ControlRight', 'KeyC'],
+    crouch: ['KeyC'],
   },
 }
 
@@ -778,6 +787,24 @@ export const SETTINGS = {
   dynamic: {
     label: 'Modo dinámico',
     default: false,
+  },
+  patrolSpeed: {
+    label: 'Velocidad de patrulla',
+    /**
+     * A qué velocidad recorren su ruta los muñecos con modo dinámico. El rango
+     * va de **andar a correr** alrededor del valor de siempre: 1.5 es un paseo
+     * que se sigue sin esfuerzo y 8 es por encima de la carrera del jugador
+     * (`MOVEMENT.speed`, 6.5), que es donde deja de poder acompañarlos.
+     *
+     * El tope no es arbitrario del todo: con rutas de 10 u de diámetro, a 8 u/s
+     * el tramo más largo se recorre en 1.25 s, y por debajo de eso el muñeco
+     * cambia de rumbo más deprisa de lo que se puede leer.
+     */
+    default: TARGET.moveSpeed,
+    min: 1.5,
+    max: 8,
+    step: 0.1,
+    decimals: 1,
   },
 }
 

@@ -1969,6 +1969,92 @@ todos en el mismo sitio»— para que se note el día que se mueva algo, y anota
 `CLAUDE.md`. Arreglarlo es subir el extremo sur de la Espina o bajar el borde de
 la plataforma un par de unidades.
 
+## Ronda 27 — La pestaña no se cerraba: la cerraba Ctrl+W
+
+### 27.1 Lo que se buscó, y lo que se encontró
+
+El parte: pulsando Salto / Agacharse alternados muy rápido, **la pestaña del
+navegador se cierra entera** —no el juego, la pestaña—. Reproducido dos veces en
+Edge, intermitente. La sospecha razonable era un NaN o un infinito colándose en
+la intersección de las tres cosas más tocadas en las últimas vueltas: el salto en
+forma cerrada, el encadenado y la colisión unificada.
+
+Se buscó a fondo. Un fuzzer sobre el motor real, alternando salto y agachado con
+probabilidad 0.4 por frame, deltas de **0 a 100 ms** —el frame de duración nula
+incluido a propósito, que es el caso límite de cualquier división por tiempo—,
+desde posiciones aleatorias de todo el mapa, incluidas rampas y bordes de
+plataforma: **medio millón de frames, cero valores no finitos**. Ni en el
+jugador, ni en las dianas, ni en sus destinos. Con el bucle de verdad corriendo
+—rAF, render, CSS3D, audio— y teclas reales, tampoco: memoria plana en 16 MB, la
+transformada del tablero siempre sana, ningún crash.
+
+La causa es otra, y estaba escrita en el propio repositorio desde la ronda que
+montó el movimiento:
+
+> «**Ctrl+W cierra la pestaña en Chrome y no hay forma de impedirlo desde la
+> página** — y agacharse avanzando es justamente Ctrl+W.»
+
+Agacharse estaba mapeado a `ControlLeft`/`ControlRight`. Avanzar es `KeyW`.
+Agacharse mientras avanzas **es** Ctrl+W, que Chrome y Edge resuelven en el
+proceso del navegador antes de que el evento llegue a la página: `preventDefault`
+no lo toca. Ctrl+A, Ctrl+S y Ctrl+D —las otras tres direcciones— sí se dejan
+neutralizar; W es la excepción.
+
+Y explica lo que ninguna teoría de NaN explicaba: **por qué es intermitente**.
+No depende de la velocidad de la alternancia ni de repetirla tres o cuatro veces;
+depende de si W está pulsada en el instante exacto en que baja CTRL. Jugando se
+está moviendo casi siempre; probándolo a propósito, quieto, no pasa.
+
+La mitigación que había —mapear también `KeyC`— no servía de nada: dejaba la
+tecla peligrosa puesta. Ahora **agacharse es C y sólo C**. Volver a CTRL es
+añadir dos cadenas a `MOVEMENT.keys.crouch`, con la mina otra vez dentro.
+
+*Lección, y es de las que se repiten: un aviso en un comentario no es una
+mitigación. Si una combinación de teclas puede cerrar la pestaña, la única
+mitigación es no pedirla.*
+
+### 27.2 La red de seguridad, igualmente
+
+El encargo pedía además una guarda general: si la posición o la velocidad del
+jugador dejan de ser un número finito, corregirlas antes de que lleguen al
+render. Se ha puesto aunque el bug fuera otro, porque el razonamiento se sostiene
+solo: un NaN en la posición viaja a la matriz de la cámara, de ahí al `matrix3d`
+que el `CSS3DRenderer` escribe en el tablero de acciones, y de ahí al compositor
+del navegador — que es el único punto de toda la cadena donde un número roto sí
+se puede llevar por delante la pestaña entera.
+
+`_guardState()` corre al final de cada `update`, comprueba once campos y, si algo
+no es finito, devuelve al jugador al último estado sano —guardado cada frame que
+lo es— con el vuelo cancelado: media parábola con un NaN dentro no se puede
+continuar. El contador `recoveries` queda expuesto: en juego normal vale cero, y
+`estabilidad.mjs` lo comprueba después de 225 000 frames de fuzz y luego fuerza la
+rotura en los seis sitios donde se puede romper el estado para ver que salta.
+
+Detalle que salió al escribir el test: romper `landingDip` a `NaN` **no** activa
+la red, porque la curva del hundimiento lo multiplica por `_dipFrom`, que sigue
+valiendo cero, y sale cero. Hay que romper los dos. No es un agujero —el frame
+acaba finito, que es lo que se promete— pero valía la pena entenderlo antes de
+escribir una aserción falsa.
+
+### 27.3 Velocidad de patrulla, ajustable
+
+`TARGET.moveSpeed` pasa de constante a **valor por defecto** de un ajuste nuevo,
+`patrolSpeed`, con slider en opciones: de 1.5 a 8 u/s, 4 por defecto.
+
+El rango no es simétrico por casualidad. Abajo, 1.5 es un paseo que se sigue sin
+esfuerzo. Arriba, 8 queda **por encima de la carrera del jugador** (6.5): ahí es
+donde deja de poder acompañarlos, que es el umbral que hace interesante el tope.
+Y con rutas de 10 u de diámetro, a 8 u/s el tramo más largo se recorre en 1.25 s,
+por debajo de lo cual el muñeco cambia de rumbo más deprisa de lo que se lee.
+
+La pista bajo el slider no dice el número, dice la relación: «por debajo de tu
+carrera: los alcanzas», «más rápidos que tú: no los alcanzas corriendo». El
+número ya está al lado.
+
+El motor lee `this.patrolSpeed` del store, no la constante, para que el slider
+tenga efecto en caliente. Medido: a 2, 4 y 7 u/s un muñeco en ruta recorre 2.00,
+4.00 y 6.98 unidades por segundo.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

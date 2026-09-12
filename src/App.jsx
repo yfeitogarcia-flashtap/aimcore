@@ -163,7 +163,7 @@ export default function App() {
               </p>
               {MOVEMENT.enabled && (
                 <p className="panel__hint">
-                  WASD o flechas para moverte · SHIFT camina · CTRL o C agacha · SPACE salta
+                  WASD o flechas para moverte · SHIFT camina · C agacha · SPACE salta y encadena
                 </p>
               )}
               <p className="panel__hint">R recarga · Escape pausa.</p>

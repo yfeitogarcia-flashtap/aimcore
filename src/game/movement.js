@@ -104,6 +104,16 @@ export class MovementController {
     /** Sala vigente. La marca el escenario; la vacía usa la de siempre. */
     this.room = ROOM
 
+    /**
+     * Último estado sano conocido, para la red de seguridad de `_guardState`.
+     * Son escalares sueltos a propósito: el bucle caliente no aloca.
+     */
+    this._safeX = 0
+    this._safeZ = 0
+    this._safeFeetY = 0
+    /** Cuántas veces ha hecho falta la red. En juego normal, cero. */
+    this.recoveries = 0
+
     /** Escenario contra el que se colisiona. Null = sala vacía, suelo en y = 0. */
     this.scenario = null
     /** Dónde aparece el jugador. Lo fija el escenario. */
@@ -168,7 +178,7 @@ export class MovementController {
 
   /**
    * Velocidad horizontal vigente. Se queda con la **más lenta** de las marchas
-   * pedidas, así que mantener SHIFT y CTRL a la vez da agachado — y seguiría
+   * pedidas, así que mantener SHIFT y C a la vez da agachado — y seguiría
    * siendo así aunque un día se retoquen las constantes.
    */
   get currentSpeed() {
@@ -225,6 +235,9 @@ export class MovementController {
     this._landedAt = -Infinity
     this._landingSpeed = MOVEMENT.speed
     this.chainedJump = false
+    this._safeX = this.spawnX
+    this._safeZ = this.spawnZ
+    this._safeFeetY = this.feetY
     this.eyeHeight = MOVEMENT.standHeight
     this.landingDip = 0
     this._dipFrom = 0
@@ -255,6 +268,71 @@ export class MovementController {
     this._updateVertical(dt, now)
     this._updateLandingDip(dt)
     this.camera.position.y = this.feetY + this.eyeHeight - this.landingDip
+    this._guardState()
+  }
+
+  /**
+   * Red de seguridad: ningún frame sale de aquí con el jugador en un valor que
+   * no sea un número finito.
+   *
+   * No tapa un bug conocido —medio millón de frames de alternancia rápida de
+   * salto y agachado con deltas de 0 a 100 ms no han producido ni uno—, y
+   * precisamente por eso está: si algún día una cuenta nueva mete un NaN, lo que
+   * no puede pasar es que se propague al render. Una posición NaN viaja a la
+   * matriz de la cámara, de ahí al `matrix3d` que el CSS3DRenderer escribe en el
+   * tablero, y de ahí al compositor del navegador, que es el único sitio de toda
+   * la cadena donde un número roto se puede llevar por delante la pestaña entera.
+   *
+   * Se vuelve al último estado sano, que se guarda cada frame que lo es. El
+   * contador `recoveries` queda expuesto a propósito: en juego normal tiene que
+   * valer siempre cero, y las auditorías lo comprueban.
+   */
+  _guardState() {
+    const position = this.camera.position
+    const sano =
+      Number.isFinite(position.x) &&
+      Number.isFinite(position.y) &&
+      Number.isFinite(position.z) &&
+      Number.isFinite(this.feetY) &&
+      Number.isFinite(this.verticalVelocity) &&
+      Number.isFinite(this.eyeHeight) &&
+      Number.isFinite(this.landingDip) &&
+      Number.isFinite(this._airTime) &&
+      Number.isFinite(this._launchY) &&
+      Number.isFinite(this._launchVelocity) &&
+      Number.isFinite(this._airSpeed)
+
+    if (sano) {
+      this._safeX = position.x
+      this._safeZ = position.z
+      this._safeFeetY = this.feetY
+      return
+    }
+
+    this.recoveries += 1
+    // Al suelo, quieto y de pie, donde se estaba la última vez que todo era un
+    // número. El vuelo en curso se cancela entero: media parábola con un NaN
+    // dentro no se puede continuar.
+    this.feetY = Number.isFinite(this._safeFeetY) ? this._safeFeetY : 0
+    this.verticalVelocity = 0
+    this.airborne = false
+    this._airTime = 0
+    this._launchY = this.feetY
+    this._launchVelocity = 0
+    this._airSpeed = MOVEMENT.speed
+    this._landingSpeed = MOVEMENT.speed
+    this._landedAt = -Infinity
+    this._jumpPressedAt = -Infinity
+    this.eyeHeight = MOVEMENT.standHeight
+    this.landingDip = 0
+    this._dipFrom = 0
+    this._dipElapsedMs = 0
+    this._landingImpact = 0
+    position.set(
+      Number.isFinite(this._safeX) ? this._safeX : this.spawnX,
+      this.feetY + this.eyeHeight,
+      Number.isFinite(this._safeZ) ? this._safeZ : this.spawnZ,
+    )
   }
 
   /**

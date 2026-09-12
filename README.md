@@ -50,15 +50,18 @@ Sólo con la variante de movimiento activa (`MOVEMENT.enabled`):
   que por muchos saltos que encadenes no pasas de la marcha de carrera. Y sólo
   cuenta si aciertas el tiempo: dejar la tecla apoyada rebota, pero con saltos
   normales.
-- **CTRL** (o **C**) mantenido: agacharse. Baja la altura de la cámara y
-  reduce la velocidad mientras se mantiene. Con SHIFT y CTRL a la vez manda la
-  marcha más lenta de las dos, o sea agachado.
+- **C** mantenido: agacharse. Baja la altura de la cámara y reduce la velocidad
+  mientras se mantiene. Con SHIFT y C a la vez manda la marcha más lenta de las
+  dos, o sea agachado.
 
-> **Cuidado con CTRL en Chrome.** Agacharse avanzando es Ctrl+W, y Ctrl+W
-> cierra la pestaña — es un atajo reservado del navegador y una página no
-> puede impedirlo. Ctrl+A/S/D sí quedan neutralizados. Por eso **C** está
-> mapeado también a agacharse; si prefieres sólo CTRL, quita `KeyC` de
-> `MOVEMENT.keys.crouch`.
+> **Agacharse es C, no CTRL, y no es una preferencia.** Agacharse avanzando era
+> Ctrl+W, y Ctrl+W **cierra la pestaña** en Chrome y en Edge: es un atajo que
+> resuelve el navegador antes de que el evento llegue a la página, así que no
+> hay forma de impedirlo desde aquí. Se manifestaba como un cierre intermitente
+> «sin motivo» — sólo pasaba con W pulsada en el instante de agacharse.
+> Ctrl+A/S/D sí se pueden neutralizar, pero con W no. Si aun así prefieres CTRL,
+> es añadir `'ControlLeft'` y `'ControlRight'` a `MOVEMENT.keys.crouch`, con lo
+> que vuelve el cierre.
 
 ## Modos de sesión
 
@@ -311,7 +314,7 @@ aprende ni se compensa — sólo se evita yendo más despacio.
 
 | estado | dispersión |
 | --- | --- |
-| Quieto, caminando (SHIFT) o agachado (CTRL) | ninguna: precisión completa |
+| Quieto, caminando (SHIFT) o agachado (C) | ninguna: precisión completa |
 | Corriendo | activa |
 | En el aire | activa, sin importar la marcha: saltar penaliza como correr |
 
@@ -377,9 +380,13 @@ saber qué tipo es cuál — mira si hay perfil y lo usa.
 
 Independiente del acumulativo. Con él activo, cada diana viva elige un punto
 de destino aleatorio dentro de su propio volumen de aparición y se mueve hacia
-él en línea recta a `TARGET.moveSpeed` unidades por segundo — sin aceleración
-ni easing. Al llegar, o al agotar `TARGET.moveMaxSeconds` persiguiendo el
-mismo punto, elige otro.
+él en línea recta — sin aceleración ni easing. Al llegar, o al agotar
+`TARGET.moveMaxSeconds` persiguiendo el mismo punto, elige otro.
+
+La velocidad se ajusta desde opciones, en **Velocidad de patrulla**: de 1.5 a 8
+unidades por segundo, con 4 por defecto. La referencia útil es tu propia carrera
+(6.5 u/s) — por encima de ella los muñecos dejan de poder seguirse andando, y la
+pista bajo el slider lo dice mientras lo mueves.
 
 Los ejes salen del tipo de anclaje, sin lógica aparte: Clásica y Cono flotan,
 así que reciben destinos en X/Y/Z; el hitbox se apoya en el suelo, así que sus
@@ -540,7 +547,7 @@ RENDER.fpsSampleFrames  // ventana del contador de FPS
 SIMULTANEOUS_TARGETS    // opciones del selector de dianas a la vez
 FRAME_LIMITS            // opciones del límite de fotogramas
 
-TARGET.moveSpeed        // velocidad de las dianas en modo dinámico
+TARGET.moveSpeed        // velocidad de patrulla por defecto (ajustable en opciones)
 TARGET.moveMaxSeconds   // tiempo máximo persiguiendo un mismo destino
 
 WEAPONS                       // roster: modo, RPM y patrón de retroceso
@@ -685,7 +692,7 @@ cuesta ~0.1 ms por frame en p99, frente a los 4.17 ms de presupuesto a 240 Hz.
   crosshair sería insufrible y además impediría apuntar; desviando el rayo, el
   jugador ve exactamente dónde apunta y lo que pierde es certeza sobre dónde
   irá el disparo.
-- **La marcha más lenta manda.** SHIFT y CTRL a la vez dan agachado porque el
+- **La marcha más lenta manda.** SHIFT y C a la vez dan agachado porque el
   motor se queda con la menor de las velocidades pedidas, no por un orden de
   prioridad escrito a mano — seguiría siendo cierto si un día se retocan las
   constantes.
