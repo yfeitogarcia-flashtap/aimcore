@@ -17,7 +17,7 @@
 
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { COVER, SCENARIOS, coverEdgeColor, coverHeight } from '../config.js'
+import { COVER, SCENARIOS, coverEdgeColor, coverHeight, scenarioRoom } from '../config.js'
 
 /**
  * Prisma triangular para las rampas: rectángulo abajo y una única arista
@@ -103,6 +103,16 @@ export class Scenario {
   /** Punto de aparición del jugador. */
   get spawn() {
     return this.definition.spawn
+  }
+
+  /**
+   * Sala de este escenario: la de `ROOM` salvo que traiga la suya. Es la
+   * medida que consumen la grilla, los límites de movimiento, el acotado de
+   * dianas y el tablero de acciones, así que **no hay dos versiones** del
+   * tamaño de la sala que se puedan desincronizar.
+   */
+  get room() {
+    return scenarioRoom(this.key)
   }
 
   /**

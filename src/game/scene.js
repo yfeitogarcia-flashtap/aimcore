@@ -49,8 +49,8 @@ function buildGridGeometries(width, height, step, accentEvery) {
  * Un plano de grilla como `THREE.Group` (líneas base + líneas de acento),
  * orientado en XY y listo para posicionar/rotar.
  */
-function createGridPlane(width, height, materials) {
-  const { base, accent } = buildGridGeometries(width, height, ROOM.step, ROOM.accentEvery)
+function createGridPlane(width, height, materials, room) {
+  const { base, accent } = buildGridGeometries(width, height, room.step, room.accentEvery)
   const group = new THREE.Group()
   group.add(new THREE.LineSegments(base, materials.base))
   group.add(new THREE.LineSegments(accent, materials.accent))
@@ -59,7 +59,14 @@ function createGridPlane(width, height, materials) {
 
 /**
  * Crea la escena completa.
- * @returns {{ scene: THREE.Scene, dispose: () => void }}
+ *
+ * La sala se monta aparte, con `setRoom`, porque **cada escenario trae la
+ * suya**: el Plano A vive en 40×40 y la sala vacía en 80×80. Reconstruirla es
+ * tirar cuatro paredes y un suelo de líneas, así que se hace entero en lugar de
+ * escalar el grupo: escalando, el paso de la grilla dejaría de ser una unidad y
+ * el suelo ya no serviría de sistema de coordenadas.
+ *
+ * @returns {{ scene: THREE.Scene, setRoom: (room: object) => void, dispose: () => void }}
  */
 export function createScene() {
   const scene = new THREE.Scene()
@@ -75,48 +82,71 @@ export function createScene() {
     accent: new THREE.LineBasicMaterial({ color: COLORS.gridFloorAccent }),
   }
 
-  const { width, depth, height } = ROOM
-  const halfW = width / 2
-  const halfD = depth / 2
+  /** @type {THREE.Group | null} */
+  let group = null
+  /** Medidas montadas ahora mismo, para no rehacer la sala sin motivo. */
+  let current = null
 
-  const room = new THREE.Group()
-
-  // Suelo (plano XZ, y = 0).
-  const floor = createGridPlane(width, depth, floorMaterials)
-  floor.rotation.x = -Math.PI / 2
-  room.add(floor)
-
-  // Pared frontal (-Z) y trasera (+Z).
-  const front = createGridPlane(width, height, wallMaterials)
-  front.position.set(0, height / 2, -halfD)
-  room.add(front)
-
-  const back = createGridPlane(width, height, wallMaterials)
-  back.position.set(0, height / 2, halfD)
-  room.add(back)
-
-  // Paredes laterales (±X).
-  const left = createGridPlane(depth, height, wallMaterials)
-  left.rotation.y = Math.PI / 2
-  left.position.set(-halfW, height / 2, 0)
-  room.add(left)
-
-  const right = createGridPlane(depth, height, wallMaterials)
-  right.rotation.y = -Math.PI / 2
-  right.position.set(halfW, height / 2, 0)
-  room.add(right)
-
-  scene.add(room)
-
-  const dispose = () => {
-    room.traverse((object) => {
+  const disposeGroup = () => {
+    if (!group) return
+    group.traverse((object) => {
       if (object.isLineSegments) object.geometry.dispose()
     })
+    scene.remove(group)
+    group = null
+  }
+
+  const setRoom = (room = ROOM) => {
+    if (current && current.width === room.width && current.depth === room.depth &&
+        current.height === room.height && current.step === room.step &&
+        current.accentEvery === room.accentEvery) {
+      return
+    }
+    disposeGroup()
+    current = room
+
+    const { width, depth, height } = room
+    const halfW = width / 2
+    const halfD = depth / 2
+    group = new THREE.Group()
+
+    // Suelo (plano XZ, y = 0).
+    const floor = createGridPlane(width, depth, floorMaterials, room)
+    floor.rotation.x = -Math.PI / 2
+    group.add(floor)
+
+    // Pared frontal (-Z) y trasera (+Z).
+    const front = createGridPlane(width, height, wallMaterials, room)
+    front.position.set(0, height / 2, -halfD)
+    group.add(front)
+
+    const back = createGridPlane(width, height, wallMaterials, room)
+    back.position.set(0, height / 2, halfD)
+    group.add(back)
+
+    // Paredes laterales (±X).
+    const left = createGridPlane(depth, height, wallMaterials, room)
+    left.rotation.y = Math.PI / 2
+    left.position.set(-halfW, height / 2, 0)
+    group.add(left)
+
+    const right = createGridPlane(depth, height, wallMaterials, room)
+    right.rotation.y = -Math.PI / 2
+    right.position.set(halfW, height / 2, 0)
+    group.add(right)
+
+    scene.add(group)
+  }
+
+  setRoom(ROOM)
+
+  const dispose = () => {
+    disposeGroup()
     wallMaterials.base.dispose()
     wallMaterials.accent.dispose()
     floorMaterials.base.dispose()
     floorMaterials.accent.dispose()
   }
 
-  return { scene, dispose }
+  return { scene, setRoom, dispose }
 }

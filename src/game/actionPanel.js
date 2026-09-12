@@ -16,7 +16,7 @@
 
 import * as THREE from 'three'
 import { CSS3DObject } from 'three/examples/jsm/renderers/CSS3DRenderer.js'
-import { ACTION_PANEL, ROOM } from '../config.js'
+import { ACTION_PANEL, ROOM, actionPanelMetrics } from '../config.js'
 
 /** Botones, en el orden en que aparecen. */
 const BUTTONS = [
@@ -58,26 +58,38 @@ export class ActionPanel {
 
     // Tablero: a la derecha del punto de aparición, mirando hacia él.
     this.object = new CSS3DObject(this.element)
-    this.object.position.set(ACTION_PANEL.distance, ACTION_PANEL.height, 0)
     this.object.rotation.y = -Math.PI / 2
-    this.object.scale.setScalar(ACTION_PANEL.scale)
     cssScene.add(this.object)
 
     // Los planos viven en un grupo con la misma transformación, de modo que
     // basta colocarlos en coordenadas de píxel del tablero.
     this.group = new THREE.Group()
-    this.group.position.copy(this.object.position)
     this.group.rotation.copy(this.object.rotation)
-    this.group.scale.copy(this.object.scale)
     scene.add(this.group)
 
     this._hitMaterial = new THREE.MeshBasicMaterial()
     this._activeMeshes = []
-    this._maxX = ROOM.width / 2 - ACTION_PANEL.wallOffset
+    this._applyRoom(ROOM)
+  }
+
+  /**
+   * Adopta las medidas de una sala. El tablero se encoge con ella —misma
+   * distancia angular desde el jugador, misma altura de mirada— en lugar de
+   * quedarse a tamaño de sala grande: con la sala a 40, un tablero de 19.8 u
+   * ocuparía media planta y no habría dónde poner nada.
+   */
+  _applyRoom(room) {
+    const metrics = actionPanelMetrics(room)
+    this._metrics = metrics
+    this._maxX = metrics.maxX
     // El tablero mide `widthPx * scale` de ancho y está girado para mirar a -X,
     // así que se extiende a lo largo de Z: media anchura a cada lado del ancla.
-    this._halfSpan = (ACTION_PANEL.widthPx * ACTION_PANEL.scale) / 2
-    this._maxZ = ROOM.depth / 2 - this._halfSpan - ACTION_PANEL.wallOffset
+    this._halfSpan = metrics.halfSpan
+    this._maxZ = room.depth / 2 - this._halfSpan - ACTION_PANEL.wallOffset
+    this.object.position.set(metrics.distance, metrics.height, this.object.position.z)
+    this.object.scale.setScalar(metrics.scale)
+    this.group.position.copy(this.object.position)
+    this.group.scale.copy(this.object.scale)
   }
 
   /**
@@ -97,7 +109,8 @@ export class ActionPanel {
    * La Z se acota para que el tablero entero quepa dentro de la sala: con el
    * ancla pegada a la pared trasera, media pizarra se saldría por detrás.
    */
-  setAnchor(spawn) {
+  setAnchor(spawn, room = ROOM) {
+    this._applyRoom(room)
     const z = Math.max(-this._maxZ, Math.min(this._maxZ, spawn ? spawn.z : 0))
     this.object.position.z = z
     this.group.position.z = z
@@ -105,18 +118,19 @@ export class ActionPanel {
 
   /** Volumen que el escenario debe dejar libre para que el tablero quepa. */
   get clearVolume() {
+    const metrics = this._metrics
     return {
-      minX: ACTION_PANEL.distance,
+      minX: metrics.distance,
       maxX: this._maxX,
       minZ: this.object.position.z - this._halfSpan,
       maxZ: this.object.position.z + this._halfSpan,
-      minY: ACTION_PANEL.height - (ACTION_PANEL.heightPx * ACTION_PANEL.scale) / 2,
-      maxY: ACTION_PANEL.height + (ACTION_PANEL.heightPx * ACTION_PANEL.scale) / 2,
+      minY: metrics.height - metrics.halfHeight,
+      maxY: metrics.height + metrics.halfHeight,
     }
   }
 
   follow(camera) {
-    const wanted = Math.max(ACTION_PANEL.distance, camera.position.x + ACTION_PANEL.minDistance)
+    const wanted = Math.max(this._metrics.distance, camera.position.x + this._metrics.minDistance)
     const x = Math.min(wanted, this._maxX)
     if (x === this.object.position.x) return
     this.object.position.x = x

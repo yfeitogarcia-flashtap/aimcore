@@ -1576,7 +1576,9 @@ punto de aparición.
 alternativa dentro de las restricciones —lo dice la barrida, no una estimación—
 y la única forma de tener una primera diana lejana *y* de frente es tocar el
 plano: abrir un hueco en la divisoria, acortarla por el oeste, o mover el spawn.
-Eso es rediseño del Plano A y no era de esta vuelta.
+Eso es rediseño del Plano A y no era de esta vuelta. → Hecho en §24.4: la
+divisoria se fue entera al este del spawn y estos dos anclajes volvieron a los
+flancos.
 
 ### 23.3 Un guardia que salta es un guardia que hay que reescribir, no borrar
 
@@ -1597,6 +1599,170 @@ El sesgo de selección, los grupos de patrulla y el resto del Plano A se quedan
 igual. `vestibulo-o` sigue siendo la entrada del grupo `vestibulo` y desde su
 posición nueva sigue viendo los cuatro puntos del grupo: verificado, 6 pares + 4
 entradas limpios.
+
+## Ronda 24 — El Plano A a 40×40, y el salto encadenado
+
+### 24.1 Acercar la cobertura no encoge un mapa
+
+El Plano A se caminaba demasiado: cruzarlo en diagonal eran **16.8 s** a marcha
+de carrera, casi todos sobre suelo vacío entre pieza y pieza.
+
+La tentación era juntar la cobertura dentro de los mismos 80×80. No sirve: deja
+el mismo anillo de suelo caminable por fuera, y el jugador lo sigue cruzando. Lo
+que hay que reducir es **el límite jugable**, y ése lo pone la sala.
+
+Así que la sala deja de ser una constante global y pasa a ser **una propiedad del
+escenario**: `ROOM` sigue siendo la de la sala vacía, `SCENARIOS.x.room` la del
+que la traiga, y `scenario.room` el único sitio del que se lee. De ahí cuelgan
+cinco cosas que antes leían `ROOM` a pelo:
+
+- la rejilla y las paredes (`scene.js` pasa a exponer `setRoom`, y se
+  reconstruyen enteras: escalar el grupo dejaría el paso de la rejilla en algo
+  distinto de una unidad y el suelo ya no serviría de sistema de coordenadas);
+- el acotado del movimiento contra las paredes;
+- el acotado del muestreo de dianas por cono;
+- las medidas del tablero de acciones;
+- el plano cenital del selector, que ahora dibuja la planta real de cada
+  escenario en vez de meter una de 40 dentro de un lienzo de 80.
+
+Medido después: diagonal jugable **52.3 u contra 108.9**, el 48%; superficie
+jugable, el **23%**; cruzarlo, **8.1 s**.
+
+### 24.2 Lo que se encoge es el suelo, no la cobertura
+
+«Misma cantidad de cobertura, menos superficie» no se consigue escalando todo por
+0.5: eso deja el mapa idéntico, porque el jugador no se encoge con él. Un hueco
+de puerta de 4 u pasaría a 2 y una Media de 7 de ancho a 3.5, poco más que un
+cuerpo.
+
+La regla que se siguió es la que distingue **estructura de mobiliario**:
+
+- Lo que cruza el mapa por definición —la Espina, la divisoria, la plataforma del
+  Balcón, el parapeto— **sí** se escala: su trabajo es cruzarlo.
+- El mobiliario —los cajones, las Media, los bordillos— conserva tamaño de
+  cuerpo: 3×3 un cajón, 4.5×2 una Media. El grosor de los muros incluso sube en
+  proporción, y se lee mejor.
+
+Las veinte piezas siguen siendo veinte. Lo que desapareció es el suelo entre
+ellas.
+
+### 24.3 Dos rampas, porque una obliga a un rodeo
+
+El Balcón tenía un solo acceso, en el extremo este. Subir desde el oeste era
+recorrer la cara entera del parapeto por delante, a la vista de las dos troneras.
+Ahora hay una rampa en cada extremo, y los dos huecos de parapeto que dejan sus
+bocas son parte del diseño, no un descuido.
+
+De paso, las troneras pasan de 2.5 a **4 u**. Por una tronera no sólo se dispara:
+también se sale a patrullar, y un muñeco mide 1.2 u de cuerpo. Con 2.5 quedaban
+0.65 u a cada lado, las salidas en diagonal rozaban el labio del parapeto y el
+grupo de patrulla compartido del Balcón —el que justifica que las dos troneras
+compartan grupo— no tenía solución limpia. Por lo mismo, la plataforma pasa de 6
+a 7 u de fondo.
+
+### 24.4 La divisoria del Vestíbulo, entera al este
+
+En la ronda 23 quedó anotado que la divisoria sellaba el cono frontal desde el
+spawn y que la única salida era tocar el plano. Esta vuelta **es** ese rediseño,
+así que se hizo.
+
+La divisoria ya no cruza por delante del punto de aparición: arranca en x 2.5, a
+su este, y deja el paso central abierto. El efecto es inmediato — desde el spawn
+se ven `tronera-e` a 27 u y `cajon-2` a 13, de frente, y de ahí sale la primera
+diana el 85% de las veces. Los dos anclajes del Vestíbulo, que en la ronda 23
+hubo que meter a la fuerza dentro del cono a 8.8 y 4 u, vuelven a los flancos.
+
+Dos ajustes que salieron de mirarlo, no de calcularlo:
+
+- **Abrir la divisoria dejó un carril recto de 26 u** desde el spawn hasta la
+  cara del Balcón: medio mapa de galería de tiro. Las dos Media de aproximación a
+  La Puerta se escalonaron sobre el eje del spawn para romperlo.
+- **Y arrancaba en x 1, no en 2.5.** Un muro Alta que entra en el encuadre a 24°
+  de la mirada inicial se come un tercio de la pantalla a dos metros de la cara.
+  Desde x 2.5 entra a 43°, ya en el borde. Esto no lo dice ninguna auditoría: se
+  vio en una captura.
+
+### 24.5 El tablero de acciones se escala con la sala
+
+Con la sala a 40, el tablero medía 19.8 u de ancho —media planta— y su volumen
+reservado se comía Los Cajones enteros. `scale`, `distance`, `minDistance` y
+`height` pasan a derivarse de `room.width / ACTION_PANEL.referenceRoomWidth`
+(`actionPanelMetrics`), así que el tablero se ve **igual de grande desde el
+jugador** en cualquier sala —mismo ángulo, misma altura de mirada— y con la de 80
+salen exactamente los valores de siempre.
+
+### 24.6 Un umbral en unidades sueltas se rompe al reescalar
+
+Las auditorías estaban llenas de números atados a la sala de 80: «ningún anclaje
+a menos de 10 u del spawn», «a 8 u o más del tablero», «ningún sitio del
+explosivo a menos de 20 u». En una sala de 40, 10 u alrededor del spawn es un
+cuarto del mapa. Todos pasaron a fracciones de `room.width`.
+
+Y peor: los tests escribían coordenadas del plano a mano —la Espina en x −15, la
+rampa en x 29, el borde del Balcón en z −29—. Un test que sabe dónde está la
+Espina no prueba la Espina, prueba un número, y al reescalar falla sin haber roto
+nada. Ahora se localizan en los datos: la Espina es *la caja Alta más larga en Z
+que en X*, las troneras son *los huecos entre tramos de parapeto*, el borde del
+Balcón es *la cara norte de la plataforma*. Tres fallos de esta vuelta eran
+exactamente eso, y uno —el jugador arrancando en x −36, fuera de una sala de
+40— se presentaba como una expulsión que no existía.
+
+De los que sí eran reales: una Media plantada encima de la rampa nueva la dejaba
+intransitable a media altura, y un sitio del explosivo quedaba dentro de un muro.
+
+### 24.7 Tunelado: una comprobación que antes no hacía falta
+
+`resolveAxis` comprueba el choque contra la **posición propuesta**, no contra el
+recorrido. Con muros de 1.5 u eso nunca importó; con muros de 1.2 conviene
+dejarlo comprobado, porque es el tipo de cosa que se rompe callando. El peor paso
+posible es `MOVEMENT.speed` por el delta máximo que admite el bucle (100 ms):
+**0.65 u**, contra 1.2 de muro más 0.8 de cuerpo. Hay margen de tres veces, y
+ahora hay una aserción que lo vigila.
+
+### 24.8 El salto encadenado conserva; no hay forma de que acelere
+
+El encargo pedía explícitamente que encadenar no permitiera acelerar sin
+límite. La forma de garantizarlo no es poner un tope: es que **no haya nada que
+lo suba**.
+
+Un encadenado cambia una sola cosa: `_airSpeed` sale de la marcha que se traía al
+aterrizar en vez de recalcularse desde el suelo. Y como `_airSpeed` sólo puede
+nacer de `currentSpeed` —que nunca pasa de `MOVEMENT.speed`—, por inducción
+ninguna cadena, de la longitud que sea, puede superar la marcha de carrera. Doce
+encadenados seguidos dan 6.5 doce veces.
+
+Lo que sí cambia es el *feel*: llegar agachado ya no te tira la marcha a 2.6 si
+aciertas el tiempo. Eso es lo que se siente como bunny-hop.
+
+Dos decisiones dentro:
+
+- **La pulsación se gasta al despegar.** Sin eso, dejar SPACE apoyada encadenaría
+  solo en cada aterrizaje y el timing no pintaría nada. Mantener la tecla sigue
+  rebotando exactamente como antes, con saltos normales.
+- **La ventana vale a los dos lados.** Pulsar un pelo antes de tocar el suelo
+  cuenta igual que un pelo después. Con sólo el lado de después, encadenar es un
+  reflejo; con los dos, es un ritmo.
+
+### 24.9 El instante del aterrizaje tampoco puede depender del monitor
+
+Es la misma trampa de la ronda 17, un escalón más arriba. La velocidad de
+impacto ya salía de la energía y no del frame que detecta el suelo; el
+**instante** seguía siendo el del frame, que llega hasta un refresco tarde —16.7
+ms a 60 Hz, 4.2 a 240—. Medir una ventana de 130 ms contra esa marca la haría
+sistemáticamente más generosa cuantos más FPS tuvieras.
+
+Se despeja de la parábola, igual que la velocidad:
+
+    ½·g·t² − v0·t + (suelo − y0) = 0   →   t = (v0 + velocidadDeImpacto) / g
+
+y lo que sobra respecto al tiempo de vuelo acumulado es el retraso del frame, que
+se descuenta del reloj. El otro extremo, la pulsación, sale de `event.timeStamp`
+—el instante real del teclado, no el del frame que lo atiende—, y los dos viven
+en el mismo origen de tiempos.
+
+Medido por bisección sobre el offset de la pulsación: el umbral sale en
+**130.00 ms** a 60, 144 y 240 Hz, a los dos lados, con una diferencia de
+**0.000 ms** entre refrescos. Contra los 16.67 ms que dura un frame a 60 Hz.
 
 ## 13. Bugs con enseñanza duradera
 

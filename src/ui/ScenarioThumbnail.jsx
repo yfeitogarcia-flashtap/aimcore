@@ -1,4 +1,4 @@
-import { COVER, ROOM, SCENARIOS, coverEdgeColor, coverHeight } from '../config.js'
+import { COVER, SCENARIOS, coverEdgeColor, coverHeight, scenarioRoom } from '../config.js'
 
 /**
  * Plano cenital de un escenario, dibujado **desde los datos de `SCENARIOS`**.
@@ -8,8 +8,10 @@ import { COVER, ROOM, SCENARIOS, coverEdgeColor, coverHeight } from '../config.j
  * en partida. Esto lee las mismas piezas que monta `scenario.js` y resuelve las
  * alturas con el mismo `coverHeight`, así que no puede mentir.
  *
- * Coordenadas: el mundo va de -ROOM/2 a +ROOM/2 y el SVG de 0 a ROOM, de modo
+ * Coordenadas: el mundo va de -sala/2 a +sala/2 y el SVG de 0 a sala, de modo
  * que basta sumar la mitad. -Z queda arriba, que es hacia donde mira el jugador.
+ * La sala la trae el escenario, así que el plano del que mide 40 se dibuja a 40
+ * y no reescalado dentro de uno de 80: la miniatura enseña la planta real.
  */
 
 /** Piezas ordenadas de más baja a más alta: las altas se dibujan encima. */
@@ -21,10 +23,11 @@ export default function ScenarioThumbnail({ scenarioKey, className = '' }) {
   const definition = SCENARIOS[scenarioKey]
   if (!definition) return null
 
-  const { width, depth } = ROOM
+  const room = scenarioRoom(scenarioKey)
+  const { width, depth } = room
   const halfW = width / 2
   const halfD = depth / 2
-  const gridStep = ROOM.accentEvery * 2
+  const gridStep = room.accentEvery * 2
 
   return (
     <svg

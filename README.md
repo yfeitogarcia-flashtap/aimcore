@@ -40,6 +40,16 @@ Sólo con la variante de movimiento activa (`MOVEMENT.enabled`):
   penalización — ver *Precisión y movimiento*.
 - **SPACE**: salto. Sin doble salto — no se puede volver a saltar hasta tocar
   el suelo. Si dejas la tecla pulsada, rebota al aterrizar.
+- **SPACE justo al aterrizar**: **salto encadenado**. Si vuelves a pulsar
+  dentro de una ventana estrecha alrededor del momento de tocar el suelo —un
+  pelo antes o un pelo después, `MOVEMENT.chainJumpWindowMs`— el salto nuevo
+  arranca con la marcha que traías en el aire en lugar de recalcularla desde el
+  suelo. Encadenando mantienes el ritmo aunque llegues agachado; el control
+  aéreo sigue siendo el de siempre.
+  No es un acelerador: se **conserva** lo que llevabas, nunca se multiplica, así
+  que por muchos saltos que encadenes no pasas de la marcha de carrera. Y sólo
+  cuenta si aciertas el tiempo: dejar la tecla apoyada rebota, pero con saltos
+  normales.
 - **CTRL** (o **C**) mantenido: agacharse. Baja la altura de la cámara y
   reduce la velocidad mientras se mantiene. Con SHIFT y CTRL a la vez manda la
   marcha más lenta de las dos, o sea agachado.
@@ -105,22 +115,25 @@ el nuevo.
 **Sala vacía** — el Gridshot de siempre. Las dianas salen por muestreo dentro del
 cono, con la distancia y el modo dinámico que digan las opciones.
 
-**Largo y Puerta** — el primer escenario con cobertura. Apareces en el
-**Vestíbulo**, una banda despejada con una divisoria que te obliga a elegir
-salida. A la izquierda, **El Largo**: un carril de unas 50 unidades de visión
-limpia, roto por tres bloques Media escalonados que se cruzan a base de asomadas
-cortas. En el centro, **La Espina**, un muro que parte el mapa de norte a sur con
-un único hueco de 4 u —**La Puerta**—, el único punto del mapa que se puede
-pre-apuntar con certeza. A la derecha, **Los Cajones**: distancias de 8 a 16 u,
-asomada agachado y giros cortos. Al fondo, **El Balcón**: una plataforma elevada
-con rampa de acceso por la derecha y un parapeto con dos troneras que miran El
-Largo de punta a punta.
+**Largo y Puerta** — el primer escenario con cobertura. Ocupa **su propia sala
+de 40×40**, la mitad de lado que la vacía: la misma cantidad de cobertura con
+mucho menos suelo entre pieza y pieza. Cruzarlo en diagonal son ~8 s a marcha de
+carrera en vez de ~17.
 
-La divisoria del Vestíbulo tapa todo lo que hay de frente, así que la sesión
-arranca con las dos únicas dianas que se ven desde el punto de aparición: una a
-media distancia asomada por la esquina oeste de la divisoria y otra corta, algo a
-la derecha. Las dos están **en pantalla sin mover el ratón** — de ahí en adelante
-mandan el mapa y hacia dónde mires.
+Apareces en el **Vestíbulo**, con una divisoria a la derecha que te obliga a
+elegir salida y el paso central abierto. A la izquierda, **El Largo**: un carril
+de unas 25 unidades de visión limpia, roto por tres bloques Media escalonados que
+se cruzan a base de asomadas cortas. En el centro, **La Espina**, un muro que
+parte el mapa de norte a sur con un único hueco de 2.5 u —**La Puerta**—, el
+único punto del mapa que se puede pre-apuntar con certeza. A la derecha, **Los
+Cajones**: corta distancia, asomada agachado y giros cortos. Al fondo, **El
+Balcón**: una plataforma elevada con **una rampa en cada extremo** y un parapeto
+con dos troneras que miran El Largo de punta a punta.
+
+Desde el punto de aparición se ve el paso central, así que la sesión arranca con
+dianas **de frente y a distancia** —la tronera del Balcón al fondo, los Cajones a
+media sala— además de las dos del propio Vestíbulo, que quedan a los flancos y
+obligan a girarse.
 
 ### Cómo leer las estructuras
 
@@ -605,7 +618,12 @@ cuesta ~0.1 ms por frame en p99, frente a los 4.17 ms de presupuesto a 240 Hz.
   especiales.
 - **Sin assets.** El sonido se sintetiza con osciladores; no hay archivos de
   audio ni texturas.
-- **La sala mide 80×80 y ya no crece.** Cada ampliación anterior fue detrás de
+- **La sala vacía mide 80×80 y ya no crece; cada escenario puede traer la
+  suya.** El Plano A vive en 40×40 y con ella se encogen la rejilla, las
+  paredes, el límite real de movimiento, el acotado de las dianas y el tablero
+  de acciones. Reducir sólo la cobertura dentro de una sala grande no reduce el
+  mapa: deja un anillo de suelo vacío alrededor por el que se sigue caminando.
+  En la sala vacía cada ampliación anterior fue detrás de
   un rango de distancia mayor. A partir de aquí es al revés: el que se acota es
   el slider. Su máximo se **calcula** a partir del tamaño de la sala en vez de
   escribirse a mano (`computeMaxSpawnDistance` en `config.js`), de modo que el

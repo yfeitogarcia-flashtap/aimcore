@@ -120,8 +120,9 @@ export class Engine {
     })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, RENDER.maxPixelRatio))
 
-    const { scene, dispose: disposeScene } = createScene()
+    const { scene, setRoom, dispose: disposeScene } = createScene()
     this.scene = scene
+    this._setRoom = setRoom
     this._disposeScene = disposeScene
 
     this.camera = new THREE.PerspectiveCamera(CAMERA.fov, 1, CAMERA.near, CAMERA.far)
@@ -131,6 +132,9 @@ export class Engine {
     // El escenario se monta antes que el movimiento: de él salen la colisión y
     // el punto de aparición.
     this.scenario = new Scenario(this.scene, getSettings().scenario)
+    // La sala la manda el escenario: la grilla y las paredes se montan a su
+    // medida, y con ellas el límite real de movimiento.
+    this._setRoom(this.scenario.room)
 
     this.movement = new MovementController(this.camera)
     this.movement.setScenario(this.scenario)
@@ -161,8 +165,8 @@ export class Engine {
     this.objective.setSites(this.scenario.objectiveSites)
 
     this.actionPanel = new ActionPanel(this.scene, this.cssScene)
-    this.actionPanel.setAnchor(this.scenario.spawn)
-    this.targets.setAnchors(this.scenario.anchors, this.scenario.occluders)
+    this.actionPanel.setAnchor(this.scenario.spawn, this.scenario.room)
+    this.targets.setAnchors(this.scenario.anchors, this.scenario.occluders, this.scenario.room)
     /** Última activación del panel, para el antirrebote. */
     this._lastPanelActionAt = -Infinity
     /** Si la pulsación en curso ya se gastó en el panel, no dispara. */
@@ -459,11 +463,12 @@ export class Engine {
 
     this.scenario.dispose()
     this.scenario = new Scenario(this.scene, key)
+    this._setRoom(this.scenario.room)
     this.movement.setScenario(this.scenario)
     this.movement.reset()
     this.camera.updateMatrixWorld()
-    this.actionPanel.setAnchor(this.scenario.spawn)
-    this.targets.setAnchors(this.scenario.anchors, this.scenario.occluders)
+    this.actionPanel.setAnchor(this.scenario.spawn, this.scenario.room)
+    this.targets.setAnchors(this.scenario.anchors, this.scenario.occluders, this.scenario.room)
     this.objective.setSites(this.scenario.objectiveSites)
 
     // Las dianas vivas estaban ancladas a un mundo que ya no existe. Si había
@@ -969,7 +974,7 @@ export class Engine {
       } else {
         // `delta` ya viene acotado, así que la integración del salto no pega
         // un salto raro si el navegador se queda parado un momento.
-        this.movement.update(delta / 1000)
+        this.movement.update(delta / 1000, now)
         const landing = this.movement.takeLandingImpact()
         if (landing > 0) playLanding(landing)
         // Fuego automático: como mucho un disparo por frame. A 60 Hz eso son

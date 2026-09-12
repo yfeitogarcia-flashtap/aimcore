@@ -189,10 +189,13 @@ export class TargetManager {
    * @param {Array<object>} anchors
    * @param {Array<THREE.Object3D>} occluders geometría contra la que se
    *   comprueba la visibilidad
+   * @param {object} [room] sala del escenario, que es la que acota el muestreo
+   *   por cono cuando no hay anclajes
    */
-  setAnchors(anchors, occluders) {
+  setAnchors(anchors, occluders, room = ROOM) {
     this.anchors = anchors && anchors.length ? anchors : []
     this._occluders = occluders || []
+    this.room = room
     if (this._anchorOrder.length !== this.anchors.length) {
       this._anchorOrder = new Int32Array(this.anchors.length)
       this._forwardOrder = new Int32Array(this.anchors.length)
@@ -734,9 +737,10 @@ export class TargetManager {
 
     const anchoredToFloor = this.anchoredToFloor
     const halfHeight = this.type.halfHeight * this.radius
-    const margin = halfHeight + ROOM.step
-    const limitX = ROOM.width / 2 - margin
-    const limitZ = ROOM.depth / 2 - margin
+    const room = this.room ?? ROOM
+    const margin = halfHeight + room.step
+    const limitX = room.width / 2 - margin
+    const limitZ = room.depth / 2 - margin
     // Flotando, la figura no debe atravesar el suelo: el mínimo depende de su
     // altura. Apoyada en el suelo, la altura no se muestrea.
     const minY = Math.max(TARGET.yRange.min, halfHeight + 0.1)

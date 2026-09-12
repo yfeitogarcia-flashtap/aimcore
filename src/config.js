@@ -84,6 +84,22 @@ export const ROOM = {
   accentEvery: 5,
 }
 
+/**
+ * Sala de un escenario. La de arriba es la de la **sala vacía**, que no se
+ * toca; un escenario con cobertura puede traer la suya en `room` y entonces la
+ * sala entera —grilla, paredes, límites de movimiento, acotado de dianas y
+ * tamaño del tablero de acciones— se monta a esa medida.
+ *
+ * Es lo que hace que reducir un plano lo reduzca de verdad: acercar la
+ * cobertura dentro de los mismos 80×80 sólo deja un anillo de suelo vacío
+ * alrededor por el que se sigue pudiendo caminar, y recorrer el mapa cuesta lo
+ * mismo. El límite de la sala **es** el límite jugable.
+ */
+export function scenarioRoom(key) {
+  const definition = SCENARIOS[key]
+  return definition && definition.room ? { ...ROOM, ...definition.room } : ROOM
+}
+
 /** Dianas. */
 export const TARGET = {
   /** Radio por defecto. El ajuste "tamaño de diana" escribe sobre este valor. */
@@ -260,6 +276,15 @@ export const ACTION_PANEL = {
   /** Altura del centro del tablero sobre el suelo. */
   height: 4,
   /**
+   * Sala para la que están medidos `scale`, `distance`, `minDistance` y
+   * `height`. En una sala más pequeña los cuatro se reducen en la misma
+   * proporción (ver `actionPanelMetrics`): un tablero de 19.8 u de ancho en una
+   * sala de 40 ocuparía media planta. Escalando, el tablero se ve **igual de
+   * grande desde el jugador** —mismo ángulo, misma altura de mirada— en
+   * cualquier sala, y con la de 80 salen exactamente los valores de siempre.
+   */
+  referenceRoomWidth: 80,
+  /**
    * Distancia a la derecha del punto de aparición. El tablero se ancla al
    * spawn y no a una esquina de la sala: ahora que el jugador la recorre
    * entera, una coordenada fija podía quedar a medio mapa o en las narices.
@@ -277,6 +302,24 @@ export const ACTION_PANEL = {
    * botón con un arma automática lo repetiría a 600 RPM.
    */
   cooldownMs: 280,
+}
+
+/**
+ * Medidas del tablero de acciones en una sala concreta. Punto único: el panel,
+ * la auditoría y cualquier comprobación de estorbo leen de aquí, así que no hay
+ * dos versiones de la escala que se puedan desincronizar.
+ */
+export function actionPanelMetrics(room = ROOM) {
+  const k = room.width / ACTION_PANEL.referenceRoomWidth
+  return {
+    scale: ACTION_PANEL.scale * k,
+    distance: ACTION_PANEL.distance * k,
+    minDistance: ACTION_PANEL.minDistance * k,
+    height: ACTION_PANEL.height * k,
+    halfSpan: (ACTION_PANEL.widthPx * ACTION_PANEL.scale * k) / 2,
+    halfHeight: (ACTION_PANEL.heightPx * ACTION_PANEL.scale * k) / 2,
+    maxX: room.width / 2 - ACTION_PANEL.wallOffset,
+  }
 }
 
 /** Mensajes de ayuda del HUD. */
@@ -440,6 +483,20 @@ export const MOVEMENT = {
    * arrastra dependencia del refresco del monitor.
    */
   gravity: 30.0,
+
+  /**
+   * Ventana del **salto encadenado**, en milisegundos **a cada lado** del
+   * instante de aterrizaje. Pulsar SPACE dentro de ella —justo antes de tocar
+   * el suelo o justo después— encadena: el nuevo salto arranca con la marcha
+   * horizontal que se traía al aterrizar en vez de recalcularla desde el suelo.
+   * Fuera de la ventana, saltar al aterrizar se comporta exactamente igual que
+   * siempre.
+   *
+   * Se mide en tiempo real contra el instante **exacto** del aterrizaje, que
+   * sale de la parábola y no del frame que lo detecta (ver movement.js). Con
+   * un contador de frames, 130 ms serían 8 frames a 60 Hz y 31 a 240.
+   */
+  chainJumpWindowMs: 130,
 
   /**
    * Margen que se deja libre junto a cada pared. El desplazamiento ya no está
@@ -931,58 +988,95 @@ export const SCENARIOS = {
       replay: 'Alta. Tres zonas que se pueden entrenar por separado.',
     },
     /**
+     * Sala propia, la mitad de lado que la de la sala vacía. El plano se montó
+     * primero sobre los 80×80 de siempre y se caminaba demasiado: cruzarlo de
+     * punta a punta eran ~11 s a marcha de carrera, casi todos sobre suelo
+     * vacío entre pieza y pieza.
+     *
+     * Acercar la cobertura sin tocar la sala no lo habría arreglado: habría
+     * dejado el mismo anillo de suelo caminable por fuera. Lo que se reduce es
+     * **la sala**, y con ella el límite real de movimiento, el acotado de las
+     * dianas y el tamaño del tablero de acciones.
+     *
+     * Las piezas **no se han encogido a la mitad**: las estructurales que
+     * cruzan el mapa (la Espina, la divisoria, la plataforma) sí, porque su
+     * trabajo es cruzarlo, pero el mobiliario conserva un tamaño de cuerpo —un
+     * cajón de 3×3, una Media de 4.5×2— porque el jugador tampoco se ha
+     * encogido. Misma cantidad de cobertura, la mitad de suelo entre ella.
+     */
+    room: { width: 40, depth: 40, height: 10 },
+    /**
      * El jugador aparece en el Vestíbulo, mirando hacia -Z, que es la dirección
      * fija del cono de aparición. El panel de acciones se ancla a este punto.
      */
-    spawn: { x: 0, z: 28 },
+    spawn: { x: 0, z: 14 },
 
     boxes: [
       // --- La Espina: parte el mapa de norte a sur. El único hueco es La
-      // Puerta, de 4 u, entre z = -4 y z = 0.
-      { x: -15, z: -22, w: 1.5, d: 18, kind: 'alta' },
-      { x: -15, z: 0, w: 1.5, d: 22, kind: 'alta' },
+      // Puerta, de 2.5 u, entre z = -2 y z = 0.5.
+      { x: -8, z: -11, w: 1.2, d: 9, kind: 'alta' },
+      { x: -8, z: 0.5, w: 1.2, d: 10.5, kind: 'alta' },
 
-      // --- Vestíbulo: la divisoria que obliga a elegir salida.
-      { x: -4, z: 22, w: 20, d: 1.5, kind: 'alta' },
+      // --- Vestíbulo: la divisoria que obliga a elegir salida. Va entera al
+      // este del spawn y deja abierto el paso central: es lo que hace que desde
+      // el punto de aparición se vea de verdad hacia delante en lugar de tener
+      // un muro a dos metros (ver el comentario de los anclajes). Y arranca en
+      // x 2.5, no en x 1: a media sala de distancia, un muro Alta que empieza a
+      // 24° de la mirada inicial se come un tercio de la pantalla. Desde 2.5
+      // entra a 43°, ya en el borde del encuadre.
+      { x: 2.5, z: 10, w: 6, d: 1.3, kind: 'alta' },
 
-      // --- El Largo: tres Media escalonadas a un lado y otro del carril.
-      { x: -36, z: 6, w: 7, d: 3, kind: 'media' },
-      { x: -24, z: -8, w: 7, d: 3, kind: 'media' },
-      { x: -34, z: -22, w: 7, d: 3, kind: 'media' },
+      // --- El Largo: tres Media escalonadas a un lado y otro del carril. La
+      // del fondo se queda a x -15.5 y no más al oeste: por x -19..-16 sube la
+      // rampa nueva del Balcón y una Media ahí la tapaba a media altura.
+      { x: -18, z: 3, w: 4.5, d: 2, kind: 'media' },
+      { x: -13, z: -4, w: 4.5, d: 2, kind: 'media' },
+      { x: -15.5, z: -10, w: 4.5, d: 2, kind: 'media' },
 
-      // --- Aproximación a La Puerta, una por cada boca.
-      { x: -11, z: -9, w: 4, d: 3, kind: 'media' },
-      { x: -12, z: 2, w: 4, d: 3, kind: 'media' },
+      // --- Aproximación a La Puerta, una por cada boca. Van escalonadas sobre
+      // el eje del spawn a propósito: sin ellas, abrir la divisoria por el
+      // oeste deja un carril recto de 26 u desde el punto de aparición hasta la
+      // cara del Balcón, que es medio mapa de galería de tiro.
+      { x: -1, z: -5, w: 3, d: 1.5, kind: 'media' },
+      { x: -4, z: 1, w: 3, d: 1.5, kind: 'media' },
 
-      // --- Los Cajones: racimo de corta distancia, separaciones de 4 a 7 u.
-      { x: -10, z: 16, w: 5, d: 5, kind: 'baja' },
-      { x: 6, z: 5, w: 5, d: 5, kind: 'baja' },
-      { x: 22, z: 14, w: 5, d: 5, kind: 'baja' },
-      { x: 30, z: 3, w: 5, d: 5, kind: 'baja' },
-      { x: 0, z: 9, w: 6, d: 4, kind: 'bordillo' },
-      { x: 15, z: 18, w: 6, d: 4, kind: 'bordillo' },
+      // --- Los Cajones: racimo de corta distancia, separaciones de 2 a 5 u.
+      { x: -5, z: 8, w: 3, d: 3, kind: 'baja' },
+      { x: 3, z: 2.5, w: 3, d: 3, kind: 'baja' },
+      { x: 11, z: 4.5, w: 3, d: 3, kind: 'baja' },
+      { x: 15, z: 0.5, w: 3, d: 3, kind: 'baja' },
+      { x: 0, z: 4.5, w: 3.5, d: 2, kind: 'bordillo' },
+      { x: 4.5, z: 8.5, w: 3.5, d: 2, kind: 'bordillo' },
       // Divisoria que parte la zona en dos bolsas.
-      { x: 13, z: 4, w: 3, d: 10, kind: 'alta' },
+      { x: 6.5, z: 1.5, w: 1.5, d: 5, kind: 'alta' },
 
       // --- Pasillo trasero: ruta de rotación.
-      { x: 4, z: -14, w: 7, d: 3, kind: 'media' },
+      { x: 2, z: -7, w: 4, d: 2, kind: 'media' },
 
       // --- El Balcón: plataforma corrida al fondo.
-      // Llega hasta ±39 y z -39 a propósito: el jugador se puede acercar a las
-      // paredes hasta ROOM/2 - MOVEMENT.wallMargin (±38.5), y si la plataforma
+      // Llega hasta ±19 y z -19 a propósito: el jugador se puede acercar a las
+      // paredes hasta room/2 - MOVEMENT.wallMargin (±18.5), y si la plataforma
       // se quedase corta habría una rendija por la que caerse por detrás.
-      { x: -39, z: -39, w: 78, d: 11, kind: 'plataforma' },
+      { x: -19, z: -19, w: 38, d: 7, kind: 'plataforma' },
       // Parapeto sobre el borde delantero, con dos troneras abiertas entre
-      // x -34..-30 y x -24..-20. Por ahí, y sólo por ahí, se ve el Largo.
-      { x: -39, z: -29.5, w: 5, d: 1.5, kind: 'parapeto', base: 'plataforma' },
-      { x: -30, z: -29.5, w: 6, d: 1.5, kind: 'parapeto', base: 'plataforma' },
-      { x: -20, z: -29.5, w: 40, d: 1.5, kind: 'parapeto', base: 'plataforma' },
+      // x -13.5..-9.5 y x -6.5..-2.5. Por ahí, y sólo por ahí, se ve el Largo.
+      // Miden 4 u y no 2.5: por una tronera no sólo se dispara, también se
+      // sale a patrullar, y un muñeco tiene 1.2 u de cuerpo. Con 2.5 el hueco
+      // dejaba 0.65 u a cada lado y las salidas en diagonal rozaban el labio, y
+      // con ellas se caía el grupo de patrulla compartido del Balcón.
+      // Los dos extremos —x -19..-16 y x 16..19— quedan libres a propósito:
+      // son las bocas de las dos rampas.
+      { x: -16, z: -13.2, w: 2.5, d: 1.2, kind: 'parapeto', base: 'plataforma' },
+      { x: -9.5, z: -13.2, w: 3, d: 1.2, kind: 'parapeto', base: 'plataforma' },
+      { x: -2.5, z: -13.2, w: 18.5, d: 1.2, kind: 'parapeto', base: 'plataforma' },
     ],
 
     ramps: [
-      // Acceso al Balcón por la derecha: sube de 0 en z = -16 a 2.6 en z = -28,
-      // donde engancha con el borde de la plataforma.
-      { x: 26, z: -28, w: 6, d: 12, fromZ: -16, toZ: -28, top: 'plataforma' },
+      // Dos accesos al Balcón, uno en cada extremo. Con uno solo, subir desde
+      // el lado equivocado era cruzar el mapa entero por delante del parapeto.
+      // Suben de 0 en z = -6 a 2.6 en z = -12, donde enganchan con el borde.
+      { x: 16, z: -12, w: 3, d: 6, fromZ: -6, toZ: -12, top: 'plataforma' },
+      { x: -19, z: -12, w: 3, d: 6, fromZ: -6, toZ: -12, top: 'plataforma' },
     ],
 
     /**
@@ -991,11 +1085,11 @@ export const SCENARIOS = {
      * el Vestíbulo: aparecer encima del spawn no es un objetivo, es un regalo.
      */
     objectiveSites: [
-      { id: 'largo-fondo', x: -30, y: 0, z: -25, zone: 'El Largo' },
-      { id: 'balcon', x: -28, y: 'plataforma', z: -33, zone: 'El Balcón' },
-      { id: 'cajones-este', x: 26, y: 0, z: 8, zone: 'Los Cajones' },
-      { id: 'puerta-sur', x: -10, y: 0, z: -16, zone: 'La Puerta' },
-      { id: 'pasillo', x: 16, y: 0, z: -22, zone: 'Pasillo trasero' },
+      { id: 'largo-fondo', x: -13, y: 0, z: -11, zone: 'El Largo' },
+      { id: 'balcon', x: -12, y: 'plataforma', z: -16.5, zone: 'El Balcón' },
+      { id: 'cajones-este', x: 17, y: 0, z: 6.5, zone: 'Los Cajones' },
+      { id: 'puerta-sur', x: -4, y: 0, z: -8, zone: 'La Puerta' },
+      { id: 'pasillo', x: 9, y: 0, z: -10, zone: 'Pasillo trasero' },
     ],
 
     /**
@@ -1017,104 +1111,85 @@ export const SCENARIOS = {
      * antes. La geometría manda: donde no hay un conjunto limpio, no hay patrulla.
      */
     patrolClusters: {
-      // El Largo. Las tres Media escalonadas parten el carril en bandas de Z
-      // limpias; el grupo vive entero dentro de una de ellas.
       largo: [
-        { id: 'largo-a', x: -34, z: -12 },
-        { id: 'largo-b', x: -31, z: -16 },
-        { id: 'largo-c', x: -34, z: -16 },
-        { id: 'largo-d', x: -31, z: -11 },
+        { id: 'largo-a', x: -12.5, z: -7 },
+        { id: 'largo-b', x: -15.5, z: -7 },
+        { id: 'largo-c', x: -17, z: -4 },
+        { id: 'largo-d', x: -14, z: -4 },
       ],
-      // Los Cajones van en dos grupos, no en uno: la divisoria Alta parte la
-      // zona en dos bolsas y ninguna recta las cruza. Meterlas en el mismo
-      // conjunto sería prometer un camino que no existe.
       cajonesOeste: [
-        { id: 'cajon-o-a', x: -8, z: 6 },
-        { id: 'cajon-o-b', x: -2, z: 4 },
-        { id: 'cajon-o-c', x: -9, z: 13 },
-        { id: 'cajon-o-d', x: -12, z: 10 },
+        { id: 'cajon-o-a', x: -2.5, z: 5.5 },
+        { id: 'cajon-o-b', x: 0, z: 3 },
+        { id: 'cajon-o-c', x: 2, z: 0.5 },
+        { id: 'cajon-o-d', x: 4, z: -2 },
       ],
       cajonesEste: [
-        { id: 'cajon-e-a', x: 30, z: 11 },
-        { id: 'cajon-e-b', x: 34, z: 13 },
-        { id: 'cajon-e-c', x: 36, z: 17 },
-        { id: 'cajon-e-d', x: 31, z: 15 },
+        { id: 'cajon-e-a', x: 18, z: -6 },
+        { id: 'cajon-e-b', x: 8.5, z: 0.5 },
+        { id: 'cajon-e-c', x: 10.5, z: -5.5 },
+        { id: 'cajon-e-d', x: 15, z: -1 },
       ],
-      // La Puerta, ídem: la Espina separa las dos bocas y sólo se cruza por el
-      // hueco, que es demasiado estrecho para garantizar cualquier recta.
       puertaOeste: [
-        { id: 'puerta-o-a', x: -20, z: 0 },
-        { id: 'puerta-o-b', x: -24, z: 3 },
-        { id: 'puerta-o-c', x: -21, z: 4 },
-        { id: 'puerta-o-d', x: -25, z: -1 },
+        { id: 'puerta-o-a', x: -9, z: 4 },
+        { id: 'puerta-o-b', x: -10, z: -1 },
+        { id: 'puerta-o-c', x: -13.5, z: 2 },
+        { id: 'puerta-o-d', x: -18, z: -1 },
       ],
       puertaEste: [
-        { id: 'puerta-e-a', x: -2, z: -4 },
-        { id: 'puerta-e-b', x: 0, z: -10 },
-        { id: 'puerta-e-c', x: 1, z: -14 },
-        { id: 'puerta-e-d', x: 2, z: -7 },
+        { id: 'puerta-e-a', x: -1.5, z: -6 },
+        { id: 'puerta-e-b', x: 1.5, z: -11 },
+        { id: 'puerta-e-c', x: -5, z: -2 },
+        { id: 'puerta-e-d', x: -6, z: -8.5 },
       ],
-      // El Balcón: los puntos van **detrás** del parapeto. Las dos troneras
-      // comparten grupo porque cada una lo alcanza por su propio hueco, aunque
-      // entre ellas se interponga el labio del parapeto.
       balcon: [
-        { id: 'balcon-a', x: -31, y: 'plataforma', z: -37 },
-        { id: 'balcon-b', x: -23, y: 'plataforma', z: -37 },
-        { id: 'balcon-c', x: -27, y: 'plataforma', z: -34 },
-        { id: 'balcon-d', x: -28, y: 'plataforma', z: -38 },
+        { id: 'balcon-a', x: -8.5, y: 'plataforma', z: -18.5 },
+        { id: 'balcon-b', x: -12, y: 'plataforma', z: -18.5 },
+        { id: 'balcon-c', x: -8, y: 'plataforma', z: -15.5 },
+        { id: 'balcon-d', x: -5.5, y: 'plataforma', z: -18.5 },
       ],
       vestibulo: [
-        { id: 'vest-a', x: -20, z: 28 },
-        { id: 'vest-b', x: -12, z: 32 },
-        { id: 'vest-c', x: -22, z: 34 },
-        { id: 'vest-d', x: -30, z: 30 },
+        { id: 'vest-a', x: -13.5, z: 18 },
+        { id: 'vest-b', x: -17.5, z: 12.5 },
+        { id: 'vest-c', x: -4, z: 15.5 },
+        { id: 'vest-d', x: -10, z: 12.5 },
       ],
     },
 
     anchors: [
       // --- El Largo: lo lejano, detrás de la cobertura escalonada.
-      { id: 'largo-1', x: -32, y: 0, z: -14, zone: 'El Largo', peek: true, cluster: 'largo' },
-      { id: 'largo-2', x: -20, y: 0, z: -24, zone: 'El Largo', peek: true },
-      { id: 'largo-3', x: -34, y: 0, z: 2, zone: 'El Largo', peek: true, cluster: 'largo' },
+      { id: 'largo-1', x: -16, y: 0, z: -6, zone: 'El Largo', peek: true, cluster: 'largo' },
+      { id: 'largo-2', x: -10, y: 0, z: -10, zone: 'El Largo', peek: true },
+      { id: 'largo-3', x: -17, y: 0, z: 1, zone: 'El Largo', peek: true, cluster: 'largo' },
 
       // --- Troneras del Balcón: elevadas, en los huecos del parapeto.
-      { id: 'tronera-o', x: -32, y: 'plataforma', z: -29, zone: 'El Balcón', peek: false, cluster: 'balcon' },
-      { id: 'tronera-e', x: -22, y: 'plataforma', z: -29, zone: 'El Balcón', peek: false, cluster: 'balcon' },
+      { id: 'tronera-o', x: -11.5, y: 'plataforma', z: -12.6, zone: 'El Balcón', peek: false, cluster: 'balcon' },
+      { id: 'tronera-e', x: -4.5, y: 'plataforma', z: -12.6, zone: 'El Balcón', peek: false, cluster: 'balcon' },
 
       // --- Bocas de La Puerta, una a cada lado de la Espina.
-      { id: 'puerta-o', x: -18, y: 0, z: -2, zone: 'La Puerta', peek: false, cluster: 'puertaOeste' },
-      { id: 'puerta-e', x: -9, y: 0, z: -2, zone: 'La Puerta', peek: false, cluster: 'puertaEste' },
+      { id: 'puerta-o', x: -9.5, y: 0, z: -1, zone: 'La Puerta', peek: false, cluster: 'puertaOeste' },
+      { id: 'puerta-e', x: -4.5, y: 0, z: -1, zone: 'La Puerta', peek: false, cluster: 'puertaEste' },
 
       // --- Los Cajones: corta distancia, asomada agachado.
-      { id: 'cajon-1', x: -7, y: 0, z: 13, zone: 'Los Cajones', peek: true, cluster: 'cajonesOeste' },
-      { id: 'cajon-2', x: 8, y: 0, z: 2, zone: 'Los Cajones', peek: true, cluster: 'cajonesOeste' },
-      { id: 'cajon-3', x: 24, y: 0, z: 11, zone: 'Los Cajones', peek: true, cluster: 'cajonesEste' },
-      { id: 'cajon-4', x: 33, y: 0, z: 10, zone: 'Los Cajones', peek: false, cluster: 'cajonesEste' },
+      { id: 'cajon-1', x: -3, y: 0, z: 7, zone: 'Los Cajones', peek: true, cluster: 'cajonesOeste' },
+      { id: 'cajon-2', x: 2.5, y: 0, z: 1, zone: 'Los Cajones', peek: true, cluster: 'cajonesOeste' },
+      { id: 'cajon-3', x: 12, y: 0, z: 3, zone: 'Los Cajones', peek: true, cluster: 'cajonesEste' },
+      { id: 'cajon-4', x: 17, y: 0, z: -1, zone: 'Los Cajones', peek: false, cluster: 'cajonesEste' },
 
-      // --- Vestíbulo. Los dos tienen que verse **desde el propio spawn**: la
-      // divisoria tapa todo lo que hay de frente, así que sin ellos la sesión
-      // arrancaría sin ninguna diana a la vista hasta que el jugador se moviera.
+      // --- Vestíbulo. Los dos tienen que verse **desde el propio spawn**: son
+      // los que garantizan que la sesión no arranque con la sala a la vista y
+      // ninguna diana en ella.
       //
-      // Y tienen que verse **de frente**, no de reojo: son los únicos dos
-      // anclajes visibles desde el punto de aparición, así que entre ellos sale
-      // siempre la primera diana de la sesión. Estaban a 66° y a la espalda, con
-      // lo que lo primero que veía cualquiera que probase el mapa era una sala
-      // vacía. Ahora los dos caen dentro del cono de `SPAWN.forwardBiasConeDeg`
-      // medido desde la dirección inicial de la mirada: el oeste a 47.3° y el
-      // este a 29.7°.
-      //
-      // El precio lo pone la divisoria: **sella el cono frontal a 9.2 u**. Barrida
-      // la sala entera en rejilla de 0.5 u con el test de visibilidad del motor,
-      // no existe ninguna posición visible, libre y dentro del cono más lejos que
-      // eso — la Espina tapa el oeste y el tablero de acciones ocupa el este, y
-      // por encima de la divisoria no se ve nada porque el ojo está a 1.7 y ella
-      // mide 3.6. Estos dos son el punto más lejano de cada lado del embudo.
-      //
-      // (El este estaba antes en la boca de salida, en x 22, **detrás del tablero
-      // de acciones** —que ocupa de x 18 a la pared—: una diana pegada a un botón
-      // hace imposible pulsarlo. Sigue lejos de ese volumen.)
-      { id: 'vestibulo-o', x: -6.5, y: 0, z: 22, zone: 'Vestíbulo', peek: false, cluster: 'vestibulo' },
-      { id: 'vestibulo-e', x: 2, y: 0, z: 24.5, zone: 'Vestíbulo', peek: false },
+      // Lo que ya no cargan es con el cono frontal. Antes del reescalado la
+      // divisoria tapaba **todo** lo que había de frente, así que la primera
+      // diana de cada sesión salía por fuerza de estos dos y hubo que meterlos a
+      // la fuerza dentro del cono, a 8.8 y 4 u (docs/decisions.md §23). Ahora la
+      // divisoria arranca al este del spawn y el paso central queda abierto: de
+      // frente se ven `tronera-e` y `cajon-2`, a distancia de verdad, y de ahí
+      // sale la primera diana el 85% de las veces. Liberados de eso, estos dos
+      // vuelven a su trabajo —flanquear y obligar a girarse, que en un aim
+      // trainer no sobra—.
+      { id: 'vestibulo-o', x: -9, y: 0, z: 13, zone: 'Vestíbulo', peek: false, cluster: 'vestibulo' },
+      { id: 'vestibulo-e', x: 2, y: 0, z: 18, zone: 'Vestíbulo', peek: false },
     ],
   },
 }

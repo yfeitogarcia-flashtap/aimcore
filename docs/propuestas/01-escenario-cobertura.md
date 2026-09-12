@@ -1,7 +1,10 @@
 # Propuesta 01 — Primer escenario con cobertura
 
-**Estado:** **Plano A construido** (ver `docs/decisions.md`, ronda 14). Planos B y
-C siguen en propuesta; no se construyen hasta validar A jugando.
+**Estado:** **Plano A construido** (ver `docs/decisions.md`, ronda 14) y
+**reescalado a su propia sala de 40×40** en la ronda 24: las cotas de este
+documento son las de la propuesta original sobre 80×80 y ya no coinciden con
+`SCENARIOS`. Para la geometría vigente manda `config.js`. Planos B y C siguen en
+propuesta; no se construyen hasta validar A jugando.
 **Versión visual (plantas dibujadas):** https://claude.ai/code/artifact/5446051b-7eef-4aa7-b8b8-8e681aae3439
 
 Tres layouts para el primer escenario con cobertura de Vektor, dentro de la sala

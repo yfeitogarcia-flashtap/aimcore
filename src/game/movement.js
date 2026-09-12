@@ -26,6 +26,11 @@
  * La cámara es la suma de las dos, así que agacharse en el aire (o saltar
  * agachado) sale gratis y sin casos especiales.
  *
+ * Sobre esa forma cerrada se apoya el **salto encadenado**: como la parábola es
+ * exacta, el instante en que los pies tocan el suelo también lo es —sale de
+ * resolver y(t) = suelo, no del frame que lo detecta—, y la ventana de
+ * encadenado se puede medir en milisegundos reales contra ese instante.
+ *
  * Todo esto es inerte si `MOVEMENT.enabled` es false: la cámara se queda
  * clavada en el centro a la altura de pie, que es la línea base de puntería.
  */
@@ -78,6 +83,26 @@ export class MovementController {
     this._airTime = 0
     this._launchY = 0
     this._launchVelocity = 0
+
+    /**
+     * Salto encadenado. Tres marcas, las tres en milisegundos reales:
+     *  - `_jumpPressedAt`: cuándo se pulsó SPACE, tomado del propio evento de
+     *    teclado y no del frame que lo atiende.
+     *  - `_landedAt`: el instante **exacto** del último aterrizaje, despejado de
+     *    la parábola (ver `_land`).
+     *  - `_landingSpeed`: la marcha horizontal que se traía al tocar el suelo,
+     *    que es lo único que conserva un encadenado.
+     * Ambos arrancan en -Infinity para que el primer salto de una sesión nunca
+     * pueda salir encadenado por accidente.
+     */
+    this._jumpPressedAt = -Infinity
+    this._landedAt = -Infinity
+    this._landingSpeed = MOVEMENT.speed
+    /** ¿El vuelo en curso salió de un encadenado? Sólo informativo. */
+    this.chainedJump = false
+
+    /** Sala vigente. La marca el escenario; la vacía usa la de siempre. */
+    this.room = ROOM
 
     /** Escenario contra el que se colisiona. Null = sala vacía, suelo en y = 0. */
     this.scenario = null
@@ -177,6 +202,9 @@ export class MovementController {
    */
   setScenario(scenario) {
     this.scenario = scenario && scenario.hasGeometry ? scenario : null
+    // La sala la trae el escenario aunque no tenga geometría: el límite de
+    // movimiento tiene que ser el mismo que el de las paredes que se dibujan.
+    this.room = scenario ? scenario.room : ROOM
     const spawn = scenario ? scenario.spawn : null
     this.spawnX = spawn ? spawn.x : 0
     this.spawnZ = spawn ? spawn.z : 0
@@ -193,6 +221,10 @@ export class MovementController {
     this._airTime = 0
     this._launchY = this.feetY
     this._launchVelocity = 0
+    this._jumpPressedAt = -Infinity
+    this._landedAt = -Infinity
+    this._landingSpeed = MOVEMENT.speed
+    this.chainedJump = false
     this.eyeHeight = MOVEMENT.standHeight
     this.landingDip = 0
     this._dipFrom = 0
@@ -212,11 +244,15 @@ export class MovementController {
     return impact
   }
 
-  /** @param {number} dt segundos transcurridos desde el frame anterior */
-  update(dt) {
+  /**
+   * @param {number} dt segundos transcurridos desde el frame anterior
+   * @param {number} [now] instante real del frame, en ms. Sólo lo usa la
+   *   ventana del salto encadenado, que se mide contra el reloj del teclado.
+   */
+  update(dt, now = performance.now()) {
     if (!this.enabled) return
     this._updateHorizontal(dt)
-    this._updateVertical(dt)
+    this._updateVertical(dt, now)
     this._updateLandingDip(dt)
     this.camera.position.y = this.feetY + this.eyeHeight - this.landingDip
   }
@@ -275,15 +311,15 @@ export class MovementController {
 
     // Acotado a las paredes de la sala, cada frame. El único límite es el
     // real: se recorre entera menos el margen que se deja junto al muro.
-    const limitX = ROOM.width / 2 - MOVEMENT.wallMargin
-    const limitZ = ROOM.depth / 2 - MOVEMENT.wallMargin
+    const limitX = this.room.width / 2 - MOVEMENT.wallMargin
+    const limitZ = this.room.depth / 2 - MOVEMENT.wallMargin
     if (position.x > limitX) position.x = limitX
     else if (position.x < -limitX) position.x = -limitX
     if (position.z > limitZ) position.z = limitZ
     else if (position.z < -limitZ) position.z = -limitZ
   }
 
-  _updateVertical(dt) {
+  _updateVertical(dt, now) {
     // Agachado: la altura de ojos persigue su objetivo a velocidad constante.
     const targetEye = this.keys.crouch ? MOVEMENT.crouchHeight : MOVEMENT.standHeight
     const step = MOVEMENT.crouchTransitionSpeed * dt
@@ -297,7 +333,11 @@ export class MovementController {
 
     // Salto: sólo desde el suelo, así que no hay doble salto posible.
     if (this.keys.jump && !this.airborne) {
-      this._takeOff(MOVEMENT.jumpSpeed)
+      this._takeOff(MOVEMENT.jumpSpeed, this._isChainPress())
+      // La pulsación se gasta al despegar: mantener SPACE sigue rebotando en
+      // cada aterrizaje, como siempre, pero esos rebotes son saltos normales.
+      // Encadenar es acertar el tiempo, no dejar la tecla apoyada.
+      this._jumpPressedAt = -Infinity
     }
 
     if (!this.airborne) {
@@ -319,7 +359,22 @@ export class MovementController {
 
     // Sólo se aterriza bajando. Subiendo, el suelo sólo puede estar por encima
     // si el jugador acaba de pasar sobre un bordillo, y eso no es un impacto.
-    if (this.feetY <= ground && this.verticalVelocity <= 0) this._land(ground)
+    if (this.feetY <= ground && this.verticalVelocity <= 0) this._land(ground, now)
+  }
+
+  /**
+   * ¿La pulsación de SPACE pendiente cae dentro de la ventana de encadenado?
+   *
+   * Se compara **pulsación contra aterrizaje**, las dos en tiempo real: la
+   * primera sale del evento de teclado y la segunda de la parábola. Ni una ni
+   * otra dependen de cuándo dibuje el monitor, así que la ventana mide lo mismo
+   * a 60 que a 240 Hz. La tolerancia vale a los dos lados —pulsar un pelo antes
+   * de tocar el suelo cuenta igual que un pelo después—, que es lo que hace que
+   * el encadenado se sienta como un ritmo y no como un reflejo.
+   */
+  _isChainPress() {
+    if (!Number.isFinite(this._jumpPressedAt) || !Number.isFinite(this._landedAt)) return false
+    return Math.abs(this._jumpPressedAt - this._landedAt) <= MOVEMENT.chainJumpWindowMs
   }
 
   /**
@@ -327,10 +382,19 @@ export class MovementController {
    * se despega. A partir de aquí la trayectoria ya no depende de cuántas veces
    * se evalúe ni cada cuánto.
    *
+   * En un **encadenado** la única diferencia es de dónde sale la marcha: en
+   * lugar de recalcularla desde el suelo se conserva la que se traía al
+   * aterrizar. Nada más — ni empuje vertical extra, ni multiplicador, ni
+   * ganancia por encadenar otra vez. Y como `_airSpeed` sólo puede nacer de
+   * `currentSpeed`, que nunca pasa de `MOVEMENT.speed`, por inducción ninguna
+   * cadena puede superar la marcha de carrera: conservar no es acelerar.
+   *
    * @param {number} velocity velocidad vertical inicial (0 al salirse de un borde)
+   * @param {boolean} [chained] si el salto encadena con el aterrizaje anterior
    */
-  _takeOff(velocity) {
-    this._airSpeed = this.currentSpeed
+  _takeOff(velocity, chained = false) {
+    this._airSpeed = chained ? this._landingSpeed : this.currentSpeed
+    this.chainedJump = chained
     this._airTime = 0
     this._launchY = this.feetY
     this._launchVelocity = velocity
@@ -348,14 +412,26 @@ export class MovementController {
    * conservación de energía sobre la parábola —v² = v0² + 2·g·(y0 − suelo)—, así
    * que un mismo salto suena y hunde la cámara igual a 60 que a 240 Hz.
    */
-  _land(ground) {
+  _land(ground, now) {
     const g = MOVEMENT.gravity
     const drop = this._launchY - ground
     const impactSq = this._launchVelocity * this._launchVelocity + 2 * g * drop
     const fallSpeed = impactSq > 0 ? Math.sqrt(impactSq) : 0
+
+    // Instante exacto del contacto, por el mismo motivo que la velocidad de
+    // impacto: el frame que lo detecta llega pasado de largo y llega más tarde
+    // cuanto menos refresco haya. De la parábola, tocar el suelo es
+    //     ½·g·t² − v0·t + (suelo − y0) = 0  →  t = (v0 + fallSpeed) / g
+    // y lo que sobra respecto al tiempo de vuelo acumulado es el retraso del
+    // frame, que se descuenta del reloj. Sin esto, la ventana de encadenado
+    // sería un frame más generosa a 240 Hz que a 60.
+    this._landedAt = now - (this._airTime - (this._launchVelocity + fallSpeed) / g) * 1000
+    this._landingSpeed = this._airSpeed
+
     this.feetY = ground
     this.verticalVelocity = 0
     this.airborne = false
+    this.chainedJump = false
     this._airTime = 0
     this._launchY = ground
     this._launchVelocity = 0
@@ -379,6 +455,15 @@ export class MovementController {
     // lo queda Chrome (ver el comentario de MOVEMENT.keys en config.js).
     event.preventDefault()
     this.keys[action] = true
+    // La marca del salto sale del **evento**, no del frame que lo atiende:
+    // `timeStamp` va en el mismo origen de tiempos que `performance.now()`, así
+    // que la ventana de encadenado no hereda el retraso del bucle de dibujo.
+    if (action === 'jump') {
+      this._jumpPressedAt =
+        Number.isFinite(event.timeStamp) && event.timeStamp > 0
+          ? event.timeStamp
+          : performance.now()
+    }
   }
 
   _onKeyUp(event) {

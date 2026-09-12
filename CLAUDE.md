@@ -43,7 +43,8 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Capa | Dónde | Qué hace |
 |---|---|---|
 | Motor | `src/game/` | Bucle rAF, input, raycast, dianas, armas, panel de acciones. **Vive fuera de React.** |
-| Escenario | `src/game/scenario.js` | Convierte los datos de `SCENARIOS` en mallas, colisionadores, oclusores y anclajes. |
+| Escenario | `src/game/scenario.js` | Convierte los datos de `SCENARIOS` en mallas, colisionadores, oclusores y anclajes. **Y publica su sala** (`scenario.room`). |
+| Sala | `src/game/scene.js` | Rejilla y paredes, reconstruibles con `setRoom`: cada escenario tiene su tamaño. |
 | Audio espacial | `src/audio/spatial.js` | Listener en la cámara y emisores posicionados. **Genérico:** no sabe del explosivo. |
 | Explosivo | `src/game/objective.js` | Aparición, cuenta atrás, pitido y desactivación. No publica nada al HUD a propósito. |
 | Puntuación | `src/game/scoring.js` | Variables normalizadas, media ponderada y estrellas. |
@@ -97,9 +98,42 @@ en dos sitios y vale para cualquier mecánica temporizada que se añada:
   paso. La velocidad de impacto sale de la energía (`v² = v0² + 2g·Δy`), no del
   frame en que se detecta el suelo, que llega pasado de largo.
 
+**La sala la manda el escenario, no `ROOM`.** `ROOM` es la de la sala vacía;
+`scenarioRoom(key)` devuelve la del escenario y `scenario.room` es el único sitio
+del que leerla. De ahí salen la rejilla y las paredes (`scene.setRoom`), el
+límite de movimiento, el acotado del muestreo de dianas y las medidas del
+tablero de acciones (`actionPanelMetrics`, que escala con la sala y a 80 da
+exactamente los valores de siempre). Si añades algo que dependa del tamaño de la
+sala, sale de ahí: un `ROOM` suelto convierte el Plano A en un mapa con un
+anillo de suelo inalcanzable alrededor.
+
+**Un umbral en unidades sueltas es un umbral que se rompe al reescalar.** Todo
+lo que en las auditorías era «a 10 u del spawn», «a 8 u del tablero», «a más de
+20 u» pasó a medirse en fracciones de `room.width` cuando el Plano A bajó a
+40×40. Lo mismo vale para los tests: ninguno escribe ya una coordenada del plano
+a mano — la Espina, las rampas, las troneras y el bordillo se localizan en los
+datos. Un test que sabe que la Espina está en x −15 no prueba la Espina, prueba
+un número.
+
 **Ojo con las alturas de `COVER`:** el bordillo (0.6) y ahora también la
 cobertura baja (1.25) se saltan; la Media (1.9) sólo se supera subido a un
 bordillo. Si tocas `jumpSpeed` o `gravity`, revisa esa tabla.
+
+**El salto encadenado conserva, no multiplica.** Pulsar SPACE dentro de
+`MOVEMENT.chainJumpWindowMs` —a cada lado del aterrizaje— arranca el vuelo nuevo
+con la marcha que se traía al tocar el suelo en vez de recalcularla desde el
+suelo. Nada más: ni impulso vertical extra, ni factor, ni ganancia por
+encadenar. Como `_airSpeed` sólo puede nacer de `currentSpeed`, que nunca pasa
+de `MOVEMENT.speed`, por inducción **ninguna cadena puede acelerar** por encima
+de la marcha de carrera. Y la pulsación se **gasta** al despegar, así que dejar
+SPACE apoyada sigue rebotando con saltos normales: encadenar es acertar el
+tiempo, no apoyar la tecla.
+
+Los dos extremos de la ventana se miden en tiempo real: la pulsación sale de
+`event.timeStamp` (no del frame que la atiende) y el aterrizaje, de despejar la
+parábola —`t = (v0 + velocidadDeImpacto) / g`— en lugar del frame que lo detecta,
+que llega hasta un frame tarde. Medido: el umbral sale en 130.00 ms a 60, 144 y
+240 Hz, con una diferencia de 0.000 ms entre ellos.
 
 **Con cobertura, las dianas salen en anclajes curados, no por muestreo.** Un
 cono no sabe poner una diana en una tronera. Cada anclaje lleva su zona, su
@@ -113,16 +147,16 @@ horizontal** —mirar al suelo no debe dejar de considerar "delante" lo que tien
 delante—. Si no hay ninguno visible en el cono, se cae al conjunto completo:
 antes una diana a la espalda que ninguna diana.
 
-**Los dos anclajes del Vestíbulo son los únicos que se ven desde el spawn, así
-que entre ellos sale siempre la primera diana de la sesión.** Tienen que caer en
-el cono frontal medido desde la mirada inicial, y hay dos tests que lo guardan
-(`audit.mjs` y `fixes.mjs`). La divisoria **sella ese cono a 9.2 u** —barrida la
-sala en rejilla de 0.5 u con el test de visibilidad del motor, no hay nada válido
-más lejos—, así que los dos son de corta distancia por fuerza: a 8.8 u / 47.3° el
-oeste y a 4 u / 29.7° el este. Ése es también el único sitio del plano donde vale
-un anclaje a menos de 10 u del spawn; fuera del Vestíbulo, el mínimo sigue en 10.
-Tener una primera diana lejana *y* de frente pide tocar la divisoria o el spawn,
-que es rediseño del Plano A. El razonamiento completo, en `docs/decisions.md` §23.
+**Desde el spawn tiene que verse algo de frente y lejos.** Entre lo que se ve
+desde el punto de aparición sale la primera diana de la sesión, y con el sesgo a
+0.85 sale del subconjunto que cae en el cono frontal: si ese subconjunto está
+vacío, lo primero que ve quien prueba el mapa es una sala vacía. Lo guardan dos
+tests (`fixes.mjs` y `live.mjs`) exigiendo **al menos un anclaje visible dentro
+del cono y a `room.width / 4` o más**. Hoy lo cumplen `tronera-e` a 27 u y
+`cajon-2` a 13. Los dos del Vestíbulo siguen viéndose, pero a los flancos: ya no
+cargan ellos con el cono. Antes del reescalado la divisoria lo sellaba y hubo que
+meterlos dentro a la fuerza, pegados al jugador — el porqué, en
+`docs/decisions.md` §23 y §24.
 
 **Los muñecos que patrullan lo hacen entre puntos de un grupo cuyos pares están
 verificados** como alcanzables en línea recta. Eso es lo que permite mover sin
@@ -220,7 +254,8 @@ creerte el diagnóstico.** No depures un falso negativo durante media hora.
 
 ## 5. Estado actual (resumen)
 
-Sala fija de **80×80×16**, rejilla en suelo y paredes. Sesión de **30 s** por
+Sala vacía de **80×80×16**, rejilla en suelo y paredes. **Cada escenario puede
+traer la suya**: el Plano A vive en **40×40×10**. Sesión de **30 s** por
 defecto, más **PRÁCTICA LIBRE ∞** sin límite de tiempo con finalización manual.
 
 **Dianas:** tres tipos — *clásica* y *cono* (ancladas al centro, esfera), e
@@ -233,12 +268,16 @@ nivel es un *techo*, no una cantidad — el número real lo pone cuántos anclaj
 ven desde donde está el jugador (en el Plano A, entre 2 y 6 según la zona).
 
 **Escenarios:** variante activable desde opciones, no reemplazo. *Sala vacía*
-(Gridshot de siempre, muestreo por cono) y **Largo y Puerta**, el primer
-escenario con cobertura: Espina con una sola Puerta de 4 u, El Largo con tres
-Media escalonadas, Los Cajones de corta distancia, el Balcón elevado (+2.6) con
-rampa y parapeto con dos troneras, y un Vestíbulo despejado alrededor del spawn.
-Trece anclajes curados. El vocabulario de piezas y la rampa de grises están en
-`COVER`; la geometría, en `SCENARIOS`.
+(Gridshot de siempre, muestreo por cono, 80×80) y **Largo y Puerta**, el primer
+escenario con cobertura, en **su propia sala de 40×40**: Espina con una sola
+Puerta de 2.5 u, El Largo con tres Media escalonadas, Los Cajones de corta
+distancia, el Balcón elevado (+2.6) con **una rampa en cada extremo** y parapeto
+con dos troneras de 4 u, y un Vestíbulo con la divisoria entera al este del
+spawn —el paso central queda abierto, que es de donde sale la primera diana—.
+Veinte piezas, las mismas de siempre: lo que se recortó es el suelo entre ellas.
+Cruzarlo en diagonal cuesta **8.1 s** en vez de 16.8. Trece anclajes curados. El
+vocabulario de piezas y la rampa de grises están en `COVER`; la geometría, en
+`SCENARIOS`.
 
 Siete **grupos de patrulla** de 4 puntos cada uno —dos para Los Cajones y dos
 para La Puerta, porque la divisoria y la Espina las parten en bolsas que ninguna
@@ -253,8 +292,10 @@ en su anclaje, porque un destino aleatorio las metería dentro de un muro.
 
 **Movimiento:** WASD, tres marchas (correr / SHIFT andar / CTRL o C agachado,
 gana la más lenta), salto sin doble salto **resuelto en forma cerrada** —misma
-trayectoria a cualquier refresco—, límites reales de la sala con margen de
-seguridad. Por encima de `ACCURACY.speedThreshold` y
+trayectoria a cualquier refresco—, **salto encadenado** con SPACE dentro de
+`MOVEMENT.chainJumpWindowMs` (130 ms a cada lado del aterrizaje exacto), que
+conserva la marcha del aterrizaje sin poder acelerar por encima de la de
+carrera, límites reales de la sala con margen de seguridad. Por encima de `ACCURACY.speedThreshold` y
 siempre en el aire se aplica dispersión de disparo (dirección y magnitud
 aleatorias, sumada al recoil, sin mover la cámara).
 
