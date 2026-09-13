@@ -123,35 +123,52 @@ El modelo que llevará quien juegue cuando haya multijugador. Hoy sólo se puede
 mirar: **F3** abre una vista en tercera persona que lo orbita, fuera de partida
 —con el cronómetro corriendo la cámara es del jugador—.
 
-No es el muñeco de las dianas con más polígonos: es **la misma anatomía**. Las
-tres zonas —cabeza, torso, piernas— salen de las mismas medidas que el hitbox, así
-que el avatar es la representación visual de ese sistema para cuando exista un
-rival de verdad. Lo que añade es lo que una diana no necesita: hombros, brazos,
+No es el muñeco de las dianas con más polígonos: **la altura y las tres zonas**
+—cabeza, torso, piernas— salen de las mismas medidas que el hitbox, así que el
+avatar es la representación visual de ese sistema para cuando exista un rival de
+verdad. Lo que añade es lo que una diana no necesita: hombros, brazos,
 articulaciones, cuello y botas.
+
+**Las proporciones están medidas, no elegidas.** Salen de barrer la silueta de
+`Reference/Avatar/player-avatar-style.png` fila a fila y anotar el ancho a cada
+altura, todo en fracciones de la altura total. Puestas las dos siluetas a la
+misma escala, la desviación es del 12% en el peor nivel y menor del 8% en 28 de
+los 32 medidos.
+
+De ahí salen tres cosas que no tenía la primera versión:
+
+- **Extremidades que se afinan.** El brazo pasa de 0.036 de la altura en el
+  hombro a 0.028 antes del codo; el muslo, de 0.086 en la cadera a 0.058 antes
+  de la rodilla.
+- **Articulaciones que envuelven la junta.** Hombro, codo, cadera y rodilla son
+  piezas que se ensanchan por el medio y se meten por dentro de los dos tramos
+  que unen. En la referencia el codo mide 0.059 contra los 0.028 del brazo justo
+  encima: la articulación **es** ese ensanchamiento, no un anillo pegado.
+- **Las piernas se abren hacia abajo**, de 0.069 a 0.100 entre la cadera y la
+  suela. Eso apareció comparando siluetas: las pantorrillas salían estrechas y
+  no era el grosor, era que las dos piernas estaban demasiado juntas.
 
 Se lee en **tres capas** que no se mezclan:
 
-- **La piel.** Paneles planos y angulares —cada pieza se estrecha por una de sus
-  tapas, nada redondo— en **negro con la rejilla de la sala encima**. Es la misma
-  grilla del suelo y las paredes, generada por el mismo código, sólo que a paso
-  de cuerpo: con el paso de la sala, un torso se llevaría una línea. Ésta es la
-  skin de serie, la que se tiene sin comprar nada, y es lo único que cambia el
-  color personalizable (`AVATAR.color`).
-- **La luz.** **Dos líneas continuas** que bajan de la coronilla a las botas
-  —cara, esternón, ingle y cara interna de cada pierna—, más el núcleo del
-  pecho, en el mismo azul eléctrico del escudo. Sólo van por delante, así que
-  además dicen de un vistazo hacia dónde mira. Es un canal **fijo**: el día que
-  haya equipos, éste llevará su color, y por eso el color personalizable no lo
-  toca.
+- **La piel.** Paneles planos y angulares —cada pieza cambia de ancho de un
+  corte al siguiente, nada redondo— en **negro con la rejilla de la sala
+  encima**. Es la misma grilla del suelo y las paredes, generada por el mismo
+  código, sólo que a paso de cuerpo. Ésta es la skin de serie, la que se tiene
+  sin comprar nada, y es lo único que cambia el color personalizable.
+- **La luz.** **Cuatro líneas continuas** de la coronilla a las botas: dos por
+  delante —cara, esternón, ingle y cara interna de cada pierna— y **las mismas
+  por la espalda**, más el núcleo del pecho, en el azul eléctrico del escudo. Es
+  un canal **fijo**: el día que haya equipos, éste llevará su color, y por eso va
+  también por detrás — a un rival hay que reconocerlo igual persiguiéndolo que de
+  frente.
 - **Los filos.** El borde de cada panel, en un gris de la rejilla.
 
 **Sin texturas, y no por ahorrar:** en esta escena no hay ni una luz, así que un
 mapa no se vería. Con la piel en negro el tono tampoco separa nada, de modo que
 todo el volumen lo dibujan los filos y la rejilla.
 
-La referencia de estilo está en `Reference/Avatar/player-avatar-style.png`, y
-**no se vectoriza**: es una guía para reconstruir la geometría, como el blockout
-de los escenarios.
+La referencia **no se vectoriza**: es una guía para reconstruir la geometría,
+como el blockout de los escenarios.
 
 Nada de esto es un sistema de skins de pago: eso depende de economía y cuentas,
 que no existen.

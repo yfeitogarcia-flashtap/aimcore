@@ -2886,6 +2886,119 @@ Lo que mejor protege es lo que más lejos está del sitio seguro.
 
 ---
 
+## Ronda 35 — El avatar, medido contra la referencia
+
+### 35.1 Un primitivo en lugar de un catálogo de cajas
+
+La vuelta 34 dejó el avatar como una pila de paneles: cada pieza era una caja con
+una tapa más estrecha que la otra. Servía para «angular», y no daba para nada
+más. Un brazo era una caja de grosor uniforme con un escalón a mitad; una
+articulación, una caja fina entre dos gruesas; y en todas partes había dos
+bloques tocándose por un canto.
+
+Lo que arregla eso no es añadir piezas: es cambiar el primitivo. Ahora hay uno
+solo, el **prisma de anillos** — una pieza es la lista de sus cortes
+horizontales, cada uno con su altura, su ancho, su fondo y su desplazamiento. Con
+eso, tres cosas dejan de ser un problema y pasan a ser datos:
+
+- Un brazo que se **afina** es la misma pieza con anillos de 0.036, 0.032 y
+  0.028; no hay escalón porque no hay dos piezas.
+- Una **articulación** es una pieza estrecha-ancha-estrecha cuyos extremos entran
+  dentro de los tramos vecinos. No tapa la junta: la envuelve.
+- Una sección puede tener **más de cuatro caras**. Ocho en el tronco y seis en
+  las extremidades es lo que separa «facetado» de «caja».
+
+El modelo pasó de 22 cajas a 23 prismas, y de 4 siluetas posibles por pieza a
+una silueta continua.
+
+### 35.2 Las proporciones se midieron; no se eligieron
+
+La referencia es una imagen de 1024×1536 con el modelo casi negro sobre fondo
+casi negro. Medirla a ojo no da nada, así que se barre fila a fila buscando la
+silueta.
+
+Dos trampas por el camino, las dos resueltas con el mismo truco:
+
+- **El resplandor de las líneas azules infla la silueta.** A luminancia, el halo
+  de las líneas de luz cuenta como cuerpo y la cabeza salía un 40% más ancha. Se
+  mide por el **canal rojo**: la rejilla blanca lo tiene y el azul no.
+- **Una ventana estrecha corta la medición y nadie avisa.** Varias medidas del
+  tronco salían más estrechas que la cintura porque la ventana de barrido cortaba
+  el borde. Desde entonces el barrido marca `<clip>` cuando la silueta toca el
+  borde de la ventana.
+
+De ahí salen 24 anchos y 15 alturas, todos en **fracciones de la altura total**
+(`AVATAR.figure`). Y la comprobación clave: las alturas que marcan zona en la
+referencia —barbilla 0.869, cadera 0.470— caen sobre las bandas del hitbox
+—0.861 y 0.472— sin forzar nada. La referencia y el muñeco tienen las mismas
+proporciones humanas, así que no hubo que elegir entre una cosa y la otra: la
+**altura** la sigue poniendo el hitbox y la **forma** la pone la referencia.
+
+### 35.3 Comparar dos siluetas es otra medición, no una mirada
+
+Mirar dos imágenes de distinto tamaño una al lado de otra no dice si un hombro
+está bien. Lo que dice es poner las dos siluetas **a la misma altura en píxeles**
+y listar la desviación nivel a nivel.
+
+Para eso hace falta una silueta limpia del modelo, y ahí hay un problema propio:
+la piel del avatar (`#101014`) es **más oscura que la rejilla de la sala**
+(`#2B2B2B`), así que sobre el render normal ninguna umbralización separa el
+cuerpo del fondo. El render de medición apaga la sala y pinta todas las piezas de
+blanco: no es como se ve el modelo, es como se mide.
+
+Lo que encontró, en orden de gravedad:
+
+| Nivel | Qué era | Antes | Después |
+|---|---|---|---|
+| 0.49–0.43 | Los brazos no llegaban a la cadera | −60% | −2% |
+| 0.25–0.13 | Las piernas, demasiado juntas | −25% | −5% |
+| 0.82 | El hombro empezaba demasiado abajo | −68% | −3% |
+| 0.97 | La coronilla, demasiado cerrada | −27% | −5% |
+
+El peor nivel pasó de −68% a **−12%**, y 28 de los 32 medidos están dentro del
+8%. Nada de eso se veía a ojo: el modelo «parecía bien» en las cuatro versiones.
+
+### 35.4 Dos errores que sólo se ven en movimiento
+
+- **Un tramo que acaba en su anillo más estrecho deja un hueco.** El húmero
+  terminaba en el punto donde el brazo se estrecha (nivel 0.690) y el codo
+  empezaba en 0.642: entre los dos había aire. Un tramo tiene que llegar **hasta
+  dentro** de su articulación, y el anillo estrecho ser intermedio.
+- **Las líneas de luz no pueden ir a media profundidad del cuerpo.** Puestas
+  todas a la mitad del fondo del modelo, en las rodillas —que sobresalen— se
+  metían dentro de la pieza y la línea desaparecía justo en la articulación, que
+  es donde más se mira. Cada punto de la cadena lleva ahora **la media
+  profundidad de la pieza sobre la que va montado**, con la misma expresión con
+  la que se construyó ese anillo.
+
+Y uno de bulto que se vio al primer render: el **giro de las caras** del prisma
+estaba invertido, así que con `FrontSide` no se dibujaba ninguna cara cercana y
+el modelo salía hueco — se le veía el interior de la cabeza.
+
+### 35.5 El recorrido de las líneas también estaba medido, y no lo parecía
+
+Las dos líneas se dibujaban interpolando tres separaciones —cabeza, pecho,
+pierna— elegidas a ojo. Con eso se cerraban en el pecho y se abrían en la
+cintura, y lo que se veía en el esternón era una **X**.
+
+Localizadas en la referencia por tono —son el único azul saturado de la imagen—,
+el recorrido real es el contrario: **se abren en el collar (0.056 de la altura),
+se cierran en el ombligo (0.035) y de ahí sólo se separan** hasta la bota
+(0.102). Son diez separaciones medidas, no tres inventadas, y están en
+`AVATAR.stripSpread` con el mismo trato que los anchos.
+
+### 35.6 Las líneas también por la espalda, y por qué
+
+El par de líneas era la seña del modelo, y sólo iba por delante. Como canal es el
+que llevará el **color de equipo**, y un color de equipo que sólo se ve de frente
+no sirve para nada: a un rival se le persigue más de lo que se le mira a la cara.
+
+Son las mismas, con la z cambiada de signo respecto al centro de cada pieza —no
+del modelo—, porque la cabeza y la bota no están centradas en z. Y siguen fuera
+de `setColor()`: un jugador no puede pintarse del color del rival.
+
+---
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

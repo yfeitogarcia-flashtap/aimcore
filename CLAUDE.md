@@ -375,41 +375,88 @@ marcha de verdad borra la cuenta entera. Ojo con una consecuencia que no es un
 fallo: **encadenar desde parado no perdona**, porque un encadenado conserva la
 marcha del aterrizaje y la de un rebote es cero.
 
-**El avatar comparte anatomía con el muñeco de puntería.** Cabeza, torso y
-piernas salen de las medidas de `TARGET_TYPES.hitbox.parts`, así que el modelo
-del jugador **es** la representación visual del sistema de zonas que ya existe, no
-un segundo muñeco con sus propias proporciones. Lo que añade es lo que una diana
-no necesita: hombros, brazos, articulaciones, cuello y botas.
+**El avatar comparte anatomía con el muñeco de puntería, y proporciones con la
+referencia.** La **altura** y las tres zonas salen de `TARGET_TYPES.hitbox.parts`
+—el modelo del jugador *es* la representación visual del sistema de zonas que ya
+existe—; la **forma** sale de `AVATAR.figure`, que está **medido** sobre
+`Reference/Avatar/player-avatar-style.png` barriendo su silueta fila a fila. Todo
+en fracciones de la altura total, de modo que las proporciones aguantan aunque el
+muñeco cambie de tamaño.
 
-**Tres canales, y sólo uno es personalizable.** Desde la vuelta 34 el modelo se
-lee en tres capas que no se mezclan:
+La referencia **no se vectoriza**: es una guía para reconstruir la geometría, como
+el blockout de los escenarios. Lo que hay que respetar de ella son las
+proporciones y las dos líneas continuas, no el número de facetas.
 
-- **Piel.** Paneles planos y **angulares** —cada pieza se estrecha por una de sus
-  tapas; nada redondo— en negro, con **la misma grilla del suelo y las paredes**
-  encima. No es una textura ni una imagen: es el generador de `grid.js`, el mismo
-  que monta la sala, a paso de cuerpo (`AVATAR.gridStep`) en vez de a paso de
-  sala, porque con 1 u un torso de 0.6 se lleva una línea. Es la skin de serie,
-  la que se tiene sin comprar nada, y es lo único que cambia `setColor()`.
-- **Luz.** Líneas verticales emisivas por torso y piernas, más el visor y el
-  núcleo, todo en el mismo material. Es el canal **fijo**, y el día que haya
-  equipos es el que llevará su color: por eso `setColor()` no lo toca — un
-  jugador no puede pintarse del color del rival.
-- **Aristas.** El filo de cada panel, un gris por encima del de la grilla.
+**Todo el cuerpo es un solo primitivo: el prisma de anillos.** Un anillo es un
+corte horizontal —altura, ancho, fondo y desplazamiento— y una pieza es la lista
+de sus cortes. De ahí salen las tres cosas que las cajas no podían dar:
+
+- **Extremidades que se afinan.** El brazo mide 0.036 de la altura en el hombro y
+  0.028 antes del codo; el muslo, 0.086 en la cadera y 0.058 antes de la rodilla.
+  Son anillos de una misma pieza, no dos cajas de grosor distinto.
+- **Articulaciones que envuelven la junta.** Hombro, codo, cadera y rodilla son
+  piezas estrecha-ancha-estrecha cuyos extremos **entran dentro** de los dos
+  tramos que unen. En la referencia el codo mide 0.059 contra los 0.028 del brazo
+  justo encima: la articulación **es** ese ensanchamiento.
+- **Secciones de más de cuatro caras**: ocho en el tronco, seis en extremidades y
+  cabeza. Una caja tiene cuatro siluetas posibles.
+
+Dos cosas que no son evidentes y que salieron de comparar siluetas a la misma
+altura, no de mirar el modelo:
+
+- **El eje de cada pierna no es vertical**: se abre de 0.069 a 0.100 de la cadera
+  a la suela (`figure.legX`). Las pantorrillas salían un 25% estrechas y no era
+  el grosor, era que las dos piernas estaban demasiado juntas.
+- **El tramo de una extremidad tiene que llegar hasta dentro de su
+  articulación.** Cortarlo en su anillo más estrecho deja un dedo de aire entre
+  el brazo y el codo que desde lejos parece un modelo roto.
+
+**Tres canales, y sólo uno es personalizable:**
+
+- **Piel.** Paneles negros con **la misma grilla del suelo y las paredes** encima.
+  No es una textura ni una imagen: es el generador de `grid.js`, el mismo que
+  monta la sala, a paso de cuerpo (`AVATAR.gridStep`) en vez de a paso de sala.
+  Es la skin de serie, y es lo único que cambia `setColor()`.
+- **Luz.** **Cuatro líneas continuas** de la coronilla a las botas: el par de
+  delante y **su espejo por la espalda**, más el núcleo del pecho. Canal **fijo**,
+  y el día que haya equipos es el que llevará su color — por eso `setColor()` no
+  lo toca y por eso va también por detrás: a un rival se le reconoce igual
+  persiguiéndolo que de frente.
+
+  Su recorrido está medido como los anchos (`AVATAR.stripSpread`), y tiene una
+  forma que no se adivina: **se abren en el collar (0.056), se cierran en el
+  ombligo (0.035) y a partir de ahí sólo se separan** hasta la bota. Con tres
+  valores interpolados salía al revés y el pecho se leía como una X. Se localizan
+  en la referencia por tono: son el único azul saturado de la imagen.
+
+  Y cada punto de la cadena lleva la **media profundidad de la pieza sobre la que
+  va montado**, que es lo único que mantiene la línea pegada al cuerpo: a media
+  profundidad del modelo, en las rodillas —que sobresalen— se metía dentro y la
+  línea desaparecía justo en la articulación.
+- **Aristas.** El filo de cada panel, un gris por encima del de la grilla. El
+  umbral de arista va alto a propósito: entre anillo y anillo de un mismo tramo
+  el giro es de pocos grados y no debe salir una raya, o el afinado continuo se
+  leería como una pila de rodajas.
 
 Y **sin texturas, porque en esta escena no hay ni una luz**: todo se dibuja con
 materiales planos. Con la piel en negro el tono ya no separa nada —multiplicar
 negro por 0.62 sigue siendo negro—, así que el volumen entero lo dibujan las
-aristas y la rejilla. El color sigue siendo **una variable** (`AVATAR.color`) y no
-un sistema de skins: eso depende de economía y cuentas, que no existen.
+aristas y la rejilla.
 
 Tres detalles que costaron una pasada cada uno: las líneas de grilla, aristas y
 luz se **fusionan** en tres objetos para todo el cuerpo —con una rejilla por cara
-eran cuarenta, y en multijugador habrá varios avatares—; la rejilla se **mide**
-por la cara estrecha del panel pero se **coloca** a la altura de la ancha —puesta
-a la estrecha se queda dentro del panel y no se ve ni una línea—; y las líneas de
-luz caen en la misma trampa por el otro lado: el pecho se **abre** hacia arriba,
-así que su cara delantera queda más adelante que media profundidad, y la línea
-puesta a media profundidad desaparecía del cuello al esternón.
+serían cientos, y en multijugador habrá varios avatares—; la rejilla se **mide**
+por el anillo estrecho de cada tramo pero se **coloca** sobre el plano de la cara
+—al revés se queda dentro de la pieza y no se ve ni una línea—; y el giro de las
+caras laterales del prisma hacia fuera, porque con `FrontSide` una cara al revés
+no se dibuja y el modelo sale hueco.
+
+**La comparación con la referencia se mide, no se mira.** `silueta.mjs` renderiza
+el avatar con la sala apagada y sus piezas en blanco —sobre negro, la piel es más
+oscura que la rejilla de la sala y ninguna umbralización las separa— y
+`comparar.mjs` pone las dos siluetas a la misma altura en píxeles y lista la
+desviación nivel a nivel. Así se pasó de un −60% en las caderas a **±12% en el
+peor nivel**, con 28 de 32 niveles dentro del 8%.
 
 La vista de depuración (F3) sólo se abre **fuera de una sesión en marcha**: la
 cámara es del jugador y el cronómetro corre, y mirarse el modelo no puede costar

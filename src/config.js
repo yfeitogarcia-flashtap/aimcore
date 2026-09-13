@@ -1982,8 +1982,9 @@ export const AVATAR = {
    */
   color: '#101014',
   /**
-   * **Canal de luz**, hoy fijo y mañana el color de equipo: líneas verticales,
-   * visor y núcleo. El mismo azul eléctrico del escudo y de sus recargas.
+   * **Canal de luz**, hoy fijo y mañana el color de equipo: las dos líneas
+   * continuas —por delante y por detrás—, el visor y el núcleo. El mismo azul
+   * eléctrico del escudo y de sus recargas.
    */
   teamColor: COLORS.electric,
   /**
@@ -2001,9 +2002,14 @@ export const AVATAR = {
   gridAccentColor: COLORS.gridFloorAccent,
   /**
    * Paso de la grilla sobre el cuerpo. La sala usa 1 u, que sobre un torso de
-   * 0.6 daría una línea: es la misma grilla a escala de cuerpo, no otra.
+   * 0.35 daría **ninguna** línea: es la misma grilla a escala de cuerpo, no otra.
+   *
+   * Bajó de 0.12 a 0.045 al pasar el cuerpo de cajas a prismas de seis y ocho
+   * caras: con ocho caras, cada una mide 0.145 de ancho, y un paso de 0.12 sólo
+   * cabía una vez. La referencia tiene del orden de ocho subdivisiones a lo
+   * ancho del cuerpo, y eso es 0.045.
    */
-  gridStep: 0.12,
+  gridStep: 0.045,
   gridAccentEvery: 4,
   /**
    * Tonos por pieza, como factor de brillo sobre la piel. Con la piel en negro
@@ -2011,49 +2017,165 @@ export const AVATAR = {
    * un color con recorrido.
    */
   shades: { chest: 1, limb: 0.62, joint: 0.34, boot: 0.26 },
+
   /**
-   * Anchos del cuerpo, en fracciones del radio del torso (ver hitbox). Salieron
-   * de mirar el modelo, no de la teoría: con los brazos pegados al pecho y las
-   * piernas juntas, de frente era un bloque, y con el pecho plano de perfil era
-   * una plancha.
+   * **La figura, medida sobre la referencia de estilo.**
+   *
+   * Todo lo de aquí sale de medir `Reference/Avatar/player-avatar-style.png`
+   * píxel a píxel —barriendo la silueta fila a fila— y **no de elegir números
+   * bonitos**. Está en **fracciones de la altura total**, que es lo que hace
+   * que las proporciones aguanten aunque el muñeco cambie de tamaño: la altura
+   * la sigue poniendo `TARGET_TYPES.hitbox`, la forma la pone esto.
+   *
+   * `levels` va desde el suelo (0) a la coronilla (1). `widths` es el ancho de
+   * la pieza a esa altura. Los sitios donde una extremidad se estrecha y los
+   * sitios donde se ensancha están medidos por separado a propósito: **esa
+   * diferencia es la anatomía**, y es justo lo que no tenía el modelo de cajas.
    */
-  chestWidth: 1.36,
-  chestDepth: 1.12,
-  shoulderWidth: 2.5,
-  armRadius: 0.26,
-  armGap: 0.22,
-  legGap: 0.62,
-  legRadius: 0.3,
+  figure: {
+    /**
+     * Alturas, del suelo (0) a la coronilla (1). Las tres que marcan zona
+     * —barbilla 0.869, cadera 0.470— caen sobre las bandas del hitbox (0.861 y
+     * 0.472) sin forzar nada: la referencia y el muñeco tienen las mismas
+     * proporciones humanas.
+     */
+    levels: {
+      ankle: 0.070,
+      calf: 0.193,
+      knee: 0.255,
+      thighNarrow: 0.317,
+      hip: 0.470,
+      wrist: 0.505,
+      waist: 0.640,
+      elbow: 0.607,
+      armNarrow: 0.690,
+      ribs: 0.660,
+      chest: 0.750,
+      shoulder: 0.790,
+      neck: 0.845,
+      chin: 0.869,
+      temples: 0.938,
+    },
+    widths: {
+      // Cabeza: ancha en las sienes, cerrada arriba y en la barbilla.
+      crown: 0.082,
+      temples: 0.103,
+      chin: 0.062,
+      neck: 0.081,
+      // Tronco: reloj de arena. La cintura es el punto más estrecho (0.134
+      // contra 0.202 del pecho), y de ahí se abre otra vez a la cadera.
+      chest: 0.202,
+      ribs: 0.160,
+      waist: 0.134,
+      hip: 0.195,
+      crotch: 0.175,
+      // Hombrera: la pieza más ancha del cuerpo, y va por fuera del brazo.
+      pauldron: 0.117,
+      shoulderSpan: 0.284,
+      // Brazo: 0.036 arriba, 0.028 justo antes del codo, 0.059 **en** el codo.
+      // Esa diferencia es la articulación, y es lo que no tenían las cajas.
+      armUpper: 0.036,
+      armNarrow: 0.028,
+      elbow: 0.059,
+      forearm: 0.039,
+      wrist: 0.030,
+      hand: 0.050,
+      // Pierna: 0.086 en la cadera, 0.058 antes de la rodilla, 0.086 en ella.
+      thighTop: 0.086,
+      thighNarrow: 0.058,
+      knee: 0.086,
+      shinTop: 0.078,
+      calf: 0.065,
+      ankle: 0.042,
+      boot: 0.078,
+    },
+    /**
+     * Fondo de cada pieza respecto a su ancho. La referencia es una vista
+     * frontal, así que esto **no está medido**: son proporciones humanas
+     * normales, y es lo único de este bloque que no sale de la imagen.
+     */
+    depths: {
+      head: 1.18,
+      neck: 1.0,
+      torso: 0.74,
+      pauldron: 0.95,
+      arm: 1.0,
+      leg: 1.05,
+      boot: 1.9,
+    },
+    /**
+     * **Dónde cae el eje de cada brazo**, medido fila a fila sobre la
+     * referencia: no cuelga recto, se abre de 0.136 en el hombro a 0.177 en la
+     * muñeca. Es la pose en A de siempre, y sin ella los brazos se meten dentro
+     * del tronco —que mide 0.101 de medio ancho en el pecho— o quedan pegados
+     * como dos tablas.
+     */
+    armX: { shoulder: 0.136, elbow: 0.152, wrist: 0.177 },
+    /**
+     * La hombrera va **por dentro**: su centro cae a 0.086 y su borde exterior a
+     * 0.145, que es la mitad de la envergadura. Es una tapa sobre el hombro, no
+     * una pieza colgada del brazo.
+     */
+    pauldronX: 0.086,
+    /**
+     * **El eje de cada pierna no es vertical**: se abre de 0.069 en la cadera a
+     * 0.100 en la suela. Salió de comparar siluetas a la misma altura —las
+     * pantorrillas nos salían un 25% estrechas y no era el grosor, era que las
+     * dos piernas estaban demasiado juntas—. La postura de la referencia apoya
+     * más ancho de lo que arranca.
+     */
+    legX: { hip: 0.069, thighNarrow: 0.071, knee: 0.077, calf: 0.092, ankle: 0.098, sole: 0.100 },
+    /** Caras de cada prisma: más en el tronco, menos en las extremidades. */
+    sides: { torso: 8, head: 6, limb: 6, joint: 6, boot: 4 },
+  },
+
   /**
-   * **Estrechamiento de los paneles.** Lo que hace angular a una caja: cada
-   * panel se cierra hacia arriba o hacia abajo esta fracción de su ancho, así
-   * que ninguna pieza es un prisma recto y ninguna es redonda.
+   * El núcleo del pecho, en fracciones de la altura total. Es la pista visual
+   * de la carga eléctrica del escudo, y lo único del canal de luz que no es
+   * una línea.
    */
-  taper: 0.22,
-  /** Cuello: lo que separa la cabeza de los hombros. */
-  neckHeight: 0.22,
-  /** El núcleo del pecho, en fracciones del radio del torso. */
-  coreRadius: 0.34,
+  coreRadius: 0.032,
+
   /**
    * **Las dos líneas de luz.** No son tramos sueltos por las piezas: son dos
    * filamentos **continuos** que bajan de la coronilla a las botas —cara,
-   * esternón, ingle y cara interna de cada pierna— separándose por el camino.
-   * Es lo que define el modelo en la referencia de estilo
-   * (`Reference/Avatar/player-avatar-style.png`), y lo que hace que se lea como
-   * un cuerpo iluminado y no como un muñeco con pegatinas.
+   * esternón, ingle y cara interna de cada pierna— separándose por el camino, y
+   * **el mismo par por la espalda**, para que el color de equipo se reconozca
+   * igual de frente que de espaldas.
    *
-   * Los tres `spread` son la separación entre las dos líneas en cada altura, en
-   * fracciones del radio del torso: la inclinación de cada tramo sale de unir un
+   * Los `spread` son la separación entre las dos líneas en cada altura, en
+   * fracciones de la altura total: la inclinación de cada tramo sale de unir un
    * punto con el siguiente, no de un ángulo escrito a mano.
    *
    * `width` va fino a propósito: es un filamento, no una pechera; con el doble
    * de grosor el azul se comía el modelo entero.
    */
-  stripWidth: 0.1,
-  stripHeadSpread: 0.34,
-  stripChestSpread: 0.42,
-  stripLegSpread: 0.62,
+  stripWidth: 0.0085,
+  /**
+   * **Por dónde pasan**, nivel a nivel y en fracciones de la altura: la
+   * separación de cada línea respecto al eje. Está medida sobre la referencia
+   * igual que los anchos —las líneas son el único azul saturado de la imagen, así
+   * que se localizan por tono— y no es una interpolación entre tres números.
+   *
+   * El recorrido tiene una forma que no se adivina: **se abren en el collar
+   * (0.056), se cierran en el ombligo (0.035) y a partir de ahí sólo se
+   * separan** hasta la bota. Con tres valores sueltos salía al revés —cerradas
+   * en el pecho y abiertas en la cintura— y el pecho se leía como una X.
+   */
+  stripSpread: {
+    crown: 0.029,
+    chin: 0.050,
+    shoulder: 0.056,
+    chest: 0.042,
+    waist: 0.035,
+    hip: 0.062,
+    thighNarrow: 0.080,
+    knee: 0.084,
+    calf: 0.092,
+    ankle: 0.102,
+  },
   stripOffset: 0.004,
+
   /** Vista de depuración: distancia de la cámara y vueltas por minuto. */
   debugDistance: 3.2,
   debugHeight: 1.15,
