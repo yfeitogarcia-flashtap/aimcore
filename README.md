@@ -27,7 +27,8 @@ Abre la URL que imprime Vite, haz click en el canvas y a disparar.
 - **Click izquierdo**: disparar.
 - **R**: recargar. Funciona también con el cargador a medias.
 - **Q** cambia de arma, **B** conmuta el silenciador, **E** es la acción
-  contextual. Todo esto se reasigna — ver *Controles reasignables*.
+  contextual y **4** aplica una carga de escudo. Todo esto se reasigna — ver
+  *Controles reasignables*.
 - **Escape**: suelta el ratón y **pausa** el cronómetro. En la pantalla de pausa
   hay un botón **Reanudar**, y también vale un click en cualquier sitio.
 
@@ -81,9 +82,10 @@ captura la siguiente pulsación. Cada acción tiene su botón **por defecto**.
 | Equipo | arma principal (1), pistola (2), cuerpo a cuerpo (3), escudo (4), artilugio (5), arrojadizo (G) |
 | Depuración | vista del avatar (F3) |
 
-Las de **Equipo** están **reservadas y no hacen nada todavía**: la tecla existe
-para que el mapa de controles sea el definitivo desde el principio y nadie se
-encuentre luego con que su bind favorito ya estaba cogido. El panel las marca.
+De las de **Equipo**, la **4 aplica una carga de escudo** y las otras cinco están
+**reservadas y no hacen nada todavía**: la tecla existe para que el mapa de
+controles sea el definitivo desde el principio y nadie se encuentre luego con que
+su bind favorito ya estaba cogido. El panel marca las que no tienen efecto.
 
 **E es una sola acción, no dos.** Dentro del radio de algo con lo que se puede
 interactuar —hoy el explosivo— **siempre** interactúa, y nada más: que ahí dentro
@@ -127,11 +129,26 @@ que el avatar es la representación visual de ese sistema para cuando exista un
 rival de verdad. Lo que añade es lo que una diana no necesita: hombros, brazos,
 articulaciones, cuello y botas.
 
-**Sin texturas, y no por ahorrar:** en esta escena no hay ni una luz, así que el
-volumen lo dan las facetas con su tono y las **costuras** —líneas brillantes por
-las aristas— que de paso sugieren circuitería y emparentan el modelo con la carga
-eléctrica del escudo. El color es una variable (`AVATAR.color`), no un sistema de
-skins: eso depende de economía y cuentas, que no existen.
+Se lee en **tres capas** que no se mezclan:
+
+- **La piel.** Paneles planos y angulares —cada pieza se estrecha por una de sus
+  tapas, nada redondo— en **negro con la rejilla de la sala encima**. Es la misma
+  grilla del suelo y las paredes, generada por el mismo código, sólo que a paso
+  de cuerpo: con el paso de la sala, un torso se llevaría una línea. Ésta es la
+  skin de serie, la que se tiene sin comprar nada, y es lo único que cambia el
+  color personalizable (`AVATAR.color`).
+- **La luz.** Líneas verticales que recorren torso y piernas, más el visor y el
+  núcleo del pecho, en el mismo azul eléctrico del escudo. Es un canal **fijo**:
+  el día que haya equipos, éste llevará su color, y por eso el color
+  personalizable no lo toca.
+- **Los filos.** El borde de cada panel, en un gris de la rejilla.
+
+**Sin texturas, y no por ahorrar:** en esta escena no hay ni una luz, así que un
+mapa no se vería. Con la piel en negro el tono tampoco separa nada, de modo que
+todo el volumen lo dibujan los filos y la rejilla.
+
+Nada de esto es un sistema de skins de pago: eso depende de economía y cuentas,
+que no existen.
 
 ## Modos de sesión
 
@@ -294,6 +311,77 @@ más castigo que el tiempo perdido.
 Desactivarlo o que estalle terminan la sesión, y el resumen te dice cuál de las
 dos cosas pasó.
 
+## Combate: los dummies disparan
+
+En **modo escenario con dianas de hitbox completo**, los muñecos dejan de ser
+blancos quietos. Cuando uno te ve y estás dentro de su rango de enganche (24 u),
+abre fuego.
+
+Dispara con **el mismo modelo de arma que tú**: cadencia, cargador, recarga y
+sonido salen de `WEAPONS` —hoy lleva la Axis-7— así que no hay una segunda idea
+de lo que es un arma. Lo único suyo es la puntería: apunta al centro de tu cuerpo
+y desvía el disparo dentro de un cono.
+
+Dos parámetros de dificultad, en `ENEMY`:
+
+| Parámetro | Qué es | De partida |
+|---|---|---|
+| `spreadDeg` | Cuánto falla: el ancho del cono | 9° |
+| `reactionMs` | Cuánto tarda en abrir fuego desde que te ve | 650 ms |
+
+El cono parece enorme para un tirador y no lo es: **el disparo es instantáneo y
+va a donde estás ahora**, así que moverse no le hace fallar ni un poco. Todo lo
+que falla sale de ahí. Medido de pie en el punto de aparición del Plano A: con
+4.5° entra el 84% de los disparos; con 9°, el 54%.
+
+La velocidad de movimiento no es un parámetro nuevo a propósito: ya existe como
+**velocidad de patrulla** en el panel de opciones.
+
+Tres cosas más que conviene saber:
+
+- **Dispara en ráfagas** de cuatro con pausa. Sin eso, un arma automática vacía
+  el cargador de una sentada y no queda hueco para responder ni para cubrirse.
+- **La cobertura tapa de verdad.** Si no hay línea de visión, no dispara;
+  asomarse y volver a cubrirse reinicia su tiempo de reacción.
+- **Te dan por zonas**, y son tus tres zonas: cabeza, torso y piernas, las mismas
+  del hitbox con el que tú les disparas a ellos.
+
+## Vida, escudo y casco
+
+**100 de vida.** El daño por zona es el de siempre —cabeza 100, torso 50,
+piernas 34— con el cuerpo escalado para el jugador, que a diferencia de un muñeco
+tiene que cruzar el mapa bajo fuego. La cabeza **no** se escala: vale una vida.
+
+**Escudo, hasta 150 en tres segmentos de 50.** Cubre el cuerpo y absorbe un
+porcentaje fijo según el arma que te dispara (Scalar-2 50%, Axis-7 45%,
+Vertex-9 35%). Todavía no varía con la distancia.
+
+Se aplican de una en una con **4**: la carga tarda **dos segundos** y suena, un
+zumbido eléctrico que sube. En campo abierto eso es ruido que te delata, así que
+es una decisión, no un trámite. Caben cinco cargas en el inventario.
+
+**Casco: binario.** El primer disparo a la cabeza lo rompe —crujido, y ahí se
+queda el disparo, no pierdes vida—; el siguiente te mata. No se repara ni se
+rellena: se recoge otro o se juega sin él.
+
+**Mientras no haya economía ni partidas**, empiezas cada sesión con **un segmento
+de escudo puesto y el inventario vacío**, y lo demás está por el suelo: ocho
+recogibles curados en el Plano A —cuatro cargas de escudo, tres cruces de vida y
+**un casco, arriba en el Balcón**—, repartidos por las zonas que hay que cruzar y
+ninguno en el Vestíbulo, que es donde apareces. Se cogen **por proximidad**, sin
+tecla, y vuelven a aparecer al cabo de un rato. Si no te hacen falta —vida llena,
+inventario lleno— se quedan donde están.
+
+**Si te matan**, reapareces en el punto de salida tras una espera que empieza en
+3 s, **sube 2 s por cada muerte** hasta un tope de 15, y **baja 3 s con cada baja
+tuya**, sólo si la espera ya pasaba de 10.
+
+En el HUD: barra fina de vida con su cruz, escudo de tres segmentos, cargas y
+casco, abajo a la izquierda. Por debajo de 45 de vida **y sin escudo**, parpadea
+en rojo —el mismo aviso que el cargador corto—. Al recibir un disparo se enciende
+un anillo suave alrededor de la mira, que es donde ya estás mirando; nada de
+tintes de pantalla completa, que taparían justo lo que hay que mirar.
+
 ## Estrellas
 
 En modo escenario el HUD muestra **cinco estrellas que se actualizan mientras
@@ -311,9 +399,10 @@ segundos** aunque no falles un tiro. Empiezas con las cinco y las vas gastando.
 Que el explosivo detone **no es una estrella baja**: es **Fallido**, un resultado
 aparte. No llegar a desactivar no es jugar mal, es no terminar.
 
-Los pesos y los cortes de estrella están en `SCORING`, en `src/config.js`. Hay
-además dos variables preparadas a peso cero —daño recibido y muertes— para
-cuando esas mecánicas existan.
+Desde que los muñecos disparan hay además **daño recibido y muertes**, con peso
+0.1 cada una: la nota sigue siendo sobre todo puntería y ritmo, y sobrevivir es
+un extra, no la mitad del examen. Los pesos y los cortes de estrella están en
+`SCORING`, en `src/config.js`.
 
 ## Air-strafe: acelerar en el aire
 
@@ -373,6 +462,23 @@ cuatro segundos. De eso, 0.57 puntos ya existían con el modelo escalar, porque 
 contacto con el suelo entre saltos se cuantiza al frame. Es el único sitio del
 juego donde el refresco cambia el resultado; el porqué está en
 `docs/decisions.md` §32.
+
+## Fatiga de salto
+
+Rebotar en el sitio salía gratis e infinito. Ahora se desgasta: **dos saltos
+parados salen gratis** y, a partir del tercero, cada uno pierde un 12% de impulso
+hasta un suelo del 55%. No se bloquea nunca —saltar siempre hace algo— y se
+olvida sola: 1.4 s sin saltar, o **un solo salto con desplazamiento de verdad**,
+y vuelve el salto entero.
+
+Lo que decide si un salto contó como parado es **la velocidad**, no lo que
+avanzaste en línea recta. Es deliberado: un bhop cerrado, girando todo el rato,
+avanza poco y va rápido, y medir el desplazamiento habría castigado justo a quien
+domina la técnica. Quien encadena de verdad no nota esta regla nunca.
+
+Un detalle que no es un fallo: **encadenar desde parado no perdona**. Un salto
+encadenado conserva la marcha del aterrizaje, y la de un rebote es cero; para
+volver a saltar entero hay que romper la cadena y coger carrerilla.
 
 ## Aterrizaje
 

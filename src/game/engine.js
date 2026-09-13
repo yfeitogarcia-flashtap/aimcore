@@ -23,6 +23,7 @@ import {
   OBJECTIVE,
   MOVEMENT,
   HELP,
+  PLAYER,
   RECOIL_RESET_MS,
   RENDER,
   SESSION_DURATION_S,
@@ -39,17 +40,24 @@ import { MovementController } from './movement.js'
 import { TargetManager } from './targets.js'
 import {
   initAudio,
+  playDamage,
   playDryFire,
+  playHeal,
+  playHelmetCrack,
   playHit,
   playLanding,
   playObjectiveDefused,
   playObjectiveExplosion,
+  playShieldCharge,
   playShot,
   playUiConfirm,
 } from '../audio/sfx.js'
 import { attachListener, detachListener, setSpatialEnabled } from '../audio/spatial.js'
 import { ActionPanel } from './actionPanel.js'
 import { Avatar } from './avatar.js'
+import { EnemyFire } from './enemyFire.js'
+import { PickupField } from './pickups.js'
+import { PlayerStatus, playerBody } from './player.js'
 import { getSettings, subscribeSettings, updateSettings } from '../settings.js'
 import { eventCode, getKeybinds, keysOf, subscribeKeybinds } from '../keybinds.js'
 
@@ -167,6 +175,19 @@ export class Engine {
     this.objective = new Objective(this.scene, COVER.heights)
     this.objective.setSites(this.scenario.objectiveSites)
 
+    /**
+     * **El jugador como blanco.** Vida, escudo, casco y reaparición; el módulo
+     * no sabe de motor y el motor no sabe de fórmulas de daño.
+     */
+    this.status = new PlayerStatus()
+    /** Los muñecos disparando, y los recogibles que hacen falta para aguantarlo. */
+    this.enemyFire = new EnemyFire(this.scene, (hit) => this._onPlayerHit(hit))
+    this.pickups = new PickupField(this.scene, COVER.heights, (kind) => this._collect(kind))
+    this.pickups.setSites(this.scenario.pickupSites)
+    this.enemyFire.setOccluders(this.scenario.occluders)
+    /** Mando del zumbido de carga, mientras dure. */
+    this._shieldSound = null
+
     this.actionPanel = new ActionPanel(this.scene, this.cssScene)
     this.actionPanel.setAnchor(this.scenario.spawn, this.scenario.room)
     this.targets.setRoutes(this.scenario.routes, this.scenario.points, this.scenario.occluders, this.scenario.room)
@@ -241,6 +262,20 @@ export class Engine {
       /** Hay puntuación por estrellas que enseñar. */
       scoring: false,
       stars: 5,
+      /** Estado del jugador. Sólo tiene sentido con muñecos que disparan. */
+      combat: false,
+      health: PLAYER.maxHealth,
+      maxHealth: PLAYER.maxHealth,
+      shield: 0,
+      shieldSegments: 0,
+      maxSegments: 3,
+      charges: 0,
+      helmet: false,
+      applying: false,
+      applyProgress: 0,
+      alive: true,
+      respawnLeftMs: 0,
+      lowHealth: false,
     }
 
     this._rafId = 0
@@ -324,6 +359,9 @@ export class Engine {
     if (this._resizeObserver) this._resizeObserver.disconnect()
     if (document.pointerLockElement === this.canvas) document.exitPointerLock()
     this.avatar?.dispose()
+    this._stopShieldSound()
+    this.enemyFire.dispose()
+    this.pickups.dispose()
     this.actionPanel.dispose()
     this.cssRenderer.domElement.remove()
     this.targets.dispose()
@@ -402,6 +440,8 @@ export class Engine {
     this._releaseTrigger()
     this._cancelReload()
     this.targets.clear()
+    this.pickups.clear()
+    this._stopShieldSound()
     if (this.isLocked) document.exitPointerLock()
     this._setPhase(PHASE.IDLE)
   }
@@ -446,6 +486,10 @@ export class Engine {
       suppressorSupported: this.weapon.supportsSuppressor,
       suppressorEnabled: this.suppressorEnabled,
     })
+    // Los muñecos disparan **sólo con escenario y hitbox completo**: sin
+    // cobertura no habría dónde meterse, y una esfera flotante no dispara.
+    this.enemyFire.setEnabled(this.scenario.hasGeometry && settings.targetType === 'hitbox')
+    this.enemyFire.setRadius(settings.targetRadius)
     const hadSession = this.targets.sessionActive
     this.targets.configure(settings)
     // Con un cambio de escenario en marcha la siembra la hace `_buildScenario`,
@@ -487,6 +531,9 @@ export class Engine {
     this.actionPanel.setAnchor(this.scenario.spawn, this.scenario.room)
     this.targets.setRoutes(this.scenario.routes, this.scenario.points, this.scenario.occluders, this.scenario.room)
     this.objective.setSites(this.scenario.objectiveSites)
+    this.pickups.setSites(this.scenario.pickupSites)
+    this.enemyFire.setOccluders(this.scenario.occluders)
+    this.enemyFire.setEnabled(this.scenario.hasGeometry && getSettings().targetType === 'hitbox')
 
     // Las dianas vivas estaban ancladas a un mundo que ya no existe. Si había
     // sesión en marcha se vuelve a sembrar desde la posición nueva del jugador.
@@ -561,6 +608,14 @@ export class Engine {
     if (this.phase === phase) return
     this.phase = phase
     this.stats.phase = phase
+    // El zumbido del escudo va con el estado, no por su cuenta: la carga se
+    // congela en pausa —va por delta— y el sonido tiene que congelarse con
+    // ella. Al reanudar se relanza por lo que quede, que es lo que evita que
+    // una carga termine en silencio.
+    if (phase !== PHASE.RUNNING) this._stopShieldSound()
+    else if (this.status.applying) {
+      this._shieldSound = playShieldCharge(this.status.applyLeftMs / 1000)
+    }
     this.callbacks.onPhaseChange?.(phase)
   }
 
@@ -581,6 +636,12 @@ export class Engine {
     this.movement.setEnabled(true)
     this._defuseHeld = false
     this.objectiveOutcome = null
+    // Vida, escudo y casco vuelven a la dotación de salida, y los recogibles a
+    // su sitio. El combate se enciende solo: `enemyFire` ya sabe si toca.
+    this.status.reset()
+    this._stopShieldSound()
+    this.enemyFire.begin()
+    this.pickups.begin()
     // La primera diana nace en la posición ya reseteada del jugador.
     this.camera.updateMatrixWorld()
     const now = performance.now()
@@ -605,6 +666,8 @@ export class Engine {
     this.movement.setEnabled(false)
     this.targets.clear()
     this.objective.clear()
+    this.pickups.clear()
+    this._stopShieldSound()
     this._setPhase(PHASE.FINISHED)
     if (this.isLocked) document.exitPointerLock()
 
@@ -712,6 +775,93 @@ export class Engine {
   }
 
   /**
+   * **Combate.** Los relojes del jugador, el fuego enemigo y los recogibles.
+   *
+   * Va con el delta de juego y no con `performance.now()` para los dos relojes
+   * que pueden esperar —la carga del escudo y la reaparición—, así que pausar no
+   * regala una reaparición de quince segundos.
+   *
+   * @param {number} deltaMs tiempo de juego del frame; cero en pausa
+   */
+  _updateCombat(now, deltaMs) {
+    const status = this.status
+    const { shieldReady, respawnReady } = status.tick(deltaMs)
+    if (shieldReady) this._stopShieldSound()
+    if (respawnReady) this._respawnPlayer()
+
+    // El cuerpo sale del movimiento, no de la cámara: entre las dos está el
+    // hundimiento del aterrizaje.
+    const body = status.alive
+      ? playerBody(this.camera, this.movement.eyeHeight, this.movement.feetY)
+      : null
+    this.enemyFire.update(now, this.targets.instances, body)
+    this.pickups.update(now, deltaMs / 1000, this.camera)
+  }
+
+  /**
+   * Un disparo enemigo ha entrado. Aquí se decide qué significa; el módulo que
+   * dispara sólo sabe de geometría.
+   */
+  _onPlayerHit({ zone, damage, weaponKey }) {
+    const result = this.status.takeHit(zone, damage, weaponKey)
+    if (result.helmetBroken) {
+      // El único aviso de que la cabeza se ha quedado descubierta.
+      playHelmetCrack()
+      this.callbacks.onDamage?.(0)
+      return
+    }
+    playDamage(Math.min(1, damage / PLAYER.maxHealth))
+    this.callbacks.onDamage?.(damage / PLAYER.maxHealth)
+    if (!result.killed) return
+    this._downPlayer()
+  }
+
+  /** Abatido: se congela al jugador y arranca la cuenta de reaparición. */
+  _downPlayer() {
+    this.status.die()
+    this._stopShieldSound()
+    this._releaseTrigger()
+    this._cancelReload()
+    this._defuseHeld = false
+    // La mirada se queda: ver quién te ha matado es información. Lo que se
+    // apaga es andar y disparar.
+    this.movement.setEnabled(false)
+  }
+
+  _respawnPlayer() {
+    this.status.respawn()
+    this.movement.reset()
+    this.movement.setEnabled(this.phase === PHASE.RUNNING)
+    this._refillMagazine()
+    this.camera.updateMatrixWorld()
+  }
+
+  /**
+   * Un recogible bajo los pies. Devuelve si se consume: con el inventario lleno
+   * o la vida al máximo, el objeto se queda donde está para cuando haga falta.
+   */
+  _collect(kind) {
+    const status = this.status
+    if (!status.alive) return false
+    if (kind === 'health') {
+      if (!status.heal()) return false
+      playHeal()
+      this._showHelp('Vida recuperada')
+      return true
+    }
+    if (kind === 'helmet') {
+      if (!status.equipHelmet()) return false
+      playUiConfirm()
+      this._showHelp('Casco equipado')
+      return true
+    }
+    if (!status.addCharge()) return false
+    playUiConfirm()
+    this._showHelp('Carga de escudo · pulsa 4 para aplicarla')
+    return true
+  }
+
+  /**
    * Puntuación viva de la sesión. Se recalcula cada vez que se pide, que es en
    * cada frame: son cuatro divisiones y una media, muy por debajo de lo que
    * costaría guardarla y mantenerla sincronizada.
@@ -723,9 +873,9 @@ export class Engine {
       elapsedMs: this.elapsedMs,
       // Cada arma se juzga contra lo que es razonable acertar con ella.
       precisionTarget: this.weapon.precisionTarget,
-      // RESERVADAS: sin mecánica todavía, y con peso 0 no entran en la media.
-      damageTaken: 0,
-      deaths: 0,
+      // Ya no son reservadas: desde que los muñecos disparan, esto son datos.
+      damageTaken: this.status.damageTaken,
+      deaths: this.status.deaths,
     })
   }
 
@@ -774,7 +924,29 @@ export class Engine {
     if (this._isBind('suppressor', event)) {
       event.preventDefault()
       this._runPanelAction('suppressor')
+      return
     }
+
+    // **Aplicar una carga de escudo.** La tecla 4 deja de estar reservada: es
+    // la primera de las seis de equipo que hace algo. No se puede cancelar y no
+    // frena al jugador — lo que cuesta son los dos segundos de zumbido, que en
+    // campo abierto se oyen desde lejos.
+    if (this._isBind('shield', event)) {
+      event.preventDefault()
+      this._applyShield()
+    }
+  }
+
+  /** Arranca una carga de escudo, si hay carga y hay hueco. */
+  _applyShield() {
+    if (!this.status.beginShieldApply()) return
+    this._stopShieldSound()
+    this._shieldSound = playShieldCharge(PLAYER.shield.applyMs / 1000)
+  }
+
+  _stopShieldSound() {
+    this._shieldSound?.stop()
+    this._shieldSound = null
   }
 
   /**
@@ -953,6 +1125,8 @@ export class Engine {
     // Recargando o sin munición no sale nada. El aviso del cargador vacío lo
     // da la pulsación del gatillo, no este camino.
     if (this.reloading || this.ammo <= 0) return false
+    // Abatido tampoco: el arma se calla hasta reaparecer.
+    if (!this.status.alive) return false
 
     const weapon = this.weapon
     const intervalMs = 60000 / weapon.rpm
@@ -1035,7 +1209,11 @@ export class Engine {
     if (hit) {
       this.hits += 1
       const { killed } = this.targets.applyHit(hit, performance.now())
-      if (killed) this.kills += 1
+      if (killed) {
+        this.kills += 1
+        // Una baja perdona parte de la espera, si es que hay algo que perdonar.
+        this.status.onKill()
+      }
       playHit()
     }
 
@@ -1062,7 +1240,9 @@ export class Engine {
       if (this.phase === PHASE.IDLE || this.phase === PHASE.FINISHED) this._beginSession()
       else if (this.phase === PHASE.PAUSED) {
         this.controls.enabled = true
-        this.movement.setEnabled(true)
+        // Abatido se reanuda mirando, no andando: el movimiento vuelve con el
+        // jugador, no con el ratón.
+        this.movement.setEnabled(this.status.alive)
         this._setPhase(PHASE.RUNNING)
       }
     } else {
@@ -1130,6 +1310,9 @@ export class Engine {
 
     const targetDelta = this.phase === PHASE.RUNNING ? delta / 1000 : 0
     this.targets.update(now, targetDelta, this.camera)
+    // El combate va después de las dianas: los muñecos disparan desde donde han
+    // quedado este frame, no desde donde estaban en el anterior.
+    this._updateCombat(now, targetDelta * 1000)
     this._updateObjective(now, targetDelta)
     this.actionPanel.follow(this.camera)
     this.actionPanel.syncLayout()
@@ -1202,6 +1385,21 @@ export class Engine {
     // Estrellas en vivo: sólo hay puntuación donde hay objetivo que puntuar.
     stats.scoring = this.objective.active
     if (stats.scoring) stats.stars = this._currentScore().stars
+
+    // Vida y escudo: el bloque sólo aparece donde hay quien dispare.
+    const status = this.status
+    stats.combat = this.enemyFire.enabled
+    stats.health = status.health
+    stats.shield = status.shield
+    stats.shieldSegments = status.shieldSegments
+    stats.maxSegments = status.maxSegments
+    stats.charges = status.charges
+    stats.helmet = status.helmet
+    stats.applying = status.applying
+    stats.applyProgress = status.applyProgress
+    stats.alive = status.alive
+    stats.respawnLeftMs = status.respawnLeftMs
+    stats.lowHealth = status.lowHealth
     this.callbacks.onFrame?.(stats)
   }
 }

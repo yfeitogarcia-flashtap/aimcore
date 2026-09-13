@@ -2692,6 +2692,185 @@ el principio.
 
 ---
 
+## Ronda 34 — Que te disparen
+
+### 34.1 El jugador no tiene cuerpo, y no hace falta que lo tenga
+
+Para que un muñeco pueda darte hay que decidir **dónde te ha dado**, y la
+tentación era montarle al jugador un cuerpo invisible en la escena —tres mallas,
+las del hitbox— y lanzarle raycasts. Habría funcionado y habría creado el
+problema de siempre: dos cuerpos, el de la colisión y el de los impactos, que se
+desincronizan la primera vez que alguien toque uno.
+
+El cuerpo del jugador es **el mismo cilindro que ya usa la colisión**
+(`COVER.playerRadius`) y las tres zonas salen de `TARGET_TYPES.hitbox.parts`
+escaladas por la altura de ojos del momento. Agacharse baja las tres sin una
+segunda tabla: el muñeco tiene los «ojos» en el centro de la cabeza, así que la
+escala es `eyeHeight / head.offsetY` y todo lo demás va detrás. Medido de pie:
+piernas hasta 0.86, torso hasta 1.57, cabeza hasta 1.83; agachado, 1.13 de alto.
+
+El corte se resuelve **analíticamente** —una cuadrática contra un cilindro
+vertical— y no con un raycast. No es sólo elegancia: son cero mallas nuevas en la
+escena, cero actualizaciones de matriz por frame y un disparo enemigo que no
+cuesta un raycast.
+
+### 34.2 La cabeza no se escala, y eso decidió el resto de la calibración
+
+El daño por zona es el que ya existía: cabeza 100, torso 50, piernas 34, sobre
+100 de vida. Para el jugador el cuerpo se escala (`ENEMY.bodyDamageScale`), pero
+**la cabeza no puede escalarse**: el encargo dice que con el casco roto «el
+siguiente disparo a la cabeza mata», y eso sólo sale solo si la cabeza sigue
+valiendo 100 de 100. Escalarla habría convertido la regla del casco en un caso
+especial escrito a mano.
+
+La consecuencia la pagó la calibración. Con los muñecos apuntando al pecho alto
+(`aimHeightFactor` 0.78) el **11%** de los impactos iban a la cabeza, y cada uno
+era una muerte instantánea: el escudo y la vida no llegaban a significar nada
+porque la partida la decidía una bala perdida. Apuntando al centro del cuerpo
+(0.55) el reparto baja al **4%** y la cabeza vuelve a ser lo que tiene que ser:
+mala suerte, y el motivo por el que el casco está en lo alto del Balcón.
+
+### 34.3 Un cono de 9° no es mala puntería: es que el disparo es instantáneo
+
+El primer valor de `spreadDeg` fue 3.2° y parecía razonable. Medido de pie en el
+punto de aparición del Plano A, entraba el **84%** de los disparos. Con 4.5°,
+también el 84%. El motivo es que **el disparo va a donde estás ahora**: no hay
+viaje de bala ni error de adelanto, así que moverse no le hace fallar ni un poco
+y todo lo que un muñeco falla tiene que salir del cono.
+
+Con 9° entra el 54% de pie en campo abierto, y a 16 u el 23%. Ése es el punto de
+partida. Es un número grande para un tirador y pequeño para lo que hace.
+
+### 34.4 Repartir el raycast de visión por tiempo no basta
+
+La línea de visión es un raycast contra toda la geometría del escenario, así que
+no cabe por frame — la regla de siempre. Se recomprueba cada `sightCheckMs`, y
+para que ocho muñecos no la comprueben a la vez cada uno arranca con un desfase
+al azar.
+
+No sirvió. Los relojes se ponen en fase solos: los muñecos aparecen a la vez, ven
+al jugador a la vez y a partir de ahí cada uno reengancha su reloj `now + 180`
+desde el mismo instante. Medido en juego: hasta **7 rayos en un mismo frame**, a
+0.03 ms cada uno, o sea 0.21 ms de golpe contra un presupuesto de 0.2.
+
+El arreglo es un **presupuesto por frame** (`sightChecksPerFrame`, 2). A quien le
+toca y no le queda presupuesto **no se le mueve el reloj**: mira en el frame
+siguiente, así que nadie pierde el turno. Con ocho muñecos y 60 Hz, la ronda
+entera se despacha en 67 ms, muy por debajo de los 180 del ciclo.
+
+Y una consecuencia que había que cerrar aparte: con la vista mirada cada 180 ms,
+un muñeco sigue disparando hasta 180 ms después de que te metas detrás de la
+Espina, y esos disparos acertaban **a través del muro**. El arreglo es la
+simetría que faltaba: el disparo que entra se comprueba contra la cobertura,
+exactamente como ya hacía `_isBlockedByCover` con el del jugador. Cuesta un rayo
+por disparo **que acierta**, no por disparo. Medido: 0 de 292 atraviesan la
+Espina; sin nada en medio, 29 de 54 entran.
+
+De paso, una lección de medición: el p99 del frame en el entorno de pruebas daba
+1.6 ms y el máximo 13.6, y **no era el combate**: este contenedor dibuja por
+software a ~20 fps y el p99 de uno de sus frames es jitter del navegador. El
+coste real se midió en bucle cerrado, 0.03 ms por rayo, igual que el raycast de
+visibilidad de las apariciones que ya estaba medido desde la vuelta 24.
+
+### 34.5 Los relojes que pueden esperar van por delta, no por fecha
+
+La carga del escudo dura dos segundos y la reaparición hasta quince. Escritos
+como `now + 2000` y `now + 15000` funcionan hasta que alguien pulsa Escape:
+pausar quince segundos se come una reaparición entera, y pausar dos, una carga.
+
+Los dos se descuentan con el **delta de juego del frame**, que ya vale cero en
+pausa porque es el mismo que congela dianas y explosivo. No hace falta acordarse
+de nada: lo que se congela, se congela solo.
+
+### 34.6 Un acumulador en lugar de dos contadores
+
+La regla de reaparición pedía tres cosas: 3 s de base, +2 s por cada muerte
+consecutiva **sin baja entre medias**, tope de 15; y una baja resta 3 s, pero
+sólo si la espera pasa de 10.
+
+Leído literalmente son dos mecanismos —una racha de muertes y un descuento por
+baja— que dicen lo mismo con distinto vocabulario y que se pueden desincronizar.
+Es **un solo acumulador**: morir lo sube, una baja lo baja por encima del umbral.
+«Sin baja entre medias» sale de ahí, porque la baja es justo lo que lo baja.
+Medido: 3, 5, 7, 9, 11, 13, 15, 15.
+
+### 34.7 La fatiga se mide en velocidad, no en desplazamiento
+
+Saltar parado era gratis e infinito. Lo que se desgasta ahora es el **impulso
+vertical** —un factor sobre `jumpSpeed` al despegar—, y no una cuota de saltos ni
+un bloqueo temporal, por una razón concreta: multiplicar la velocidad de salida
+deja la parábola resuelta en forma cerrada, así que un salto fatigado sigue
+siendo idéntico a 60 y a 240 Hz. Medido: los mismos factores (1, 1, 0.88, 0.76,
+0.64, 0.55) y el mismo ápice a los tres refrescos.
+
+Lo que no era obvio es **cómo se decide que un salto fue «parado»**. El encargo
+pedía que un bhop genuino no sufriera fatiga «sea cual sea la velocidad de giro»,
+y eso descarta medir el desplazamiento neto del vuelo: un bhop cerrado, girando
+sin parar, avanza poco en línea recta y va rapidísimo. Lo que se guarda es la
+**velocidad horizontal máxima del vuelo** — un máximo, no una integral, así que
+no depende de cuántos frames lo muestreen.
+
+Dos consecuencias que se miden y se anotan porque no son fallos:
+
+- **Un solo salto con marcha de verdad borra la cuenta entera.** Quien domina el
+  encadenado no ve esta regla nunca.
+- **Encadenar desde parado no perdona.** Un encadenado conserva la marcha del
+  aterrizaje, y la de un rebote es cero; para volver a saltar entero hay que
+  romper la cadena y coger carrerilla. Es coherente con la definición —no hubo
+  desplazamiento real— pero conviene saberlo antes de creer que está roto.
+
+Y una del banco de pruebas: `hz.mjs` empezó a fallar con un 69% de desviación
+entre refrescos. No era la física: el test medía siete saltos seguidos, uno por
+refresco, sin resetear la fatiga entre ellos. La regla de la vuelta 21 otra vez
+—cuando un test falla tras un cambio de alcance, la primera hipótesis es que el
+test codificaba una suposición que el cambio invalidó—.
+
+### 34.8 El avatar: tres canales, y sólo uno se vende
+
+El rediseño no es sólo «más facetado». Lo que cambia de verdad es que el modelo
+pasa a tener **tres canales separados**, y eso es una decisión de producto, no de
+estilo:
+
+- La **piel** es lo personalizable: paneles negros con la rejilla de la sala
+  encima. Es la skin de serie, la que se tiene sin comprar nada.
+- La **luz** —líneas verticales, visor y núcleo— es fija, y es la que llevará el
+  **color de equipo** cuando haya equipos. Por eso `setColor()` no la toca: un
+  jugador no puede pintarse del color del rival, y si el color de equipo saliera
+  del mismo canal que la skin, la primera venta rompería la legibilidad del
+  juego.
+- Las **aristas** son estructura: con la piel en negro, el tono ya no separa una
+  pieza de otra —multiplicar negro por 0.62 sigue siendo negro— y todo el volumen
+  lo dibujan los filos y la rejilla.
+
+La rejilla **no es una textura nueva**: es el generador de líneas de la sala,
+extraído a `grid.js` y llamado desde los dos sitios. Lo único que cambia es el
+paso: 1 u para una sala de 40 y 0.12 para un torso de 0.6, donde el paso de la
+sala daría una sola línea. Y usa el par de grises del **suelo** y no el de las
+paredes, porque sobre negro el de las paredes no se ve.
+
+Dos cosas que costaron una pasada cada una:
+
+- Las líneas se **fusionan** en tres objetos para todo el cuerpo. Con una rejilla
+  por cara eran cuarenta objetos por avatar, y en multijugador habrá varios.
+- La rejilla se **mide** por la cara estrecha del panel y se **coloca** a la
+  altura de la ancha. Puesta a la estrecha se queda dentro del panel y no se ve
+  ni una línea: la primera versión salió con la piel entera invisible y el
+  modelo pareciendo una mancha negra.
+
+### 34.9 Los recogibles van en puntos de ruta
+
+Ocho objetos por el Plano A —cuatro cargas, tres cruces y un casco— y ni una
+coordenada nueva: todos están en **puntos de ruta**. De ésos ya se sabe, porque
+lo mide `rutas.mjs`, que tienen suelo a nivel y 0.6 u de cuerpo libre, así que un
+recogible ahí no puede acabar dentro de una caja. Elegir coordenadas a ojo era
+abrir la puerta a un casco dentro de la Espina.
+
+El reparto sí es una decisión: nada en el Vestíbulo —donde aparece el jugador—,
+vida y escudo por las zonas que hay que cruzar, y el casco arriba en el Balcón.
+Lo que mejor protege es lo que más lejos está del sitio seguro.
+
+---
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

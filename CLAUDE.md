@@ -56,6 +56,10 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | React | `src/App.jsx`, `src/ui/` | Sólo conoce la *fase* (inicio / juego / pausa / resumen) y el resumen final. |
 | HUD | `src/ui/Hud.jsx` | Se actualiza **imperativamente por refs** desde el bucle. Cero `setState` por frame. |
 | Avatar | `src/game/avatar.js` | Modelo humanoide del jugador. Geometría, sin lógica. |
+| Grilla | `src/game/grid.js` | Generador de líneas. Lo usan la sala **y** la piel del avatar. |
+| Jugador | `src/game/player.js` | Vida, escudo, casco, reaparición y **dónde te han dado**. |
+| Fuego enemigo | `src/game/enemyFire.js` | Los muñecos disparando: visión, reacción, cadencia y cono. |
+| Recogibles | `src/game/pickups.js` | Cruces de vida, cargas de escudo y casco por el suelo. |
 | Música | `src/audio/music.js` | Ambiente de menús, generado. Su propio volumen. |
 | Config | `src/config.js` | Todo el tuning, sin excepción. |
 | Ajustes | `src/settings.js` | Store + persistencia en localStorage + saneado. |
@@ -316,19 +320,93 @@ sí—, y como los dos trazados salen de la misma imagen comparten `viewBox` y s
 superponen solos. Es el único sitio del pipeline donde el color decide algo, y
 decide **partir** una imagen en dos, no inventar una forma.
 
+**El jugador también es un blanco, y sus zonas son las del muñeco.** Desde que
+los muñecos disparan, un disparo recibido tiene que caer en algún sitio, y ese
+sitio sale de `TARGET_TYPES.hitbox.parts` escalado a la altura de ojos del
+momento (`playerBody`, en `player.js`): agacharse baja las tres zonas sin una
+segunda tabla de alturas. El cuerpo es **el mismo cilindro que usa la
+colisión** (`COVER.playerRadius`) y el corte se resuelve analíticamente, sin
+malla: el jugador es una cámara, y montarle un cuerpo invisible sólo para que le
+disparen serían dos cuerpos que se desincronizan.
+
+**El escudo cubre el cuerpo; la cabeza es del casco.** El escudo absorbe el
+`shieldAbsorb` del arma **que dispara** —fijo por arma, sin caída por distancia
+todavía— y sólo en torso y piernas. El casco es binario: el primer disparo a la
+cabeza lo rompe y se para ahí, el siguiente mata. Que mate no es un caso
+especial: la cabeza vale 100 de 100 en el modelo de zonas, así que sale solo.
+Por eso `ENEMY.bodyDamageScale` **no toca la cabeza** —escalarla rompería la
+regla del casco— y por eso `ENEMY.aimHeightFactor` es 0.55 y no 0.78: apuntando
+al pecho alto, el 11% de los impactos iban a la cabeza y cada uno era una muerte
+instantánea; al centro del cuerpo, el 4%.
+
+**Los relojes que pueden esperar van por delta, no por fecha.** La carga del
+escudo y la cuenta de reaparición se descuentan con el tiempo de juego del frame,
+que en pausa vale cero. Con un instante absoluto (`now + 15000`), pausar quince
+segundos se comía una reaparición entera — el mismo tipo de agujero que ya se
+cerró con la cuenta atrás del explosivo.
+
+**El test de visión del enemigo es periódico y con presupuesto por frame.** Es un
+raycast contra toda la geometría del escenario, así que no cabe por frame (misma
+regla que la visibilidad de los puntos de aparición). Se recomprueba cada
+`ENEMY.sightCheckMs` **y** como mucho `ENEMY.sightChecksPerFrame` veces por
+frame: repartir sólo por tiempo no basta, porque ocho muñecos que aparecen
+juntos acaban con los ocho relojes en fase. Medido: 0.03 ms por rayo, o sea 0.24
+ms de golpe con ocho, contra un presupuesto de 0.2. A quien le toca y no le queda
+presupuesto **no se le mueve el reloj**: mira en el frame siguiente.
+
+Y como la vista se recomprueba cada 180 ms, **el disparo que acierta se comprueba
+además contra la cobertura**, igual que el del jugador (`_isBlockedByCover`): sin
+eso, meterse detrás de la Espina no libraba de las balas que ya venían de camino.
+Es un rayo por disparo **que entra**, no por disparo. Medido: 0 de 292 disparos
+atraviesan la Espina, y 29 de 54 aciertan a la misma distancia sin nada en medio.
+
+**La fatiga de salto se mide en velocidad, no en desplazamiento.** Saltar parado
+se desgasta (`MOVEMENT.jumpFatigue`), y lo que decide si un vuelo contó como
+parado es la **velocidad horizontal máxima que llegó a tener**, no lo que avanzó
+en línea recta: un bhop cerrado, girando todo el rato, avanza poco y va rápido, y
+medir el desplazamiento habría castigado justo a quien domina la técnica. Es un
+máximo y no una integral, así que no depende de cuántos frames lo muestreen.
+
+Lo que se desgasta es el **impulso vertical** —se multiplica `jumpSpeed` al
+despegar—, de modo que la parábola se sigue resolviendo en forma cerrada y un
+salto fatigado se comporta igual a 60 que a 240 Hz (medido: los mismos factores y
+el mismo ápice). No hay bloqueo: hay suelo (`minFactor`). Y un solo salto con
+marcha de verdad borra la cuenta entera. Ojo con una consecuencia que no es un
+fallo: **encadenar desde parado no perdona**, porque un encadenado conserva la
+marcha del aterrizaje y la de un rebote es cero.
+
 **El avatar comparte anatomía con el muñeco de puntería.** Cabeza, torso y
 piernas salen de las medidas de `TARGET_TYPES.hitbox.parts`, así que el modelo
 del jugador **es** la representación visual del sistema de zonas que ya existe, no
 un segundo muñeco con sus propias proporciones. Lo que añade es lo que una diana
 no necesita: hombros, brazos, articulaciones, cuello y botas.
 
+**Tres canales, y sólo uno es personalizable.** Desde la vuelta 34 el modelo se
+lee en tres capas que no se mezclan:
+
+- **Piel.** Paneles planos y **angulares** —cada pieza se estrecha por una de sus
+  tapas; nada redondo— en negro, con **la misma grilla del suelo y las paredes**
+  encima. No es una textura ni una imagen: es el generador de `grid.js`, el mismo
+  que monta la sala, a paso de cuerpo (`AVATAR.gridStep`) en vez de a paso de
+  sala, porque con 1 u un torso de 0.6 se lleva una línea. Es la skin de serie,
+  la que se tiene sin comprar nada, y es lo único que cambia `setColor()`.
+- **Luz.** Líneas verticales emisivas por torso y piernas, más el visor y el
+  núcleo, todo en el mismo material. Es el canal **fijo**, y el día que haya
+  equipos es el que llevará su color: por eso `setColor()` no lo toca — un
+  jugador no puede pintarse del color del rival.
+- **Aristas.** El filo de cada panel, un gris por encima del de la grilla.
+
 Y **sin texturas, porque en esta escena no hay ni una luz**: todo se dibuja con
-materiales planos, así que el volumen lo dan las facetas con su tono y las
-costuras —líneas brillantes por las aristas— que además son lo que sugiere
-circuitería. Una textura aquí no se vería. El color es **una variable**
-(`AVATAR.color`) y no un sistema de skins: eso depende de economía y cuentas, que
-no existen. Las piezas eléctricas —visor y núcleo— no se tiñen: son la identidad
-del modelo.
+materiales planos. Con la piel en negro el tono ya no separa nada —multiplicar
+negro por 0.62 sigue siendo negro—, así que el volumen entero lo dibujan las
+aristas y la rejilla. El color sigue siendo **una variable** (`AVATAR.color`) y no
+un sistema de skins: eso depende de economía y cuentas, que no existen.
+
+Dos detalles que costaron una pasada cada uno: las líneas de grilla, aristas y
+luz se **fusionan** en tres objetos para todo el cuerpo —con una rejilla por cara
+eran cuarenta, y en multijugador habrá varios avatares—, y la rejilla se **mide**
+por la cara estrecha del panel pero se **coloca** a la altura de la ancha: puesta
+a la estrecha se queda dentro del panel y no se ve ni una línea.
 
 La vista de depuración (F3) sólo se abre **fuera de una sesión en marcha**: la
 cámara es del jugador y el cronómetro corre, y mirarse el modelo no puede costar
@@ -394,9 +472,10 @@ explosivo: una estrella teñida se confunde de reojo con cualquiera de los dos. 
 contraste va por forma —relleno blanco contra contorno apagado—, no por tono.
 
 **La puntuación normaliza por la suma de los pesos, no por el número de
-variables.** Es lo que hace que una variable a peso 0 sea de verdad inerte:
-`damage` y `deaths` están en la fórmula y se calculan, pero no arrastran la nota
-hasta que se les dé peso. Detonar **no puntúa**: es "Fallido", no 1★.
+variables.** Es lo que hace que una variable a peso 0 sea de verdad inerte, y lo
+que permitió que `damage` y `deaths` pasaran de 0 a 0.1 en la vuelta 34 sin tocar
+ni la fórmula ni el peso de las otras dos. Vale para la siguiente que se añada.
+Detonar **no puntúa**: es "Fallido", no 1★.
 
 **Bajo el punto de mira gana lo más cercano, siempre.** El tablero de acciones no
 tiene prioridad por ser interfaz: se compara su distancia con la de la diana y la
@@ -511,10 +590,11 @@ ajustes: cargar, sanear, avisar. Cuatro cosas que sostienen el sistema:
   ronda por un reflejo. El radio lo decide `objective.isPlayerInRange`, no una
   segunda cuenta en el motor.
 
-**Hay teclas reservadas sin lógica, y es a propósito.** 1-5 para equipar, G para
-el arrojadizo. El mapa de controles tiene que ser el definitivo desde el
-principio: si se añaden cuando existan las mecánicas, alguien ya habrá puesto ahí
-su bind favorito. El panel las marca «sin efecto todavía».
+**Hay teclas reservadas sin lógica, y es a propósito.** 1, 2, 3 y 5 para equipar
+y G para el arrojadizo —la 4 dejó de estarlo en la vuelta 34, con el escudo—. El
+mapa de controles tiene que ser el definitivo desde el principio: si se añaden
+cuando existan las mecánicas, alguien ya habrá puesto ahí su bind favorito. El
+panel las marca «sin efecto todavía».
 
 **Una suite sin aserciones no es una prueba, es un informe.** `baja.mjs` imprimía
 «se sube en 12/12» y salía en verde pasara lo que pasara; con aserciones de
@@ -583,9 +663,9 @@ quedan en su punto, porque un destino aleatorio las metería dentro de un muro.
 
 **Controles reasignables:** un mapa único en `KEYBINDS` con las acciones que
 funcionan hoy —movimiento, salto, agachado, caminar, disparar, recargar, cambiar
-de arma, silenciador y la contextual **E**— y las **reservadas sin lógica**: 1-5
-para equipar principal / pistola / cuerpo a cuerpo / escudo / artilugio, y **G**
-para el arrojadizo. Sección **Controles** en opciones: tecla actual, reasignar
+de arma, silenciador, la contextual **E** y el escudo en la **4**— y las
+**reservadas sin lógica**: 1, 2, 3 y 5 para equipar principal / pistola / cuerpo
+a cuerpo / artilugio, y **G** para el arrojadizo. Sección **Controles** en opciones: tecla actual, reasignar
 capturando la siguiente pulsación, botón por acción y por lo general.
 Persistido en `aimcore.keybinds.v1` con saneado. **Escape queda fuera del
 sistema** y el panel lo dice.
@@ -630,7 +710,12 @@ planos WebGL invisibles para el raycast, y botones Pausa / Reiniciar / Cambiar
 arma / Silenciador / Opciones—, pero no hay tablero en la sala: disparar hacia
 su sitio es un disparo normal. Su hueco reservado se sigue auditando.
 
-**HUD:** la **marca de Vektor** arriba a la izquierda —icono discreto, sin
+**HUD:** **abajo a la izquierda**, y sólo donde hay quien dispare, el bloque de
+vida: cruz en CSS, barra fina, escudo de tres segmentos recortado en silueta,
+contador de cargas y marca del casco, con parpadeo rojo por debajo de 45 de vida
+**y sin escudo**. Al recibir un disparo se enciende un anillo alrededor de la
+mira, y abatido sale en el centro lo que falta para reaparecer. Además, la
+**marca de Vektor** arriba a la izquierda —icono discreto, sin
 texto, en el mismo gris apagado que el contador—; aciertos, fallos, precisión y
 tiempo arriba; contador de FPS en la esquina de enfrente y, **justo debajo, un
 engranaje con la palabra ESC** —contorno gris sin relleno, calculado como la estrella y no pegado como un
@@ -645,6 +730,30 @@ posicionados suenan con dirección (listener en la cámara, `PositionalAudio` en
 mundo). Desactivado, se cae a volumen por proximidad sin dirección. Hoy lo usa el
 pitido del explosivo; el módulo es genérico para pasos y rivales.
 
+**Dummies que disparan (sólo con escenario y hitbox completo):** con línea de
+visión y dentro de `ENEMY.engageRange` (24 u), un muñeco abre fuego con el
+**modelo de arma de siempre** —cadencia, cargador, recarga y sonido salen de
+`WEAPONS`, hoy la Axis-7— apuntando al centro del cuerpo del jugador con un cono
+de `ENEMY.spreadDeg`. Dos parámetros de dificultad: **precisión** (el cono) y
+**reacción** (`reactionMs`, 650). La velocidad de movimiento no está ahí a
+propósito: ya es el ajuste `patrolSpeed` del panel. Dispara en ráfagas de cuatro
+con pausa, y el disparo se resuelve contra las **tres zonas del jugador**, que
+son las del hitbox.
+
+**Vida, escudo y casco:** 100 de vida; escudo de hasta 150 en tres segmentos de
+50, que se aplican de uno en uno con **4** en dos segundos y con su zumbido
+eléctrico; hasta cinco cargas en el inventario. El escudo cubre el cuerpo y
+absorbe el `shieldAbsorb` del arma que dispara (0.5 / 0.45 / 0.35); la cabeza no
+la cubre nadie salvo el casco, que es binario. Se empieza con **un segmento
+puesto y sin cargas**, y lo demás se recoge del suelo: ocho recogibles curados
+por el Plano A —cuatro cargas, tres cruces de vida y **un casco, en el Balcón**—,
+todos en puntos de ruta y ninguno en el Vestíbulo. Reaparición de 3 s que sube 2 s
+por muerte hasta 15 y baja 3 s con cada baja, sólo por encima de 10.
+
+**Fatiga de salto:** rebotar parado se desgasta. Dos saltos gratis y a partir del
+tercero cada uno pierde un 12% de impulso hasta un suelo del 55%; un solo salto
+con marcha de verdad lo borra, y 1.4 s sin saltar también.
+
 **Explosivo (sólo con escenario y cronómetro, nunca en práctica libre):** aparece
 en uno de cinco sitios curados del Plano A —uno por zona, ninguno en el
 Vestíbulo—, marcador de octaedro ámbar parpadeante, 45 s de cuenta atrás que
@@ -654,8 +763,9 @@ detone terminan la sesión, y el resumen dice cuál de las dos.
 
 **Puntuación por estrellas (1-5, sólo con escenario):** precisión y tiempo a peso
 0.5 cada una —la precisión, **normalizada contra el `precisionTarget` del
-arma**—; daño recibido y muertes **reservadas a peso 0**, ya con su hueco en la
-fórmula. Cortes en `SCORING.starThresholds`. El HUD las enseña **en vivo**, y
+arma**— y, desde la vuelta 34, **daño recibido y muertes a peso 0.1**: ya no son
+variables reservadas, porque los muñecos disparan y eso son datos. Peso bajo a
+propósito, y de partida. Cortes en `SCORING.starThresholds`. El HUD las enseña **en vivo**, y
 bajan solas con el paso del tiempo porque el tiempo es la mitad de la nota.
 
 **Pantalla de inicio:** el **logotipo completo** ocupa el sitio del rótulo de
@@ -701,9 +811,13 @@ Plano A esté validado jugando.
 la trayectoria). La cobertura `baja` de 1.25 **es saltable de forma fiable** —
 verificado 12 de 12 a 60, 144 y 240 Hz.
 
-**Mecánicas reservadas, con el hueco ya hecho:** daño recibido y
-muertes/reinicios tienen su peso en `SCORING.weights` (a 0) y su parte calculada
-en `scoring.js`. Implementarlas es darles peso; no hace falta tocar la fórmula.
+**Ya no hay mecánicas reservadas en la puntuación:** daño recibido y
+muertes/reinicios se calculaban desde hacía vueltas con peso 0, y en la 34 se les
+dio peso. La fórmula no hubo que tocarla, que era justo lo que se buscaba al
+dejarles el hueco.
+
+**Lo que sí sigue reservado son cinco teclas de equipo** (1, 2, 3, 5 y G): tienen
+bind y no tienen lógica. La 4 dejó de estarlo al llegar el escudo.
 
 ---
 

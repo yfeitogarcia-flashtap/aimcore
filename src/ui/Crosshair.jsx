@@ -14,8 +14,31 @@ import { FEEDBACK } from '../config.js'
  */
 const Crosshair = forwardRef(function Crosshair(_props, ref) {
   const flashRef = useRef(null)
+  const ringRef = useRef(null)
 
   useImperativeHandle(ref, () => ({
+    /**
+     * Anillo de daño: se enciende al recibir un disparo y se apaga solo.
+     *
+     * Va **alrededor de la mira** y no como un tinte de pantalla completa a
+     * propósito: cuando te están disparando, lo último que se puede tapar es el
+     * sitio al que hay que apuntar. La intensidad va con lo que se ha comido el
+     * disparo, así que un roce y un tiro a la cabeza no se ven igual.
+     */
+    damage(severity = 0.5) {
+      const element = ringRef.current
+      if (!element) return
+      const peak = FEEDBACK.damageRingOpacity * (0.45 + 0.55 * Math.min(1, Math.max(0, severity)))
+      element.animate(
+        [
+          { opacity: 0, transform: 'scale(0.75)' },
+          { opacity: peak, transform: 'scale(1)', offset: 0.18 },
+          { opacity: 0, transform: 'scale(1.35)' },
+        ],
+        { duration: FEEDBACK.damageRingMs, easing: 'ease-out' },
+      )
+    },
+
     flash() {
       const element = flashRef.current
       if (!element) return
@@ -36,6 +59,7 @@ const Crosshair = forwardRef(function Crosshair(_props, ref) {
       <span className="crosshair__bar crosshair__bar--bottom" />
       <span className="crosshair__bar crosshair__bar--left" />
       <span className="crosshair__flash" ref={flashRef} />
+      <span className="crosshair__ring" ref={ringRef} />
     </div>
   )
 })

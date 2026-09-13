@@ -148,6 +148,14 @@ export class Scenario {
     return this.definition.objectiveSites ?? []
   }
 
+  /**
+   * Recogibles curados: vida, escudo y casco. Vacío en la sala vacía, que es
+   * como se queda sin ellos sin ningún caso especial, igual que con el explosivo.
+   */
+  get pickupSites() {
+    return this.definition.pickups ?? []
+  }
+
   _build() {
     const definition = this.definition
     /** Geometrías agrupadas por tipo de pieza, para fusionarlas de una vez. */

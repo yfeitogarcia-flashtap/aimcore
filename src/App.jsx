@@ -52,6 +52,8 @@ export default function App() {
     root.setProperty('--background-color', COLORS.background)
     root.setProperty('--accent-color', COLORS.target)
     root.setProperty('--action-color', COLORS.action)
+    root.setProperty('--electric-color', COLORS.electric)
+    root.setProperty('--health-color', COLORS.health)
   }, [])
 
   useEffect(() => {
@@ -65,6 +67,7 @@ export default function App() {
         },
         onFrame: (stats) => hudRef.current?.update(stats),
         onShot: () => crosshairRef.current?.flash(),
+        onDamage: (severity) => crosshairRef.current?.damage(severity),
         onHelp: (text, durationMs) => hudRef.current?.showHelp(text, durationMs),
         onOpenOptions: () => setOptionsOpen(true),
         onAvatarDebug: setAvatarDebug,

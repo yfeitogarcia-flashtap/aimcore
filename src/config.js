@@ -46,6 +46,18 @@ export const COLORS = {
    * `--crosshair-color` (ver src/ui/Crosshair.jsx) y nadie más lo referencia.
    */
   crosshair: '#EAEAEA',
+  /**
+   * **Azul eléctrico.** Un solo canal para todo lo que es carga: el escudo, sus
+   * recargas por el suelo, el visor y el núcleo del avatar y sus líneas de luz.
+   * No compite con nada de lo demás —el naranja es de las dianas, el ámbar del
+   * explosivo, el verde de los botones— y por eso puede significar una cosa
+   * sola en toda la pantalla.
+   */
+  electric: '#6FE0FF',
+  /** Vida: blanco roto. La cruz del suelo y la barra del HUD, el mismo tono. */
+  health: '#F2F2F2',
+  /** Equipo sin carga: el casco. Gris frío, para que no se lea como cobertura. */
+  gear: '#9AA3AA',
 }
 
 /** Sesión cronometrada. */
@@ -375,6 +387,13 @@ export const WEAPONS = {
      * es razonable en ella, no contra un listón único.
      */
     precisionTarget: 0.85,
+    /**
+     * **Cuánto daño al cuerpo se come el escudo** cuando el que dispara lleva
+     * esta arma, en tanto por uno. Fijo por arma y **sin variación por
+     * distancia** todavía: es la primera versión de la mecánica. El escudo
+     * cubre torso y piernas; la cabeza no, y por eso esto no la toca.
+     */
+    shieldAbsorb: 0.5,
     // Arquetipo por defecto: se dispara exactamente como antes de que hubiera
     // armas. Sin patrón, no hay empuje de cámara en absoluto.
     recoil: [],
@@ -389,6 +408,13 @@ export const WEAPONS = {
     supportsSuppressor: false,
     /** Ver `precisionTarget` de Scalar-2. */
     precisionTarget: 0.5,
+    /**
+     * **Cuánto daño al cuerpo se come el escudo** cuando el que dispara lleva
+     * esta arma, en tanto por uno. Fijo por arma y **sin variación por
+     * distancia** todavía: es la primera versión de la mecánica. El escudo
+     * cubre torso y piernas; la cabeza no, y por eso esto no la toca.
+     */
+    shieldAbsorb: 0.45,
     // Subida vertical marcada durante los primeros ocho disparos —el pico está
     // en el cuarto— y a partir de ahí la vertical se apaga y el arma deriva
     // hacia la izquierda. Techo vertical ≈ 7.2°, deriva ≈ 2.6° a la izquierda.
@@ -420,6 +446,13 @@ export const WEAPONS = {
     supportsSuppressor: true,
     /** Ver `precisionTarget` de Scalar-2. */
     precisionTarget: 0.4,
+    /**
+     * **Cuánto daño al cuerpo se come el escudo** cuando el que dispara lleva
+     * esta arma, en tanto por uno. Fijo por arma y **sin variación por
+     * distancia** todavía: es la primera versión de la mecánica. El escudo
+     * cubre torso y piernas; la cabeza no, y por eso esto no la toca.
+     */
+    shieldAbsorb: 0.35,
     // Patada más inmediata que la del Axis-7 —el primer disparo ya empuja más—
     // pero con la mitad de techo vertical (≈ 3.9°). El bamboleo lateral
     // alterna lado a lado y suma más recorrido que la vertical (≈ 4.4°), sin
@@ -505,7 +538,9 @@ export const KEYBINDS = {
   primary: { label: 'Arma principal', default: 'Digit1', reserved: true, group: 'Equipo' },
   secondary: { label: 'Pistola', default: 'Digit2', reserved: true, group: 'Equipo' },
   melee: { label: 'Cuerpo a cuerpo', default: 'Digit3', reserved: true, group: 'Equipo' },
-  shield: { label: 'Escudo', default: 'Digit4', reserved: true, group: 'Equipo' },
+  // El escudo ya no está reservado: aplica una carga del inventario (ver
+  // `PLAYER.shield`). Las otras cuatro y el arrojadizo siguen siendo sólo tecla.
+  shield: { label: 'Escudo', default: 'Digit4', group: 'Equipo' },
   gadget: { label: 'Artilugio', default: 'Digit5', reserved: true, group: 'Equipo' },
   throwable: { label: 'Arrojadizo', default: 'KeyG', reserved: true, group: 'Equipo' },
 
@@ -651,6 +686,43 @@ export const MOVEMENT = {
    */
   airStrafeMaxYawRateDeg: 140,
   // (sólo lo usa el modelo escalar, por el mismo motivo)
+
+  /**
+   * **Fatiga de salto.** Saltar parado no costaba nada, así que rebotar en el
+   * sitio era gratis e infinito. Lo que se desgasta es el **impulso vertical**,
+   * no una cuota de saltos: se multiplica `jumpSpeed` al despegar, con lo que
+   * la parábola sigue resolviéndose en forma cerrada y el salto débil se
+   * comporta igual a 60 que a 240 Hz. Nada más cambia — ni la gravedad, ni el
+   * encadenado, ni la colisión.
+   *
+   * **Lo que decide si un salto cuenta como parado es la velocidad, no la
+   * distancia recorrida.** Un bhop cerrado, girando todo el rato, avanza poco
+   * en línea recta pero va rápido; medir el desplazamiento neto castigaría
+   * justo al que domina la técnica, que es lo contrario de lo que se quiere.
+   * Se guarda la **velocidad horizontal máxima del vuelo** —un máximo, no una
+   * integral, así que no depende de cuántos frames lo muestreen— y se compara
+   * con `minSpeed`.
+   */
+  jumpFatigue: {
+    /** Saltos parados que salen gratis antes de que empiece el desgaste. */
+    freeJumps: 2,
+    /**
+     * Por debajo de esta velocidad horizontal (u/s) el vuelo cuenta como
+     * «parado». 1.5 deja fuera el 0.78 u/s que el aire puede regalar desde
+     * quieto (`airWishFactor · speed`) y queda muy por debajo de andar (4.2).
+     */
+    minSpeed: 1.5,
+    /** Cuánto impulso pierde cada salto parado a partir del tercero. */
+    penaltyPerJump: 0.12,
+    /** Suelo del desgaste: por débil que sea, un salto sigue siendo un salto. */
+    minFactor: 0.55,
+    /**
+     * Sin saltar durante este rato, el desgaste se olvida. Es lo que hace que
+     * la fatiga sea del rebote y no del jugador: dos segundos quieto y vuelve
+     * a saltar entero.
+     */
+    recoverMs: 1400,
+  },
 
   /**
    * Margen que se deja libre junto a cada pared. El desplazamiento ya no está
@@ -1280,6 +1352,30 @@ export const SCENARIOS = {
     ],
 
     /**
+     * **Recogibles.** Cruces de vida, cargas de escudo y el casco.
+     *
+     * Las coordenadas son **puntos de ruta**, no números nuevos: de esos ya se
+     * sabe —lo mide `rutas.mjs`— que tienen suelo a nivel y cuerpo libre, así
+     * que un recogible ahí no puede acabar dentro de una caja. Elegir
+     * coordenadas a mano era abrir la puerta a un casco dentro de la Espina.
+     *
+     * El reparto es el del mapa: nada en el Vestíbulo —donde aparece el
+     * jugador—, vida y escudo repartidos por las zonas que hay que cruzar, y el
+     * **casco arriba, en el Balcón**: lo que mejor protege es lo que más lejos
+     * está del sitio seguro.
+     */
+    pickups: [
+      { id: 'casco-balcon', kind: 'helmet', x: 10.5, y: 'plataforma', z: -14.5, zone: 'El Balcón' },
+      { id: 'escudo-cajones', kind: 'shield', x: 5.5, y: 0, z: 1.5, zone: 'Los Cajones' },
+      { id: 'escudo-pasillo', kind: 'shield', x: 12.5, y: 0, z: -2.5, zone: 'Pasillo trasero' },
+      { id: 'escudo-largo', kind: 'shield', x: -13.5, y: 0, z: -0.5, zone: 'El Largo' },
+      { id: 'escudo-puerta', kind: 'shield', x: -2.5, y: 0, z: -2.5, zone: 'La Puerta' },
+      { id: 'vida-largo', kind: 'health', x: -11.5, y: 0, z: 8.5, zone: 'El Largo' },
+      { id: 'vida-cajones', kind: 'health', x: 18.5, y: 0, z: 4.5, zone: 'Los Cajones' },
+      { id: 'vida-pasillo', kind: 'health', x: 3.5, y: 0, z: -9.5, zone: 'Pasillo trasero' },
+    ],
+
+    /**
      * **Rutas.** Un escenario con cobertura declara rutas, y una ruta es un
      * conjunto de puntos donde **cada par es alcanzable en línea recta** sin
      * cruzar geometría ni cambiar de nivel de suelo.
@@ -1546,6 +1642,182 @@ export const OBJECTIVE = {
 }
 
 /**
+ * **El jugador como blanco.** Vida, escudo y casco.
+ *
+ * La geometría contra la que se resuelve un disparo recibido **no se declara
+ * aquí**: sale de `TARGET_TYPES.hitbox.parts`, las mismas tres zonas con las que
+ * se dispara a un muñeco, escaladas a la altura de ojos que tenga el jugador en
+ * ese momento (ver `src/game/player.js`). Es el sistema de daño por zona de
+ * siempre, mirando en la otra dirección: si mañana el torso empieza más arriba,
+ * cambia para los dos lados a la vez.
+ *
+ * El reparto es el que pide el modelo: la **cabeza** no la cubre el escudo —de
+ * eso se encarga el casco, y es binario— y el **cuerpo** sí, absorbiendo el
+ * porcentaje que diga el arma que dispara (`WEAPONS[x].shieldAbsorb`).
+ */
+export const PLAYER = {
+  /** Vida base. Es también la referencia del daño por zona: cabeza = 100 = muerte. */
+  maxHealth: 100,
+  /**
+   * Por debajo de esto **y sin escudo**, el HUD parpadea en rojo. Es el mismo
+   * mecanismo del cargador corto: estado derivado del frame, sin temporizador
+   * aparte.
+   */
+  lowHealth: 45,
+
+  shield: {
+    /** Lo que rellena una carga, y el tope de las tres juntas. */
+    segment: 50,
+    max: 150,
+    /** Cargas que caben en el inventario. */
+    maxCharges: 5,
+    /** Lo que tarda en aplicarse una, con su sonido eléctrico encima. */
+    applyMs: 2000,
+    /**
+     * Con qué se empieza la sesión mientras no haya economía ni partidas: un
+     * segmento puesto y el inventario vacío. Lo demás se recoge del suelo.
+     */
+    startSegments: 1,
+    startCharges: 0,
+  },
+
+  /**
+   * **Casco: binario.** El primer disparo a la cabeza lo rompe —y se para ahí,
+   * el jugador no recibe daño— y el siguiente mata, porque la cabeza vale 100 de
+   * 100 en el modelo de zonas y el escudo no la cubre. No se repara ni se
+   * rellena: se recoge otro o se juega sin él.
+   */
+  helmet: { startsEquipped: false },
+
+  /** Lo que cura una cruz del suelo. */
+  healthPickup: 50,
+
+  /**
+   * **Reaparición.** Un solo número que sube y baja, no una racha contada
+   * aparte: morir lo sube `stepMs` (con tope), y una baja lo baja `killCreditMs`
+   * **sólo si está por encima de `killCreditAboveMs`**. Así «+2 s por cada
+   * muerte consecutiva sin baja entre medias» sale del propio acumulador, sin
+   * un segundo contador que se pueda desincronizar del primero.
+   */
+  respawn: {
+    baseMs: 3000,
+    stepMs: 2000,
+    maxMs: 15000,
+    killCreditMs: 3000,
+    killCreditAboveMs: 10000,
+  },
+}
+
+/**
+ * **Dummies que disparan.** Sólo con escenario montado y muñecos de hitbox
+ * completo: una esfera flotante no dispara, y sin cobertura no habría de dónde
+ * cubrirse.
+ *
+ * Dispara **con el modelo de arma que ya existe** —cadencia, cargador, recarga y
+ * sonido salen de `WEAPONS`—, así que no hay una segunda idea de lo que es un
+ * arma. Lo único propio del enemigo es la puntería: apunta al jugador y desvía
+ * el disparo dentro de un cono, igual que la dispersión por movimiento del
+ * jugador desvía el suyo.
+ *
+ * **Dos parámetros de dificultad**, que son los que hay que tocar para hacerlo
+ * más fácil o más difícil: `spreadDeg` (cuánto falla) y `reactionMs` (cuánto
+ * tarda en reaccionar). La velocidad de movimiento no está aquí a propósito: ya
+ * es un ajuste del panel (`patrolSpeed`), y tener dos sitios donde se decide lo
+ * mismo es como se desincronizan.
+ */
+export const ENEMY = {
+  /** Con qué disparan. Una entrada de `WEAPONS`, sin copiar ni un número. */
+  weapon: 'axis-7',
+  /**
+   * Distancia de enganche, en unidades. Más allá no disparan aunque vean: el
+   * mapa mide 40 y sin este límite un muñeco del fondo del Balcón hostigaría
+   * desde el primer segundo.
+   */
+  engageRange: 24,
+
+  /**
+   * DIFICULTAD 1 — **precisión**: semiángulo del cono de dispersión.
+   *
+   * Parece enorme para un tirador, y no lo es: el disparo es instantáneo y va
+   * a donde estás **ahora**, así que moverse no le hace fallar ni un poco. Todo
+   * lo que falla un muñeco sale de aquí. Medido de pie en el spawn del Plano A:
+   * con 4.5° entra el 84% de los disparos, con 9° el 54%.
+   */
+  spreadDeg: 9,
+  /** DIFICULTAD 2 — **reacción**: lo que tarda en abrir fuego desde que te ve. */
+  reactionMs: 650,
+
+  /**
+   * Cada cuánto se recomprueba la línea de visión. **No es por frame**: es un
+   * raycast contra toda la geometría del escenario y eso no cabe en el
+   * presupuesto (misma regla que la visibilidad de los puntos de aparición). Se
+   * reparte además entre muñecos, para que ocho no la comprueben todos en el
+   * mismo frame.
+   */
+  sightCheckMs: 180,
+  /**
+   * Y cuántas caben **en un mismo frame**. Repartir por tiempo no basta: ocho
+   * muñecos que aparecen juntos acaban con los ocho relojes en fase y ocho
+   * rayos en el mismo frame —medido, 0.03 ms cada uno, o sea 0.24 ms de golpe
+   * contra un presupuesto de 0.2—. Lo que no cabe se queda con la vista del
+   * frame anterior y se mira en el siguiente: con dos por frame, ocho muñecos
+   * se despachan en 67 ms a 60 Hz, muy por debajo de los 180 del ciclo.
+   */
+  sightChecksPerFrame: 2,
+
+  /**
+   * Ráfagas. Sin ellas un arma automática vacía el cargador de una sentada y no
+   * hay hueco para responder ni para cubrirse.
+   */
+  burstShots: 4,
+  burstPauseMs: 900,
+
+  /**
+   * Cuánto del daño por zona llega al **cuerpo** del jugador. La cabeza no se
+   * escala: vale 100 y mata, que es de lo que depende la regla del casco. El
+   * cuerpo sí, porque el jugador —a diferencia de un muñeco— tiene que cruzar el
+   * mapa bajo fuego de varios a la vez.
+   */
+  bodyDamageScale: 0.32,
+
+  /** Altura de la boca del arma sobre los pies del muñeco, en fracción de su altura. */
+  muzzleHeightFactor: 0.72,
+  /**
+   * A qué parte del jugador apuntan, como fracción de su altura: 0 los pies, 1
+   * la coronilla. **Al centro del cuerpo, y no más arriba**: la cabeza empieza
+   * en 0.86 y vale 100 de 100, así que apuntar al pecho alto convertía cada
+   * ráfaga en una lotería de muertes instantáneas. Medido de pie en el spawn del
+   * Plano A con ocho muñecos: apuntando a 0.78 el 11% de los impactos eran a la
+   * cabeza —y cada uno mata—; a 0.55, el 4%. El cono se reparte entre torso y
+   * piernas y la cabeza vuelve a ser lo que tiene que ser: mala suerte.
+   */
+  aimHeightFactor: 0.55,
+}
+
+/**
+ * **Objetos recogibles.** Cruces de vida, cargas de escudo y el casco, puestos a
+ * mano en el escenario (ver `pickups` en `SCENARIOS`).
+ *
+ * Es la versión provisional de lo que algún día vendrá de una economía: hoy no
+ * se compran, están en el suelo. Se recogen por proximidad —no hay tecla— y
+ * vuelven a aparecer al cabo de un rato, porque en una sesión larga con varios
+ * muñecos disparando un mapa sin recursos se queda muerto.
+ */
+export const PICKUPS = {
+  /** A esta distancia o menos se recoge. Sin tecla y sin mirar. */
+  radius: 1.1,
+  /** Lo que tarda en volver a aparecer uno recogido. */
+  respawnMs: 15000,
+  /** Tamaño del marcador y a qué altura del suelo flota. */
+  size: 0.22,
+  standY: 0.55,
+  /** Balanceo y giro: es lo que hace que se vea que es un objeto y no geometría. */
+  bobUnits: 0.09,
+  bobHz: 0.5,
+  spinRpm: 9,
+}
+
+/**
  * Puntuación por estrellas de un escenario.
  *
  * La nota es una media **ponderada y normalizada por la suma de los pesos**, de
@@ -1558,16 +1830,23 @@ export const SCORING = {
     accuracy: 0.5,
     /** Cuánto se tarda en desactivar dentro de la cuenta atrás. */
     time: 0.5,
-    /** RESERVADO: daño recibido. La mecánica no existe todavía. */
-    damage: 0,
-    /** RESERVADO: muertes y reinicios. La mecánica no existe todavía. */
-    deaths: 0,
+    /**
+     * Daño recibido y muertes. **Ya no están reservadas**: desde que los
+     * muñecos disparan generan datos de verdad, así que se les da peso.
+     *
+     * Peso bajo a propósito, y de partida: la nota sigue siendo sobre todo
+     * puntería y ritmo, y morir poco es un extra, no la mitad del examen. Como
+     * la media se normaliza por la suma de los pesos, subirlos o bajarlos aquí
+     * no obliga a retocar los otros dos.
+     */
+    damage: 0.1,
+    deaths: 0.1,
   },
 
   /**
-   * Referencias para normalizar las variables reservadas cuando se implementen.
-   * Con peso 0 no se usan, pero dejarlas escritas evita tener que inventarlas
-   * más tarde.
+   * Referencias con las que se normalizan el daño y las muertes: encajar tanto
+   * daño como vida tiene un jugador, o morir tres veces, deja ese componente
+   * a cero. Estaban escritas desde que las variables eran un hueco reservado.
    */
   damageReference: 100,
   deathsReference: 3,
@@ -1596,6 +1875,13 @@ export const FEEDBACK = {
   /** Flash del crosshair al disparar. */
   crosshairFlashMs: 90,
   crosshairFlashOpacity: 0.9,
+  /**
+   * **Anillo de daño** alrededor de la mira. Es el único aviso en pantalla de
+   * que te han dado, y va suave a propósito: un tinte rojo de pantalla completa
+   * tapa justo lo que hay que mirar cuando te están disparando.
+   */
+  damageRingMs: 320,
+  damageRingOpacity: 0.55,
 }
 
 /** Sonido sintetizado (Web Audio API). Sin assets externos. */
@@ -1607,6 +1893,12 @@ export const AUDIO = {
   masterVolume: 0.45,
   shotVolume: 0.9,
   hitVolume: 0.8,
+  /** Disparo enemigo: el mismo perfil que el del jugador, un punto más bajo. */
+  enemyShotVolume: 0.62,
+  /** Daño recibido, curación y la carga eléctrica del escudo. */
+  damageVolume: 0.6,
+  healVolume: 0.5,
+  shieldVolume: 0.42,
 }
 
 /**
@@ -1665,26 +1957,58 @@ export const MUSIC = {
  * tres zonas —cabeza, torso, piernas— salen de `TARGET_TYPES.hitbox.parts`, así
  * que si un día cambia dónde empieza el torso, cambia en los dos sitios a la
  * vez. Lo que añade el avatar es lo que una diana no necesita: brazos, hombros,
- * articulaciones y las costuras.
+ * articulaciones y los paneles.
  *
- * **Estética robot/eléctrica, y sin luces en la escena.** Todo el juego se dibuja
- * con materiales planos, así que el volumen no lo puede dar una luz: lo dan las
- * facetas —cada pieza con su tono— y las **costuras**, líneas brillantes por las
- * aristas y por el centro del cuerpo, que es lo que sugiere circuitería y lo que
- * emparenta el modelo con la carga eléctrica del escudo.
+ * **Tres canales, y sólo uno es personalizable:**
+ *
+ *  - **Piel.** Paneles planos y angulares —nada redondo— en negro, con la
+ *    **misma grilla del suelo y las paredes** encima. No es una textura nueva ni
+ *    una imagen: es el mismo generador de líneas de `scene.js` (ver
+ *    `src/game/grid.js`), a paso de cuerpo en lugar de paso de sala. Es la skin
+ *    de serie, la que se tiene sin comprar nada.
+ *  - **Luz.** Líneas verticales emisivas por torso y piernas, más el visor y el
+ *    núcleo. Es un canal **fijo**: el día que haya equipos, éste es el que lleva
+ *    su color, y por eso `setColor` no lo toca.
+ *  - **Aristas.** El filo de cada panel, en el gris de la grilla. Sin luces en
+ *    la escena, con la piel en negro el tono ya no separa una pieza de otra
+ *    —multiplicar negro por 0.62 sigue siendo negro—, así que lo que dibuja el
+ *    volumen son las aristas y la grilla.
  */
 export const AVATAR = {
   /**
-   * Color base. **Una variable, no un sistema de skins**: eso depende de
-   * economía y cuentas, que no existen. Cambiarlo aquí cambia el avatar entero;
-   * los tonos de las piezas salen de éste.
+   * Piel base: negro. **Una variable, no un sistema de skins** —eso depende de
+   * economía y cuentas, que no existen—. `setColor()` cambia ésta y con ella
+   * todos los paneles; la luz se queda como está.
    */
-  color: '#2E6F8E',
-  /** Costuras y núcleo: el azul eléctrico que también llevará el escudo. */
-  seamColor: '#6FE0FF',
+  color: '#101014',
   /**
-   * Tonos por pieza, como factor de brillo sobre el color base. Sin luces, esto
-   * es lo único que separa un brazo del torso al mirarlos de frente.
+   * **Canal de luz**, hoy fijo y mañana el color de equipo: líneas verticales,
+   * visor y núcleo. El mismo azul eléctrico del escudo y de sus recargas.
+   */
+  teamColor: COLORS.electric,
+  /**
+   * Filo de los paneles. Un gris de la misma rampa, **un escalón por encima** de
+   * la grilla del cuerpo: con la piel en negro, el filo es lo que dibuja la
+   * silueta, y si se iguala con la rejilla el modelo se lee como una mancha.
+   */
+  edgeColor: '#6E6E6E',
+  /**
+   * La grilla del cuerpo, con **el par del suelo** y no el de las paredes: es
+   * el más presente de los dos (ver `COLORS`), y sobre negro el de las paredes
+   * no se ve. Misma grilla, mismo generador, el par que se lee.
+   */
+  gridColor: COLORS.gridFloor,
+  gridAccentColor: COLORS.gridFloorAccent,
+  /**
+   * Paso de la grilla sobre el cuerpo. La sala usa 1 u, que sobre un torso de
+   * 0.6 daría una línea: es la misma grilla a escala de cuerpo, no otra.
+   */
+  gridStep: 0.12,
+  gridAccentEvery: 4,
+  /**
+   * Tonos por pieza, como factor de brillo sobre la piel. Con la piel en negro
+   * apenas separan; están por lo que pase el día que alguien pinte el avatar de
+   * un color con recorrido.
    */
   shades: { chest: 1, limb: 0.62, joint: 0.34, boot: 0.26 },
   /**
@@ -1700,10 +2024,25 @@ export const AVATAR = {
   armGap: 0.22,
   legGap: 0.62,
   legRadius: 0.3,
+  /**
+   * **Estrechamiento de los paneles.** Lo que hace angular a una caja: cada
+   * panel se cierra hacia arriba o hacia abajo esta fracción de su ancho, así
+   * que ninguna pieza es un prisma recto y ninguna es redonda.
+   */
+  taper: 0.22,
   /** Cuello: lo que separa la cabeza de los hombros. */
   neckHeight: 0.22,
   /** El núcleo del pecho, en fracciones del radio del torso. */
   coreRadius: 0.34,
+  /**
+   * Líneas de luz: cuántas por pieza, de qué grosor —en fracciones del radio del
+   * torso— y cuánto sobresalen del panel. Finas a propósito: son un filamento,
+   * no una pechera; con el doble de grosor el azul se comía el modelo entero.
+   */
+  stripCount: 2,
+  stripWidth: 0.1,
+  stripSpread: 0.46,
+  stripOffset: 0.004,
   /** Vista de depuración: distancia de la cámara y vueltas por minuto. */
   debugDistance: 3.2,
   debugHeight: 1.15,

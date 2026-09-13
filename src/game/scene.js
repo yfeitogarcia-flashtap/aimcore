@@ -5,45 +5,14 @@
  * materiales PBR. La grilla es regular (1 unidad) y con acentos cada
  * `ROOM.accentEvery`, de modo que sirve como sistema de coordenadas legible
  * para los patrones de aparición que vengan más adelante.
+ *
+ * El generador de líneas está en `grid.js`: el avatar lleva **esta misma
+ * grilla** como piel, y dos copias se habrían separado a la primera.
  */
 
 import * as THREE from 'three'
 import { COLORS, ROOM } from '../config.js'
-
-/**
- * Genera la geometría de una grilla plana en el plano XY, centrada en el
- * origen. Devuelve dos arrays de vértices: líneas normales y líneas de acento.
- */
-function buildGridGeometries(width, height, step, accentEvery) {
-  const base = []
-  const accent = []
-  const halfW = width / 2
-  const halfH = height / 2
-
-  const isAccent = (value) => {
-    const n = Math.round(value / step)
-    return n % accentEvery === 0
-  }
-
-  // Líneas verticales (recorren la altura).
-  for (let x = -halfW; x <= halfW + 1e-6; x += step) {
-    const target = isAccent(x + halfW) ? accent : base
-    target.push(x, -halfH, 0, x, halfH, 0)
-  }
-  // Líneas horizontales (recorren el ancho).
-  for (let y = -halfH; y <= halfH + 1e-6; y += step) {
-    const target = isAccent(y + halfH) ? accent : base
-    target.push(-halfW, y, 0, halfW, y, 0)
-  }
-
-  const toGeometry = (vertices) => {
-    const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(vertices, 3))
-    return geometry
-  }
-
-  return { base: toGeometry(base), accent: toGeometry(accent) }
-}
+import { buildGridGeometries } from './grid.js'
 
 /**
  * Un plano de grilla como `THREE.Group` (líneas base + líneas de acento),

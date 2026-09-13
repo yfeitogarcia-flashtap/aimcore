@@ -164,6 +164,17 @@ export class MovementController {
     /** ¿El vuelo en curso salió de un encadenado? Sólo informativo. */
     this.chainedJump = false
 
+    /**
+     * **Fatiga de salto.** Dos marcas y nada más:
+     *  - `_stillJumps`: saltos seguidos que acabaron sin velocidad horizontal.
+     *  - `_flightMaxSpeed`: la marcha más alta del vuelo en curso. Es un
+     *    **máximo**, no una integral, así que no depende de cuántos frames lo
+     *    muestreen; y es velocidad y no desplazamiento a propósito, porque un
+     *    bhop cerrado avanza poco en línea recta y va rápido.
+     */
+    this._stillJumps = 0
+    this._flightMaxSpeed = 0
+
     /** Sala vigente. La marca el escenario; la vacía usa la de siempre. */
     this.room = ROOM
 
@@ -346,6 +357,8 @@ export class MovementController {
     this._landedAt = -Infinity
     this._landingSpeed = MOVEMENT.speed
     this.chainedJump = false
+    this._stillJumps = 0
+    this._flightMaxSpeed = 0
     this._airSpeed = MOVEMENT.speed
     this._airVelX = 0
     this._airVelZ = 0
@@ -386,6 +399,13 @@ export class MovementController {
     if (MOVEMENT.airVector) this._updateAirAccel(dt)
     else this._updateAirStrafe(dt)
     this._updateHorizontal(dt)
+    // La marcha del vuelo se mira **antes** de la vertical, que es donde se
+    // aterriza: si no, el frame del aterrizaje se mediría con el vuelo ya
+    // cerrado y todos los saltos parecerían parados.
+    if (this.airborne) {
+      const speed = this.horizontalSpeed
+      if (speed > this._flightMaxSpeed) this._flightMaxSpeed = speed
+    }
     this._updateVertical(dt, now)
     this._updateLandingDip(dt)
     this.camera.position.y = this.feetY + this.eyeHeight - this.landingDip
@@ -451,6 +471,8 @@ export class MovementController {
     this._landingVelX = 0
     this._landingVelZ = 0
     this.airStrafing = false
+    this._stillJumps = 0
+    this._flightMaxSpeed = 0
     this._landedAt = -Infinity
     this._jumpPressedAt = -Infinity
     this.eyeHeight = MOVEMENT.standHeight
@@ -819,7 +841,7 @@ export class MovementController {
 
     // Salto: sólo desde el suelo, así que no hay doble salto posible.
     if (this.keys.jump && !this.airborne) {
-      this._takeOff(MOVEMENT.jumpSpeed, this._isChainPress(), dt)
+      this._takeOff(MOVEMENT.jumpSpeed * this.jumpFactor(now), this._isChainPress(), dt)
       // La pulsación se gasta al despegar: mantener SPACE sigue rebotando en
       // cada aterrizaje, como siempre, pero esos rebotes son saltos normales.
       // Encadenar es acertar el tiempo, no dejar la tecla apoyada.
@@ -846,6 +868,31 @@ export class MovementController {
     // Sólo se aterriza bajando. Subiendo, el suelo sólo puede estar por encima
     // si el jugador acaba de pasar sobre un bordillo, y eso no es un impacto.
     if (this.feetY <= ground && this.verticalVelocity <= 0) this._land(ground, now)
+  }
+
+  /**
+   * **Factor de fatiga del próximo salto**, 1 = salto entero.
+   *
+   * Lo que se desgasta es el **impulso vertical**: se multiplica `jumpSpeed` al
+   * despegar y la parábola se sigue resolviendo en forma cerrada, así que un
+   * salto fatigado se comporta igual a 60 que a 240 Hz. No hay bloqueo ni cuota
+   * de saltos —saltar siempre hace algo— y hay suelo (`minFactor`).
+   *
+   * Los dos primeros saltos parados salen gratis: rebotar un par de veces es un
+   * gesto normal, y penalizarlo desde el primero se sentiría como un error del
+   * juego. Del tercero en adelante cada uno resta.
+   *
+   * Y se olvida sola: `recoverMs` sin saltar y el contador vuelve a cero. La
+   * fatiga es del rebote, no del jugador.
+   */
+  jumpFactor(now = performance.now()) {
+    const fatigue = MOVEMENT.jumpFatigue
+    if (Number.isFinite(this._landedAt) && now - this._landedAt > fatigue.recoverMs) {
+      this._stillJumps = 0
+    }
+    const over = this._stillJumps - fatigue.freeJumps + 1
+    if (over <= 0) return 1
+    return Math.max(fatigue.minFactor, 1 - fatigue.penaltyPerJump * over)
   }
 
   /**
@@ -901,6 +948,10 @@ export class MovementController {
       this._seedAirVelocity()
     }
     this.chainedJump = chained
+    // Vuelo nuevo, marca a cero: la marcha la mide `update()` frame a frame, y
+    // el vuelo más corto posible —un salto con la fatiga a tope— dura 318 ms,
+    // muy por encima del tope de delta de un frame.
+    this._flightMaxSpeed = 0
     this._airTime = 0
     this._launchY = this.feetY
     this._launchVelocity = velocity
@@ -932,6 +983,14 @@ export class MovementController {
     // frame, que se descuenta del reloj. Sin esto, la ventana de encadenado
     // sería un frame más generosa a 240 Hz que a 60.
     this._landedAt = now - (this._airTime - (this._launchVelocity + fallSpeed) / g) * 1000
+    // **Fatiga**: el vuelo que se cierra cuenta como parado o no según la marcha
+    // más alta que llegó a tener. Un solo salto con desplazamiento de verdad
+    // borra la cuenta entera, que es lo que hace que quien domina el bhop no
+    // note nunca esta regla.
+    if (this._flightMaxSpeed < MOVEMENT.jumpFatigue.minSpeed) this._stillJumps += 1
+    else this._stillJumps = 0
+    this._flightMaxSpeed = 0
+
     this._landingSpeed = this._airSpeed
     // Lo que conserva un encadenado con vector no es un número, es a dónde ibas
     // y a qué marcha. Fuera de la ventana esto no lo lee nadie: el salto

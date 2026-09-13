@@ -2,7 +2,7 @@ import { forwardRef, useImperativeHandle, useRef } from 'react'
 import { VektorMark } from './Logo.jsx'
 import WeaponSilhouette from './WeaponSilhouette.jsx'
 import { STAR_PATH } from './Stars.jsx'
-import { WEAPONS } from '../config.js'
+import { PLAYER, WEAPONS } from '../config.js'
 
 /**
  * Engranaje de la marca de opciones, en el mismo lienzo de 24×24 que la
@@ -60,6 +60,16 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
   const starsRef = useRef(null)
   // Cinco nodos fijos: encender estrellas es cambiar clases, no crear elementos.
   const starRefs = useRef([])
+  // Vida y escudo. Mismo trato que el resto del HUD: nodos fijos y clases.
+  const vitalsRef = useRef(null)
+  const healthBarRef = useRef(null)
+  const healthValueRef = useRef(null)
+  const shieldRefs = useRef([])
+  const chargesRef = useRef(null)
+  const helmetRef = useRef(null)
+  const applyRef = useRef(null)
+  const applyBarRef = useRef(null)
+  const downedRef = useRef(null)
 
   // Últimos valores mostrados, como números: comparamos antes de formatear,
   // así que un frame que no cambia nada no genera ni un string.
@@ -76,6 +86,15 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
     countUp: null,
     scoring: null,
     stars: -1,
+    combat: null,
+    health: -1,
+    segments: -1,
+    charges: -1,
+    helmet: null,
+    applying: null,
+    lowHealth: null,
+    alive: null,
+    respawnTenths: -1,
   })
 
   useImperativeHandle(ref, () => ({
@@ -160,6 +179,79 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
       if (stats.reloading && reloadBarRef.current) {
         reloadBarRef.current.style.transform = `scaleX(${stats.reloadProgress.toFixed(3)})`
       }
+
+      this.updateVitals(stats, last)
+    },
+
+    /**
+     * Vida, escudo, casco y la cuenta de reaparición.
+     *
+     * Todo el bloque **sólo existe donde hay quien dispare** (`stats.combat`):
+     * en la sala vacía o con dianas que no devuelven el fuego, una barra de vida
+     * llena para siempre sería ruido en pantalla.
+     */
+    updateVitals(stats, last) {
+      if (stats.combat !== last.combat) {
+        if (vitalsRef.current) vitalsRef.current.hidden = !stats.combat
+        last.combat = stats.combat
+      }
+      if (!stats.combat) return
+
+      const health = Math.round(stats.health)
+      if (health !== last.health) {
+        if (healthBarRef.current) {
+          healthBarRef.current.style.transform = `scaleX(${(health / stats.maxHealth).toFixed(3)})`
+        }
+        if (healthValueRef.current) healthValueRef.current.textContent = String(health)
+        last.health = health
+      }
+
+      // Parpadeo de vida baja: el mismo mecanismo del cargador corto —una clase
+      // que sale de un estado derivado—, no un temporizador propio.
+      if (stats.lowHealth !== last.lowHealth) {
+        if (vitalsRef.current) vitalsRef.current.classList.toggle('vitals--low', stats.lowHealth)
+        last.lowHealth = stats.lowHealth
+      }
+
+      if (stats.shieldSegments !== last.segments) {
+        for (let i = 0; i < shieldRefs.current.length; i++) {
+          const segment = shieldRefs.current[i]
+          if (segment) segment.classList.toggle('shield__segment--on', i < stats.shieldSegments)
+        }
+        last.segments = stats.shieldSegments
+      }
+      if (stats.charges !== last.charges && chargesRef.current) {
+        chargesRef.current.textContent = `×${stats.charges}`
+        chargesRef.current.classList.toggle('vitals__charges--empty', stats.charges === 0)
+        last.charges = stats.charges
+      }
+      if (stats.helmet !== last.helmet && helmetRef.current) {
+        helmetRef.current.classList.toggle('vitals__helmet--on', stats.helmet)
+        last.helmet = stats.helmet
+      }
+
+      if (stats.applying !== last.applying) {
+        if (applyRef.current) applyRef.current.hidden = !stats.applying
+        last.applying = stats.applying
+      }
+      if (stats.applying && applyBarRef.current) {
+        applyBarRef.current.style.transform = `scaleX(${stats.applyProgress.toFixed(3)})`
+      }
+
+      // Abatido: lo único que se enseña es cuánto falta. Décimas, como el resto
+      // del HUD, y sólo se toca el DOM cuando cambia la décima.
+      if (stats.alive !== last.alive && downedRef.current) {
+        downedRef.current.hidden = stats.alive
+        last.alive = stats.alive
+        last.respawnTenths = -1
+      }
+      if (!stats.alive) {
+        const tenths = Math.ceil(stats.respawnLeftMs / 100)
+        if (tenths !== last.respawnTenths && downedRef.current) {
+          downedRef.current.textContent = `Abatido · reapareces en ${(tenths / 10).toFixed(1)} s`
+          last.respawnTenths = tenths
+        }
+      }
     },
 
     /** Aviso temporal que se retira solo. */
@@ -241,6 +333,48 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
           <span className="hud__label">fallos</span>
         </div>
       </div>
+
+      {/* Vida y escudo, abajo a la izquierda: lejos de la mira y lejos del
+          cargador, que es lo otro que se mira de reojo. La cruz y el escudo son
+          CSS puro —no hay iconos que cargar, como no hay assets de nada—. */}
+      <div className="vitals" ref={vitalsRef} hidden>
+        <div className="vitals__row">
+          <span className="vitals__cross" role="presentation" />
+          <span className="vitals__track">
+            <span className="vitals__bar" ref={healthBarRef} />
+          </span>
+          <span className="vitals__value" ref={healthValueRef}>
+            {PLAYER.maxHealth}
+          </span>
+        </div>
+
+        <div className="vitals__row vitals__row--gear">
+          {/* El escudo son literalmente tres segmentos dentro de una silueta de
+              escudo: lo que se ve encendido es lo que queda. */}
+          <span className="shield">
+            {[0, 1, 2].map((i) => (
+              <i
+                key={i}
+                className="shield__segment"
+                ref={(node) => {
+                  shieldRefs.current[i] = node
+                }}
+              />
+            ))}
+          </span>
+          <span className="vitals__charges vitals__charges--empty" ref={chargesRef}>
+            ×0
+          </span>
+          {/* El casco no tiene barra: o está o no está. */}
+          <span className="vitals__helmet" ref={helmetRef} role="presentation" />
+        </div>
+
+        <span className="vitals__apply" ref={applyRef} hidden>
+          <span className="vitals__apply-bar" ref={applyBarRef} />
+        </span>
+      </div>
+
+      <p className="downed" ref={downedRef} hidden />
 
       <div className="hud__weapon">
         {/* Silueta y munición en una sola fila: la silueta ya identifica el

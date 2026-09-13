@@ -98,11 +98,19 @@ const SHOT_PROFILES = {
  * Disparo: transitorio de ruido filtrado + un golpe grave que cae rápido.
  * @param {boolean} [suppressed] usa el perfil apagado del silenciador
  */
-export function playShot(suppressed = false) {
+/**
+ * @param {boolean} [suppressed] perfil silenciado
+ * @param {{input: AudioNode|null}} [emitter] emisor posicionado, si lo hay. Es
+ *   por donde suena el disparo de un muñeco: mismo sonido, otro sitio.
+ * @param {number} [volume] volumen base; por defecto, el del jugador
+ */
+export function playShot(suppressed = false, emitter = null, volume = AUDIO.shotVolume) {
   if (!ctx || !master || !noiseBuffer) return
   const t = ctx.currentTime
-  const level = AUDIO.shotVolume
+  const level = volume
   const profile = suppressed ? SHOT_PROFILES.suppressed : SHOT_PROFILES.normal
+  // Con emisor la distancia la aplica el panner; sin él, al máster y ya.
+  const out = emitter?.input ?? master
 
   // Transitorio: ruido pasado por un pasa-banda -> "clic".
   const noise = ctx.createBufferSource()
@@ -115,7 +123,7 @@ export function playShot(suppressed = false) {
   noiseGain.gain.setValueAtTime(0.0001, t)
   noiseGain.gain.exponentialRampToValueAtTime(profile.noiseGain * level, t + 0.002)
   noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + profile.noiseDecay)
-  noise.connect(band).connect(noiseGain).connect(master)
+  noise.connect(band).connect(noiseGain).connect(out)
   noise.start(t)
   noise.stop(t + profile.noiseDecay + 0.02)
   noise.onended = () => {
@@ -133,7 +141,7 @@ export function playShot(suppressed = false) {
   bodyGain.gain.setValueAtTime(0.0001, t)
   bodyGain.gain.exponentialRampToValueAtTime(profile.bodyGain * level, t + 0.003)
   bodyGain.gain.exponentialRampToValueAtTime(0.0001, t + profile.bodyDecay)
-  body.connect(bodyGain).connect(master)
+  body.connect(bodyGain).connect(out)
   body.start(t)
   body.stop(t + profile.bodyDecay + 0.02)
   body.onended = () => {
@@ -398,4 +406,207 @@ export function playObjectiveExplosion() {
     body.disconnect()
     bodyGain.disconnect()
   }
+}
+
+/**
+ * **Daño recibido.** Golpe corto y sucio: un ruido pasado por un pasa-banda
+ * medio-grave con un cuerpo que se desploma, más un roce agudo muy breve.
+ *
+ * Tiene que separarse de tres cosas que ya suenan y son graves: el aterrizaje
+ * (triangular con ataque largo), la detonación (larga) y el disparo silenciado
+ * (chasquido). Lo consigue el pasa-banda con Q alta —suena a metal, no a
+ * suela— y el ataque instantáneo con caída de 180 ms, que es demasiado largo
+ * para un clic y demasiado corto para un golpe de caída.
+ *
+ * @param {number} severity 0..1, cuánto se ha comido de la vida
+ */
+export function playDamage(severity = 0.5) {
+  initAudio()
+  if (!ctx || !master || !noiseBuffer) return
+  const t = ctx.currentTime
+  const level = AUDIO.damageVolume * (0.55 + 0.45 * Math.max(0, Math.min(1, severity)))
+
+  const noise = ctx.createBufferSource()
+  noise.buffer = noiseBuffer
+  const band = ctx.createBiquadFilter()
+  band.type = 'bandpass'
+  band.frequency.setValueAtTime(520, t)
+  band.frequency.exponentialRampToValueAtTime(180, t + 0.14)
+  band.Q.value = 3.2
+  const noiseGain = ctx.createGain()
+  noiseGain.gain.setValueAtTime(0.0001, t)
+  noiseGain.gain.exponentialRampToValueAtTime(level, t + 0.003)
+  noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.18)
+  noise.connect(band).connect(noiseGain).connect(master)
+  noise.start(t)
+  noise.stop(t + 0.2)
+  noise.onended = () => {
+    noise.disconnect()
+    band.disconnect()
+    noiseGain.disconnect()
+  }
+
+  const body = ctx.createOscillator()
+  body.type = 'sawtooth'
+  body.frequency.setValueAtTime(240, t)
+  body.frequency.exponentialRampToValueAtTime(62, t + 0.16)
+  const bodyGain = ctx.createGain()
+  bodyGain.gain.setValueAtTime(0.0001, t)
+  bodyGain.gain.exponentialRampToValueAtTime(level * 0.7, t + 0.004)
+  bodyGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.17)
+  body.connect(bodyGain).connect(master)
+  body.start(t)
+  body.stop(t + 0.19)
+  body.onended = () => {
+    body.disconnect()
+    bodyGain.disconnect()
+  }
+}
+
+/**
+ * **Curación.** Lo contrario del daño en todo: dos tonos senoidales que
+ * **suben**, sin ruido y con ataque suave. Que suba es lo que lo hace legible
+ * sin mirar el HUD — el daño baja, la vida sube.
+ */
+export function playHeal() {
+  initAudio()
+  if (!ctx || !master) return
+  const t = ctx.currentTime
+  for (const [i, hz] of [523, 784].entries()) {
+    const at = t + i * 0.09
+    const osc = ctx.createOscillator()
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(hz, at)
+    osc.frequency.exponentialRampToValueAtTime(hz * 1.5, at + 0.16)
+    const gain = ctx.createGain()
+    gain.gain.setValueAtTime(0.0001, at)
+    gain.gain.exponentialRampToValueAtTime(AUDIO.healVolume * 0.6, at + 0.03)
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + 0.3)
+    osc.connect(gain).connect(master)
+    osc.start(at)
+    osc.stop(at + 0.34)
+    osc.onended = () => {
+      osc.disconnect()
+      gain.disconnect()
+    }
+  }
+}
+
+/**
+ * **Casco roto.** Un crujido: ruido muy agudo, ataque instantáneo y cola de
+ * 90 ms. Seco y brillante a propósito — es la única pista de que la cabeza se
+ * ha quedado descubierta, y tiene que oírse por encima de un tiroteo.
+ */
+export function playHelmetCrack() {
+  initAudio()
+  if (!ctx || !master || !noiseBuffer) return
+  const t = ctx.currentTime
+
+  const noise = ctx.createBufferSource()
+  noise.buffer = noiseBuffer
+  const high = ctx.createBiquadFilter()
+  high.type = 'highpass'
+  high.frequency.value = 2600
+  const gain = ctx.createGain()
+  gain.gain.setValueAtTime(0.0001, t)
+  gain.gain.exponentialRampToValueAtTime(AUDIO.damageVolume, t + 0.001)
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.09)
+  noise.connect(high).connect(gain).connect(master)
+  noise.start(t)
+  noise.stop(t + 0.11)
+  noise.onended = () => {
+    noise.disconnect()
+    high.disconnect()
+    gain.disconnect()
+  }
+
+  // Un parcial metálico encima, para que suene a placa y no a estática.
+  const ring = ctx.createOscillator()
+  ring.type = 'square'
+  ring.frequency.setValueAtTime(2100, t)
+  ring.frequency.exponentialRampToValueAtTime(1400, t + 0.08)
+  const ringGain = ctx.createGain()
+  ringGain.gain.setValueAtTime(0.0001, t)
+  ringGain.gain.exponentialRampToValueAtTime(AUDIO.damageVolume * 0.35, t + 0.002)
+  ringGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.085)
+  ring.connect(ringGain).connect(master)
+  ring.start(t)
+  ring.stop(t + 0.1)
+  ring.onended = () => {
+    ring.disconnect()
+    ringGain.disconnect()
+  }
+}
+
+/**
+ * **Carga del escudo.** Suena mientras dura la animación de aplicar una carga,
+ * no después: es un zumbido que **sube** durante los dos segundos y se corta de
+ * golpe al terminar, con un trémolo rápido encima que es lo que lo hace
+ * eléctrico y no un simple tono.
+ *
+ * Devuelve un mando para cortarlo, porque morir a mitad de carga tiene que
+ * callarlo: un zumbido que sigue sonando sobre el cadáver es de las cosas que
+ * delatan que el sonido y el estado van por caminos distintos.
+ *
+ * @param {number} durationS lo que dura la aplicación
+ * @returns {{ stop: (fadeS?: number) => void }}
+ */
+export function playShieldCharge(durationS) {
+  initAudio()
+  if (!ctx || !master) return { stop() {} }
+  const t = ctx.currentTime
+  const end = t + durationS
+
+  const osc = ctx.createOscillator()
+  osc.type = 'sawtooth'
+  osc.frequency.setValueAtTime(110, t)
+  osc.frequency.exponentialRampToValueAtTime(430, end)
+
+  // Trémolo: un LFO sobre la ganancia. Sin él es un zumbido de nevera.
+  const lfo = ctx.createOscillator()
+  lfo.type = 'square'
+  lfo.frequency.setValueAtTime(14, t)
+  lfo.frequency.linearRampToValueAtTime(34, end)
+  const lfoDepth = ctx.createGain()
+  lfoDepth.gain.value = 0.35
+
+  const band = ctx.createBiquadFilter()
+  band.type = 'bandpass'
+  band.frequency.setValueAtTime(420, t)
+  band.frequency.exponentialRampToValueAtTime(1500, end)
+  band.Q.value = 1.4
+
+  const gain = ctx.createGain()
+  gain.gain.setValueAtTime(0.0001, t)
+  gain.gain.exponentialRampToValueAtTime(AUDIO.shieldVolume, t + 0.08)
+  lfo.connect(lfoDepth).connect(gain.gain)
+
+  osc.connect(band).connect(gain).connect(master)
+  osc.start(t)
+  lfo.start(t)
+
+  let stopped = false
+  const stop = (fadeS = 0.04) => {
+    if (stopped) return
+    stopped = true
+    const at = ctx.currentTime
+    gain.gain.cancelScheduledValues(at)
+    gain.gain.setValueAtTime(Math.max(0.0001, gain.gain.value), at)
+    gain.gain.exponentialRampToValueAtTime(0.0001, at + fadeS)
+    osc.stop(at + fadeS + 0.02)
+    lfo.stop(at + fadeS + 0.02)
+  }
+  osc.onended = () => {
+    osc.disconnect()
+    lfo.disconnect()
+    lfoDepth.disconnect()
+    band.disconnect()
+    gain.disconnect()
+  }
+  // Si nadie lo corta, se apaga solo al acabar la animación.
+  osc.stop(end + 0.05)
+  lfo.stop(end + 0.05)
+  gain.gain.setValueAtTime(AUDIO.shieldVolume, end - 0.02)
+  gain.gain.exponentialRampToValueAtTime(0.0001, end + 0.04)
+  return { stop }
 }
