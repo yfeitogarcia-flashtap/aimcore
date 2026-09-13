@@ -9,6 +9,8 @@ import {
   SETTINGS,
   SIMULTANEOUS_TARGETS,
   TARGET_TYPES,
+  PRIMARY_WEAPONS,
+  SECONDARY_WEAPON,
   WEAPONS,
 } from '../config.js'
 
@@ -316,37 +318,45 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
             value={settings.weapon}
             onChange={(event) => onChange({ weapon: event.target.value })}
           >
-            {Object.keys(WEAPONS).map((key) => (
+            {Object.keys(PRIMARY_WEAPONS).map((key) => (
               <option key={key} value={key}>
                 {WEAPONS[key].label}
               </option>
             ))}
           </select>
           <span className="field__hint">{weaponHint(settings.weapon)}</span>
+          {/* La pistola no se elige: se lleva. Decirlo aquí es lo que explica
+              por qué el desplegable tiene dos armas y no tres. */}
+          <span className="field__hint">
+            Con la {WEAPONS[SECONDARY_WEAPON].label} siempre encima, en la tecla 2.
+          </span>
         </div>
       </div>
 
-      {WEAPONS[settings.weapon].supportsSuppressor ? (
-        <ToggleRow
-          setting="suppressor"
-          value={settings.suppressor}
-          onChange={onChange}
-          hint={
-            settings.suppressor
-              ? 'Disparo más apagado. No cambia daño, retroceso ni cadencia.'
-              : 'Sonido de disparo normal.'
-          }
-        />
-      ) : (
-        // Sin botón de restablecer: con un arma que no lo admite, el ajuste no
-        // se aplica, y un botón que no cambia nada visible confunde más que ayuda.
-        <div className="field">
-          <span className="field__label">{SETTINGS.suppressor.label}</span>
-          <span className="field__hint">
-            {WEAPONS[settings.weapon].label} no admite silenciador.
-          </span>
-        </div>
-      )}
+      {/*
+        **El interruptor se queda siempre**, porque desde la vuelta 39 siempre
+        hay un arma encima que lo admite: la pistola. Lo que cambia es el aviso
+        —el ajuste se aplica al arma **que lleves en la mano**, así que con una
+        principal que no lo admite sólo silencia la pistola—. Antes la fila
+        desaparecía con el Axis-7, y eso dejaría sin silenciador a un arma que sí
+        puede llevarlo.
+      */}
+      <ToggleRow
+        setting="suppressor"
+        value={settings.suppressor}
+        onChange={onChange}
+        hint={
+          settings.suppressor
+            ? `Disparo más apagado. No cambia daño, retroceso ni cadencia.${
+                WEAPONS[settings.weapon].supportsSuppressor
+                  ? ''
+                  : ` ${WEAPONS[settings.weapon].label} no lo admite: sólo se aplica a la ${
+                      WEAPONS[SECONDARY_WEAPON].label
+                    }.`
+              }`
+            : 'Sonido de disparo normal.'
+        }
+      />
 
       <SliderRow
         id="opt-radius"

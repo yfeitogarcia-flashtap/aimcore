@@ -6,7 +6,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react'
-import { COLORS, MOVEMENT, SESSION_DURATION_S, WEAPONS } from './config.js'
+import { COLORS, MOVEMENT, SESSION_DURATION_S } from './config.js'
 import { Engine, PHASE } from './game/engine.js'
 import { disposeAudio } from './audio/sfx.js'
 import { setMusicVolume, startMusic, stopMusic } from './audio/music.js'
@@ -38,6 +38,13 @@ export default function App() {
   const [optionsOpen, setOptionsOpen] = useState(false)
   /** Vista del avatar: mientras está abierta, los paneles se apartan. */
   const [avatarDebug, setAvatarDebug] = useState(false)
+  /**
+   * **El arma que se lleva en la mano**, que desde la vuelta 39 ya no es la del
+   * ajuste: se llevan dos y la tecla decide cuál. Lo publica el motor cuando
+   * cambia —una pulsación—, no en cada frame, así que puede ser estado de React
+   * sin saltarse la regla de no repintar por frame.
+   */
+  const [equipped, setEquipped] = useState({ weaponKey: getSettings().weapon, suppressed: false })
 
   // El store de ajustes vive fuera de React porque el motor también lo lee.
   const settings = useSyncExternalStore(subscribeSettings, getSettings)
@@ -71,6 +78,7 @@ export default function App() {
         onHelp: (text, durationMs) => hudRef.current?.showHelp(text, durationMs),
         onOpenOptions: () => setOptionsOpen(true),
         onAvatarDebug: setAvatarDebug,
+        onWeapon: setEquipped,
         onFinish: setSummary,
       })
       engine.start()
@@ -154,11 +162,7 @@ export default function App() {
       <canvas ref={canvasRef} className="app__canvas" />
 
       {showHud && (
-        <Hud
-          ref={hudRef}
-          weaponKey={settings.weapon}
-          suppressed={settings.suppressor && WEAPONS[settings.weapon].supportsSuppressor}
-        />
+        <Hud ref={hudRef} weaponKey={equipped.weaponKey} suppressed={equipped.suppressed} />
       )}
       {phase === PHASE.RUNNING && <Crosshair ref={crosshairRef} />}
 

@@ -26,6 +26,7 @@ import {
   PLAYER,
   RECOIL_RESET_MS,
   RENDER,
+  SECONDARY_WEAPON,
   SESSION_DURATION_S,
   TARGET,
   WEAPONS,
@@ -49,9 +50,9 @@ import {
   playObjectiveDefused,
   playObjectiveExplosion,
   playShieldCharge,
-  playShot,
   playUiConfirm,
 } from '../audio/sfx.js'
+import { loadWeaponSamples, playWeaponShot } from '../audio/samples.js'
 import { attachListener, detachListener, setSpatialEnabled } from '../audio/spatial.js'
 import { ActionPanel } from './actionPanel.js'
 import { Avatar } from './avatar.js'
@@ -225,8 +226,27 @@ export class Engine {
     this.hits = 0
     this.kills = 0
 
+    /**
+     * **Dos ranuras, y la pistola no se elige.** La principal es la del ajuste
+     * `weapon` y sale con la tecla 1; la secundaria va siempre puesta y sale
+     * con la 2. `weaponKey` sigue siendo el arma vigente, que es lo que lee
+     * todo lo demás —las RPM, el retroceso, el silenciador—: la ranura sólo
+     * dice de dónde salió.
+     */
+    this.slots = { primary: getSettings().weapon, secondary: SECONDARY_WEAPON }
+    this.slot = 'primary'
+    /**
+     * **El arma que dejas se queda como estaba.** Aquí se guarda el cargador de
+     * la que no llevas encima y **lo que le faltaba de recarga**, no la fecha en
+     * la que acababa: una recarga no avanza en la espalda, se reanuda donde se
+     * quedó al volver a equiparla. Con una fecha absoluta, cambiar de arma
+     * cinco segundos sería recargar gratis — el mismo agujero que ya se cerró
+     * con la cuenta atrás del explosivo.
+     */
+    this._stowed = {}
+
     /** Arma vigente y estado de la ráfaga en curso. */
-    this.weaponKey = getSettings().weapon
+    this.weaponKey = this.slots.primary
     this._triggerHeld = false
     this._lastShotAt = -Infinity
     /** Momento en el que toca el siguiente disparo, según las RPM del arma. */
@@ -398,6 +418,9 @@ export class Engine {
    */
   requestLock() {
     initAudio()
+    // Las muestras de disparo, si las hay, también necesitan el contexto. No se
+    // espera a que lleguen: hasta que estén, se dispara sintetizado.
+    loadWeaponSamples()
     // El listener necesita el contexto de audio, que no existe hasta este
     // gesto. Es idempotente: llamarla en cada click no cuesta nada.
     attachListener(this.camera)
@@ -483,21 +506,21 @@ export class Engine {
     this._frameIntervalMs = limit > 0 ? 1000 / limit : 0
     this._frameAccumulator = 0
     this.helpMessagesEnabled = settings.helpMessages
-    // El silenciador sólo cuenta si el arma lo admite: así dejar el ajuste
-    // puesto y cambiar a un arma que no lo lleva no hace nada raro.
-    this.suppressorEnabled = settings.suppressor && this.weapon.supportsSuppressor
-    if (settings.weapon !== this.weaponKey) {
-      this.weaponKey = settings.weapon
-      this.suppressorEnabled = settings.suppressor && this.weapon.supportsSuppressor
-      this._releaseTrigger()
-      this._cancelReload()
-      this._refillMagazine()
+    // Cambiar de arma principal cambia la ranura, no el arma vigente: si en ese
+    // momento llevabas la pistola, la principal nueva te espera en la tecla 1.
+    // Y espera **llena**: el cargador guardado era el de la que ya no llevas.
+    if (settings.weapon !== this.slots.primary) {
+      delete this._stowed[this.slots.primary]
+      delete this._stowed[settings.weapon]
+      this.slots.primary = settings.weapon
+      if (this.slot === 'primary') {
+        this.weaponKey = settings.weapon
+        this._releaseTrigger()
+        this._cancelReload()
+        this._refillMagazine()
+      }
     }
-    this.actionPanel.update({
-      weaponLabel: this.weapon.label,
-      suppressorSupported: this.weapon.supportsSuppressor,
-      suppressorEnabled: this.suppressorEnabled,
-    })
+    this._publishWeapon(settings)
     // Los muñecos disparan **sólo con escenario y hitbox completo**: sin
     // cobertura no habría dónde meterse, y una esfera flotante no dispara.
     this.enemyFire.setEnabled(this.scenario.hasGeometry && settings.targetType === 'hitbox')
@@ -559,6 +582,81 @@ export class Engine {
   /** El arma vigente, tal cual está descrita en config.js. */
   get weapon() {
     return WEAPONS[this.weaponKey]
+  }
+
+  /**
+   * **Equipar una ranura.** Guarda el arma que se deja tal cual estaba —balas y
+   * lo que le faltase de recarga— y saca la otra como la dejaste.
+   *
+   * Suelta el gatillo y pone el patrón de retroceso a cero: cambiar de arma no
+   * puede heredar la ráfaga de la anterior, que es de otra arma.
+   */
+  _equipSlot(slot) {
+    const key = this.slots[slot]
+    if (!key || key === this.weaponKey) return
+    const now = performance.now()
+    this._stowed[this.weaponKey] = {
+      ammo: this.ammo,
+      // Lo que le faltaba, no cuándo acababa: guardada así, la recarga se
+      // congela mientras el arma está en la espalda.
+      reloadLeftMs: this.reloading ? Math.max(0, this.reloadEndsAt - now) : 0,
+      lowAmmoWarned: this._lowAmmoWarned,
+    }
+    this._releaseTrigger()
+    this._sprayIndex = 0
+    this.slot = slot
+    this.weaponKey = key
+    const stowed = this._stowed[key]
+    if (!stowed) {
+      // La primera vez que sale, sale llena.
+      this._cancelReload()
+      this._refillMagazine()
+    } else {
+      this.ammo = stowed.ammo
+      this._lowAmmoWarned = stowed.lowAmmoWarned
+      if (stowed.reloadLeftMs > 0) {
+        // Se reanuda donde se quedó: el progreso que enseña el HUD sale de
+        // `reloadStartedAt`, así que se retrasa lo ya recorrido.
+        this.reloadStartedAt = now - (this.weapon.reloadMs - stowed.reloadLeftMs)
+        this.reloadEndsAt = now + stowed.reloadLeftMs
+      } else {
+        this._cancelReload()
+      }
+    }
+    this._publishWeapon(getSettings())
+  }
+
+  /**
+   * **La dotación de salida**: las dos armas llenas y la principal en la mano.
+   * Se llama al empezar una sesión, no al reaparecer —morir no te cambia el
+   * arma que llevabas—.
+   */
+  _resetLoadout() {
+    this._stowed = {}
+    this.slot = 'primary'
+    this.weaponKey = this.slots.primary
+  }
+
+  /**
+   * Publica el arma vigente: al HUD por callback y al tablero de acciones.
+   *
+   * Va por callback y no por `stats` a propósito. El HUD se actualiza por refs
+   * en cada frame, pero la silueta del arma y su rótulo son React: cambian
+   * cuando se cambia de arma —una pulsación—, no sesenta veces por segundo.
+   */
+  _publishWeapon(settings) {
+    // El silenciador sólo cuenta si el arma **vigente** lo admite: la pistola lo
+    // lleva y el Axis-7 no, así que esto cambia al cambiar de ranura.
+    this.suppressorEnabled = settings.suppressor && this.weapon.supportsSuppressor
+    this.actionPanel.update({
+      weaponLabel: this.weapon.label,
+      suppressorSupported: this.weapon.supportsSuppressor,
+      suppressorEnabled: this.suppressorEnabled,
+    })
+    this.callbacks.onWeapon?.({
+      weaponKey: this.weaponKey,
+      suppressed: this.suppressorEnabled,
+    })
   }
 
   /** ¿Hay una recarga en curso? */
@@ -645,7 +743,9 @@ export class Engine {
     this.controls.enabled = true
     this._releaseTrigger()
     this._cancelReload()
+    this._resetLoadout()
     this._refillMagazine()
+    this._publishWeapon(getSettings())
     this._lastShotAt = -Infinity
     this._nextShotAt = -Infinity
     this.movement.reset()
@@ -872,6 +972,9 @@ export class Engine {
     this.status.respawn()
     this.movement.reset()
     this.movement.setEnabled(this.phase === PHASE.RUNNING)
+    // Las dos armas llenas, pero en la mano sigue la que llevabas: reaparecer
+    // repone munición, no te cambia de arma.
+    this._stowed = {}
     this._refillMagazine()
     this.camera.updateMatrixWorld()
   }
@@ -952,6 +1055,20 @@ export class Engine {
     if (this._isBind('reload', event)) {
       event.preventDefault()
       this._startReload(performance.now())
+      return
+    }
+
+    // **Las dos ranuras.** La 1 saca la principal y la 2 la pistola, siempre la
+    // misma: la 2 no depende de lo que haya elegido nadie en opciones.
+    if (this._isBind('primary', event)) {
+      event.preventDefault()
+      this._equipSlot('primary')
+      return
+    }
+
+    if (this._isBind('secondary', event)) {
+      event.preventDefault()
+      this._equipSlot('secondary')
       return
     }
 
@@ -1136,12 +1253,13 @@ export class Engine {
         // de esperar al evento de pointerlock.
         this._beginSession()
         break
-      case 'weapon': {
-        const keys = Object.keys(WEAPONS)
-        const next = keys[(keys.indexOf(this.weaponKey) + 1) % keys.length]
-        updateSettings({ weapon: next })
+      case 'weapon':
+        // **Alterna ranura, no recorre el catálogo.** Antes esto cambiaba el
+        // ajuste, así que «cambiar de arma» en mitad de una partida se guardaba
+        // como preferencia; ahora es lo que hace cambiar de arma en un juego:
+        // sacar la otra de las dos que llevas.
+        this._equipSlot(this.slot === 'primary' ? 'secondary' : 'primary')
         break
-      }
       case 'suppressor':
         updateSettings({ suppressor: !getSettings().suppressor })
         break
@@ -1245,7 +1363,9 @@ export class Engine {
     }
 
     // El sonido de disparo suena siempre; el de acierto se superpone.
-    playShot(this.suppressorEnabled)
+    // Con muestra grabada suena la muestra; sin ella, la síntesis de siempre.
+    // Quien dispara no elige: eso lo decide `samples.js`.
+    playWeaponShot(this.weaponKey, this.suppressorEnabled)
     if (hit) {
       this.hits += 1
       const { killed } = this.targets.applyHit(hit, performance.now())

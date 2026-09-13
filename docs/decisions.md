@@ -3441,6 +3441,156 @@ Hoy no se ve jugando —en primera persona no te ves, y la vista F3 aparca al
 jugador—, así que lo que lo sostiene es una aserción: agachado el cuerpo mide
 0.618 de su alto, que es exactamente la proporción de las alturas de ojos.
 
+## Ronda 39 — El tamaño de la brújula, el audio real y dos ranuras
+
+### 39.1 La brújula era del tamaño del muñeco, y se midió
+
+La brújula de la vuelta 38 salió proporcional a la altura del muñeco y sin medir
+lo único que importa de un marcador: **cuánto ocupa en pantalla comparado con
+aquello a lo que se refiere**. Medido después, con `length` a 0.34 la cuña vista
+de lado ocupaba **el 105% del ancho de la silueta del muñeco a 4 u y el 108% a
+8 u**. No es que fuera grande: es que el marcador era más grande que el objeto
+marcado, y lo primero que se veía de un rival era su brújula.
+
+El banco (`brujula39.mjs`) barre ocho tamaños contra siete distancias del Plano A
+y mide sobre **los píxeles exactos del marcador** —los que cambian entre dibujar
+el frame con brújula y sin ella— dos cosas a la vez:
+
+| tamaño | ancho contra el muñeco (≤8 u) | área a 12 u | área a 20 u |
+|---|---|---|---|
+| 1.00 (vuelta 38) | 105-108% | 299 px | 295 px |
+| 0.75 | 76-78% | 166 px | 165 px |
+| 0.65 | 64-69% | 125 px | 124 px |
+| **0.60 (elegido)** | **61-64%** | **107 px** | **106 px** |
+| 0.55 | 57-58% | 89 px | 88 px |
+| 0.50 | 50-53% | 73 px | 72 px |
+
+El listón de legibilidad no se inventó aquí: es el de la vuelta 37 —80 px de
+marcador se leen, 28 no (§37.4)—. A 0.5 se cae por debajo; a 0.6 quedan 105 px a
+media distancia y el marcador ocupa dos tercios del ancho del muñeco. Ése es el
+punto, y la suite lo guarda con las dos cifras, no con el número.
+
+Dos cosas que el barrido dejó claras de paso:
+
+- **El área relativa engaña.** A 4 u la brújula de la vuelta 38 era sólo el 9.6%
+  de los píxeles del muñeco y aun así se comía la silueta: un cuerpo es alto y
+  estrecho, y lo que se compara al mirar no son áreas sino anchos.
+- **La dominancia crece con la distancia y es inevitable.** Más allá de
+  `referenceDistance` el marcador deja de encoger (§37.5) mientras el cuerpo sí
+  encoge, así que a 30 u cualquier tamaño acaba pesando más que el muñeco. La
+  elección está en a qué distancia empieza a pasar eso, no en si pasa.
+
+**Y una lección de método que costó tres intentos:** medir por captura de
+pantalla no vale aquí. Una captura pasa por el compositor del navegador y el
+bucle del motor dibuja entre una y otra, así que la diferencia entre dos frames
+que deberían ser idénticos salía con ~3.000 píxeles de ruido repartidos por todo
+el lienzo —más que el propio marcador—. Lo primero que se coló fue el cronómetro
+del HUD (una captura de página incluye el DOM); apagado eso, seguía moviéndose la
+cámara, que el motor reescribe desde el movimiento en cada frame. La forma
+correcta es **dibujar a un render target y leer sus píxeles en el mismo turno**:
+dos frames iguales dan diferencia cero, y a partir de ahí lo que sobra es señal.
+
+### 39.2 Muestras de disparo: la única puerta que se abre a un asset
+
+Hasta aquí la regla era «cero assets, de ningún tipo»: audio sintetizado,
+siluetas vectorizadas y geometría procedural. La regla se mantiene **salvo para
+el disparo**, que es lo único del juego que no se puede sintetizar de forma
+convincente con cuatro osciladores. Todo lo demás —impacto, aterrizaje, pitido,
+escudo, música— sigue generado.
+
+Lo que se abre es un carril, no una excepción suelta:
+
+- **La síntesis no se sustituye, se queda debajo.** Un arma sin muestra suena
+  exactamente como hoy, y el juego arranca y se juega entero sin un solo fichero
+  de audio en el repositorio (que es el estado con el que se entrega esta vuelta).
+  Un fichero que no está, que no se decodifica o que **todavía no ha llegado** es
+  un arma que suena sintetizada, nunca un disparo mudo y nunca una espera.
+- **`Reference/` sigue sin servirse.** Los mp3 se dejan en
+  `Reference/Audio/weapons/<clave-del-arma>.mp3` y `npm run audio:weapons` los
+  copia a `public/audio/weapons/` y emite el manifiesto
+  `src/audio/weaponSamples.js`. Es el mismo patrón que los tres scripts de
+  trazado: paso manual, material de origen fuera del build, salida versionada.
+- **Qué hay se sabe por el manifiesto, no preguntando.** Sondear el servidor
+  costaría un 404 por arma y por variante en cada arranque —hoy, seis— para
+  enterarse de algo que el build ya sabe.
+- **La variante silenciada es opcional y su ausencia no cae a la normal.** En
+  este juego el sonido es información: soltar el disparo sin supresor de un arma
+  que lo lleva puesto diría que no llevas supresor. Cae al perfil silenciado
+  sintetizado, que al menos suena a silenciador.
+- **Dos trampas del contexto de audio**, las mismas que ya dejaron cicatriz en
+  `music.js` (§33): el contexto no existe hasta el primer gesto, y
+  `disposeAudio()` lo cierra y el siguiente `initAudio()` crea otro. Un
+  `AudioBuffer` decodificado con el contexto viejo no vale en el nuevo, así que se
+  guarda **sobre qué contexto** se decodificó. React en modo estricto monta,
+  desmonta y vuelve a montar: pasa de verdad.
+
+**Qué cambia en el build cuando lleguen los ficheros, medido.** Se hizo el
+experimento con un fichero de 7 KB en `public/audio/weapons/`:
+
+| | sin muestras | con una muestra de 7 KB |
+|---|---|---|
+| `dist/assets/index-*.js` | 840.370 B (hash `Bq8-FqSV`) | 840.370 B (mismo hash) |
+| ficheros de audio en `dist/` | — | 7.000 B, tal cual |
+
+El bundle **no cambia ni un byte ni de hash**: lo que hay en `public/` se copia
+verbatim, no se empaqueta en el JS, no se convierte en base64 y no entra en el
+grafo de módulos. Consecuencias prácticas: el arranque y el primer pintado no se
+tocan; las muestras se piden **después del primer gesto del usuario** (que es
+cuando existe el contexto de audio), en paralelo y sin bloquear nada; y cada
+fichero es una petición cacheable con su propio nombre, así que cambiar un
+disparo no invalida el bundle. Con tres armas y las dos variantes que admiten
+supresor son cinco ficheros: a 128-192 kbps y ~150 ms de disparo, del orden de
+**5-10 KB cada uno, 25-50 KB en total** — menos del 6% de lo que ya pesa el JS.
+Medido en el banco, una muestra de 120 ms tarda **~90 ms** desde que se pide
+hasta que está decodificada y lista; hasta entonces se dispara sintetizado.
+
+Lo que sí habrá que calibrar el día que llegue el primer fichero real: **el
+nivel**. Una grabación viene normalizada a tope y la síntesis no. En el banco, la
+muestra de prueba midió un pico de 0.32 en el máster contra los 0.097 del disparo
+sintetizado —3.3 veces— y un salto así al cambiar de arma se oye. Para eso está
+`AUDIO.sampleVolume`, que se queda en 1 porque igualar sonoridades sin muestra
+que medir sería inventarse un número.
+
+### 39.3 Dos ranuras, y la pistola no se elige
+
+La pistola pasa a llevarse **siempre**, en la tecla 2, y desaparece del
+desplegable de arma principal, que se queda con las dos que compiten por la
+tecla 1. Que no se elija es justo lo que la hace una pistola: es el arma con la
+que te quedas cuando la principal está vacía o no es la adecuada para la
+distancia, y para eso tiene que estar siempre.
+
+Tres decisiones dentro:
+
+1. **La ranura la declara el arma** (`WEAPONS[x].slot`), y de ahí se derivan
+   `PRIMARY_WEAPONS` y `SECONDARY_WEAPON`. No hay una segunda lista de armas
+   principales en el panel de opciones ni en el saneado: si un arma cambia de
+   ranura, cambia sola en los tres sitios.
+2. **El catálogo del ajuste se estrecha, y eso borra el valor guardado.** El
+   ajuste `weapon` se valida ahora contra `PRIMARY_WEAPONS`, así que un
+   `weapon: 'scalar-2'` guardado antes de esta vuelta cae al valor de fábrica en
+   el siguiente saneado. Es exactamente lo que hace el saneado con cualquier
+   clave obsoleta desde la vuelta 8, y es deliberado: la alternativa era aceptar
+   como principal un arma que ya llevas encima.
+3. **Lo que dejas se congela, y una recarga no avanza en la espalda.** Cada arma
+   guarda su cargador y **lo que le faltaba de recarga**, no la fecha en la que
+   acababa. Con un instante absoluto, cambiar de arma cinco segundos sería
+   recargar gratis: el mismo agujero que ya se cerró con la cuenta atrás del
+   explosivo (§29) y con la carga del escudo (§34). Al volver a equiparla, la
+   recarga sigue desde donde se quedó.
+
+Dos efectos secundarios que no son accidentales:
+
+- **El HUD deja de leer el arma del ajuste.** Enseña la que llevas en la mano, y
+  el motor la publica por callback —una pulsación, no un valor por frame—, que es
+  lo que permite que siga siendo estado de React sin repintar por frame.
+- **El silenciador es del arma vigente, no de la principal.** El interruptor deja
+  de desaparecer con un arma que no lo admite, porque ahora siempre llevas encima
+  una que sí: la pistola. Lo que cambia es el aviso, que dice a cuál se aplica.
+
+Y «cambiar de arma» (Q) pasa a **alternar las dos que llevas** en vez de recorrer
+el catálogo y guardarlo como preferencia. Antes, cambiar de arma en mitad de una
+partida se te quedaba puesto para la siguiente.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

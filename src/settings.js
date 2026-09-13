@@ -14,10 +14,10 @@ import {
   ENEMY_DIFFICULTIES,
   FRAME_LIMITS,
   SCENARIOS,
+  PRIMARY_WEAPONS,
   SETTINGS,
   SIMULTANEOUS_TARGETS,
   TARGET_TYPES,
-  WEAPONS,
 } from './config.js'
 
 const STORAGE_KEY = 'aimcore.settings.v1'
@@ -33,7 +33,11 @@ const CATALOGS = {
   scenario: SCENARIOS,
   enemyDifficulty: ENEMY_DIFFICULTIES,
   targetType: TARGET_TYPES,
-  weapon: WEAPONS,
+  // **El catálogo del arma es el de las principales, no el de todas.** La
+  // pistola se lleva siempre y no se elige: un `weapon: 'scalar-2'` guardado de
+  // antes de la vuelta 39 no es una opción válida y cae al valor de fábrica,
+  // que es exactamente lo que hace el saneado con cualquier clave obsoleta.
+  weapon: PRIMARY_WEAPONS,
   simultaneousTargets: SIMULTANEOUS_TARGETS,
   frameLimit: FRAME_LIMITS,
 }

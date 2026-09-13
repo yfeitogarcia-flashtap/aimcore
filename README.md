@@ -20,15 +20,17 @@ Abre la URL que imprime Vite, haz click en el canvas y a disparar.
 | `npm run dev` | servidor de desarrollo con HMR |
 | `npm run build` | build de producción en `dist/` |
 | `npm run preview` | sirve el build de producción |
+| `npm run audio:weapons` | importa las muestras de disparo de `Reference/Audio/weapons/` (paso manual) |
 
 ## Controles
 
 - **Click** sobre el canvas: captura el ratón (Pointer Lock) y arranca la sesión.
 - **Click izquierdo**: disparar.
 - **R**: recargar. Funciona también con el cargador a medias.
-- **Q** cambia de arma, **B** conmuta el silenciador, **E** es la acción
-  contextual y **4** aplica una carga de escudo. Todo esto se reasigna — ver
-  *Controles reasignables*.
+- **1** saca el arma principal y **2** la pistola, que se lleva siempre. **Q**
+  alterna entre las dos.
+- **B** conmuta el silenciador, **E** es la acción contextual y **4** aplica una
+  carga de escudo. Todo esto se reasigna — ver *Controles reasignables*.
 - **Escape**: suelta el ratón y **pausa** el cronómetro. En la pantalla de pausa
   hay un botón **Reanudar**, y también vale un click en cualquier sitio.
 
@@ -79,13 +81,14 @@ captura la siguiente pulsación. Cada acción tiene su botón **por defecto**.
 | --- | --- |
 | Movimiento | adelante, atrás, izquierda, derecha, saltar, agacharse, caminar |
 | Combate | disparar, recargar, cambiar de arma, silenciador, **usar / artilugio** |
-| Equipo | arma principal (1), pistola (2), cuerpo a cuerpo (3), escudo (4), artilugio (5), arrojadizo (G) |
+| Equipo | **arma principal (1)**, **pistola (2)**, cuerpo a cuerpo (3), escudo (4), artilugio (5), arrojadizo (G) |
 | Depuración | vista del avatar (F3) |
 
-De las de **Equipo**, la **4 aplica una carga de escudo** y las otras cinco están
-**reservadas y no hacen nada todavía**: la tecla existe para que el mapa de
-controles sea el definitivo desde el principio y nadie se encuentre luego con que
-su bind favorito ya estaba cogido. El panel marca las que no tienen efecto.
+De las de **Equipo**, la **1 y la 2 equipan** cada una su ranura, la **4 aplica
+una carga de escudo** y las otras tres están **reservadas y no hacen nada
+todavía**: la tecla existe para que el mapa de controles sea el definitivo desde
+el principio y nadie se encuentre luego con que su bind favorito ya estaba
+cogido. El panel marca las que no tienen efecto.
 
 **E es una sola acción, no dos.** Dentro del radio de algo con lo que se puede
 interactuar —hoy el explosivo— **siempre** interactúa, y nada más: que ahí dentro
@@ -116,6 +119,44 @@ con los efectos. La pieza se genera mientras suena —un colchón grave y notas
 sueltas de una pentatónica menor— así que no tiene costura ni se reconoce a la
 tercera vuelta. Tiene **su propio volumen** en el panel: bajarla a cero no toca
 los efectos.
+
+## Muestras de disparo (sin ficheros todavía)
+
+Todo el audio es sintetizado, y lo seguirá siendo **salvo el disparo**, que es lo
+único que no sale convincente de cuatro osciladores. El carril está hecho y
+vacío: hoy no hay ni un mp3, así que las tres armas suenan sintetizadas.
+
+Para poner una muestra real:
+
+1. Deja el fichero en `Reference/Audio/weapons/` con el nombre de la **clave**
+   del arma —`axis-7.mp3`, `scalar-2.mp3`, `vertex-9.mp3`—, y opcionalmente su
+   variante con supresor: `scalar-2-suppressed.mp3`.
+2. `npm run audio:weapons`. Copia lo que haya a `public/audio/weapons/` y escribe
+   el manifiesto `src/audio/weaponSamples.js`. Es un paso manual, como los tres
+   scripts de trazado: `Reference/` no se sirve nunca.
+
+**Lo que no hace falta hacer:** nada más. Un arma sin fichero sigue sonando
+sintetizada, y también si el fichero no se decodifica o si todavía está
+descargándose — un disparo nunca espera a su muestra. Que falte la variante
+`-suppressed` **no** hace que suene la normal: con supresor puesto sonaría un
+disparo sin supresor, que es información falsa, así que cae al perfil silenciado
+sintetizado.
+
+**Qué le pasa al build.** Medido con un fichero de 7 KB: el bundle de JavaScript
+no cambia **ni un byte ni de hash** (840.370 B en los dos casos). Lo que hay en
+`public/` se copia tal cual, no se empaqueta: no entra en el JS, no se convierte
+en base64 y no toca el arranque ni el primer pintado. Cada muestra es una
+petición aparte, cacheable por su nombre, que sale **después del primer click**
+—que es cuando existe el contexto de audio— y en paralelo. Con tres armas y las
+dos variantes con supresor son cinco ficheros: a 128-192 kbps y ~150 ms de
+disparo, del orden de 5-10 KB cada uno y 25-50 KB en total, menos del 6% de lo
+que ya pesa el JS. Desde que se pide hasta que está lista para sonar, medido con
+una muestra de 120 ms: **~90 ms**.
+
+Lo único que habrá que calibrar con el primer fichero real es **el nivel**: una
+grabación viene normalizada a tope y la síntesis no. En el banco, la muestra de
+prueba dio un pico 3.3 veces más alto que el disparo sintetizado, y un salto así
+al cambiar de arma se oye. Para eso está `AUDIO.sampleVolume`.
 
 ## Avatar del jugador
 
@@ -365,7 +406,10 @@ De abajo arriba:
    hiciera apuntaría siempre al jugador y no diría nada. Está siempre que se vea
    el muñeco — es orientación, no un aviso. Su cola va más oscura que el resto, y
    eso es lo que distingue a uno que te encara de uno de espaldas: sin luces en
-   la escena, de frente y de espaldas la silueta sería la misma.
+   la escena, de frente y de espaldas la silueta sería la misma. **Es pequeña a
+   propósito**: ocupa el 61% del ancho de la silueta del muñeco —la primera
+   versión ocupaba el 105%, más que el propio muñeco— sin dejar de leerse a media
+   distancia, porque más allá de 8 u deja de encoger en pantalla.
 2. **Un `?` amarillo** mientras te ha visto y todavía no dispara —ésa es su
    ventana de reacción, y es exactamente el hueco que tienes para cubrirte— o
    **un `!` rojo** mientras te dispara, uno por muñeco, así que se cuentan las
@@ -563,7 +607,7 @@ vieja.
 | Sensibilidad | slider y campo numérico sobre el mismo valor |
 | Escenario | Sala vacía · Largo y Puerta, con su plano y su ficha |
 | Tipo de diana | Clásica · Cono · Hitbox completo |
-| Arma | Scalar-2 · Axis-7 · Vertex-9 |
+| Arma principal | Axis-7 · Vertex-9 — la Scalar-2 no está: se lleva siempre |
 | Tamaño de diana | escala la figura entera sin deformar sus proporciones |
 | Distancia de aparición | distancia base del cono respecto al jugador |
 | Cadencia | milisegundos entre apariciones. Menos es más difícil |
@@ -572,7 +616,7 @@ vieja.
 | Modo dinámico | las dianas vivas se desplazan mientras están en pantalla |
 | Velocidad de patrulla | 1.5 a 8 u/s, sólo con el modo dinámico puesto |
 | Límite de fotogramas | 60 · 144 · 240 · Sin límite |
-| Silenciador | sólo con un arma que lo admita |
+| Silenciador | se aplica al arma que lleves en la mano; la pistola siempre lo admite |
 | Audio espacial | los sonidos del mundo suenan con dirección |
 | Mensajes de ayuda | avisos breves en el HUD, activados por defecto |
 
@@ -583,13 +627,29 @@ cambiar de tipo o de tamaño nunca cae dentro del bucle de render.
 
 Tres arquetipos, en el bloque `WEAPONS` de `config.js`.
 
-| arma | modo | RPM | cargador | recarga | silenciador | carácter del retroceso |
-| --- | --- | --- | --- | --- | --- | --- |
-| **Scalar-2** | semi | 500 | 18 | 1.2 s | sí | ninguno — se dispara como antes de que hubiera armas |
-| **Axis-7** | auto | 600 | 30 | 2.3 s | no | rifle: subida vertical marcada los primeros ocho disparos, luego deriva a la izquierda |
-| **Vertex-9** | auto | 800 | 25 | 1.8 s | sí | SMG: patada más inmediata pero la mitad de techo vertical, y más bamboleo lateral que vertical |
+| arma | ranura | modo | RPM | cargador | recarga | silenciador | carácter del retroceso |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| **Scalar-2** | pistola (**2**) | semi | 500 | 18 | 1.2 s | sí | ninguno — se dispara como antes de que hubiera armas |
+| **Axis-7** | principal (**1**) | auto | 600 | 30 | 2.3 s | no | rifle: subida vertical marcada los primeros ocho disparos, luego deriva a la izquierda |
+| **Vertex-9** | principal (**1**) | auto | 800 | 25 | 1.8 s | sí | SMG: patada más inmediata pero la mitad de techo vertical, y más bamboleo lateral que vertical |
 
-Scalar-2 es el valor por defecto.
+### Dos ranuras: la principal se elige, la pistola se lleva
+
+Se sale siempre con **dos armas**: la principal, que se elige en opciones y sale
+con la tecla **1**, y la **Scalar-2**, que va siempre encima y sale con la **2**.
+**Q** alterna entre las dos. Por eso la Scalar-2 **no está en el desplegable de
+arma principal**: ya la llevas, y ofrecerla también ahí sería ofrecer llevar dos
+pistolas. La ranura la declara cada arma (`WEAPONS[x].slot`), así que no hay una
+segunda lista que se pueda quedar vieja.
+
+**Cada arma lleva su propio cargador y su propia recarga**, y la que dejas atrás
+se congela tal cual estaba. Una recarga a medias **no avanza en segundo plano**:
+se guarda lo que le faltaba y sigue desde ahí cuando vuelvas a equiparla. Cambiar
+de arma no es una forma de recargar gratis.
+
+El Axis-7 es la principal por defecto. Si tenías guardada la Scalar-2 como arma
+—se podía elegir hasta la vuelta 39—, el ajuste vuelve al valor de fábrica: la
+pistola dejó de ser una opción del desplegable porque pasó a estar siempre.
 
 **Modos.** `semi` dispara una vez por click. `auto` dispara en continuo mientras
 se mantenga pulsado, al intervalo que marcan las RPM. Las RPM acotan los dos
@@ -600,7 +660,7 @@ El intervalo se cuenta desde el momento en que *tocaba* cada disparo, no desde
 el frame en que sale. Sin eso, el redondeo al refresco del monitor inflaría el
 intervalo y las RPM reales dependerían de los Hz de la pantalla.
 
-**Cargador y recarga.** Cada arma empieza la sesión con el cargador lleno. Al
+**Cargador y recarga.** Las dos armas empiezan la sesión con el cargador lleno. Al
 llegar a cero **la recarga arranca sola**: quedarse mirando un gatillo muerto
 no aporta nada. **R** recarga antes de tiempo, también con el cargador a
 medias; durante la recarga no se dispara y volver a pulsar R ni la reinicia ni
@@ -608,10 +668,10 @@ la acumula. Al completarse, el
 cargador vuelve al máximo y el patrón de retroceso al primer disparo: un
 cargador nuevo es una ráfaga nueva.
 
-**Silenciador.** Interruptor en el panel, presente sólo con un arma que lo
-admita (`supportsSuppressor`). Cambia el sonido y nada más: ni daño, ni
-retroceso, ni cadencia. Si queda activado y se cambia a un arma que no lo
-admite, el motor lo ignora en lugar de aplicarlo a medias.
+**Silenciador.** Interruptor en el panel. Se aplica al arma **que lleves en la
+mano**, siempre que ella lo admita (`supportsSuppressor`): con el Axis-7 en la
+mano no hace nada, y al sacar la pistola —que sí lo lleva— pasa a aplicarse sola.
+Cambia el sonido y nada más: ni daño, ni retroceso, ni cadencia.
 
 **Retroceso.** El patrón es un `[pitch, yaw]` en grados por cada disparo
 consecutivo de la ráfaga. Son incrementos, no posiciones: el motor los suma.
@@ -755,8 +815,10 @@ va al mismo trazo gris y sin relleno que el resto del HUD. El engranaje se
 **calcula** (ocho dientes entre dos radios, más el eje) en vez de pegar un `d`
 de treinta y dos puntos escrito a mano.
 
-Abajo a la derecha, el bloque del arma: silueta, nombre, cargador `actual/máximo`
-y, durante la recarga, una barra de progreso. Cuando el cargador baja de
+Bajo la mira, el bloque del arma: silueta, nombre, cargador `actual/máximo` y,
+durante la recarga, una barra de progreso. Enseña **la que llevas en la mano**,
+no la elegida en opciones: con la pistola equipada cambian la silueta, el nombre
+y el cargador. Cuando el cargador baja de
 `HELP.lowAmmoRatio` (20%) el contador parpadea en naranja.
 
 Las siluetas **no están dibujadas a mano**: se vectorizan con potrace a partir
@@ -860,9 +922,10 @@ ahora que el movimiento cubre los 80×80: una coordenada fija podía quedar a
 medio mapa. Si el jugador se acerca andando, el tablero se aparta para
 conservar `ACTION_PANEL.minDistance` en vez de plantársele delante, y nunca
 pasa de la pared. No hay gesto para abrirlo: está siempre ahí y se acciona
-**disparándole**. Cinco botones: Pausa, Reiniciar, Arma (cicla el
-roster), Silenciador y Opciones, que abre el modal 2D de siempre. El de
-silenciador desaparece —y con él su blanco— cuando el arma no lo admite.
+**disparándole**. Cinco botones: Pausa, Reiniciar, Arma (alterna la principal y
+la pistola, como **Q**), Silenciador y Opciones, que abre el modal 2D de siempre.
+El de silenciador desaparece —y con él su blanco— cuando el arma que llevas en la
+mano no lo admite.
 
 Se dibuja con `CSS3DRenderer`: es DOM de verdad colocado en el espacio y
 sincronizado con la misma cámara que el `WebGLRenderer`, lo que permite
@@ -989,6 +1052,7 @@ src/
 ├── App.jsx             une el motor con el HUD
 ├── styles.css
 ├── audio/sfx.js        sonido sintetizado con la Web Audio API
+├── audio/samples.js    disparos grabados, con la síntesis siempre detrás
 ├── game/
 │   ├── engine.js       bucle rAF, sesión, input y raycasting
 │   ├── scene.js        sala de líneas
@@ -1029,8 +1093,11 @@ cuesta ~0.1 ms por frame en p99, frente a los 4.17 ms de presupuesto a 240 Hz.
   la mueve el salto; la de los ojos sobre los pies, sólo el agachado. La
   cámara es la suma, así que agacharse en el aire sale gratis y sin casos
   especiales.
-- **Sin assets.** El sonido se sintetiza con osciladores; no hay archivos de
-  audio ni texturas.
+- **Sin assets, con una sola puerta.** El sonido se sintetiza con osciladores y
+  no hay texturas ni archivos de audio en el repositorio. La única excepción
+  prevista es el **disparo**, que puede traer su muestra grabada por su carril
+  (`npm run audio:weapons`) — y aun así la síntesis se queda debajo como
+  respaldo de cada arma que no tenga fichero.
 - **La sala vacía mide 80×80 y ya no crece; cada escenario puede traer la
   suya.** El Plano A vive en 40×40 y con ella se encogen la rejilla, las
   paredes, el límite real de movimiento, el acotado de las dianas y el tablero

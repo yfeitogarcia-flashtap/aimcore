@@ -10,7 +10,8 @@
     "preview": "vite preview --host",
     "trace:weapons": "node scripts/trace-weapons.mjs",
     "trace:icons": "node scripts/trace-icons.mjs",
-    "trace:logo": "node scripts/trace-logo.mjs"
+    "trace:logo": "node scripts/trace-logo.mjs",
+    "audio:weapons": "node scripts/import-weapon-audio.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",

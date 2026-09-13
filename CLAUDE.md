@@ -29,8 +29,15 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 **Sin assets externos, de ningún tipo:**
 
 - **Audio:** todo sintetizado en tiempo real con la Web Audio API
-  (`src/audio/sfx.js`): osciladores + un buffer de ruido pregenerado. No hay
-  ficheros de sonido en el repositorio ni los habrá.
+  (`src/audio/sfx.js`): osciladores + un buffer de ruido pregenerado. No hay ni un
+  fichero de sonido en el repositorio. **La única puerta abierta es el disparo**
+  (vuelta 39): un arma puede traer su muestra grabada en
+  `Reference/Audio/weapons/<clave-del-arma>.mp3` —y opcionalmente
+  `-suppressed.mp3`—, que `npm run audio:weapons` copia a `public/audio/weapons/`
+  y declara en `src/audio/weaponSamples.js`. **La síntesis no se sustituye, se
+  queda debajo**: sin fichero, con un fichero que no se decodifica o mientras
+  todavía viaja, suena el disparo sintetizado de siempre. Hoy no hay ninguno, así
+  que suena todo sintetizado. El resto del audio no tiene esta puerta.
 - **Siluetas de armas, logotipo e iconos:** vectorizados con `potrace` a partir de
   `Reference/Weapons/`, `Reference/Logo/` y `Reference/Icons/` mediante los
   scripts *one-off* `npm run trace:weapons`, `trace:logo` y `trace:icons`, que
@@ -50,6 +57,7 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Escenario | `src/game/scenario.js` | Convierte los datos de `SCENARIOS` en mallas, colisionadores, oclusores y **rutas**. Y publica su sala (`scenario.room`). |
 | Sala | `src/game/scene.js` | Rejilla y paredes, reconstruibles con `setRoom`: cada escenario tiene su tamaño. |
 | Audio espacial | `src/audio/spatial.js` | Listener en la cámara y emisores posicionados. **Genérico:** no sabe del explosivo. |
+| Muestras | `src/audio/samples.js` | Disparos grabados, **con la síntesis siempre detrás**. Único camino de audio de un disparo. |
 | Explosivo | `src/game/objective.js` | Aparición, cuenta atrás, pitido y desactivación. No publica nada al HUD a propósito. |
 | Puntuación | `src/game/scoring.js` | Variables normalizadas, media ponderada y estrellas. |
 | Transición | `src/game/transition.js` | **Módulo sustituible entero.** Contrato único: `run(build)` tapa la escena, llama a `build()` y destapa. Nada más del motor sabe qué forma tiene. |
@@ -380,6 +388,30 @@ diciendo hacia dónde apunta al ras y sigue siendo un triángulo desde arriba.
 Medido a 12 u y promediando tres orientaciones: 28 px con la cola a cero contra
 80 con 0.10.
 
+**El tamaño de un marcador se mide contra lo que marca, no contra la escena.**
+La brújula de la vuelta 38 salió proporcional a la altura del muñeco y ocupaba,
+de lado, **el 105% del ancho de su silueta**: el marcador era más grande que el
+objeto marcado. El barrido de la 39 (`brujula39.mjs`) mide dos cosas sobre los
+píxeles exactos del marcador —los que cambian entre dibujar el frame con brújula
+y sin ella— y las dos deciden a la vez:
+
+- **Discreción**: largo aparente contra el ancho de la silueta del muñeco. A 0.6
+  del tamaño de la 38 queda en el **61-64%**.
+- **Legibilidad**: área en píxeles a media distancia, con el listón de la vuelta
+  37 —80 px se leen, 28 no—. A 0.6 quedan **105 px a 12 u y 106 a 20 u**; el
+  escalón siguiente (0.5) cae a 72 y se sale del listón.
+
+Ojo con el área relativa, que engaña: a 4 u la brújula vieja era sólo el 9.6% de
+los píxeles del muñeco y aun así se comía la silueta. Un cuerpo es alto y
+estrecho, y lo que se compara al mirar son anchos, no áreas.
+
+**Y para medir píxeles, render target, no captura de pantalla.** Una captura pasa
+por el compositor y el bucle del motor dibuja entre una y otra: la diferencia
+entre dos frames que deberían ser idénticos salía con ~3.000 píxeles de ruido
+—más que el marcador que se estaba midiendo—. Dibujando a un destino fuera de
+pantalla y leyendo sus píxeles en el mismo turno, dos frames iguales dan
+diferencia cero.
+
 **Y un marcador de mundo deja de encoger a partir de cierta distancia.** Más allá
 de `MARKERS.referenceDistance` escala **con** la distancia, así que conserva su
 tamaño en pantalla, con tope. Sin eso, a 30 u —el largo del Plano A— un icono son
@@ -555,6 +587,48 @@ al pausar. Dos trampas, las dos con su cicatriz:
   guarda *sobre qué contexto* se está esperando y no un booleano. Pasa de verdad:
   React en modo estricto monta, desmonta y vuelve a montar.
 
+**Se llevan dos armas, y la pistola no se elige.** La ranura la declara el arma
+(`WEAPONS[x].slot`) y de ahí salen `PRIMARY_WEAPONS` —lo que ofrece el
+desplegable y valida el saneado— y `SECONDARY_WEAPON`. No hay una segunda lista
+en ninguna parte: si un arma cambia de ranura, cambia sola en los tres sitios.
+Tres consecuencias que **son** el sistema:
+
+- **Lo que dejas se congela**, y de una recarga a medias se guarda **lo que le
+  faltaba**, no cuándo acababa. Con una fecha absoluta, cambiar de arma cinco
+  segundos sería recargar gratis: el mismo agujero que se cerró en la cuenta
+  atrás del explosivo y en la carga del escudo. Al volver a equiparla, la recarga
+  sigue desde donde se quedó.
+- **El HUD enseña el arma que llevas en la mano, no la del ajuste**, y el motor
+  la publica por callback (`onWeapon`). Es una pulsación, no un valor por frame,
+  así que puede ser estado de React sin saltarse la regla de no repintar por
+  frame.
+- **El silenciador es del arma vigente.** Su interruptor ya no desaparece con un
+  arma que no lo admite, porque siempre llevas encima una que sí; lo que cambia
+  es el aviso, que dice a cuál se aplica.
+
+Y estrechar el catálogo de un ajuste **borra el valor guardado**: un
+`weapon: 'scalar-2'` de antes de la vuelta 39 cae a fábrica en el siguiente
+saneado, que es exactamente lo que hace el saneado con cualquier clave obsoleta.
+
+**Un disparo puede venir de un fichero; todo lo demás, no.** `samples.js` es el
+único camino de audio de un disparo —del jugador y de los muñecos— y decide él
+si suena la muestra grabada o la síntesis: quien dispara no elige ni tiene que
+saberlo. Cuatro reglas que sostienen el respaldo:
+
+- **La síntesis es el suelo, no el plan B de emergencia.** Sin fichero, con uno
+  que no se decodifica o mientras todavía viaja, suena el disparo sintetizado.
+  Nunca hay silencio y **nunca hay espera**: un disparo no aguarda a su muestra.
+- **Qué hay se sabe por el manifiesto** (`weaponSamples.js`, que emite
+  `npm run audio:weapons`), no preguntando al servidor: sondear costaría un 404
+  por arma y por variante en cada arranque.
+- **La variante silenciada es opcional y su ausencia no cae a la normal.** Soltar
+  el disparo sin supresor de un arma que lo lleva puesto es información falsa;
+  cae al perfil silenciado sintetizado.
+- **Los buffers son del contexto en el que se decodificaron.** `disposeAudio()`
+  cierra el contexto y el siguiente `initAudio()` crea otro: se guarda *sobre qué
+  contexto* se decodificó, igual que la espera de `music.js`. React en modo
+  estricto monta, desmonta y vuelve a montar.
+
 **El gatillo en seco suena también durante la recarga, y no es un detalle.** La
 última bala arranca la recarga sola (`_consumeAmmo`), así que «cargador vacío y
 sin recargar» es un estado que el juego **no produce nunca**: mientras la
@@ -699,8 +773,9 @@ ajustes: cargar, sanear, avisar. Cuatro cosas que sostienen el sistema:
   ronda por un reflejo. El radio lo decide `objective.isPlayerInRange`, no una
   segunda cuenta en el motor.
 
-**Hay teclas reservadas sin lógica, y es a propósito.** 1, 2, 3 y 5 para equipar
-y G para el arrojadizo —la 4 dejó de estarlo en la vuelta 34, con el escudo—. El
+**Hay teclas reservadas sin lógica, y es a propósito.** 3 para el cuerpo a
+cuerpo, 5 para el artilugio y G para el arrojadizo —la 4 dejó de estarlo en la
+vuelta 34 con el escudo, y la 1 y la 2 en la 39 con las dos ranuras de arma—. El
 mapa de controles tiene que ser el definitivo desde el principio: si se añaden
 cuando existan las mecánicas, alguien ya habrá puesto ahí su bind favorito. El
 panel las marca «sin efecto todavía».
@@ -773,9 +848,10 @@ quedan en su punto, porque un destino aleatorio las metería dentro de un muro.
 
 **Controles reasignables:** un mapa único en `KEYBINDS` con las acciones que
 funcionan hoy —movimiento, salto, agachado, caminar, disparar, recargar, cambiar
-de arma, silenciador, la contextual **E** y el escudo en la **4**— y las
-**reservadas sin lógica**: 1, 2, 3 y 5 para equipar principal / pistola / cuerpo
-a cuerpo / artilugio, y **G** para el arrojadizo. Sección **Controles** en opciones: tecla actual, reasignar
+de arma, silenciador, la contextual **E**, el escudo en la **4** y, desde la
+vuelta 39, **1** y **2** para equipar principal y pistola— y las **reservadas sin
+lógica**: 3 para el cuerpo a cuerpo, 5 para el artilugio y **G** para el
+arrojadizo. Sección **Controles** en opciones: tecla actual, reasignar
 capturando la siguiente pulsación, botón por acción y por lo general.
 Persistido en `aimcore.keybinds.v1` con saneado. **Escape queda fuera del
 sistema** y el panel lo dice.
@@ -810,11 +886,22 @@ automática al llegar a 0), patrón de recoil acumulativo por disparo consecutiv
 que se resetea al soltar o tras `RECOIL_RESET_MS`, y flag de supresor por arma
 con sonido propio.
 
-| Arma | Modo | RPM | Cargador | Recarga | Supresor |
-|---|---|---|---|---|---|
-| Scalar-2 | semi | 500 | 18 | 1200 ms | sí |
-| Axis-7 | auto | 600 | 30 | 2300 ms | no |
-| Vertex-9 | auto | 800 | 25 | 1800 ms | sí |
+| Arma | Ranura | Modo | RPM | Cargador | Recarga | Supresor |
+|---|---|---|---|---|---|---|
+| Scalar-2 | secundaria (tecla **2**, siempre) | semi | 500 | 18 | 1200 ms | sí |
+| Axis-7 | principal (tecla **1**) | auto | 600 | 30 | 2300 ms | no |
+| Vertex-9 | principal (tecla **1**) | auto | 800 | 25 | 1800 ms | sí |
+
+**Se llevan dos: la principal, que se elige en opciones, y la pistola, que va
+siempre.** La 1 saca una, la 2 la otra y **Q** alterna. Cada una lleva su propio
+cargador y su propia recarga, y la que dejas se congela tal cual estaba —una
+recarga a medias no avanza en la espalda, se reanuda al volver a equiparla—.
+
+**Audio de disparo: sintetizado hoy, con carril para muestras reales.** Un arma
+puede traer su `Reference/Audio/weapons/<clave>.mp3` (y opcionalmente
+`-suppressed.mp3`); `npm run audio:weapons` lo copia a `public/audio/weapons/` y
+lo declara en `src/audio/weaponSamples.js`. Hoy no hay ninguno, así que todas
+suenan sintetizadas — y así seguirán las que no tengan fichero.
 
 **Panel de acciones disparable: apagado** (`ACTION_PANEL.enabled: false`). El
 código se queda entero —DOM en 3D vía `CSS3DRenderer` anclado al spawn, con
@@ -858,9 +945,11 @@ de movimiento no entra ahí a propósito: ya es el ajuste `patrolSpeed`.
 enemigo):
 
 1. **Brújula**, cuña verde con volumen que gira en yaw hacia donde mira el muñeco.
-   Siempre puesta: es orientación pasiva. Medido contra el Plano A: de 10.390
-   pares puesto×punto con la cabeza a la vista, la cobertura la tapa en **3**
-   (0.03%).
+   Siempre puesta: es orientación pasiva. Y discreta a propósito desde la vuelta
+   39 —el 61% del ancho de la silueta del muñeco, contra el 105% que ocupaba
+   antes— sin dejar de leerse a media distancia: 105 px de área a 12 u y 106 a
+   20 u. Contra la cobertura del Plano A: de 10.390 pares puesto×punto con la
+   cabeza a la vista, la tapa en **3** (0.03%).
 2. **Icono situacional**, billboard: `?` amarillo mientras te ha visto y aún no
    dispara, `!` rojo mientras te dispara, uno por muñeco para contar amenazas de
    un vistazo. Se apagan al perder contacto o al caer.
@@ -914,7 +1003,8 @@ selector crece en filas con cada escenario nuevo en vez de encoger los que ya
 estaban.
 
 **Opciones** (accesibles antes de empezar y desde la pausa, persistidas):
-escenario, sensibilidad, tipo de diana, arma, tamaño de diana, distancia de spawn, cadencia
+escenario, sensibilidad, tipo de diana, **arma principal** (sólo Axis-7 y
+Vertex-9: la pistola se lleva siempre y no se elige), tamaño de diana, distancia de spawn, cadencia
 de aparición, dianas simultáneas, límite de FPS, supresor (sólo si el arma lo
 admite), **audio espacial**, mensajes de ayuda, **dificultad de los muñecos**,
 modo dinámico y **velocidad de
@@ -950,8 +1040,9 @@ muertes/reinicios se calculaban desde hacía vueltas con peso 0, y en la 34 se l
 dio peso. La fórmula no hubo que tocarla, que era justo lo que se buscaba al
 dejarles el hueco.
 
-**Lo que sí sigue reservado son cinco teclas de equipo** (1, 2, 3, 5 y G): tienen
-bind y no tienen lógica. La 4 dejó de estarlo al llegar el escudo.
+**Lo que sí sigue reservado son tres teclas de equipo** (3, 5 y G): tienen bind y
+no tienen lógica. La 4 dejó de estarlo al llegar el escudo, y la 1 y la 2 al
+llegar las dos ranuras de arma.
 
 ---
 

@@ -61,6 +61,18 @@ export function disposeAudio() {
   }
 }
 
+/**
+ * El nodo al que va todo lo que no está posicionado. Lo necesita `samples.js`
+ * para colgar de ahí las muestras grabadas; la dependencia va en ese sentido
+ * —de `samples` a `sfx`, como la de `spatial`— y por eso se expone aquí en vez
+ * de que este módulo sepa que existen las muestras.
+ *
+ * @returns {GainNode | null}
+ */
+export function masterGain() {
+  return master
+}
+
 /** Ajuste de volumen global, 0..1. Lo usará el menú de opciones más adelante. */
 export function setMasterVolume(value) {
   if (master) master.gain.value = Math.max(0, Math.min(1, value))

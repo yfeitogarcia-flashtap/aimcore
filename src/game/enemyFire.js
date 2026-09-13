@@ -44,7 +44,7 @@ import {
   TARGET_TYPES,
   WEAPONS,
 } from '../config.js'
-import { playShot } from '../audio/sfx.js'
+import { playWeaponShot } from '../audio/samples.js'
 import { createEmitter } from '../audio/spatial.js'
 import { aimPoint, hitPlayer, zoneDamage } from './player.js'
 
@@ -295,7 +295,9 @@ export class EnemyFire {
     applySpread(_dir, this.difficulty.spreadDeg)
 
     state.emitter.setPosition(muzzle.x, muzzle.y, muzzle.z)
-    playShot(false, state.emitter, AUDIO.enemyShotVolume)
+    // Mismo camino que el disparo del jugador: si el arma de los muñecos tiene
+    // muestra grabada, suena la muestra, y si no, la síntesis.
+    playWeaponShot(ENEMY.weapon, false, state.emitter, AUDIO.enemyShotVolume)
     this.shotsFired += 1
 
     // El corte contra el cilindro decide **en qué zona** entra el disparo; lo que

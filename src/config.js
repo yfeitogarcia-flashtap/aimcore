@@ -415,6 +415,16 @@ export const WEAPONS = {
   'scalar-2': {
     label: 'Scalar-2',
     character: 'sin retroceso',
+    /**
+     * **La ranura en la que se lleva.** Es lo único que decide qué arma compite
+     * por la tecla 1 y cuál va siempre en la 2: no hay una segunda lista de
+     * armas principales en ningún sitio, se deriva de aquí (`PRIMARY_WEAPONS`,
+     * `SECONDARY_WEAPON`). La Scalar-2 es la pistola, y por eso **desapareció
+     * del desplegable de arma principal**: se lleva siempre, elijas lo que
+     * elijas, así que ofrecerla también como principal era ofrecer llevar dos
+     * pistolas.
+     */
+    slot: 'secondary',
     mode: 'semi',
     rpm: 500,
     magazine: 18,
@@ -441,6 +451,8 @@ export const WEAPONS = {
   'axis-7': {
     label: 'Axis-7',
     character: 'rifle',
+    /** Ver `slot` de Scalar-2. */
+    slot: 'primary',
     mode: 'auto',
     rpm: 600,
     magazine: 30,
@@ -479,6 +491,8 @@ export const WEAPONS = {
   'vertex-9': {
     label: 'Vertex-9',
     character: 'SMG',
+    /** Ver `slot` de Scalar-2. */
+    slot: 'primary',
     mode: 'auto',
     rpm: 800,
     magazine: 25,
@@ -516,6 +530,25 @@ export const WEAPONS = {
     ],
   },
 }
+
+/**
+ * **Las dos ranuras de equipo**, derivadas del `slot` de cada arma. No son una
+ * segunda lista: si un arma cambia de ranura, cambia aquí sola.
+ *
+ * La **principal** es la que se elige en opciones y sale con la tecla 1; la
+ * **secundaria** va siempre encima, sin elegirla, y sale con la 2. Que la
+ * pistola no se elija es justo lo que la hace una pistola: es el arma con la
+ * que te quedas cuando la principal está vacía o no es la adecuada para la
+ * distancia, y para eso tiene que estar siempre.
+ */
+export const PRIMARY_WEAPONS = Object.fromEntries(
+  Object.entries(WEAPONS).filter(([, weapon]) => weapon.slot === 'primary'),
+)
+
+/** La pistola, la única de su ranura. */
+export const SECONDARY_WEAPON = Object.keys(WEAPONS).find(
+  (key) => WEAPONS[key].slot === 'secondary',
+)
 
 /**
  * Variante con movimiento del jugador.
@@ -575,11 +608,14 @@ export const KEYBINDS = {
    */
   use: { label: 'Usar / artilugio', default: 'KeyE', contextual: true, group: 'Combate' },
 
-  primary: { label: 'Arma principal', default: 'Digit1', reserved: true, group: 'Equipo' },
-  secondary: { label: 'Pistola', default: 'Digit2', reserved: true, group: 'Equipo' },
+  // La 1 y la 2 dejan de estar reservadas en la vuelta 39: equipan de verdad,
+  // cada una su ranura. La 3 sigue siendo sólo tecla.
+  primary: { label: 'Arma principal', default: 'Digit1', group: 'Equipo' },
+  secondary: { label: 'Pistola', default: 'Digit2', group: 'Equipo' },
   melee: { label: 'Cuerpo a cuerpo', default: 'Digit3', reserved: true, group: 'Equipo' },
-  // El escudo ya no está reservado: aplica una carga del inventario (ver
-  // `PLAYER.shield`). Las otras cuatro y el arrojadizo siguen siendo sólo tecla.
+  // El escudo tampoco está reservado: aplica una carga del inventario (ver
+  // `PLAYER.shield`). El cuerpo a cuerpo, el artilugio y el arrojadizo siguen
+  // siendo sólo tecla.
   shield: { label: 'Escudo', default: 'Digit4', group: 'Equipo' },
   gadget: { label: 'Artilugio', default: 'Digit5', reserved: true, group: 'Equipo' },
   throwable: { label: 'Arrojadizo', default: 'KeyG', reserved: true, group: 'Equipo' },
@@ -1016,9 +1052,14 @@ export const SETTINGS = {
     label: 'Tipo de diana',
     default: 'classic',
   },
+  /**
+   * **El arma principal**, la de la tecla 1. La pistola no está aquí: se lleva
+   * siempre (`SECONDARY_WEAPON`) y no se elige, así que sacarla del desplegable
+   * no le quita nada a nadie.
+   */
   weapon: {
-    label: 'Arma',
-    default: 'scalar-2',
+    label: 'Arma principal',
+    default: 'axis-7',
   },
   targetRadius: {
     label: 'Tamaño de diana',
@@ -1906,13 +1947,31 @@ export const MARKERS = {
    * dónde apunta.
    *
    * Las medidas van en **fracciones de la altura del muñeco**, como todo lo
-   * demás: cambiar `targetRadius` no descoloca el marcador. La relación
-   * largo/alto (2.6) y el ancho salen de la referencia.
+   * demás: cambiar `targetRadius` no descoloca el marcador. Las proporciones
+   * entre las tres —largo/alto 2.72, largo/ancho 3.1— salen de la referencia; el
+   * tamaño, de medirlo.
+   *
+   * **Y se midió porque la primera versión salió del tamaño del muñeco.** Con
+   * `length` a 0.34 la cuña ocupaba, de lado, **más ancho en pantalla que el
+   * propio muñeco** (105% de su silueta a 4 u, 108% a 8 u): lo primero que se
+   * veía de un rival era su brújula. Lo que se barrió (`brujula39.mjs`) fueron
+   * ocho tamaños contra siete distancias del Plano A, midiendo dos cosas a la
+   * vez sobre los píxeles exactos del marcador —los que cambian entre dibujar el
+   * frame con brújula y sin ella—:
+   *
+   *  - **Discreción**: el largo aparente de la cuña contra el ancho de la
+   *    silueta del muñeco. A 0.6 del tamaño original queda en el **61%**, que es
+   *    un marcador encima de un muñeco y no al revés.
+   *  - **Legibilidad**: el área en píxeles a media distancia. El listón es el de
+   *    la vuelta 37 —80 px es legible, 28 no (`docs/decisions.md` §37.4)— y a
+   *    0.6 quedan **105 px a 12 u y 106 a 20 u**, porque más allá de
+   *    `referenceDistance` el marcador deja de encoger. Un paso más abajo (0.5)
+   *    se queda en 72 px, por debajo del listón.
    */
   compass: {
-    length: 0.34,
-    width: 0.11,
-    height: 0.125,
+    length: 0.204,
+    width: 0.066,
+    height: 0.075,
     /**
      * **La tapa de la cola va más oscura.** Justo de frente y justo de espaldas
      * la silueta de una cuña es la misma —su rectángulo de cola— y en esta
@@ -2088,6 +2147,15 @@ export const AUDIO = {
   hitVolume: 0.8,
   /** Disparo enemigo: el mismo perfil que el del jugador, un punto más bajo. */
   enemyShotVolume: 0.62,
+  /**
+   * **Ajuste de nivel de las muestras grabadas** (`src/audio/samples.js`), que
+   * se multiplica por el volumen del disparo. Una grabación de verdad viene
+   * normalizada a tope y la síntesis no, así que a 1 una muestra suena bastante
+   * más fuerte que el respaldo sintetizado y cambiar de arma sería un salto de
+   * volumen. Se queda a 1 hasta que haya un fichero real con el que medirlo: lo
+   * que hay que igualar es la sonoridad, y eso no se puede calibrar sin muestra.
+   */
+  sampleVolume: 1,
   /** Daño recibido, curación y la carga eléctrica del escudo. */
   damageVolume: 0.6,
   healVolume: 0.5,
