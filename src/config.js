@@ -2035,13 +2035,24 @@ export const AVATAR = {
   /** El núcleo del pecho, en fracciones del radio del torso. */
   coreRadius: 0.34,
   /**
-   * Líneas de luz: cuántas por pieza, de qué grosor —en fracciones del radio del
-   * torso— y cuánto sobresalen del panel. Finas a propósito: son un filamento,
-   * no una pechera; con el doble de grosor el azul se comía el modelo entero.
+   * **Las dos líneas de luz.** No son tramos sueltos por las piezas: son dos
+   * filamentos **continuos** que bajan de la coronilla a las botas —cara,
+   * esternón, ingle y cara interna de cada pierna— separándose por el camino.
+   * Es lo que define el modelo en la referencia de estilo
+   * (`Reference/Avatar/player-avatar-style.png`), y lo que hace que se lea como
+   * un cuerpo iluminado y no como un muñeco con pegatinas.
+   *
+   * Los tres `spread` son la separación entre las dos líneas en cada altura, en
+   * fracciones del radio del torso: la inclinación de cada tramo sale de unir un
+   * punto con el siguiente, no de un ángulo escrito a mano.
+   *
+   * `width` va fino a propósito: es un filamento, no una pechera; con el doble
+   * de grosor el azul se comía el modelo entero.
    */
-  stripCount: 2,
   stripWidth: 0.1,
-  stripSpread: 0.46,
+  stripHeadSpread: 0.34,
+  stripChestSpread: 0.42,
+  stripLegSpread: 0.62,
   stripOffset: 0.004,
   /** Vista de depuración: distancia de la cámara y vueltas por minuto. */
   debugDistance: 3.2,

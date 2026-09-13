@@ -187,13 +187,22 @@ export class Avatar {
   }
 
   /**
-   * Línea vertical de luz. Es el canal fijo —el que llevará el color de equipo—,
-   * así que no es una arista más: es una caja fina, emisiva, por delante del
-   * panel.
+   * **Un tramo de la línea de luz**, de un punto a otro. Es el canal fijo —el
+   * que llevará el color de equipo—, así que no es una arista más: es una caja
+   * fina y emisiva por delante del panel.
+   *
+   * Se da por sus dos extremos y no por posición y ángulo: los tramos encadenan
+   * —coronilla, cuello, ingle, bota— y lo único que hay que garantizar es que el
+   * final de uno sea el principio del siguiente. La inclinación sale sola.
    */
-  _light(width, height, depth, x, y, z) {
-    const geometry = new THREE.BoxGeometry(width, height, depth)
-    geometry.translate(x, y, z)
+  _lightSegment(width, depth, from, to) {
+    const dx = to.x - from.x
+    const dy = to.y - from.y
+    const length = Math.hypot(dx, dy)
+    if (length <= 1e-6) return
+    const geometry = new THREE.BoxGeometry(width, length, depth)
+    geometry.rotateZ(-Math.atan2(dx, dy))
+    geometry.translate((from.x + to.x) / 2, (from.y + to.y) / 2, (from.z + to.z) / 2)
     this._lights.push(geometry)
   }
 
@@ -243,9 +252,6 @@ export class Avatar {
         w: legR * 2, h: bootH, d: legR * 3, x: side * legX, y: legsY - legsH / 2 + bootH / 2,
         z: legR * 0.4, factor: AVATAR.shades.boot, top: taperIn, grid: false,
       })
-      // Luz de la pierna: del muslo al tobillo, por delante.
-      this._light(stripW, thighH * 0.82, stripW, side * legX, thighY, legR * 1.06)
-      this._light(stripW, shinH * 0.8, stripW, side * legX, shinY, legR * 0.96)
     }
 
     // --- torso: pecho, cintura, hombros y núcleo ------------------------------
@@ -272,13 +278,6 @@ export class Avatar {
         w: torsoR * 0.62, h: torsoR * 0.62, d: chestD, x: side * shoulderX, y: shoulderY,
         factor: AVATAR.shades.joint, top: taperIn, grid: false,
       })
-    }
-
-    // Luces del torso: dos líneas verticales a los lados del esternón. Son el
-    // canal de equipo, y de momento el mismo azul que el escudo.
-    for (let i = 0; i < AVATAR.stripCount; i++) {
-      const offset = (i - (AVATAR.stripCount - 1) / 2) * chestW * AVATAR.stripSpread
-      this._light(stripW, chestH * 0.72, stripW, offset, chestY, chestD * 0.52)
     }
 
     // Núcleo: octaedro, el mismo azul, y el único sitio donde el modelo brilla
@@ -334,8 +333,29 @@ export class Avatar {
       factor: AVATAR.shades.limb, bottom: taperIn, grid: false,
     })
 
-    // Visor: el mismo canal de luz que el núcleo y las líneas.
-    this._light(headR * 1.45, headR * 0.34, headR * 0.3, 0, headY + headR * 0.08, headR * 0.82)
+    // --- las dos líneas de luz, de la coronilla a las botas -------------------
+    // Son **continuas**: cada tramo empieza donde acaba el anterior, así que lo
+    // que se declara es la cadena de puntos por la que pasan y no un ángulo por
+    // pieza. De aquí sale también la cara del modelo: la línea sólo va por
+    // delante, y eso es lo que dice de un vistazo hacia dónde mira.
+    // Las z van pegadas a la cara de cada panel, no por delante: de perfil, medio
+    // decímetro de aire entre la línea y el cuerpo se ve enseguida.
+    const crown = { x: AVATAR.stripHeadSpread * torsoR * 0.55, y: headY + headR * 1.05, z: headR * 0.55 }
+    const chin = { x: AVATAR.stripHeadSpread * torsoR, y: headY - headR * 0.7, z: headR * 0.78 }
+    // El pecho se **abre** hacia arriba (`taperOut`), así que su cara delantera
+    // queda más adelante que media profundidad: con `chestD * 0.44` la línea se
+    // metía dentro del panel y desaparecía del cuello al esternón.
+    const neck = { x: AVATAR.stripHeadSpread * torsoR, y: torsoY + torsoH / 2, z: chestD * 0.58 }
+    const groin = { x: AVATAR.stripChestSpread * torsoR, y: legsY + legsH / 2, z: chestD * 0.36 }
+    const knee = { x: AVATAR.stripLegSpread * torsoR, y: kneeY, z: legR * 0.95 }
+    const boot = { x: AVATAR.stripLegSpread * torsoR, y: legsY - legsH / 2 + bootH, z: legR * 1.05 }
+    const mirror = (point, side) => ({ x: point.x * side, y: point.y, z: point.z })
+    for (const side of [-1, 1]) {
+      const chain = [crown, chin, neck, groin, knee, boot]
+      for (let i = 0; i < chain.length - 1; i++) {
+        this._lightSegment(stripW, stripW, mirror(chain[i], side), mirror(chain[i + 1], side))
+      }
+    }
 
     this._mergeLines()
   }

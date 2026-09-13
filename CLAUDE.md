@@ -402,11 +402,14 @@ negro por 0.62 sigue siendo negro—, así que el volumen entero lo dibujan las
 aristas y la rejilla. El color sigue siendo **una variable** (`AVATAR.color`) y no
 un sistema de skins: eso depende de economía y cuentas, que no existen.
 
-Dos detalles que costaron una pasada cada uno: las líneas de grilla, aristas y
+Tres detalles que costaron una pasada cada uno: las líneas de grilla, aristas y
 luz se **fusionan** en tres objetos para todo el cuerpo —con una rejilla por cara
-eran cuarenta, y en multijugador habrá varios avatares—, y la rejilla se **mide**
-por la cara estrecha del panel pero se **coloca** a la altura de la ancha: puesta
-a la estrecha se queda dentro del panel y no se ve ni una línea.
+eran cuarenta, y en multijugador habrá varios avatares—; la rejilla se **mide**
+por la cara estrecha del panel pero se **coloca** a la altura de la ancha —puesta
+a la estrecha se queda dentro del panel y no se ve ni una línea—; y las líneas de
+luz caen en la misma trampa por el otro lado: el pecho se **abre** hacia arriba,
+así que su cara delantera queda más adelante que media profundidad, y la línea
+puesta a media profundidad desaparecía del cuello al esternón.
 
 La vista de depuración (F3) sólo se abre **fuera de una sesión en marcha**: la
 cámara es del jugador y el cronómetro corre, y mirarse el modelo no puede costar

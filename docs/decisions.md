@@ -2833,8 +2833,8 @@ estilo:
 
 - La **piel** es lo personalizable: paneles negros con la rejilla de la sala
   encima. Es la skin de serie, la que se tiene sin comprar nada.
-- La **luz** —líneas verticales, visor y núcleo— es fija, y es la que llevará el
-  **color de equipo** cuando haya equipos. Por eso `setColor()` no la toca: un
+- La **luz** —dos líneas continuas de la coronilla a las botas, más el núcleo—
+  es fija, y es la que llevará el **color de equipo** cuando haya equipos. Por eso `setColor()` no la toca: un
   jugador no puede pintarse del color del rival, y si el color de equipo saliera
   del mismo canal que la skin, la primera venta rompería la legibilidad del
   juego.
@@ -2848,7 +2848,18 @@ paso: 1 u para una sala de 40 y 0.12 para un torso de 0.6, donde el paso de la
 sala daría una sola línea. Y usa el par de grises del **suelo** y no el de las
 paredes, porque sobre negro el de las paredes no se ve.
 
-Dos cosas que costaron una pasada cada una:
+**Las líneas son continuas, y eso se lee en la referencia de un vistazo.** La
+primera versión ponía tramos sueltos por las piezas —dos en el pecho, uno por
+muslo, un visor horizontal— y parecía un muñeco con pegatinas. En
+`Reference/Avatar/player-avatar-style.png` son **dos filamentos** que bajan de la
+coronilla a las botas pasando por la cara, el esternón, la ingle y la cara
+interna de cada pierna. Se declaran como una **cadena de puntos** y cada tramo se
+construye de uno al siguiente, así que la continuidad es estructural y no algo
+que haya que cuadrar a ojo. Y van sólo por delante, con lo que de paso son lo que
+dice hacia dónde mira el modelo. La referencia **no se vectoriza**: es una guía
+de estilo, como el blockout de los escenarios, no un asset que trazar.
+
+Tres cosas que costaron una pasada cada una:
 
 - Las líneas se **fusionan** en tres objetos para todo el cuerpo. Con una rejilla
   por cara eran cuarenta objetos por avatar, y en multijugador habrá varios.
@@ -2856,6 +2867,10 @@ Dos cosas que costaron una pasada cada una:
   altura de la ancha. Puesta a la estrecha se queda dentro del panel y no se ve
   ni una línea: la primera versión salió con la piel entera invisible y el
   modelo pareciendo una mancha negra.
+- Las líneas de luz caen en la misma trampa por el otro lado. El pecho se **abre**
+  hacia arriba, así que su cara delantera está más adelante que media
+  profundidad, y la línea puesta a media profundidad desaparecía del cuello al
+  esternón — justo el tramo que la hace legible.
 
 ### 34.9 Los recogibles van en puntos de ruta
 

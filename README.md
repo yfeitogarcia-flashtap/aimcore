@@ -137,15 +137,21 @@ Se lee en **tres capas** que no se mezclan:
   de cuerpo: con el paso de la sala, un torso se llevaría una línea. Ésta es la
   skin de serie, la que se tiene sin comprar nada, y es lo único que cambia el
   color personalizable (`AVATAR.color`).
-- **La luz.** Líneas verticales que recorren torso y piernas, más el visor y el
-  núcleo del pecho, en el mismo azul eléctrico del escudo. Es un canal **fijo**:
-  el día que haya equipos, éste llevará su color, y por eso el color
-  personalizable no lo toca.
+- **La luz.** **Dos líneas continuas** que bajan de la coronilla a las botas
+  —cara, esternón, ingle y cara interna de cada pierna—, más el núcleo del
+  pecho, en el mismo azul eléctrico del escudo. Sólo van por delante, así que
+  además dicen de un vistazo hacia dónde mira. Es un canal **fijo**: el día que
+  haya equipos, éste llevará su color, y por eso el color personalizable no lo
+  toca.
 - **Los filos.** El borde de cada panel, en un gris de la rejilla.
 
 **Sin texturas, y no por ahorrar:** en esta escena no hay ni una luz, así que un
 mapa no se vería. Con la piel en negro el tono tampoco separa nada, de modo que
 todo el volumen lo dibujan los filos y la rejilla.
+
+La referencia de estilo está en `Reference/Avatar/player-avatar-style.png`, y
+**no se vectoriza**: es una guía para reconstruir la geometría, como el blockout
+de los escenarios.
 
 Nada de esto es un sistema de skins de pago: eso depende de economía y cuentas,
 que no existen.
