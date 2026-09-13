@@ -254,11 +254,6 @@ export const TARGET_TYPES = {
  */
 export const RECOIL_RESET_MS = 200
 
-/** Teclas de acción del arma, en códigos físicos. */
-export const WEAPON_KEYS = {
-  reload: ['KeyR'],
-}
-
 /**
  * Panel de acciones rápidas: un tablero dentro de la sala que se acciona a
  * tiros, sin gesto para abrirlo.
@@ -458,6 +453,72 @@ export const WEAPONS = {
  * teclado, salto y agachado, y el cono pasa a apuntar en una dirección fija
  * del mundo.
  */
+/**
+ * **Asignación de teclas: un solo bloque, una sola fuente de verdad.** De aquí
+ * salen el movimiento, las acciones de arma, la acción contextual y las teclas
+ * que todavía no hacen nada. Antes estaban repartidas entre `MOVEMENT.keys`,
+ * `WEAPON_KEYS` y `OBJECTIVE.defuseKeys`, cada una con su formato.
+ *
+ * Cada acción tiene **una** tecla reasignable (`default`, y lo que el jugador
+ * haya guardado encima) y, opcionalmente, `extra`: alternativas fijas que el
+ * juego acepta y el panel no deja tocar. Las flechas y el Shift derecho están
+ * ahí porque funcionaban desde la primera vuelta y quitarlos sería una pérdida
+ * silenciosa; no son binds, son cortesías.
+ *
+ * - `reserved: true` — la tecla se reserva pero **no hace nada todavía**. Está
+ *   aquí para que el mapa de controles sea el definitivo desde el principio y
+ *   nadie se encuentre luego con que su bind favorito ya está cogido.
+ * - `contextual: true` — la misma acción hace cosas distintas según el
+ *   contexto. Es **una** acción bindable, no dos peleándose por la tecla.
+ * - `pointer: true` — se asigna a un botón del ratón (`Mouse0`, `Mouse1`…).
+ *
+ * **Escape no está y no puede estar**: es la salida del pointer lock y la pausa,
+ * y el navegador la resuelve antes que la página. El panel lo dice.
+ *
+ * Ojo con los modificadores: ninguna acción puede ir en Ctrl, Alt o Meta, ni en
+ * una combinación con ellos. **Ctrl+W cierra la pestaña** y el navegador no deja
+ * impedirlo — está contado en `docs/decisions.md` §27. El saneado y el panel lo
+ * bloquean por separado.
+ */
+export const KEYBINDS = {
+  forward: { label: 'Adelante', default: 'KeyW', extra: ['ArrowUp'], group: 'Movimiento' },
+  back: { label: 'Atrás', default: 'KeyS', extra: ['ArrowDown'], group: 'Movimiento' },
+  left: { label: 'Izquierda', default: 'KeyA', extra: ['ArrowLeft'], group: 'Movimiento' },
+  right: { label: 'Derecha', default: 'KeyD', extra: ['ArrowRight'], group: 'Movimiento' },
+  jump: { label: 'Saltar', default: 'Space', group: 'Movimiento' },
+  crouch: { label: 'Agacharse', default: 'KeyC', group: 'Movimiento' },
+  walk: { label: 'Caminar', default: 'ShiftLeft', extra: ['ShiftRight'], group: 'Movimiento' },
+
+  shoot: { label: 'Disparar', default: 'Mouse0', pointer: true, group: 'Combate' },
+  reload: { label: 'Recargar', default: 'KeyR', group: 'Combate' },
+  cycleWeapon: { label: 'Cambiar de arma', default: 'KeyQ', group: 'Combate' },
+  suppressor: { label: 'Silenciador', default: 'KeyB', group: 'Combate' },
+  /**
+   * **La acción contextual.** Dentro del radio de algo con lo que se puede
+   * interactuar —hoy sólo el explosivo— desactiva, y **nunca hace otra cosa ahí
+   * dentro**: que la misma tecla saque un artilugio a un metro de la bomba es
+   * como se pierden rondas. Fuera de ese radio equipa el lanzacohetes, que
+   * todavía no existe.
+   */
+  use: { label: 'Usar / artilugio', default: 'KeyE', contextual: true, group: 'Combate' },
+
+  primary: { label: 'Arma principal', default: 'Digit1', reserved: true, group: 'Equipo' },
+  secondary: { label: 'Pistola', default: 'Digit2', reserved: true, group: 'Equipo' },
+  melee: { label: 'Cuerpo a cuerpo', default: 'Digit3', reserved: true, group: 'Equipo' },
+  shield: { label: 'Escudo', default: 'Digit4', reserved: true, group: 'Equipo' },
+  gadget: { label: 'Artilugio', default: 'Digit5', reserved: true, group: 'Equipo' },
+  throwable: { label: 'Arrojadizo', default: 'KeyG', reserved: true, group: 'Equipo' },
+
+  avatarDebug: { label: 'Vista del avatar', default: 'F3', group: 'Depuración' },
+}
+
+/**
+ * Teclas que el sistema de binds no acepta nunca, pase lo que pase en
+ * localStorage. Escape es la pausa y la salida del pointer lock; F5 y F12 se las
+ * queda el navegador y capturarlas sólo sirve para romperle la recarga a alguien.
+ */
+export const FORBIDDEN_KEYS = ['Escape', 'F5', 'F11', 'F12', 'Tab']
+
 export const MOVEMENT = {
   enabled: true,
 
@@ -598,30 +659,11 @@ export const MOVEMENT = {
    */
   wallMargin: 1.5,
 
-  /**
-   * Teclas por acción, en códigos físicos (`KeyboardEvent.code`): funcionan
-   * igual en QWERTY, AZERTY o Dvorak.
-   *
-   * **CTRL ya no agacha, y no es una preferencia: cerraba la pestaña.**
-   * Agacharse avanzando es Ctrl+W, y Ctrl+W es cerrar pestaña en Chrome y en
-   * Edge. Ese atajo lo resuelve el navegador antes de que el evento llegue a la
-   * página, así que `preventDefault` no lo toca — sí neutraliza Ctrl+A/S/D, que
-   * son las otras tres direcciones, pero con W no hay nada que hacer. Se
-   * manifestaba como un cierre intermitente «sin motivo»: sólo pasaba cuando W
-   * estaba pulsada en el instante de agacharse.
-   *
-   * Agacharse es **C**. Si alguien prefiere CTRL, es añadir `'ControlLeft'` y
-   * `'ControlRight'` aquí — sabiendo que vuelve el cierre de pestaña.
-   */
-  keys: {
-    forward: ['KeyW', 'ArrowUp'],
-    back: ['KeyS', 'ArrowDown'],
-    left: ['KeyA', 'ArrowLeft'],
-    right: ['KeyD', 'ArrowRight'],
-    jump: ['Space'],
-    walk: ['ShiftLeft', 'ShiftRight'],
-    crouch: ['KeyC'],
-  },
+  // Las teclas ya no viven aquí: están en `KEYBINDS`, con las de arma y las de
+  // interacción, y el jugador puede reasignarlas. **CTRL sigue sin poder
+  // agachar** —Ctrl+W cierra la pestaña, ver `docs/decisions.md` §27— y ahora eso
+  // lo garantiza el saneado de binds en lugar de la buena voluntad de quien
+  // edite este fichero.
 }
 
 /**
@@ -888,6 +930,18 @@ export const SETTINGS = {
   helpMessages: {
     label: 'Mensajes de ayuda',
     default: true,
+  },
+  musicVolume: {
+    label: 'Música de menús',
+    /**
+     * Volumen de la música de inicio, opciones y pausa. Va por su propio nodo:
+     * bajarla a cero no toca ni el pitido del explosivo ni los disparos.
+     */
+    default: 0.4,
+    min: 0,
+    max: 1,
+    step: 0.05,
+    decimals: 2,
   },
   dynamic: {
     label: 'Modo dinámico',
@@ -1464,8 +1518,8 @@ export const OBJECTIVE = {
   defuseMs: 3000,
   /** Distancia máxima a la que se puede desactivar. */
   defuseRadius: 3.0,
-  /** Tecla de desactivación. Soltar cancela el progreso, sin penalización. */
-  defuseKeys: ['KeyE'],
+  // La tecla de desactivar es la acción contextual `use` de `KEYBINDS`. Soltar
+  // cancela el progreso, sin penalización.
 
   /** Marcador: un octaedro con arista, parpadeando. */
   markerRadius: 0.42,
@@ -1553,6 +1607,107 @@ export const AUDIO = {
   masterVolume: 0.45,
   shotVolume: 0.9,
   hitVolume: 0.8,
+}
+
+/**
+ * **Música de menús.** Sintetizada como todo lo demás: ni un fichero de audio en
+ * el repositorio, aquí tampoco.
+ *
+ * No es un bucle grabado sino una pieza que se **genera sobre la marcha**, y por
+ * eso no tiene costura: un colchón grave constante y notas sueltas de una escala
+ * pentatónica, sorteadas con un sesgo hacia las graves. Dos razones para hacerlo
+ * así y no con un bucle de 30 s: no hay fichero que cargar, y un bucle corto en
+ * un menú donde se pasa rato se reconoce a la tercera vuelta.
+ *
+ * Suena en inicio, opciones y pausa, y se calla al empezar a jugar: durante la
+ * partida el audio es información —el pitido del explosivo, los disparos— y una
+ * base encima sólo estorba.
+ */
+export const MUSIC = {
+  /** Nota más grave del colchón, en Hz. La A2 de toda la vida. */
+  rootHz: 110,
+  /**
+   * Semitonos de la escala sobre la raíz. Pentatónica menor: sin semitonos
+   * chocantes, que es lo que deja que las notas salgan en cualquier orden sin
+   * sonar mal — justo lo que hace falta si el orden lo decide un sorteo.
+   */
+  scale: [0, 3, 5, 7, 10, 12, 15, 19, 24],
+  /** Segundos entre nota y nota. Lento a propósito: es fondo, no melodía. */
+  stepSeconds: 1.9,
+  /** De cada cuántos pasos suena algo. El silencio también es parte. */
+  noteChance: 0.55,
+  /** Corte del filtro del colchón, en Hz, y cuánto lo pasea su LFO. */
+  padCutoffHz: 420,
+  padLfoHz: 0.045,
+  padLfoDepth: 190,
+  /** Volúmenes relativos dentro de la música, antes del volumen del jugador. */
+  padGain: 0.5,
+  noteGain: 0.32,
+  /** Caída de cada nota, en segundos. */
+  noteDecay: 3.4,
+  /** Entrada y salida de la música, en segundos. Sin esto, un chasquido. */
+  fadeSeconds: 1.2,
+  /**
+   * Cada cuánto se programan notas y cuánto se mira hacia delante, en segundos.
+   * Programar con antelación contra el reloj del audio es lo que hace que el
+   * ritmo no dependa de si la pestaña va justa: `setTimeout` llega tarde, pero
+   * la nota ya tiene puesta su hora.
+   */
+  scheduleEverySeconds: 0.25,
+  lookaheadSeconds: 0.6,
+}
+
+/**
+ * **Avatar del jugador.** El modelo que llevará quien juegue cuando haya
+ * multijugador; hoy sólo se puede mirar (ver la vista de depuración, `KEYBINDS.avatarDebug`).
+ *
+ * No es el muñeco de las dianas con más polígonos: es **la misma anatomía**. Las
+ * tres zonas —cabeza, torso, piernas— salen de `TARGET_TYPES.hitbox.parts`, así
+ * que si un día cambia dónde empieza el torso, cambia en los dos sitios a la
+ * vez. Lo que añade el avatar es lo que una diana no necesita: brazos, hombros,
+ * articulaciones y las costuras.
+ *
+ * **Estética robot/eléctrica, y sin luces en la escena.** Todo el juego se dibuja
+ * con materiales planos, así que el volumen no lo puede dar una luz: lo dan las
+ * facetas —cada pieza con su tono— y las **costuras**, líneas brillantes por las
+ * aristas y por el centro del cuerpo, que es lo que sugiere circuitería y lo que
+ * emparenta el modelo con la carga eléctrica del escudo.
+ */
+export const AVATAR = {
+  /**
+   * Color base. **Una variable, no un sistema de skins**: eso depende de
+   * economía y cuentas, que no existen. Cambiarlo aquí cambia el avatar entero;
+   * los tonos de las piezas salen de éste.
+   */
+  color: '#2E6F8E',
+  /** Costuras y núcleo: el azul eléctrico que también llevará el escudo. */
+  seamColor: '#6FE0FF',
+  /**
+   * Tonos por pieza, como factor de brillo sobre el color base. Sin luces, esto
+   * es lo único que separa un brazo del torso al mirarlos de frente.
+   */
+  shades: { chest: 1, limb: 0.62, joint: 0.34, boot: 0.26 },
+  /**
+   * Anchos del cuerpo, en fracciones del radio del torso (ver hitbox). Salieron
+   * de mirar el modelo, no de la teoría: con los brazos pegados al pecho y las
+   * piernas juntas, de frente era un bloque, y con el pecho plano de perfil era
+   * una plancha.
+   */
+  chestWidth: 1.36,
+  chestDepth: 1.12,
+  shoulderWidth: 2.5,
+  armRadius: 0.26,
+  armGap: 0.22,
+  legGap: 0.62,
+  legRadius: 0.3,
+  /** Cuello: lo que separa la cabeza de los hombros. */
+  neckHeight: 0.22,
+  /** El núcleo del pecho, en fracciones del radio del torso. */
+  coreRadius: 0.34,
+  /** Vista de depuración: distancia de la cámara y vueltas por minuto. */
+  debugDistance: 3.2,
+  debugHeight: 1.15,
+  debugRpm: 4,
 }
 
 /** Render. */

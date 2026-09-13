@@ -642,6 +642,11 @@ body {
   gap: 16px;
   align-items: stretch;
   min-width: 460px;
+  /* Y tope de ancho: el panel es una columna que se ajusta a su contenido, y el
+     ancho natural de un párrafo es el de su línea sin partir. La pista de
+     Controles, que es larga, lo estiraba a 1165 px y de paso encogía las
+     miniaturas del selector. El texto se parte, el panel no crece. */
+  max-width: 640px;
   text-align: left;
   /* Con tantas filas, en pantallas bajas el panel no cabía y quedaban fuera
      tanto los primeros ajustes como los botones del final. */
@@ -819,6 +824,103 @@ body {
 
 .segmented__option[aria-pressed='true'] {
   border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+/* La vista del avatar no es un menú: sólo deja un rótulo abajo y no tapa nada,
+   que para eso se abre — para mirar el modelo. */
+.overlay--bare {
+  align-items: flex-end;
+  padding-bottom: 42px;
+  background: none;
+  pointer-events: none;
+}
+
+/* ---------- Controles ---------- */
+
+.binds {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.binds__group {
+  margin: 8px 0 2px;
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  opacity: 0.7;
+}
+
+.bind {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.bind__label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+}
+
+/* «sin efecto todavía», «contextual»: son notas sobre la acción, no parte de su
+   nombre, así que se leen más bajo y más pequeño. */
+.bind__tag {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  opacity: 0.75;
+}
+
+.bind__keys {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bind__extra {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.bind__key {
+  min-width: 104px;
+  padding: 5px 10px;
+  border: 1px solid var(--panel-border);
+  background: transparent;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.bind__key:hover,
+.bind__key:focus-visible {
+  border-color: var(--accent-color);
+  outline: none;
+}
+
+/* Capturando: el botón se enciende con el acento para que quede claro que la
+   siguiente tecla se la lleva él y no el juego. */
+.bind__key[aria-pressed='true'] {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+.bind__error {
+  flex-basis: 100%;
+  font-size: 10px;
   color: var(--accent-color);
 }
 

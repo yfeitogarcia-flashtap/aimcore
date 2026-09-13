@@ -55,8 +55,11 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Transición | `src/game/transition.js` | **Módulo sustituible entero.** Contrato único: `run(build)` tapa la escena, llama a `build()` y destapa. Nada más del motor sabe qué forma tiene. |
 | React | `src/App.jsx`, `src/ui/` | Sólo conoce la *fase* (inicio / juego / pausa / resumen) y el resumen final. |
 | HUD | `src/ui/Hud.jsx` | Se actualiza **imperativamente por refs** desde el bucle. Cero `setState` por frame. |
+| Avatar | `src/game/avatar.js` | Modelo humanoide del jugador. Geometría, sin lógica. |
+| Música | `src/audio/music.js` | Ambiente de menús, generado. Su propio volumen. |
 | Config | `src/config.js` | Todo el tuning, sin excepción. |
 | Ajustes | `src/settings.js` | Store + persistencia en localStorage + saneado. |
+| Teclas | `src/keybinds.js` | Store de binds: mismo patrón que los ajustes, almacén aparte. |
 
 **El bucle caliente no asigna memoria.** Vectores temporales a nivel de módulo,
 pools fijos de objetos, geometrías reutilizadas, `THREE.Vector2(0,0)` constante
@@ -313,6 +316,24 @@ sí—, y como los dos trazados salen de la misma imagen comparten `viewBox` y s
 superponen solos. Es el único sitio del pipeline donde el color decide algo, y
 decide **partir** una imagen en dos, no inventar una forma.
 
+**El avatar comparte anatomía con el muñeco de puntería.** Cabeza, torso y
+piernas salen de las medidas de `TARGET_TYPES.hitbox.parts`, así que el modelo
+del jugador **es** la representación visual del sistema de zonas que ya existe, no
+un segundo muñeco con sus propias proporciones. Lo que añade es lo que una diana
+no necesita: hombros, brazos, articulaciones, cuello y botas.
+
+Y **sin texturas, porque en esta escena no hay ni una luz**: todo se dibuja con
+materiales planos, así que el volumen lo dan las facetas con su tono y las
+costuras —líneas brillantes por las aristas— que además son lo que sugiere
+circuitería. Una textura aquí no se vería. El color es **una variable**
+(`AVATAR.color`) y no un sistema de skins: eso depende de economía y cuentas, que
+no existen. Las piezas eléctricas —visor y núcleo— no se tiñen: son la identidad
+del modelo.
+
+La vista de depuración (F3) sólo se abre **fuera de una sesión en marcha**: la
+cámara es del jugador y el cronómetro corre, y mirarse el modelo no puede costar
+segundos de ronda.
+
 **Lo que se dibuja de unos datos no se guarda como imagen.** La miniatura de
 cada escenario se dibuja en SVG desde `SCENARIOS`, con `coverHeight` y
 `coverEdgeColor` compartidos con la escena 3D. Una captura se desincroniza en
@@ -332,6 +353,20 @@ sonido queda clavado en el origen.
 
 Con panner, el volumen por distancia lo aplica **sólo** el panner: pasar además
 la curva manual sería atenuar dos veces.
+
+**La música va por su propio nodo y sólo suena en los menús.** Generada, como
+todo el audio: ni un fichero, y sin bucle que se reconozca a la tercera vuelta.
+Se calla al empezar a jugar —durante la partida el audio es información— y vuelve
+al pausar. Dos trampas, las dos con su cicatriz:
+
+- **El contexto de audio no arranca sin gesto**, y `resume()` es asíncrono:
+  preguntar por `ctx.state` justo después devuelve todavía `suspended`. Se espera
+  al **cambio de estado**, no sólo al gesto, o la música no suena hasta el
+  segundo click.
+- **`disposeAudio()` cierra el contexto y el siguiente `initAudio()` crea otro.**
+  Una espera armada sobre el viejo no se entera de nada nunca más. Por eso se
+  guarda *sobre qué contexto* se está esperando y no un booleano. Pasa de verdad:
+  React en modo estricto monta, desmonta y vuelve a montar.
 
 **El gatillo en seco suena también durante la recarga, y no es un detalle.** La
 última bala arranca la recarga sola (`_consumeAmmo`), así que «cargador vacío y
@@ -453,6 +488,34 @@ tolerancia** (`tolerance = min(1, interval * 0.1)`), no salto crudo de frames.
 Sin la tolerancia, un tope igual al refresco del monitor lo parte por la mitad
 (tick de 4.166 ms contra objetivo de 4.167 ms).
 
+**Las teclas son un mapa único en `KEYBINDS`, y el store las sanea como los
+ajustes.** Antes estaban repartidas entre `MOVEMENT.keys`, `WEAPON_KEYS` y
+`OBJECTIVE.defuseKeys`, con tres formatos; ahora hay un bloque con una entrada
+por acción, y `src/keybinds.js` hace con ellas lo que `settings.js` hace con los
+ajustes: cargar, sanear, avisar. Cuatro cosas que sostienen el sistema:
+
+- **La invariante es «dos acciones nunca comparten tecla», y se mantiene
+  saneando**, no comprobando al asignar: lo que llega de localStorage se recorre
+  en orden y lo que choca cae a su valor de fábrica; si ése también está cogido,
+  la acción se queda **sin asignar** antes que duplicada.
+- **Ctrl, Alt y Meta no son asignables, ni sueltos ni en combinación.** Es la
+  regla de la vuelta 27 —Ctrl+W cierra la pestaña— convertida en código: el
+  saneado rechaza el modificador y la captura del panel rechaza la combinación,
+  que el código de tecla por sí solo no delata (Ctrl+Z manda `KeyZ`).
+- **`extra` son cortesías, no binds.** Las flechas y el Shift derecho funcionan
+  y no se pueden reasignar ni perder; el panel las enseña como alternativas. Sin
+  eso, unificar los binds habría quitado en silencio las flechas.
+- **La acción contextual es una sola acción.** `use` desactiva el explosivo
+  dentro de su radio y **nunca hace nada más ahí dentro**; fuera equipa el
+  artilugio. Dos acciones peleándose por la misma tecla es como se pierde una
+  ronda por un reflejo. El radio lo decide `objective.isPlayerInRange`, no una
+  segunda cuenta en el motor.
+
+**Hay teclas reservadas sin lógica, y es a propósito.** 1-5 para equipar, G para
+el arrojadizo. El mapa de controles tiene que ser el definitivo desde el
+principio: si se añaden cuando existan las mecánicas, alguien ya habrá puesto ahí
+su bind favorito. El panel las marca «sin efecto todavía».
+
 **Una suite sin aserciones no es una prueba, es un informe.** `baja.mjs` imprimía
 «se sube en 12/12» y salía en verde pasara lo que pasara; con aserciones de
 verdad cazó a la primera una regresión de 12/12 a 0/12. Si un test no puede
@@ -517,6 +580,23 @@ eje cada vez, con soporte de suelo y rampas), los **disparos se paran en la
 cobertura**, y la **distancia de aparición no se aplica**. El **modo dinámico**
 sólo mueve a los muñecos *hitbox*, que patrullan por su ruta; clásica y cono se
 quedan en su punto, porque un destino aleatorio las metería dentro de un muro.
+
+**Controles reasignables:** un mapa único en `KEYBINDS` con las acciones que
+funcionan hoy —movimiento, salto, agachado, caminar, disparar, recargar, cambiar
+de arma, silenciador y la contextual **E**— y las **reservadas sin lógica**: 1-5
+para equipar principal / pistola / cuerpo a cuerpo / escudo / artilugio, y **G**
+para el arrojadizo. Sección **Controles** en opciones: tecla actual, reasignar
+capturando la siguiente pulsación, botón por acción y por lo general.
+Persistido en `aimcore.keybinds.v1` con saneado. **Escape queda fuera del
+sistema** y el panel lo dice.
+
+**Música de menús:** ambiente generado en tiempo real (`src/audio/music.js`),
+con su propio volumen en opciones. Suena en inicio, opciones y pausa; se calla al
+jugar.
+
+**Avatar del jugador (sólo visual):** humanoide de veintidós piezas con la
+anatomía del hitbox, facetas planas y costuras eléctricas. Color en una variable.
+**F3** abre una vista en tercera persona que orbita el modelo, fuera de partida.
 
 **Movimiento:** WASD, tres marchas (correr / SHIFT andar / **C** agachado —CTRL
 no, ver convenciones—, gana la más lenta), salto sin doble salto **resuelto en forma cerrada** —misma

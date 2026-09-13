@@ -2580,6 +2580,118 @@ valen esté como esté el config.
 
 ---
 
+## Ronda 33 — Teclas, música y un cuerpo
+
+### 33.1 El bind no se valida al asignar: se sanea
+
+La tentación con un mapa de teclas es comprobar el choque en el panel —«esa
+tecla ya la tiene Saltar»— y darlo por resuelto. Es el mismo error que ya se
+había cometido con los ajustes: el panel no es la única puerta. `localStorage`
+se edita a mano, sobrevive a cambios de catálogo y es lo primero que se lee al
+arrancar.
+
+Así que la invariante —**dos acciones nunca comparten tecla**— vive en
+`sanitizeKeybinds()`, no en la interfaz. Lo guardado se recorre en orden de
+catálogo; lo que choca cae a su valor por defecto, y **si el defecto también
+está cogido la acción se queda sin asignar (`null`)** antes que duplicada. Las
+alternativas fijas (flechas, MAYÚS derecha) se reservan antes de mirar nada de
+lo guardado: son del juego, no del jugador, y no se pueden perder por lo que
+hubiera en el almacén.
+
+`bindConflict` existe igual, pero es lo que el panel usa para **explicar** el
+rechazo; no es lo que lo garantiza. Medido en `binds.mjs`: basura, números,
+nulos, un modificador escrito a mano y un `Escape` inyectado caen todos, y dos
+acciones con `KeyS` guardado dejan la segunda sin asignar.
+
+**Ctrl no es una preferencia.** La regla de la vuelta 27 —Ctrl+W cierra la
+pestaña y el navegador lo resuelve antes que la página— dejaría de valer en
+cuanto alguien pudiera asignar una acción a una combinación. En la primera
+versión de esta ronda la regla existía sólo en mi diseño: capturando, Ctrl+Z se
+aceptaba tan contento. Está ahora en `captureConflict()`, en el almacén y no en
+el componente, junto a Alt y Mayús.
+
+### 33.2 E es una acción, no dos
+
+El encargo se puede leer como dos binds —«desactivar» y «equipar ultimate»— que
+por casualidad comparten tecla. Con dos, la invariante de arriba los tendría que
+separar, y el jugador acabaría con dos filas en el panel para una sola tecla.
+
+Es **una** acción (`use`) con dos destinos, y quien decide cuál es el mundo:
+dentro del radio del explosivo desactiva, fuera equipa. La condición sale de
+`objective.isPlayerInRange(camera)` —una sola fuente, la misma que usa la
+desactivación— y la prioridad es dura: dentro del radio E **nunca** hace otra
+cosa. El hueco reservado es un método vacío en el motor (`_equipUltimate`), que
+es lo que se pidió: la tecla, no la lógica.
+
+### 33.3 Dos trampas del contexto de audio, las dos silenciosas
+
+La música no arrancaba tras el primer gesto, y no por una sino por dos cosas:
+
+- **`resume()` es asíncrono.** Mirar `ctx.state` justo después de llamarlo
+  devuelve todavía `suspended`, así que el arranque se daba por imposible y no
+  se reintentaba. Se espera al evento `statechange`, no al retorno.
+- **El contexto puede cambiar por debajo.** `disposeAudio()` lo cierra y el
+  siguiente `initAudio()` crea otro; con React en modo estricto eso pasa en el
+  primer montaje. La espera se quedaba enganchada a un contexto muerto. Se
+  guarda **a qué contexto** se está esperando (`waitingOn`) y se rearma si es
+  otro.
+
+La música cuelga de su **propio nodo de ganancia** directo a `ctx.destination`,
+no del máster de efectos: su volumen es un ajuste aparte y bajar la música no
+puede bajar los disparos. Medido: pico de 0.6262 en el máster de música, y el
+ajuste llega a 0 sin tocar los efectos.
+
+Y el diagnóstico de la primera medición fue falso: había editado `music.js` con
+el servidor de desarrollo corriendo y HMR me había duplicado el módulo, que es
+exactamente la trampa anotada en `CLAUDE.md` §4. Reiniciar antes de creerse un
+resultado raro sigue siendo más barato que depurarlo.
+
+### 33.4 El avatar comparte anatomía con el muñeco, y no lleva luces
+
+El modelo nuevo **no** inventa una anatomía: las tres zonas salen de
+`TARGET_TYPES.hitbox.parts`, las mismas que ya reparten el daño. Es la
+representación visual de ese sistema, así que copiar las medidas a mano habría
+creado dos verdades que se desincronizan en cuanto alguien toque una.
+
+Sin texturas y **sin luces** —la escena no tiene ninguna— el volumen no puede
+venir de sombreado, así que viene de dos cosas: una rampa de tonos del mismo
+color por tipo de pieza (`AVATAR.shades`) y **costuras** (`EdgesGeometry` a 25°)
+sobre casi cada pieza. Medido: 22 mallas, 21 juegos de costuras, 5 tonos y 0
+texturas.
+
+`setColor()` reparte sólo entre las piezas que llevan tono; el visor y el núcleo
+—lo eléctrico— se quedan como están. Es lo que hace que el color sea
+personalizable sin que el modelo pierda su identidad, y el motivo de que la
+parte eléctrica no sea un tono más de la rampa.
+
+La primera pasada salió con los brazos y las piernas fundidos en el torso y de
+perfil plana: separarlos (`legGap` 0.42 → 0.62, `armGap`, `shoulderWidth` 2.15 →
+2.5) y darle fondo al pecho (`chestDepth` 0.86 → 1.12) es lo que hizo que se
+leyera como un cuerpo. Sin luces, lo que separa dos piezas es que se vea el
+hueco.
+
+**F3 sólo fuera de partida.** La vista orbital apaga movimiento y mirada y
+aparta los paneles; con el cronómetro corriendo eso sería una forma de parar el
+juego sin pausarlo, así que durante la sesión la tecla no hace nada. Y el avatar
+no entra en el sistema de dianas: es geometría, no un objetivo.
+
+### 33.5 Un párrafo largo ensanchaba el panel
+
+El panel de opciones es una columna que se ajusta a su contenido, y el ancho
+natural de un párrafo es el de su línea **sin partir**. La pista de Controles
+—tres frases— lo estiró de 558 a 1165 px, y de paso encogió a la mitad las
+miniaturas del selector de escenario, que se reparten ese ancho. Lo cazó
+`round28.mjs`, que medía justamente esa proporción. El arreglo es un
+`max-width` en el panel: el texto se parte, el panel no crece.
+
+El mismo test falló además por algo que no era un fallo: cuenta los botones
+«por defecto» del panel y ahora los de Controles comparten estilo con los de
+los ajustes. Se acotó el selector a las filas de ajuste y se le añadió la
+cuenta que faltaba —uno por acción—, que es lo que el test quería decir desde
+el principio.
+
+---
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

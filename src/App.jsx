@@ -9,6 +9,8 @@ import {
 import { COLORS, MOVEMENT, SESSION_DURATION_S, WEAPONS } from './config.js'
 import { Engine, PHASE } from './game/engine.js'
 import { disposeAudio } from './audio/sfx.js'
+import { setMusicVolume, startMusic, stopMusic } from './audio/music.js'
+import { getKeybinds, subscribeKeybinds } from './keybinds.js'
 import { getSettings, resetSettings, subscribeSettings, updateSettings } from './settings.js'
 import Crosshair from './ui/Crosshair.jsx'
 import { VektorLogo } from './ui/Logo.jsx'
@@ -34,9 +36,13 @@ export default function App() {
   const [summary, setSummary] = useState(null)
   const [engineError, setEngineError] = useState(null)
   const [optionsOpen, setOptionsOpen] = useState(false)
+  /** Vista del avatar: mientras está abierta, los paneles se apartan. */
+  const [avatarDebug, setAvatarDebug] = useState(false)
 
   // El store de ajustes vive fuera de React porque el motor también lo lee.
   const settings = useSyncExternalStore(subscribeSettings, getSettings)
+  // Y el de teclas, por lo mismo: lo escribe el panel y lo lee el motor.
+  const binds = useSyncExternalStore(subscribeKeybinds, getKeybinds)
 
   // La paleta vive en config.js; aquí sólo la publicamos como variables CSS
   // para que las hojas de estilo no repitan ningún color a mano.
@@ -61,6 +67,7 @@ export default function App() {
         onShot: () => crosshairRef.current?.flash(),
         onHelp: (text, durationMs) => hudRef.current?.showHelp(text, durationMs),
         onOpenOptions: () => setOptionsOpen(true),
+        onAvatarDebug: setAvatarDebug,
         onFinish: setSummary,
       })
       engine.start()
@@ -82,6 +89,19 @@ export default function App() {
       if (import.meta.env.DEV) delete window.aimcore
     }
   }, [])
+
+  // La música acompaña a los menús y se calla al jugar: durante la partida el
+  // audio es información —el pitido del explosivo— y una base encima estorba.
+  // Se apaga también si no hay WebGL: ahí no hay nada que acompañar.
+  useEffect(() => {
+    if (engineError || phase === PHASE.RUNNING) stopMusic()
+    else startMusic()
+  }, [phase, engineError])
+
+  useEffect(() => setMusicVolume(settings.musicVolume), [settings.musicVolume])
+
+  // Al desmontar se para antes de cerrar el contexto de audio, que es de los dos.
+  useEffect(() => () => stopMusic(), [])
 
   /** Captura el ratón: reanuda una pausada o arranca donde toque. */
   const lock = useCallback(() => {
@@ -113,6 +133,7 @@ export default function App() {
   const optionsPanel = (
     <Options
       settings={settings}
+      binds={binds}
       onChange={updateSettings}
       onReset={resetSettings}
       onClose={closeOptions}
@@ -148,7 +169,13 @@ export default function App() {
         </div>
       )}
 
-      {!engineError && phase === PHASE.IDLE && (
+      {avatarDebug && (
+        <div className="overlay overlay--bare">
+          <p className="panel__hint">Vista del avatar · F3 para salir</p>
+        </div>
+      )}
+
+      {!engineError && !avatarDebug && phase === PHASE.IDLE && (
         // Con las opciones abiertas el overlay deja de capturar el ratón: sería
         // desconcertante que tocar un slider arrancara la partida.
         <div className="overlay" onMouseDown={optionsOpen ? undefined : lock}>
@@ -198,7 +225,7 @@ export default function App() {
         </div>
       )}
 
-      {phase === PHASE.PAUSED && (
+      {!avatarDebug && phase === PHASE.PAUSED && (
         <div className="overlay" onMouseDown={optionsOpen ? undefined : lock}>
           {optionsOpen ? (
             optionsPanel
@@ -231,7 +258,7 @@ export default function App() {
         </div>
       )}
 
-      {phase === PHASE.FINISHED && summary && (
+      {!avatarDebug && phase === PHASE.FINISHED && summary && (
         <div className="overlay">
           <Summary summary={summary} onRestart={restart} onBackToStart={backToStart} />
         </div>

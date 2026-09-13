@@ -197,6 +197,16 @@ export class Objective {
     return null
   }
 
+  /**
+   * ¿Está el jugador a tiro de desactivar? Lo pregunta la acción contextual: es
+   * lo que decide si `use` desactiva o saca el artilugio, y tiene que salir de
+   * **aquí** —mismo radio, misma distancia horizontal— y no de una segunda
+   * cuenta en el motor que un día se separe de ésta.
+   */
+  isPlayerInRange(camera) {
+    return this.active && this._distanceTo(camera) <= OBJECTIVE.defuseRadius
+  }
+
   /** Distancia horizontal del jugador al explosivo. La altura no cuenta. */
   _distanceTo(camera) {
     _playerXZ.set(camera.position.x - this.group.position.x, 0, camera.position.z - this.group.position.z)

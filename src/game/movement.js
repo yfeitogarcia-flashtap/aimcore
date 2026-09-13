@@ -54,6 +54,7 @@
  */
 
 import { COVER, LANDING, MOVEMENT, ROOM } from '../config.js'
+import { defaultKeybinds, keysOf } from '../keybinds.js'
 
 const DEG_TO_RAD = Math.PI / 180
 const TWO_PI = Math.PI * 2
@@ -65,11 +66,18 @@ const TWO_PI = Math.PI * 2
  */
 const CLIP_EPSILON = 1e-9
 
-/** Invierte MOVEMENT.keys a un mapa código de tecla -> acción. */
-function buildKeyMap(keys) {
+/** Las siete acciones del movimiento, tal como se llaman en `KEYBINDS`. */
+const MOVEMENT_ACTIONS = ['forward', 'back', 'left', 'right', 'jump', 'walk', 'crouch']
+
+/**
+ * Invierte los binds a un mapa código de tecla -> acción, con las alternativas
+ * fijas incluidas. Sólo se queda con las acciones del movimiento: las de arma y
+ * las de equipo las atiende el motor.
+ */
+function buildKeyMap(binds) {
   const map = new Map()
-  for (const action of Object.keys(keys)) {
-    for (const code of keys[action]) map.set(code, action)
+  for (const action of MOVEMENT_ACTIONS) {
+    for (const code of keysOf(action, binds)) map.set(code, action)
   }
   return map
 }
@@ -82,7 +90,9 @@ export class MovementController {
     this.camera = camera
     this.enabled = false
 
-    this.keyMap = buildKeyMap(MOVEMENT.keys)
+    // Arranca con los de fábrica; el motor empuja los del jugador en cuanto
+    // existe, igual que hace con los ajustes.
+    this.keyMap = buildKeyMap(defaultKeybinds())
     this.keys = {
       forward: false,
       back: false,
@@ -216,6 +226,16 @@ export class MovementController {
   setEnabled(value) {
     this.enabled = value && MOVEMENT.enabled
     if (!this.enabled) this.releaseKeys()
+  }
+
+  /**
+   * Adopta una asignación de teclas nueva. Se sueltan todas: una tecla que
+   * estuviera pulsada con el mapa viejo no va a soltarse nunca con el nuevo, y
+   * el jugador se quedaría andando solo.
+   */
+  setKeybinds(binds) {
+    this.keyMap = buildKeyMap(binds)
+    this.releaseKeys()
   }
 
   releaseKeys() {
@@ -945,7 +965,7 @@ export class MovementController {
     const action = this.keyMap.get(event.code)
     if (!action) return
     // Corta el scroll con espacio y flechas. No alcanza a Ctrl+W: ese atajo se
-    // lo queda Chrome (ver el comentario de MOVEMENT.keys en config.js).
+    // lo queda Chrome (ver el comentario de KEYBINDS en config.js).
     event.preventDefault()
     this.keys[action] = true
     // La marca del salto sale del **evento**, no del frame que lo atiende:

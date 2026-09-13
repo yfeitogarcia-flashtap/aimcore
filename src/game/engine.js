@@ -16,6 +16,7 @@ import { CSS3DRenderer } from 'three/examples/jsm/renderers/CSS3DRenderer.js'
 import {
   ACCURACY,
   ACTION_PANEL,
+  AVATAR,
   CAMERA,
   COVER,
   FRAME_LIMITS,
@@ -25,7 +26,7 @@ import {
   RECOIL_RESET_MS,
   RENDER,
   SESSION_DURATION_S,
-  WEAPON_KEYS,
+  TARGET,
   WEAPONS,
 } from '../config.js'
 import { createScene } from './scene.js'
@@ -48,7 +49,9 @@ import {
 } from '../audio/sfx.js'
 import { attachListener, detachListener, setSpatialEnabled } from '../audio/spatial.js'
 import { ActionPanel } from './actionPanel.js'
+import { Avatar } from './avatar.js'
 import { getSettings, subscribeSettings, updateSettings } from '../settings.js'
+import { eventCode, getKeybinds, keysOf, subscribeKeybinds } from '../keybinds.js'
 
 /** Centro exacto de la pantalla: el crosshair no se mueve, así que es constante. */
 const SCREEN_CENTER = new THREE.Vector2(0, 0)
@@ -167,6 +170,18 @@ export class Engine {
     this.actionPanel = new ActionPanel(this.scene, this.cssScene)
     this.actionPanel.setAnchor(this.scenario.spawn, this.scenario.room)
     this.targets.setRoutes(this.scenario.routes, this.scenario.points, this.scenario.occluders, this.scenario.room)
+    /**
+     * Asignación de teclas vigente. El motor la lee para sus acciones y se la
+     * empuja al movimiento, igual que hace con los ajustes: los subsistemas no
+     * van a buscar el store por su cuenta.
+     */
+    this._binds = getKeybinds()
+    this.movement.setKeybinds(this._binds)
+    this._unsubscribeKeybinds = subscribeKeybinds((binds) => {
+      this._binds = binds
+      this.movement.setKeybinds(binds)
+    })
+
     /** Última activación del panel, para el antirrebote. */
     this._lastPanelActionAt = -Infinity
     /** Si la pulsación en curso ya se gastó en el panel, no dispara. */
@@ -305,8 +320,10 @@ export class Engine {
     this.controls.disconnect()
     this.movement.disconnect()
     if (this._unsubscribeSettings) this._unsubscribeSettings()
+    if (this._unsubscribeKeybinds) this._unsubscribeKeybinds()
     if (this._resizeObserver) this._resizeObserver.disconnect()
     if (document.pointerLockElement === this.canvas) document.exitPointerLock()
+    this.avatar?.dispose()
     this.actionPanel.dispose()
     this.cssRenderer.domElement.remove()
     this.targets.dispose()
@@ -620,8 +637,7 @@ export class Engine {
   }
 
   _onMouseDown(event) {
-    // Sólo botón izquierdo.
-    if (event.button !== 0) return
+    if (!this._isBind('shoot', event)) return
 
     // Sin el ratón capturado, el click sirve para capturarlo: no dispara.
     // Así el click que arranca (o reanuda) la sesión nunca cuenta como fallo,
@@ -663,8 +679,17 @@ export class Engine {
   }
 
   _onMouseUp(event) {
-    if (event.button !== 0) return
+    if (!this._isBind('shoot', event)) return
     this._releaseTrigger()
+  }
+
+  /**
+   * ¿Este evento —de teclado o de ratón— es la acción pedida? Un solo sitio
+   * donde se compara input contra binds, y usa el mismo vocabulario de códigos
+   * que el panel de controles.
+   */
+  _isBind(action, event) {
+    return keysOf(action, this._binds).includes(eventCode(event))
   }
 
   /**
@@ -710,21 +735,125 @@ export class Engine {
   }
 
   _onKeyUp(event) {
-    if (OBJECTIVE.defuseKeys.includes(event.code)) this._defuseHeld = false
+    if (this._isBind('use', event)) this._defuseHeld = false
   }
 
   _onKeyDown(event) {
+    // La vista del avatar es de depuración: se abre esté como esté la partida,
+    // que para eso existe — inspeccionar el modelo sin montar un multijugador.
+    if (this._isBind('avatarDebug', event) && !event.repeat) {
+      event.preventDefault()
+      this._toggleAvatarDebug()
+      return
+    }
     if (this.phase !== PHASE.RUNNING || !this.isLocked || event.repeat) return
 
-    if (OBJECTIVE.defuseKeys.includes(event.code)) {
+    // **La acción contextual.** Dentro del radio del explosivo, `use` desactiva
+    // y no hace nada más: que ahí dentro sacara un artilugio sería perder la
+    // ronda por un reflejo. Fuera del radio equipa el lanzacohetes, que todavía
+    // no existe — la tecla está reservada y el hueco, hecho.
+    if (this._isBind('use', event)) {
       event.preventDefault()
       this._defuseHeld = true
+      if (!this.objective.isPlayerInRange(this.camera)) this._equipUltimate()
       return
     }
 
-    if (!WEAPON_KEYS.reload.includes(event.code)) return
-    event.preventDefault()
-    this._startReload(performance.now())
+    if (this._isBind('reload', event)) {
+      event.preventDefault()
+      this._startReload(performance.now())
+      return
+    }
+
+    if (this._isBind('cycleWeapon', event)) {
+      event.preventDefault()
+      this._runPanelAction('weapon')
+      return
+    }
+
+    if (this._isBind('suppressor', event)) {
+      event.preventDefault()
+      this._runPanelAction('suppressor')
+    }
+  }
+
+  /**
+   * Equipar el lanzacohetes/ultimate. **Reservado**: la tecla existe y el hueco
+   * está hecho, pero no hay artilugio que equipar todavía. Se deja como función
+   * y no como comentario suelto para que el día que exista se vea de dónde
+   * cuelga — y para que la acción contextual ya tenga sus dos ramas escritas.
+   */
+  _equipUltimate() {}
+
+  /**
+   * **Vista del avatar** (depuración). Planta el modelo delante y gira la cámara
+   * a su alrededor, para poder mirarlo sin esperar a que exista el multijugador.
+   *
+   * Sólo fuera de una sesión en marcha: durante la partida la cámara es del
+   * jugador y el cronómetro corre, y una vista de depuración no puede costar
+   * segundos de ronda. Con la partida parada —inicio, pausa o resumen— no hay
+   * nada que estropear.
+   */
+  _toggleAvatarDebug() {
+    if (this._avatarDebug) {
+      this._exitAvatarDebug()
+      return
+    }
+    if (this.phase === PHASE.RUNNING) return
+    this._enterAvatarDebug()
+  }
+
+  _enterAvatarDebug() {
+    if (!this.avatar) {
+      this.avatar = new Avatar(TARGET.radius)
+      this.scene.add(this.avatar.group)
+    }
+    // Se planta en el punto de aparición, mirando al sitio desde el que se le va
+    // a mirar: la cámara orbita, el modelo no se mueve.
+    const spawn = this.scenario.spawn
+    const ground = this.scenario.groundHeightAt(spawn.x, spawn.z, 0)
+    this.avatar.group.position.set(spawn.x, ground, spawn.z)
+    this.avatar.group.visible = true
+
+    this._avatarDebug = true
+    this._avatarAngle = 0
+    // Se guarda la cámara entera para devolverla exactamente donde estaba.
+    this._cameraBeforeDebug = {
+      position: this.camera.position.clone(),
+      rotation: this.camera.rotation.clone(),
+    }
+    this.controls.enabled = false
+    this.movement.setEnabled(false)
+    this.callbacks.onAvatarDebug?.(true)
+  }
+
+  _exitAvatarDebug() {
+    this._avatarDebug = false
+    if (this.avatar) this.avatar.group.visible = false
+    const saved = this._cameraBeforeDebug
+    if (saved) {
+      this.camera.position.copy(saved.position)
+      this.camera.rotation.copy(saved.rotation)
+      this.camera.updateMatrixWorld()
+    }
+    this._cameraBeforeDebug = null
+    this.controls.enabled = this.isLocked
+    this.movement.setEnabled(this.phase === PHASE.RUNNING)
+    this.callbacks.onAvatarDebug?.(false)
+  }
+
+  /** Órbita lenta alrededor del avatar. Sólo corre con la vista abierta. */
+  _updateAvatarDebug(deltaSeconds) {
+    this._avatarAngle += (AVATAR.debugRpm / 60) * Math.PI * 2 * deltaSeconds
+    const target = this.avatar.group.position
+    const distance = AVATAR.debugDistance
+    this.camera.position.set(
+      target.x + Math.sin(this._avatarAngle) * distance,
+      target.y + AVATAR.debugHeight,
+      target.z + Math.cos(this._avatarAngle) * distance,
+    )
+    this.camera.lookAt(target.x, target.y + AVATAR.debugHeight * 0.78, target.z)
+    this.camera.updateMatrixWorld()
   }
 
   /** Suelta el gatillo y deja el patrón de retroceso listo para otra ráfaga. */
@@ -995,6 +1124,10 @@ export class Engine {
 
     // En pausa el delta va a cero: las dianas se congelan con el cronómetro,
     // pero los pops en curso siguen apagándose porque van con `now`.
+    // La vista del avatar se lleva la cámara mientras esté abierta. Va después
+    // del movimiento y antes de dibujar, como cualquier otra cosa que la mueva.
+    if (this._avatarDebug) this._updateAvatarDebug(delta / 1000)
+
     const targetDelta = this.phase === PHASE.RUNNING ? delta / 1000 : 0
     this.targets.update(now, targetDelta, this.camera)
     this._updateObjective(now, targetDelta)

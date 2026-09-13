@@ -26,6 +26,8 @@ Abre la URL que imprime Vite, haz click en el canvas y a disparar.
 - **Click** sobre el canvas: captura el ratón (Pointer Lock) y arranca la sesión.
 - **Click izquierdo**: disparar.
 - **R**: recargar. Funciona también con el cargador a medias.
+- **Q** cambia de arma, **B** conmuta el silenciador, **E** es la acción
+  contextual. Todo esto se reasigna — ver *Controles reasignables*.
 - **Escape**: suelta el ratón y **pausa** el cronómetro. En la pantalla de pausa
   hay un botón **Reanudar**, y también vale un click en cualquier sitio.
 
@@ -65,6 +67,71 @@ Sólo con la variante de movimiento activa (`MOVEMENT.enabled`):
 > Ctrl+A/S/D sí se pueden neutralizar, pero con W no. Si aun así prefieres CTRL,
 > es añadir `'ControlLeft'` y `'ControlRight'` a `MOVEMENT.keys.crouch`, con lo
 > que vuelve el cierre.
+
+## Controles reasignables
+
+Todo lo que se pulsa está en un solo sitio, `KEYBINDS` en `src/config.js`, y se
+puede cambiar desde **Opciones → Controles**: se pulsa la tecla actual y se
+captura la siguiente pulsación. Cada acción tiene su botón **por defecto**.
+
+| grupo | acciones |
+| --- | --- |
+| Movimiento | adelante, atrás, izquierda, derecha, saltar, agacharse, caminar |
+| Combate | disparar, recargar, cambiar de arma, silenciador, **usar / artilugio** |
+| Equipo | arma principal (1), pistola (2), cuerpo a cuerpo (3), escudo (4), artilugio (5), arrojadizo (G) |
+| Depuración | vista del avatar (F3) |
+
+Las de **Equipo** están **reservadas y no hacen nada todavía**: la tecla existe
+para que el mapa de controles sea el definitivo desde el principio y nadie se
+encuentre luego con que su bind favorito ya estaba cogido. El panel las marca.
+
+**E es una sola acción, no dos.** Dentro del radio de algo con lo que se puede
+interactuar —hoy el explosivo— **siempre** interactúa, y nada más: que ahí dentro
+sacara un artilugio es como se pierde una ronda. Fuera de ese radio equipará el
+lanzacohetes, que todavía no existe.
+
+Cuatro reglas que el sistema no se salta:
+
+- **Dos acciones no comparten tecla.** Ni reasignando, ni editando localStorage.
+- **Nada va en Ctrl, Alt o Meta**, ni suelto ni en combinación: **Ctrl+W cierra
+  la pestaña** y el navegador lo resuelve antes que la página.
+- **Escape no se reasigna**: es la pausa. El panel lo dice.
+- Lo guardado se **sanea** al cargar: un bind corrupto, desconocido o repetido
+  cae a su valor de fábrica.
+
+Las **flechas** y el **Shift derecho** siguen funcionando como alternativas
+fijas: no son binds y no se pueden perder.
+
+## Música
+
+Un ambiente sintetizado en tiempo real acompaña la pantalla de inicio, las
+opciones y la pausa, y **se calla al empezar a jugar** — durante la partida el
+audio es información (el pitido del explosivo, los disparos) y una base encima
+sólo estorba. Vuelve al pausar.
+
+No es un bucle grabado: **no hay ni un fichero de audio en el repositorio**, como
+con los efectos. La pieza se genera mientras suena —un colchón grave y notas
+sueltas de una pentatónica menor— así que no tiene costura ni se reconoce a la
+tercera vuelta. Tiene **su propio volumen** en el panel: bajarla a cero no toca
+los efectos.
+
+## Avatar del jugador
+
+El modelo que llevará quien juegue cuando haya multijugador. Hoy sólo se puede
+mirar: **F3** abre una vista en tercera persona que lo orbita, fuera de partida
+—con el cronómetro corriendo la cámara es del jugador—.
+
+No es el muñeco de las dianas con más polígonos: es **la misma anatomía**. Las
+tres zonas —cabeza, torso, piernas— salen de las mismas medidas que el hitbox, así
+que el avatar es la representación visual de ese sistema para cuando exista un
+rival de verdad. Lo que añade es lo que una diana no necesita: hombros, brazos,
+articulaciones, cuello y botas.
+
+**Sin texturas, y no por ahorrar:** en esta escena no hay ni una luz, así que el
+volumen lo dan las facetas con su tono y las **costuras** —líneas brillantes por
+las aristas— que de paso sugieren circuitería y emparentan el modelo con la carga
+eléctrica del escudo. El color es una variable (`AVATAR.color`), no un sistema de
+skins: eso depende de economía y cuentas, que no existen.
 
 ## Modos de sesión
 

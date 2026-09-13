@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import Controls from './Controls.jsx'
 import ScenarioThumbnail from './ScenarioThumbnail.jsx'
 import {
   FRAME_LIMITS,
@@ -265,7 +266,7 @@ function ToggleRow({ setting, value, onChange, hint }) {
   )
 }
 
-export default function Options({ settings, onChange, onReset, onClose }) {
+export default function Options({ settings, binds, onChange, onReset, onClose }) {
   return (
     <div className="panel panel--options" onMouseDown={(event) => event.stopPropagation()}>
       <h2 className="panel__title panel__title--small">Opciones</h2>
@@ -420,6 +421,20 @@ export default function Options({ settings, onChange, onReset, onClose }) {
             : 'Sin avisos: el HUD sólo muestra los contadores.'
         }
       />
+
+      <SliderRow
+        id="opt-music"
+        setting="musicVolume"
+        value={settings.musicVolume}
+        onChange={onChange}
+        hint={
+          settings.musicVolume === 0
+            ? 'Sin música en los menús.'
+            : 'Suena en inicio, opciones y pausa; se calla al empezar a jugar.'
+        }
+      />
+
+      <Controls binds={binds} />
 
       <div className="panel__actions">
         <button type="button" className="button button--primary" onClick={onClose} autoFocus>
