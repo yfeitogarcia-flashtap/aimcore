@@ -2019,13 +2019,17 @@ export const AVATAR = {
   shades: { chest: 1, limb: 0.62, joint: 0.34, boot: 0.26 },
 
   /**
-   * **La figura, medida sobre la referencia de estilo.**
+   * **La figura, medida sobre las referencias.**
    *
-   * Todo lo de aquí sale de medir `Reference/Avatar/player-avatar-style.png`
-   * píxel a píxel —barriendo la silueta fila a fila— y **no de elegir números
-   * bonitos**. Está en **fracciones de la altura total**, que es lo que hace
-   * que las proporciones aguanten aunque el muñeco cambie de tamaño: la altura
-   * la sigue poniendo `TARGET_TYPES.hitbox`, la forma la pone esto.
+   * Todo lo de aquí sale de medir píxel a píxel —barriendo la silueta fila a
+   * fila— y **no de elegir números bonitos**. Son dos referencias y cada una
+   * pone lo suyo: `player-avatar-style.png` es una vista frontal y de ahí salen
+   * `levels`, `widths`, `armX`, `legX` y el recorrido de las líneas;
+   * `player-avatar-turnaround.png` trae seis vistas y de sus dos perfiles sale
+   * `depths`, que hasta la vuelta 36 era lo único estimado. Está en
+   * **fracciones de la altura total**, que es lo que hace que las proporciones
+   * aguanten aunque el muñeco cambie de tamaño: la altura la sigue poniendo
+   * `TARGET_TYPES.hitbox`, la forma la pone esto.
    *
    * `levels` va desde el suelo (0) a la coronilla (1). `widths` es el ancho de
    * la pieza a esa altura. Los sitios donde una extremidad se estrecha y los
@@ -2080,6 +2084,11 @@ export const AVATAR = {
       forearm: 0.039,
       wrist: 0.030,
       hand: 0.050,
+      // Dedos: la mano mide 0.050 de ancho y son cuatro, así que el dedo sale
+      // en 0.0105 y la separación entre ejes en 0.0118.
+      finger: 0.0105,
+      fingerTip: 0.0078,
+      thumb: 0.015,
       // Pierna: 0.086 en la cadera, 0.058 antes de la rodilla, 0.086 en ella.
       thighTop: 0.086,
       thighNarrow: 0.058,
@@ -2088,20 +2097,111 @@ export const AVATAR = {
       calf: 0.065,
       ankle: 0.042,
       boot: 0.078,
+      // Talón: más estrecho que el antepié. Sale de la vista inferior, que es
+      // la primera que enseña la suela.
+      heel: 0.060,
     },
     /**
-     * Fondo de cada pieza respecto a su ancho. La referencia es una vista
-     * frontal, así que esto **no está medido**: son proporciones humanas
-     * normales, y es lo único de este bloque que no sale de la imagen.
+     * **Profundidad a cada altura, medida — por fin — sobre las dos vistas de
+     * perfil.**
+     *
+     * Hasta la vuelta 36 esto eran siete multiplicadores sobre el ancho («el
+     * torso es 0.74 de lo que mide de ancho») y era **lo único de `figure` que
+     * no salía de una imagen**: la referencia de estilo es una vista frontal, y
+     * de frente no hay profundidad que medir. Con las dos vistas de perfil de
+     * `Reference/Avatar/player-avatar-turnaround.png` esto pasa a las mismas
+     * unidades que `widths`: **fracciones de la altura total**, no factores.
+     *
+     * Lo que cambió al medirlo no es un retoque. El fondo del torso es **casi
+     * constante** de pecho a cadera (0.134 → 0.122) mientras el ancho hace un
+     * reloj de arena (0.202 → 0.134 → 0.195): un multiplicador único no puede
+     * dar eso, y por eso la cintura salía plana y la cadera hinchada. Y la bota
+     * medía 0.148 de largo contra los 0.180 de la referencia, con el pie mucho
+     * menos adelantado de lo que está.
+     *
+     * **El brazo es la excepción, y está marcada.** De perfil cuelga por delante
+     * del torso y no hay **ni una fila** en la que sea él quien pone la silueta:
+     * ni umbral ni relleno lo separan. Sus valores salen de la única pieza del
+     * brazo que sí se mide —la hombrera, 0.137 de fondo contra 0.117 de ancho—
+     * y se afinan de ahí a la muñeca. Da igual de cara al banco de siluetas:
+     * dentro del contorno del torso, un error de fondo en el brazo no se ve ni
+     * de frente ni de perfil.
      */
     depths: {
-      head: 1.18,
-      neck: 1.0,
-      torso: 0.74,
-      pauldron: 0.95,
-      arm: 1.0,
-      leg: 1.05,
-      boot: 1.9,
+      // Cabeza: el casco es lo más profundo del cuerpo después de la hombrera,
+      // y su punto máximo está en las sienes (0.938), no arriba.
+      crown: 0.075,
+      temples: 0.119,
+      headMid: 0.107,
+      jaw: 0.103,
+      chin: 0.082,
+      neck: 0.087,
+      neckBase: 0.113,
+      // Tronco.
+      torsoTop: 0.126,
+      chest: 0.134,
+      ribs: 0.120,
+      waist: 0.112,
+      hip: 0.122,
+      crotch: 0.125,
+      // Deltoides: el punto más profundo de todo el cuerpo (nivel 0.79).
+      pauldron: 0.137,
+      // Brazo: ver la nota de arriba. Es lo que el perfil no da.
+      armUpper: 0.041,
+      armNarrow: 0.032,
+      elbow: 0.062,
+      forearm: 0.041,
+      wrist: 0.030,
+      hand: 0.028,
+      finger: 0.020,
+      // Pierna: el cuádriceps a 0.101 y el gemelo a 0.067, los dos medidos.
+      thighTop: 0.101,
+      thighMid: 0.079,
+      thighNarrow: 0.076,
+      knee: 0.084,
+      shinTop: 0.084,
+      calf: 0.067,
+      ankle: 0.044,
+      // Bota: lo que más cambió. La suela mide 0.180 de la puntera al talón.
+      bootShaft: 0.052,
+      bootAnkle: 0.068,
+      bootInstep: 0.074,
+      bootFoot: 0.146,
+      sole: 0.136,
+      heel: 0.049,
+    },
+    /**
+     * **La bota, medida de perfil y por debajo.** Alturas en fracciones de la
+     * altura total y `z` el desplazamiento **hacia delante** del centro de cada
+     * anillo: el pie no está centrado en el eje de la pierna, la suela sale
+     * 0.066 por delante y el talón se queda 0.020 por detrás. Medido igual en
+     * las dos vistas de perfil, hasta el cuarto decimal.
+     *
+     * De la vista inferior sale lo otro que no se veía: la **suela es una pieza
+     * aparte del pie y el talón otra**, y el talón es más estrecho que el
+     * antepié (0.060 contra 0.078).
+     */
+    boot: {
+      shaftTop: 0.105,
+      instep: 0.062,
+      toe: 0.026,
+      soleTop: 0.014,
+      heelTop: 0.042,
+      z: { shaft: 0.002, ankle: 0.005, instep: 0.012, foot: 0.054, sole: 0.066, heel: -0.020 },
+    },
+    /**
+     * **La mano, con los dedos separados.** `knuckles` es la altura de los
+     * nudillos, `length` lo que bajan los dedos desde ahí y `spread` la
+     * separación entre ejes. Cuatro dedos de distinto largo y un pulgar que sale
+     * por delante: la palma mira hacia atrás, como en la referencia.
+     */
+    hand: {
+      knuckles: 0.455,
+      length: 0.037,
+      spread: 0.0118,
+      largo: [0.86, 1, 0.96, 0.8],
+      thumbY: 0.474,
+      thumbLength: 0.028,
     },
     /**
      * **Dónde cae el eje de cada brazo**, medido fila a fila sobre la
@@ -2125,8 +2225,21 @@ export const AVATAR = {
      * más ancho de lo que arranca.
      */
     legX: { hip: 0.069, thighNarrow: 0.071, knee: 0.077, calf: 0.092, ankle: 0.098, sole: 0.100 },
-    /** Caras de cada prisma: más en el tronco, menos en las extremidades. */
-    sides: { torso: 8, head: 6, limb: 6, joint: 6, boot: 4 },
+    /**
+     * Caras de cada prisma: más en el tronco, menos en las extremidades.
+     *
+     * La hombrera pasó a ocho en la vuelta 36 y no por gusto: **la vista cenital
+     * la enseña por arriba**, y con seis caras y una sola pieza se leía como una
+     * tapa lisa. Con ocho y partida en dos —casquete y alerón— tiene facetas que
+     * se ven desde arriba, que es de donde se miran.
+     *
+     * El pie va aparte del resto de la bota (`foot`) y también a ocho, y por lo
+     * contrario: con cuatro, la puntera es un filo y la bota entera se lee como
+     * una cuña de cartón. Ocho caras le dan chaflán. Seis no valen para ninguna
+     * de las dos cosas: con los vértices a medio paso, un prisma de seis tiene
+     * **vértice** al frente y uno de ocho tiene **cara**.
+     */
+    sides: { torso: 8, head: 6, limb: 6, joint: 6, boot: 4, foot: 8, pauldron: 8, finger: 4 },
   },
 
   /**
@@ -2175,6 +2288,23 @@ export const AVATAR = {
     ankle: 0.102,
   },
   stripOffset: 0.004,
+  /**
+   * **El canal de la línea de luz.** Desde la vuelta 36 la línea no va pegada
+   * *sobre* la piel: va **dentro de una hendidura** que corre por el mismo
+   * recorrido medido, y su cara exterior queda a ras de cuerpo mientras los
+   * labios del canal sobresalen.
+   *
+   * Con piezas opacas y sin CSG, un canal no se puede **restar**: un hueco
+   * tallado en un prisma sigue tapado por la propia cara del prisma y no se ve.
+   * Así que se levanta: dos labios a los lados del recorrido y la barra al
+   * fondo. El relieve es el mismo, y lo que se buscaba también —de refilón el
+   * labio tapa la línea, y la línea deja de flotar por encima de la piel—.
+   *
+   * `width` es el hueco libre entre labios, `rail` el grosor de cada labio y
+   * `rise` lo que sobresalen: la barra queda `rise - stripOffset` por debajo del
+   * borde, que es el fondo del canal.
+   */
+  lightChannel: { width: 0.018, rail: 0.005, rise: 0.006 },
 
   /** Vista de depuración: distancia de la cámara y vueltas por minuto. */
   debugDistance: 3.2,

@@ -375,16 +375,37 @@ marcha de verdad borra la cuenta entera. Ojo con una consecuencia que no es un
 fallo: **encadenar desde parado no perdona**, porque un encadenado conserva la
 marcha del aterrizaje y la de un rebote es cero.
 
-**El avatar comparte anatomía con el muñeco de puntería, y proporciones con la
-referencia.** La **altura** y las tres zonas salen de `TARGET_TYPES.hitbox.parts`
+**El avatar comparte anatomía con el muñeco de puntería, y proporciones con las
+referencias.** La **altura** y las tres zonas salen de `TARGET_TYPES.hitbox.parts`
 —el modelo del jugador *es* la representación visual del sistema de zonas que ya
-existe—; la **forma** sale de `AVATAR.figure`, que está **medido** sobre
-`Reference/Avatar/player-avatar-style.png` barriendo su silueta fila a fila. Todo
-en fracciones de la altura total, de modo que las proporciones aguantan aunque el
-muñeco cambie de tamaño.
+existe—; la **forma** sale de `AVATAR.figure`, medido barriendo siluetas fila a
+fila. Todo en fracciones de la altura total, de modo que las proporciones aguantan
+aunque el muñeco cambie de tamaño.
 
-La referencia **no se vectoriza**: es una guía para reconstruir la geometría, como
-el blockout de los escenarios. Lo que hay que respetar de ella son las
+**Son dos referencias y cada una pone lo suyo.** `player-avatar-style.png` es una
+vista frontal: de ahí salen `levels`, `widths`, `armX`, `legX` y el recorrido de
+las líneas. `player-avatar-turnaround.png` trae seis vistas del mismo diseño
+—frontal, dos perfiles, posterior, cenital e inferior— y de sus perfiles sale
+`depths`. **De frente no hay profundidad que medir**, así que hasta la vuelta 36
+`depths` eran siete multiplicadores sobre el ancho y era lo único de `figure` que
+no salía de una imagen.
+
+**El fondo del torso es casi constante; el ancho no.** De pecho a cadera el fondo
+va de 0.134 a 0.122 mientras el ancho hace el reloj de arena de 0.202 a 0.134 y
+vuelve a 0.195. Un multiplicador único no puede dar las dos cosas, y por eso la
+cintura salía plana y la cadera hinchada. Ése es el motivo de que `depths` esté
+ahora en las **mismas unidades que `widths`** —fracciones de la altura, clave a
+clave— y no en factores.
+
+**El brazo es la excepción, y está marcada.** De perfil cuelga por delante del
+torso y no hay **ni una fila** en la que sea él quien pone la silueta: ni umbral
+ni relleno lo separan. Sus fondos salen de la única pieza del brazo que sí se
+mide —la hombrera— y se afinan hasta la muñeca. Da igual de cara al banco:
+metido dentro del contorno del torso, un error de fondo en el brazo no se ve ni
+de frente ni de perfil.
+
+Las referencias **no se vectorizan**: son guías para reconstruir la geometría, como
+el blockout de los escenarios. Lo que hay que respetar de ellas son las
 proporciones y las dos líneas continuas, no el número de facetas.
 
 **Todo el cuerpo es un solo primitivo: el prisma de anillos.** Un anillo es un
@@ -400,6 +421,19 @@ de sus cortes. De ahí salen las tres cosas que las cajas no podían dar:
   justo encima: la articulación **es** ese ensanchamiento.
 - **Secciones de más de cuatro caras**: ocho en el tronco, seis en extremidades y
   cabeza. Una caja tiene cuatro siluetas posibles.
+
+**Con los vértices a medio paso, seis caras tienen vértice al frente y ocho
+tienen cara.** No es un detalle de implementación: es lo que decide dónde se
+apoya una línea de luz y si una puntera sale en filo. La hombrera pasó a ocho
+porque la vista cenital la enseña por arriba y con seis era una tapa lisa; el pie
+pasó a ocho porque con cuatro la bota entera se leía como una cuña de cartón.
+
+**Tres piezas tienen detalle propio, y cada una porque hay una vista que la
+enseña.** La hombrera son dos piezas por lado —casquete y alerón volado—; la bota
+son cuatro —caña, pie, suela y talón—; la mano son seis —palma y cinco dedos de
+largos distintos, con el pulgar por delante—. Lo de la bota no es capricho: **un
+anillo tiene un solo ancho a cada altura**, así que un talón estrecho detrás y un
+antepié ancho delante no caben en la misma pieza.
 
 Dos cosas que no son evidentes y que salieron de comparar siluetas a la misma
 altura, no de mirar el modelo:
@@ -422,6 +456,21 @@ altura, no de mirar el modelo:
   y el día que haya equipos es el que llevará su color — por eso `setColor()` no
   lo toca y por eso va también por detrás: a un rival se le reconoce igual
   persiguiéndolo que de frente.
+
+  **La línea va dentro de un canal, no encima de la piel.** Y el canal se
+  levanta, no se resta: con piezas opacas y sin CSG, una hendidura tallada en un
+  prisma sigue tapada por la propia cara del prisma y no se ve. Son dos labios a
+  los lados del recorrido (`AVATAR.lightChannel`) y la barra al fondo, con su
+  cara exterior a ras de cuerpo. Los labios llevan arista como cualquier pieza
+  —por eso se fusionan **antes** que los filos, para no ser un cuarto objeto de
+  líneas— y **no los toca `setColor()`**: son pared del canal de luz, no piel.
+
+  **Y cada punto se apoya en la cara, no en la profundidad máxima.** Media
+  profundidad del anillo sólo es la superficie si el punto cae en la cara
+  frontal; en la cadera la línea pasa a 0.062 del eje, que en un prisma de ocho
+  ya es la diagonal de al lado, y allí flotaba. `surfaceZ` devuelve el contorno
+  **en esa x**, y la x se mide respecto al eje de la pieza: por la pierna la
+  línea baja pegada al muslo, no a 0.080 del centro del cuerpo.
 
   Su recorrido está medido como los anchos (`AVATAR.stripSpread`), y tiene una
   forma que no se adivina: **se abren en el collar (0.056), se cierran en el
@@ -451,12 +500,32 @@ por el anillo estrecho de cada tramo pero se **coloca** sobre el plano de la car
 caras laterales del prisma hacia fuera, porque con `FrontSide` una cara al revés
 no se dibuja y el modelo sale hueco.
 
-**La comparación con la referencia se mide, no se mira.** `silueta.mjs` renderiza
-el avatar con la sala apagada y sus piezas en blanco —sobre negro, la piel es más
-oscura que la rejilla de la sala y ninguna umbralización las separa— y
-`comparar.mjs` pone las dos siluetas a la misma altura en píxeles y lista la
-desviación nivel a nivel. Así se pasó de un −60% en las caderas a **±12% en el
-peor nivel**, con 28 de 32 niveles dentro del 8%.
+**La comparación con la referencia se mide, no se mira, y ahora por dos vistas.**
+`silueta.mjs` renderiza el avatar con la sala apagada y sus piezas en blanco
+—sobre negro, la piel es más oscura que la rejilla de la sala y ninguna
+umbralización las separa— y `comparar.mjs` pone las dos siluetas a la misma altura
+en píxeles y lista la desviación nivel a nivel. `comparar.mjs frente` mide contra
+la referencia de estilo y `comparar.mjs perfil` contra la media de las dos vistas
+laterales del turnaround. Resultado: **16% en el peor nivel de frente** (30 de 32
+dentro del 8%) y **12% de perfil** (28 de 32).
+
+Tres trampas de medida, las tres de las que no avisan:
+
+- **La cámara tiene que ser casi ortográfica.** A 2.4 u de un cuerpo de 1.8 la
+  pierna cercana sale un 16% más grande que la otra, y la puntera de la bota
+  —que asoma 0.13 por delante y está 0.8 por debajo del eje de cámara— se
+  proyecta sobre las filas del tobillo y las engorda un 30%. La referencia es un
+  dibujo ortográfico; para compararse con ella hay que mirar como ella: cámara a
+  30 u y campo de 4.4°.
+- **El canal de luz no es cuerpo.** Dejando puestas las barras y sus labios, la
+  silueta de perfil de la pierna engordaba un 25% y se estaba midiendo el canal,
+  no el gemelo. `silueta.mjs` los apaga, igual que el núcleo.
+- **En el turnaround el cuerpo es casi negro por dentro** (r 0-8, lo mismo que el
+  fondo del panel): el canal rojo no separa cuerpo de fondo, sólo contorno de
+  fondo. Lo que vale es `r > 22 || g > 32` con lo azul fuera, porque el charco de
+  luz reflejado bajo las botas pasa por contorno en brillo y lo delata el tono. Y
+  las cuatro vistas **no están a la misma escala** —hay un 3% entre la frontal y
+  las de perfil—, así que cada una se normaliza por su propia altura.
 
 La vista de depuración (F3) sólo se abre **fuera de una sesión en marcha**: la
 cámara es del jugador y el cronómetro corre, y mirarse el modelo no puede costar
@@ -724,9 +793,11 @@ sistema** y el panel lo dice.
 con su propio volumen en opciones. Suena en inicio, opciones y pausa; se calla al
 jugar.
 
-**Avatar del jugador (sólo visual):** humanoide de veintidós piezas con la
-anatomía del hitbox, facetas planas y costuras eléctricas. Color en una variable.
-**F3** abre una vista en tercera persona que orbita el modelo, fuera de partida.
+**Avatar del jugador (sólo visual):** humanoide de cuarenta y dos piezas con la
+anatomía del hitbox, facetas planas y costuras eléctricas **metidas en su canal**.
+Ancho medido de frente y **fondo medido de perfil**; hombreras de varias facetas,
+botas de cuatro piezas y manos con cinco dedos. Color en una variable. **F3** abre
+una vista en tercera persona que orbita el modelo, fuera de partida.
 
 **Movimiento:** WASD, tres marchas (correr / SHIFT andar / **C** agachado —CTRL
 no, ver convenciones—, gana la más lenta), salto sin doble salto **resuelto en forma cerrada** —misma

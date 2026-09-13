@@ -2999,6 +2999,132 @@ de `setColor()`: un jugador no puede pintarse del color del rival.
 
 ---
 
+## Ronda 36 — La profundidad, que hasta ahora se estimaba
+
+### 36.1 Lo único de `figure` que no salía de una imagen
+
+La vuelta 35 dejó el avatar medido: 24 anchos y 15 alturas barridos fila a fila
+sobre `player-avatar-style.png`, con la desviación en el 12% del peor nivel. Pero
+esa referencia es **una vista frontal**, y de frente no hay profundidad que medir.
+El fondo de cada pieza se escribió como siete multiplicadores sobre el ancho
+—`torso: 0.74`, `head: 1.18`, `boot: 1.9`— con un comentario que lo decía:
+proporciones humanas normales, y lo único de `figure` que no salía de la imagen.
+
+`player-avatar-turnaround.png` trae seis vistas del mismo diseño a la misma
+escala: frontal, los dos perfiles, posterior, cenital e inferior. Con dos
+perfiles, la profundidad deja de estimarse.
+
+### 36.2 El hallazgo: el fondo del torso no hace reloj de arena
+
+Medido, el fondo del torso va de **0.134 en el pecho a 0.122 en la cadera**,
+pasando por 0.112 en la cintura. El ancho, en los mismos tres sitios, va de 0.202
+a 0.134 y vuelve a 0.195. Es decir: **el ancho hace un reloj de arena y el fondo
+casi no cambia**, que es exactamente como está hecho un torso humano.
+
+Un multiplicador único no puede dar las dos cosas. Con `torso: 0.74`, la cintura
+—que es la mitad de ancha— salía también la mitad de profunda: plana. Y la
+cadera, ancha, salía hinchada. Por eso `depths` dejó de ser un bloque de factores
+y pasó a las **mismas unidades que `widths`**: fracciones de la altura total,
+clave a clave, 33 valores medidos.
+
+Lo mismo con la bota, que fue lo que más cambió: medía 0.148 de largo contra los
+**0.180** de la referencia, y su centro caía 0.030 por delante del eje de la
+pierna en vez de 0.066. Las dos vistas de perfil dan el mismo número hasta el
+cuarto decimal.
+
+### 36.3 El brazo no se puede medir de perfil, y se dice
+
+De perfil el brazo cuelga **por delante del torso**. No hay ni una fila en la que
+sea él quien pone la silueta: ni un umbral ni un relleno desde el borde lo
+separan, porque por dentro el dibujo es casi negro y sus filos son igual de
+tenues que los del torso que tiene detrás.
+
+Se probó a sacarlo por los trazos interiores y no da: a la altura del húmero, el
+contorno del brazo son puntos sueltos. Así que los fondos del brazo salen de la
+única pieza del brazo que **sí** se mide —la hombrera, 0.137 de fondo contra
+0.117 de ancho— y se afinan de ahí a la muñeca, con la excepción anotada en
+`config.js`. Consuela una cosa: metido dentro del contorno del torso, un error de
+fondo en el brazo no se ve **en ninguno de los dos bancos**.
+
+### 36.4 Un canal no se puede restar, así que se levanta
+
+El encargo pedía tallar una hendidura en la geometría y meter la línea dentro.
+Con prismas opacos y sin CSG eso no se puede hacer: un hueco tallado en el prisma
+sigue **tapado por la propia cara del prisma**, y lo que se ve es la cara, no el
+hueco.
+
+Lo que sí se puede es levantar el canal: dos labios a los lados del recorrido y
+la barra al fondo, con su cara exterior a ras de piel. El relieve resultante es
+el mismo y el efecto que se buscaba también — de refilón el labio tapa la línea,
+y la línea deja de leerse como una tira pegada encima.
+
+Dos detalles que costaron una pasada cada uno:
+
+- **Los labios van perpendiculares al tramo, no en x.** El recorrido se tuerce en
+  el collar y en la ingle; un labio desplazado en x se cruzaba con su propia
+  línea.
+- **Y se fusionan antes que los filos.** Llevan arista como cualquier pieza, y
+  metiéndola después salía un **cuarto** objeto de líneas, contra la regla de
+  la vuelta 33 de que grilla, aristas y luz son tres.
+
+### 36.5 Media profundidad no es la superficie
+
+Hasta ahora cada punto de la línea se ponía a media profundidad del anillo sobre
+el que iba. Eso sólo es la superficie si el punto cae en la **cara frontal** del
+prisma: con ocho caras, la cara frontal llega hasta 0.414 del medio ancho, y en
+la cadera la línea pasa a 0.062 del eje contra un límite de 0.040. Allí flotaba.
+
+`surfaceZ` resuelve el contorno del polígono **en esa x**. Y la x se mide
+respecto al eje de la pieza, no del cuerpo: la primera versión pasaba la x
+absoluta y en la pierna —cuyo eje está a 0.071 del centro— el punto caía fuera
+del muslo, se recortaba al vértice y la línea **desaparecía dentro de la pierna**
+del muslo a la rodilla.
+
+### 36.6 Tres piezas con vista dedicada, y por qué son varias piezas
+
+- **Hombrera**: dos por lado, casquete y alerón volado, de ocho caras. Con seis
+  caras y una sola pieza era una tapa lisa, que es justo lo que enseña la vista
+  cenital.
+- **Bota**: cuatro por pie —caña, pie, suela y talón—. No es detalle por detalle:
+  **un anillo tiene un solo ancho a cada altura**, así que el talón estrecho que
+  enseña la vista inferior y el antepié ancho no caben en la misma pieza.
+- **Mano**: palma y cinco dedos, de largos distintos. Cuatro dedos iguales se
+  leen como un peine, y fusionados en una pieza vuelven a ser una manopla.
+
+Y una regla que ya estaba en el código sin estar escrita: **con los vértices a
+medio paso, un prisma de seis caras tiene vértice al frente y uno de ocho tiene
+cara**. Por eso el pie pasó a ocho —con cuatro, la puntera es un filo y la bota
+entera se lee como una cuña de cartón— y por eso seis no valía para ninguna de
+las dos cosas.
+
+### 36.7 El banco, y tres formas de medir mal
+
+`comparar.mjs` pasó a tener dos vistas: `frente` contra la referencia de estilo y
+`perfil` contra la media de las dos laterales del turnaround. Al montarlo
+aparecieron tres errores de medida, y ninguno avisa:
+
+- **La cámara no era ortográfica.** A 2.4 u de un cuerpo de 1.8, la pierna
+  cercana sale un 16% más grande que la otra y la puntera de la bota se proyecta
+  sobre las filas del tobillo: el perfil daba +145% en el cuello de la bota. Con
+  la cámara a 30 u y campo de 4.4°, el mismo modelo da +24%.
+- **El canal de luz se estaba midiendo como cuerpo.** Los labios engordaban la
+  silueta de perfil de la pierna un 25%: se medía el canal, no el gemelo.
+- **En el turnaround el cuerpo es casi negro por dentro**, r 0-8, igual que el
+  fondo del panel. El canal rojo —que fue lo que resolvió la referencia de
+  estilo— aquí no separa cuerpo de fondo, sólo contorno de fondo, y deja bandas
+  enteras sin medir. Lo que vale es `r > 22 || g > 32` con lo azul fuera; el azul
+  hay que quitarlo porque el charco de luz reflejado bajo las botas pasa por
+  contorno en brillo y sólo lo delata el tono. Y las cuatro vistas **no están a
+  la misma escala**: entre la frontal y las de perfil hay un 3% de altura, así
+  que cada una se normaliza por la suya.
+
+Resultado, con los tres arreglados: **16% en el peor nivel de frente** (30 de 32
+dentro del 8%) y **12% de perfil** (28 de 32). Y una comprobación que no depende
+del render: `avatar.mjs` mide el fondo del modelo sobre la geometría —el contorno,
+no la pieza, porque en la bota el frente lo pone el pie y la espalda el talón— y
+lo compara con la referencia leída en el momento. Un número escrito a mano en un
+test no prueba nada.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
@@ -3083,6 +3209,9 @@ objetivo era medir tiempos y rendimiento de verdad.
 - **Tiempos de recarga** contra los valores de `config.js`.
 - **Coste por frame**: ~0.1–0.2 ms p99 frente a los 4.17 ms disponibles a 240 Hz.
 - **Las PNG de referencia no llegan a `dist/`.**
+- **La silueta del avatar contra la referencia, en dos vistas**: de frente
+  contra la referencia de estilo y de perfil contra la media de las dos vistas
+  laterales del turnaround, nivel a nivel y con la cámara casi ortográfica.
 
 Lo que **no** está verificado automáticamente: la sensación de juego, el balance
 entre armas y la legibilidad del HUD en pantallas pequeñas. Eso sigue siendo

@@ -129,11 +129,14 @@ avatar es la representación visual de ese sistema para cuando exista un rival d
 verdad. Lo que añade es lo que una diana no necesita: hombros, brazos,
 articulaciones, cuello y botas.
 
-**Las proporciones están medidas, no elegidas.** Salen de barrer la silueta de
-`Reference/Avatar/player-avatar-style.png` fila a fila y anotar el ancho a cada
-altura, todo en fracciones de la altura total. Puestas las dos siluetas a la
-misma escala, la desviación es del 12% en el peor nivel y menor del 8% en 28 de
-los 32 medidos.
+**Las proporciones están medidas, no elegidas.** Salen de barrer las siluetas de
+las referencias fila a fila y anotar el ancho y el fondo a cada altura, todo en
+fracciones de la altura total. `player-avatar-style.png` es una vista frontal y
+pone los anchos; `player-avatar-turnaround.png` trae seis vistas del mismo
+diseño y sus dos perfiles ponen **la profundidad**, que hasta entonces era lo
+único estimado. Puestas las siluetas a la misma escala, la desviación es del 16%
+en el peor nivel de frente y del 12% de perfil, y menor del 8% en 30 de 32 y en
+28 de 32 niveles respectivamente.
 
 De ahí salen tres cosas que no tenía la primera versión:
 
@@ -147,6 +150,23 @@ De ahí salen tres cosas que no tenía la primera versión:
 - **Las piernas se abren hacia abajo**, de 0.069 a 0.100 entre la cadera y la
   suela. Eso apareció comparando siluetas: las pantorrillas salían estrechas y
   no era el grosor, era que las dos piernas estaban demasiado juntas.
+- **Volumen, no sólo contorno.** Con los perfiles medidos, el deltoides es el
+  punto más profundo del cuerpo (0.137 de fondo contra 0.117 de ancho), el
+  cuádriceps mide 0.101 y el gemelo 0.067 — y el fondo del torso resultó ser
+  **casi constante** de pecho a cadera mientras el ancho hace un reloj de arena.
+  Eso no se puede sacar de un multiplicador sobre el ancho, que es lo que había:
+  por eso la cintura salía plana y la cadera hinchada.
+
+Y tres piezas tienen su propio detalle, cada una porque hay una vista que la
+enseña de cerca:
+
+- **Hombreras de varias facetas** —dos piezas por lado, casquete y alerón
+  volado—, que es lo que se ve en la vista cenital.
+- **Botas con caña, pie, suela y talón**, con el talón más estrecho que el
+  antepié: eso lo enseña la vista desde abajo, y no cabía en una sola pieza
+  porque un anillo tiene un solo ancho a cada altura.
+- **Manos con los cinco dedos separados**, de largos distintos y con el pulgar
+  por delante de la palma.
 
 Se lee en **tres capas** que no se mezclan:
 
@@ -160,7 +180,9 @@ Se lee en **tres capas** que no se mezclan:
   por la espalda**, más el núcleo del pecho, en el azul eléctrico del escudo. Es
   un canal **fijo**: el día que haya equipos, éste llevará su color, y por eso va
   también por detrás — a un rival hay que reconocerlo igual persiguiéndolo que de
-  frente.
+  frente. Y no van pegadas encima de la piel: cada línea corre **por dentro de
+  una hendidura**, con su borde a ras de cuerpo, así que de refilón el canal la
+  tapa en vez de verse una tira flotando.
 - **Los filos.** El borde de cada panel, en un gris de la rejilla.
 
 **Sin texturas, y no por ahorrar:** en esta escena no hay ni una luz, así que un

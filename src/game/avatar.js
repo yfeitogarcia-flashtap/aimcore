@@ -103,6 +103,42 @@ function ringVertices(ring, angles) {
 }
 
 /**
+ * **Dónde está la superficie del prisma a una x dada**, en su mitad delantera.
+ *
+ * No es lo mismo que la media profundidad del anillo: un prisma tiene caras, y
+ * a la altura de la cadera la línea de luz pasa a 0.062 del eje, que ya no cae
+ * en la cara frontal sino en la diagonal de al lado. Poniéndola a media
+ * profundidad flotaba justo ahí —y con ella su canal—. Esto devuelve la z del
+ * contorno en esa x, que es donde está el cuerpo de verdad.
+ */
+function surfaceZ(w, d, x, sides) {
+  const angles = vertexAngles(sides)
+  let maxCos = 0
+  let maxSin = 0
+  for (const a of angles) {
+    maxCos = Math.max(maxCos, Math.abs(Math.cos(a)))
+    maxSin = Math.max(maxSin, Math.abs(Math.sin(a)))
+  }
+  const rx = w / 2 / maxCos
+  const rz = d / 2 / maxSin
+  const points = angles.map((a) => ({ x: Math.cos(a) * rx, z: Math.sin(a) * rz }))
+  const target = Math.min(Math.abs(x), rx)
+  let best = 0
+  for (let i = 0; i < points.length; i++) {
+    const a = points[i]
+    const b = points[(i + 1) % points.length]
+    if (a.z <= 0 && b.z <= 0) continue
+    const lo = Math.min(a.x, b.x)
+    const hi = Math.max(a.x, b.x)
+    if (target < lo - 1e-9 || target > hi + 1e-9) continue
+    const t = hi - lo < 1e-9 ? 0 : (target - lo) / (hi - lo)
+    const z = a.x < b.x ? a.z + (b.z - a.z) * t : b.z + (a.z - b.z) * t
+    best = Math.max(best, z)
+  }
+  return best
+}
+
+/**
  * **El único primitivo del cuerpo.** Un prisma definido por una lista de anillos
  * de abajo arriba, cerrado por las dos tapas.
  *
@@ -166,6 +202,7 @@ export class Avatar {
     this._gridAccent = []
     this._edges = []
     this._lights = []
+    this._channel = []
 
     this._edgeMaterial = new THREE.LineBasicMaterial({
       color: new THREE.Color(AVATAR.edgeColor),
@@ -178,11 +215,21 @@ export class Avatar {
     })
     /** El canal de luz: núcleo y las cuatro líneas. El futuro color de equipo. */
     this._lightMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color(AVATAR.teamColor) })
+    /**
+     * Los labios de la hendidura por la que corre cada línea. Van por el tono
+     * de la articulación y **no los toca `setColor()`**: son la pared del canal
+     * de luz, no piel. El día que la luz lleve el color de equipo, el canal que
+     * la aloja tiene que seguir leyéndose igual.
+     */
+    this._channelMaterial = new THREE.MeshBasicMaterial({
+      color: shade(AVATAR.color, AVATAR.shades.joint),
+    })
     this._materials.push(
       this._edgeMaterial,
       this._gridMaterial,
       this._gridAccentMaterial,
       this._lightMaterial,
+      this._channelMaterial,
     )
 
     this._build()
@@ -198,6 +245,15 @@ export class Avatar {
   /** Un ancho de `AVATAR.figure.widths`, en unidades de mundo. */
   _width(key) {
     return AVATAR.figure.widths[key] * this.height
+  }
+
+  /**
+   * Un fondo de `AVATAR.figure.depths`, en unidades de mundo. Mismas unidades
+   * que `_width` y por el mismo motivo: desde la vuelta 36 la profundidad está
+   * **medida** sobre las vistas de perfil, no derivada del ancho.
+   */
+  _depth(key) {
+    return AVATAR.figure.depths[key] * this.height
   }
 
   /**
@@ -303,15 +359,16 @@ export class Avatar {
   _build() {
     const L = (k) => this._level(k)
     const W = (k) => this._width(k)
-    const { depths, sides } = AVATAR.figure
+    const D = (k) => this._depth(k)
+    const { sides } = AVATAR.figure
 
-    this._buildTrunk(L, W, depths, sides)
-    this._buildHead(L, W, depths, sides)
+    this._buildTrunk(L, W, D, sides)
+    this._buildHead(L, W, D, sides)
     for (const side of [-1, 1]) {
-      this._buildArm(side, L, W, depths, sides)
-      this._buildLeg(side, L, W, depths, sides)
+      this._buildArm(side, L, W, D, sides)
+      this._buildLeg(side, L, W, D, sides)
     }
-    this._buildLights(L, W, depths)
+    this._buildLights(L, W, D, sides)
     this._mergeLines()
   }
 
@@ -323,15 +380,14 @@ export class Avatar {
    * —0.202 de ancho en el pecho, 0.134 en la cintura, 0.195 en la cadera— sale
    * como una silueta continua.
    */
-  _buildTrunk(L, W, depths, sides) {
-    const d = depths.torso
+  _buildTrunk(L, W, D, sides) {
     const rings = [
-      { y: L('hip') - this.height * 0.02, w: W('crotch') * 0.86, d: W('crotch') * 0.86 * d },
-      { y: L('hip'), w: W('hip'), d: W('hip') * d },
-      { y: L('waist'), w: W('waist'), d: W('waist') * d * 1.04 },
-      { y: L('ribs'), w: W('ribs'), d: W('ribs') * d * 1.02 },
-      { y: L('chest'), w: W('chest'), d: W('chest') * d },
-      { y: L('shoulder'), w: W('chest') * 0.93, d: W('chest') * d * 0.94 },
+      { y: L('hip') - this.height * 0.02, w: W('crotch') * 0.86, d: D('crotch') },
+      { y: L('hip'), w: W('hip'), d: D('hip') },
+      { y: L('waist'), w: W('waist'), d: D('waist') },
+      { y: L('ribs'), w: W('ribs'), d: D('ribs') },
+      { y: L('chest'), w: W('chest'), d: D('chest') },
+      { y: L('shoulder'), w: W('chest') * 0.93, d: D('torsoTop') },
     ]
     this._piece('torso', rings, { sides: sides.torso, factor: AVATAR.shades.chest, grid: true })
 
@@ -343,9 +399,9 @@ export class Avatar {
         // El anillo de abajo va ancho a propósito: es el trapecio subiendo del
         // hombro al cuello, y sin él la silueta a la altura de la barbilla
         // salía un 28% más estrecha que la de la referencia.
-        { y: L('shoulder') - this.height * 0.01, w: W('neck') * 1.45, d: W('neck') * 1.45 * depths.neck },
-        { y: L('neck'), w: W('neck') * 1.3, d: W('neck') * 1.3 * depths.neck },
-        { y: L('chin') + this.height * 0.01, w: W('neck') * 0.9, d: W('neck') * 0.9 * depths.neck },
+        { y: L('shoulder') - this.height * 0.01, w: W('neck') * 1.45, d: D('neckBase') },
+        { y: L('neck'), w: W('neck') * 1.3, d: D('neck') },
+        { y: L('chin') + this.height * 0.01, w: W('neck') * 0.84, d: D('neck') * 0.86 },
       ],
       { sides: sides.limb, factor: AVATAR.shades.joint },
     )
@@ -356,7 +412,7 @@ export class Avatar {
     this.core = new THREE.Mesh(coreGeometry, this._lightMaterial)
     // Hundido: con el centro en la cara del pecho sobresalía un radio entero y
     // de perfil era un pincho. Asomando un 40% se lee como un núcleo empotrado.
-    const coreZ = (W('chest') * depths.torso) / 2 - AVATAR.coreRadius * this.height * 0.6
+    const coreZ = D('chest') / 2 - AVATAR.coreRadius * this.height * 0.6
     this.core.position.set(0, L('chest') - this.height * 0.02, coreZ)
     this.group.add(this.core)
     this.zones.torso.push(this.core)
@@ -368,48 +424,73 @@ export class Avatar {
    * cerrado arriba (0.055) y en la barbilla (0.066), y **más profundo que
    * ancho**, como una cabeza.
    */
-  _buildHead(L, W, depths, sides) {
-    const d = depths.head
+  _buildHead(L, W, D, sides) {
     const top = this.height
     const rings = [
-      { y: L('chin'), w: W('chin'), d: W('chin') * d * 1.15, z: W('chin') * 0.08 },
-      { y: L('chin') + (L('temples') - L('chin')) * 0.3, w: W('temples') * 0.68, d: W('temples') * 0.68 * d },
-      { y: L('chin') + (L('temples') - L('chin')) * 0.7, w: W('temples'), d: W('temples') * d },
-      { y: L('temples'), w: W('temples') * 0.98, d: W('temples') * 0.98 * d },
-      { y: top - this.height * 0.01, w: W('crown'), d: W('crown') * d * 1.2 },
+      { y: L('chin'), w: W('chin'), d: D('chin'), z: W('chin') * 0.08 },
+      { y: L('chin') + (L('temples') - L('chin')) * 0.3, w: W('temples') * 0.68, d: D('jaw') },
+      { y: L('chin') + (L('temples') - L('chin')) * 0.7, w: W('temples'), d: D('headMid') },
+      { y: L('temples'), w: W('temples') * 0.98, d: D('temples') },
+      { y: top - this.height * 0.01, w: W('crown'), d: D('crown') },
     ]
     this._piece('head', rings, { sides: sides.head, factor: AVATAR.shades.chest, grid: true })
   }
 
   /**
-   * Brazo: hombrera, húmero, codo, antebrazo y mano.
+   * Brazo: hombrera, alerón, húmero, codo, antebrazo, palma y cinco dedos.
    *
    * El húmero **se afina** de 0.036 a 0.028 y el codo vuelve a abrirse a 0.059:
    * eso es lo que hace que se lea un brazo y no un tubo. La hombrera y el codo
    * son piezas estrecha-ancha-estrecha cuyos extremos entran dentro de los
    * tramos vecinos, así que no hay junta a la vista por ningún lado.
+   *
+   * Dos piezas del brazo se rehicieron en la vuelta 36 con las vistas nuevas:
+   *
+   *  - **La hombrera, porque la vista cenital la enseña por arriba.** Era un
+   *    casquete de seis caras y una sola pieza, que desde arriba es una tapa
+   *    lisa. Ahora son dos de ocho —casquete y alerón volado por debajo— y la
+   *    junta entre ellas es la arista que se ve en la referencia. De fondo mide
+   *    0.137 contra los 0.117 de ancho: es el punto **más profundo de todo el
+   *    cuerpo**, y estaba puesto en 0.111.
+   *  - **La mano, porque en cuatro de las seis vistas se le ven los dedos.** Era
+   *    un puño macizo y aplanado. Ahora es una palma y cinco dedos, cada uno su
+   *    propio prisma: fusionarlos en una pieza los volvería a leer como una
+   *    manopla, que es justo lo que había.
    */
-  _buildArm(side, L, W, depths, sides) {
-    const d = depths.arm
-    const { armX, pauldronX } = AVATAR.figure
+  _buildArm(side, L, W, D, sides) {
+    const { armX, pauldronX, hand } = AVATAR.figure
     const X = (k) => side * armX[k] * this.height
-    const step = this.height * 0.012
+    const h = this.height
+    const step = h * 0.012
 
-    // Hombrera: la pieza más ancha del cuerpo y **una tapa sobre el hombro**, no
-    // una pieza colgada del brazo: su centro cae dentro del tronco y lo que
-    // sobresale es su borde. Cae hacia fuera —cada anillo se desplaza en x— y su
-    // base entra dentro del húmero.
-    const capX = side * pauldronX * this.height
+    // Hombrera: **una tapa sobre el hombro**, no una pieza colgada del brazo:
+    // su centro cae dentro del tronco y lo que sobresale es su borde.
+    const capX = side * pauldronX * h
+    const pd = (k) => D('pauldron') * k
     this._piece(
       'torso',
       [
-        { y: L('shoulder') - this.height * 0.045, w: W('pauldron') * 0.5, d: W('pauldron') * 0.5 * depths.pauldron, x: (capX + X('shoulder')) / 2 },
-        { y: L('shoulder'), w: W('pauldron'), d: W('pauldron') * depths.pauldron, x: capX },
+        { y: L('shoulder') - h * 0.030, w: W('pauldron') * 0.74, d: pd(0.82), x: capX * 1.02 },
+        { y: L('shoulder') - h * 0.005, w: W('pauldron'), d: pd(1), x: capX },
+        { y: L('shoulder') + h * 0.018, w: W('pauldron') * 0.93, d: pd(0.93), x: capX * 0.96 },
         // Hasta el nivel 0.828: en la referencia el hombro ya está ahí arriba, y
         // cortándolo en 0.808 el cuello salía un 68% más estrecho que el suyo.
-        { y: this.height * 0.828, w: W('pauldron') * 0.85, d: W('pauldron') * 0.85 * depths.pauldron, x: capX * 0.9 },
+        { y: h * 0.828, w: W('pauldron') * 0.66, d: pd(0.72), x: capX * 0.88 },
       ],
-      { sides: sides.joint, factor: AVATAR.shades.joint },
+      { sides: sides.pauldron, factor: AVATAR.shades.joint },
+    )
+
+    // Alerón: el vuelo de abajo de la hombrera, que es lo que le da el borde.
+    // Su anillo ancho queda **por fuera** del casquete y sus dos extremos por
+    // dentro, así que la pieza se lee como una placa montada, no como un aro.
+    this._piece(
+      'torso',
+      [
+        { y: L('shoulder') - h * 0.074, w: W('pauldron') * 0.58, d: pd(0.68), x: (capX + X('shoulder')) / 2 },
+        { y: L('shoulder') - h * 0.050, w: W('pauldron') * 0.99, d: pd(0.96), x: capX * 1.05 },
+        { y: L('shoulder') - h * 0.032, w: W('pauldron') * 0.78, d: pd(0.84), x: capX * 1.02 },
+      ],
+      { sides: sides.pauldron, factor: AVATAR.shades.limb },
     )
 
     // Húmero: del hombro al codo, afinándose y abriéndose hacia fuera.
@@ -419,11 +500,11 @@ export class Avatar {
         // El anillo estrecho (0.028) es **intermedio**: el húmero sigue hasta
         // meterse dentro del codo. Cortarlo ahí dejaba un hueco de aire entre
         // el brazo y la articulación.
-        { y: L('elbow') + this.height * 0.012, w: W('armNarrow') * 1.02, d: W('armNarrow') * 1.02 * d, x: X('elbow') },
-        { y: L('armNarrow'), w: W('armNarrow'), d: W('armNarrow') * d, x: (X('shoulder') + X('elbow')) / 2 },
-        { y: L('armNarrow') + (L('shoulder') - L('armNarrow')) * 0.5, w: W('armUpper') * 0.95, d: W('armUpper') * 0.95 * d, x: X('shoulder') * 0.55 + X('elbow') * 0.45 },
-        { y: L('shoulder') - this.height * 0.012, w: W('armUpper'), d: W('armUpper') * d, x: X('shoulder') },
-        { y: L('shoulder') + this.height * 0.02, w: W('armUpper') * 0.78, d: W('armUpper') * 0.78 * d, x: X('shoulder') * 0.96 },
+        { y: L('elbow') + h * 0.012, w: W('armNarrow') * 1.02, d: D('armNarrow') * 1.02, x: X('elbow') },
+        { y: L('armNarrow'), w: W('armNarrow'), d: D('armNarrow'), x: (X('shoulder') + X('elbow')) / 2 },
+        { y: L('armNarrow') + (L('shoulder') - L('armNarrow')) * 0.5, w: W('armUpper') * 0.95, d: D('armUpper') * 0.97, x: X('shoulder') * 0.55 + X('elbow') * 0.45 },
+        { y: L('shoulder') - h * 0.012, w: W('armUpper'), d: D('armUpper'), x: X('shoulder') },
+        { y: L('shoulder') + h * 0.02, w: W('armUpper') * 0.78, d: D('armUpper') * 0.82, x: X('shoulder') * 0.96 },
       ],
       { sides: sides.limb, factor: AVATAR.shades.limb },
     )
@@ -434,9 +515,9 @@ export class Avatar {
     this._piece(
       'torso',
       [
-        { y: L('elbow') - this.height * 0.035, w: W('forearm') * 0.9, d: W('forearm') * 0.9 * d, x: X('elbow') },
-        { y: L('elbow'), w: W('elbow'), d: W('elbow') * d * 1.05, x: X('elbow') },
-        { y: L('elbow') + this.height * 0.03, w: W('armNarrow') * 1.08, d: W('armNarrow') * 1.08 * d, x: X('elbow') },
+        { y: L('elbow') - h * 0.035, w: W('forearm') * 0.9, d: D('forearm') * 0.9, x: X('elbow') },
+        { y: L('elbow'), w: W('elbow'), d: D('elbow'), x: X('elbow') },
+        { y: L('elbow') + h * 0.03, w: W('armNarrow') * 1.08, d: D('armNarrow') * 1.08, x: X('elbow') },
       ],
       { sides: sides.joint, factor: AVATAR.shades.joint },
     )
@@ -445,23 +526,68 @@ export class Avatar {
     this._piece(
       'torso',
       [
-        { y: L('wrist'), w: W('wrist'), d: W('wrist') * d, x: X('wrist') },
-        { y: L('wrist') + (L('elbow') - L('wrist')) * 0.5, w: W('forearm') * 0.9, d: W('forearm') * 0.9 * d, x: (X('wrist') + X('elbow')) / 2 },
-        { y: L('elbow') - step, w: W('forearm'), d: W('forearm') * d, x: X('elbow') },
-        { y: L('elbow') + step, w: W('forearm') * 0.85, d: W('forearm') * 0.85 * d, x: X('elbow') },
+        { y: L('wrist'), w: W('wrist'), d: D('wrist'), x: X('wrist') },
+        { y: L('wrist') + (L('elbow') - L('wrist')) * 0.5, w: W('forearm') * 0.9, d: D('forearm') * 0.9, x: (X('wrist') + X('elbow')) / 2 },
+        { y: L('elbow') - step, w: W('forearm'), d: D('forearm'), x: X('elbow') },
+        { y: L('elbow') + step, w: W('forearm') * 0.85, d: D('forearm') * 0.86, x: X('elbow') },
       ],
       { sides: sides.limb, factor: AVATAR.shades.limb },
     )
 
-    // Mano: un puño corto, más ancho que la muñeca y aplanado.
+    this._buildHand(side, L, W, D, sides, X('wrist'), hand)
+  }
+
+  /**
+   * Mano: la palma y los cinco dedos.
+   *
+   * La palma mira hacia atrás —es como está en la referencia— así que lo ancho
+   * de la mano (0.050) va en x y lo fino (0.028) en z; el pulgar es el único que
+   * sale por delante. Los cuatro dedos no miden lo mismo: sus largos relativos
+   * están en `figure.hand.largo`, porque cuatro dedos iguales se leen como un
+   * peine.
+   */
+  _buildHand(side, L, W, D, sides, hx, hand) {
+    const h = this.height
+    const step = h * 0.012
+    const knuckles = h * hand.knuckles
+
     this._piece(
       'torso',
       [
-        { y: this.height * 0.415, w: W('hand') * 0.55, d: W('hand') * 0.55 * 1.4, x: X('wrist') },
-        { y: this.height * 0.45, w: W('hand'), d: W('hand') * 1.3, x: X('wrist') },
-        { y: L('wrist') + step, w: W('wrist'), d: W('wrist') * d, x: X('wrist') },
+        { y: knuckles, w: W('hand'), d: D('hand'), x: hx },
+        { y: knuckles + (L('wrist') - knuckles) * 0.55, w: W('hand') * 0.93, d: D('hand') * 1.06, x: hx },
+        { y: L('wrist') + step, w: W('wrist'), d: D('wrist'), x: hx },
       ],
       { sides: sides.joint, factor: AVATAR.shades.boot },
+    )
+
+    for (let f = 0; f < 4; f++) {
+      const fx = hx + side * (f - 1.5) * hand.spread * h
+      const length = h * hand.length * hand.largo[f]
+      this._piece(
+        'torso',
+        [
+          { y: knuckles - length, w: W('fingerTip'), d: D('finger') * 0.78, x: fx + side * h * 0.0015 },
+          { y: knuckles - length * 0.45, w: W('finger') * 0.92, d: D('finger') * 0.94, x: fx },
+          { y: knuckles + h * 0.008, w: W('finger'), d: D('finger'), x: fx },
+        ],
+        { sides: sides.finger, factor: AVATAR.shades.limb, edgeAngle: 18 },
+      )
+    }
+
+    // Pulgar: por delante de la palma y hacia dentro, que es lo que lo separa de
+    // un quinto dedo.
+    const tx = hx - side * W('hand') * 0.44
+    const ty = h * hand.thumbY
+    const tl = h * hand.thumbLength
+    this._piece(
+      'torso',
+      [
+        { y: ty - tl, w: W('thumb') * 0.78, d: D('finger') * 1.0, x: tx - side * h * 0.005, z: D('hand') * 0.62 },
+        { y: ty - tl * 0.42, w: W('thumb'), d: D('finger') * 1.15, x: tx, z: D('hand') * 0.48 },
+        { y: ty, w: W('thumb') * 0.85, d: D('finger'), x: tx + side * h * 0.003, z: D('hand') * 0.22 },
+      ],
+      { sides: sides.finger, factor: AVATAR.shades.limb, edgeAngle: 18 },
     )
   }
 
@@ -470,11 +596,14 @@ export class Avatar {
    *
    * Mismo esquema que el brazo y por el mismo motivo: el muslo se afina de 0.086
    * a 0.058 camino de la rodilla, la rodilla vuelve a 0.086 y la espinilla se
-   * cierra de 0.078 a 0.042 en el tobillo. La bota es lo único que se ensancha
-   * al final, y además **sale hacia delante**.
+   * cierra de 0.078 a 0.042 en el tobillo.
+   *
+   * Lo que cambió con las vistas de perfil es el **volumen**: el cuádriceps mide
+   * 0.101 de fondo en la cadera y el gemelo 0.067 bajo la rodilla, los dos
+   * medidos, contra los 0.090 y 0.075 que salían de multiplicar el ancho. Y la
+   * bota se rehízo entera: ver `_buildBoot`.
    */
-  _buildLeg(side, L, W, depths, sides) {
-    const d = depths.leg
+  _buildLeg(side, L, W, D, sides) {
     // El eje de la pierna se abre según se baja (ver `figure.legX`), así que
     // cada anillo pide el suyo en lugar de compartir una separación fija.
     const X = (k) => side * AVATAR.figure.legX[k] * this.height
@@ -484,9 +613,9 @@ export class Avatar {
     this._piece(
       'legs',
       [
-        { y: L('hip') - this.height * 0.055, w: W('thighTop') * 0.95, d: W('thighTop') * 0.95 * d, x: X('hip') },
-        { y: L('hip') - this.height * 0.015, w: W('thighTop') * 1.12, d: W('thighTop') * 1.12 * d, x: X('hip') },
-        { y: L('hip') + this.height * 0.02, w: W('thighTop') * 0.88, d: W('thighTop') * 0.88 * d, x: X('hip') * 0.9 },
+        { y: L('hip') - this.height * 0.055, w: W('thighTop') * 0.95, d: D('thighTop') * 0.95, x: X('hip') },
+        { y: L('hip') - this.height * 0.015, w: W('thighTop') * 1.12, d: D('thighTop') * 1.10, x: X('hip') },
+        { y: L('hip') + this.height * 0.02, w: W('thighTop') * 0.88, d: D('thighTop') * 0.88, x: X('hip') * 0.9 },
       ],
       { sides: sides.joint, factor: AVATAR.shades.joint },
     )
@@ -497,11 +626,11 @@ export class Avatar {
       [
         // Mismo criterio que en el húmero: el anillo estrecho (0.058) es
         // intermedio y el muslo sigue hasta meterse dentro de la rodilla.
-        { y: L('knee') + this.height * 0.012, w: W('thighNarrow') * 1.02, d: W('thighNarrow') * 1.02 * d, x: X('knee') },
-        { y: L('thighNarrow'), w: W('thighNarrow'), d: W('thighNarrow') * d, x: X('thighNarrow') },
-        { y: L('thighNarrow') + (L('hip') - L('thighNarrow')) * 0.5, w: W('thighTop') * 0.85, d: W('thighTop') * 0.85 * d, x: (X('hip') + X('thighNarrow')) / 2 },
-        { y: L('hip') - step, w: W('thighTop'), d: W('thighTop') * d, x: X('hip') },
-        { y: L('hip') + step * 1.6, w: W('thighTop') * 0.82, d: W('thighTop') * 0.82 * d, x: X('hip') },
+        { y: L('knee') + this.height * 0.012, w: W('thighNarrow') * 1.02, d: D('thighNarrow') * 1.02, x: X('knee') },
+        { y: L('thighNarrow'), w: W('thighNarrow'), d: D('thighNarrow'), x: X('thighNarrow') },
+        { y: L('thighNarrow') + (L('hip') - L('thighNarrow')) * 0.5, w: W('thighTop') * 0.85, d: D('thighMid'), x: (X('hip') + X('thighNarrow')) / 2 },
+        { y: L('hip') - step, w: W('thighTop'), d: D('thighTop'), x: X('hip') },
+        { y: L('hip') + step * 1.6, w: W('thighTop') * 0.82, d: D('thighTop') * 0.84, x: X('hip') },
       ],
       { sides: sides.limb, factor: AVATAR.shades.limb, grid: true },
     )
@@ -511,9 +640,9 @@ export class Avatar {
     this._piece(
       'legs',
       [
-        { y: L('knee') - this.height * 0.04, w: W('shinTop') * 0.92, d: W('shinTop') * 0.92 * d, x: X('knee') },
-        { y: L('knee'), w: W('knee'), d: W('knee') * d * 1.08, x: X('knee'), z: this.height * 0.004 },
-        { y: L('knee') + this.height * 0.035, w: W('thighNarrow') * 1.06, d: W('thighNarrow') * 1.06 * d, x: X('knee') },
+        { y: L('knee') - this.height * 0.04, w: W('shinTop') * 0.92, d: D('shinTop') * 0.92, x: X('knee') },
+        { y: L('knee'), w: W('knee'), d: D('knee'), x: X('knee'), z: this.height * 0.004 },
+        { y: L('knee') + this.height * 0.035, w: W('thighNarrow') * 1.06, d: D('thighNarrow') * 1.06, x: X('knee') },
       ],
       { sides: sides.joint, factor: AVATAR.shades.joint },
     )
@@ -522,74 +651,185 @@ export class Avatar {
     this._piece(
       'legs',
       [
-        { y: L('ankle'), w: W('ankle'), d: W('ankle') * d * 1.15, x: X('ankle') },
-        { y: L('calf'), w: W('calf'), d: W('calf') * d * 1.1, x: X('calf') },
-        { y: L('knee') - step, w: W('shinTop'), d: W('shinTop') * d, x: X('knee') },
-        { y: L('knee') + step, w: W('shinTop') * 0.86, d: W('shinTop') * 0.86 * d, x: X('knee') },
+        { y: L('ankle'), w: W('ankle'), d: D('ankle'), x: X('ankle') },
+        { y: L('calf'), w: W('calf'), d: D('calf'), x: X('calf') },
+        { y: L('knee') - step, w: W('shinTop'), d: D('shinTop'), x: X('knee') },
+        { y: L('knee') + step, w: W('shinTop') * 0.86, d: D('shinTop') * 0.88, x: X('knee') },
       ],
       { sides: sides.limb, factor: AVATAR.shades.limb, grid: true },
     )
 
-    // Bota: sale hacia delante y se apoya en una suela más ancha que el pie.
-    const bootD = W('boot') * depths.boot
+    this._buildBoot(side, L, W, D, sides, X)
+  }
+
+  /**
+   * **La bota: caña, pie, suela y talón.**
+   *
+   * Era una sola pieza de tres anillos que salía hacia delante «un 20% de su
+   * fondo». De perfil mide 0.180 de la puntera al talón —tenía 0.148— y su
+   * centro cae 0.066 por delante del eje de la pierna, no 0.030. Las dos vistas
+   * de perfil dan el mismo número hasta el cuarto decimal, y la vista inferior
+   * da lo que no se veía en ninguna otra: que la suela es su propia pieza y el
+   * talón otra, más estrecha que el antepié (0.060 contra 0.078).
+   *
+   * Que sean cuatro piezas y no una no es detalle por detalle: con una sola, un
+   * anillo tiene **un** ancho a cada altura, así que un talón estrecho detrás y
+   * un antepié ancho delante no caben en la misma bota.
+   */
+  _buildBoot(side, L, W, D, sides, X) {
+    const h = this.height
+    const boot = AVATAR.figure.boot
+    const Z = (k) => boot.z[k] * h
+    const soleX = side * AVATAR.figure.legX.sole * h
+
+    // Caña: del empeine para arriba, envolviendo el tobillo.
     this._piece(
       'legs',
       [
-        { y: 0, w: W('boot'), d: bootD, x: X('sole'), z: bootD * 0.2 },
-        { y: this.height * 0.022, w: W('boot') * 1.02, d: bootD * 0.98, x: X('sole'), z: bootD * 0.2 },
-        { y: L('ankle') + this.height * 0.012, w: W('ankle') * 1.15, d: W('ankle') * 1.15 * d * 1.4, x: X('ankle'), z: bootD * 0.04 },
+        { y: h * boot.instep, w: W('boot') * 0.80, d: D('bootInstep'), x: X('ankle'), z: Z('instep') },
+        { y: L('ankle'), w: W('ankle') * 1.24, d: D('bootAnkle'), x: X('ankle'), z: Z('ankle') },
+        { y: h * boot.shaftTop, w: W('ankle') * 1.15, d: D('bootShaft'), x: X('ankle'), z: Z('shaft') },
       ],
-      { sides: sides.boot, factor: AVATAR.shades.boot },
+      { sides: sides.limb, factor: AVATAR.shades.boot },
+    )
+
+    // Pie: del borde de la suela al empeine. Es lo que sale hacia delante, y va
+    // a ocho caras porque con cuatro la puntera es un filo y la bota entera se
+    // lee como una cuña.
+    this._piece(
+      'legs',
+      [
+        { y: h * boot.soleTop, w: W('boot'), d: D('bootFoot'), x: soleX, z: Z('foot') },
+        { y: h * boot.toe, w: W('boot') * 0.99, d: D('bootFoot') * 0.86, x: soleX, z: Z('foot') * 0.82 },
+        { y: h * (boot.soleTop + boot.instep) * 0.5, w: W('boot') * 0.96, d: D('bootFoot') * 0.64, x: (soleX + X('ankle')) / 2, z: Z('foot') * 0.52 },
+        { y: h * boot.instep, w: W('boot') * 0.82, d: D('bootInstep') * 1.02, x: X('ankle'), z: Z('instep') },
+      ],
+      { sides: sides.foot, factor: AVATAR.shades.boot },
+    )
+
+    // Suela: la plancha de apoyo, y **lo único que toca el suelo**.
+    this._piece(
+      'legs',
+      [
+        { y: 0, w: W('boot') * 0.97, d: D('sole'), x: soleX, z: Z('sole') },
+        { y: h * boot.soleTop, w: W('boot'), d: D('sole') * 0.96, x: soleX, z: Z('sole') * 0.97 },
+      ],
+      { sides: sides.foot, factor: AVATAR.shades.joint },
+    )
+
+    // Talón: por detrás de la espinilla y más estrecho que el antepié.
+    this._piece(
+      'legs',
+      [
+        { y: 0, w: W('heel'), d: D('heel'), x: X('ankle'), z: Z('heel') },
+        { y: h * boot.heelTop, w: W('heel') * 0.84, d: D('heel') * 0.88, x: X('ankle'), z: Z('heel') * 0.88 },
+      ],
+      { sides: sides.boot, factor: AVATAR.shades.joint },
     )
   }
 
   /**
    * **Las cuatro líneas de luz**: dos por delante y dos por la espalda, de la
-   * coronilla a las botas.
+   * coronilla a las botas, **cada una dentro de su canal**.
    *
    * Son continuas —cada tramo empieza donde acaba el anterior— y se declaran
    * como la cadena de puntos por la que pasan. Las de atrás son las mismas con
    * la z cambiada de signo: el color de equipo tiene que reconocerse igual
-   * persiguiendo a alguien que de frente.
+   * persiguiendo a alguien que de frente. La vista posterior del turnaround
+   * confirma el recorrido que ya estaba medido de frente.
+   *
+   * **Dónde se apoya cada punto.** Hasta la vuelta 36 la línea se ponía a *media
+   * profundidad* del anillo, y eso sólo es la superficie si el punto cae en la
+   * cara frontal. En la cadera la línea pasa a 0.062 del eje, que con un prisma
+   * de ocho caras ya es la diagonal de al lado: allí flotaba. Ahora cada punto
+   * lleva el anillo entero —ancho, fondo y caras— y `surfaceZ` devuelve dónde
+   * está el contorno **en esa x**.
    */
-  _buildLights(L, W, depths) {
+  _buildLights(L, W, D, sides) {
     const size = AVATAR.stripWidth * this.height
     const h = this.height
     /** Separación de la línea a esa altura, medida sobre la referencia. */
     const S = (k) => AVATAR.stripSpread[k] * h
 
     /**
-     * Cada punto de la cadena lleva **la pieza sobre la que va montado**: su
-     * media profundidad (`half`) y dónde está su centro en z (`zc`), con las
-     * mismas expresiones con las que se construyó el anillo correspondiente.
-     *
-     * Es la única forma de que la línea quede pegada por delante **y** por
-     * detrás sin números a ojo: puesta a media profundidad del cuerpo, en las
-     * rodillas —que sobresalen— se metía dentro de la pieza y la línea
-     * desaparecía justo en la articulación.
+     * Cada punto de la cadena lleva **la pieza sobre la que va montado**: el
+     * anillo con el que se construyó y dónde está su centro en z (`zc`). Es la
+     * única forma de que la línea quede pegada por delante **y** por detrás sin
+     * números a ojo: puesta a media profundidad del cuerpo, en las rodillas
+     * —que sobresalen— se metía dentro de la pieza y desaparecía justo en la
+     * articulación.
      */
+    const boot = AVATAR.figure.boot
+    /** Eje de la pieza sobre la que va el punto: la pierna no baja por el centro. */
+    const legX = (k) => AVATAR.figure.legX[k] * h
     const chain = [
-      { x: S('crown'), y: h - h * 0.005, half: (W('crown') * depths.head * 1.2) / 2, zc: 0 },
-      { x: S('chin'), y: L('chin') + h * 0.012, half: (W('chin') * depths.head * 1.15) / 2, zc: W('chin') * 0.08 },
-      { x: S('shoulder'), y: L('shoulder'), half: (W('chest') * 0.93 * depths.torso * 0.94) / 2, zc: 0 },
-      { x: S('chest'), y: L('chest'), half: (W('chest') * depths.torso) / 2, zc: 0 },
-      { x: S('waist'), y: L('waist'), half: (W('waist') * depths.torso * 1.04) / 2, zc: 0 },
-      { x: S('hip'), y: L('hip') - h * 0.01, half: (W('hip') * depths.torso) / 2, zc: 0 },
-      { x: S('thighNarrow'), y: L('thighNarrow'), half: (W('thighNarrow') * depths.leg) / 2, zc: 0 },
-      { x: S('knee'), y: L('knee'), half: (W('knee') * depths.leg * 1.08) / 2, zc: h * 0.004 },
-      { x: S('calf'), y: L('calf'), half: (W('calf') * depths.leg * 1.1) / 2, zc: 0 },
-      { x: S('ankle'), y: L('ankle') + h * 0.02, half: (W('ankle') * 1.15 * depths.leg * 1.4) / 2, zc: W('boot') * depths.boot * 0.04 },
+      { x: S('crown'), y: h - h * 0.005, w: W('crown'), d: D('crown'), n: sides.head, cx: 0, zc: 0 },
+      { x: S('chin'), y: L('chin') + h * 0.012, w: W('chin'), d: D('chin'), n: sides.head, cx: 0, zc: W('chin') * 0.08 },
+      { x: S('shoulder'), y: L('shoulder'), w: W('chest') * 0.93, d: D('torsoTop'), n: sides.torso, cx: 0, zc: 0 },
+      { x: S('chest'), y: L('chest'), w: W('chest'), d: D('chest'), n: sides.torso, cx: 0, zc: 0 },
+      { x: S('waist'), y: L('waist'), w: W('waist'), d: D('waist'), n: sides.torso, cx: 0, zc: 0 },
+      { x: S('hip'), y: L('hip') - h * 0.01, w: W('hip'), d: D('hip'), n: sides.torso, cx: 0, zc: 0 },
+      { x: S('thighNarrow'), y: L('thighNarrow'), w: W('thighNarrow'), d: D('thighNarrow'), n: sides.limb, cx: legX('thighNarrow'), zc: 0 },
+      { x: S('knee'), y: L('knee'), w: W('knee'), d: D('knee'), n: sides.joint, cx: legX('knee'), zc: h * 0.004 },
+      { x: S('calf'), y: L('calf'), w: W('calf'), d: D('calf'), n: sides.limb, cx: legX('calf'), zc: 0 },
+      { x: S('ankle'), y: L('ankle') + h * 0.02, w: W('ankle') * 1.24, d: D('bootAnkle'), n: sides.limb, cx: legX('ankle'), zc: boot.z.ankle * h },
     ]
     // Un pelo por fuera de la pieza, como la grilla: a ras se ve el z-fighting.
-    const margin = 1 + AVATAR.stripOffset
+    const offset = AVATAR.stripOffset * h
 
     for (const side of [-1, 1]) {
       for (const front of [1, -1]) {
-        const at = (p) => ({ x: p.x * side, y: p.y, z: p.zc + front * p.half * margin })
+        /** La superficie del cuerpo en ese punto, ya con el lado y la cara. */
+        const skin = (p) => {
+          const x = p.x * side
+          // La x que importa es **respecto al eje de la pieza**: por la pierna
+          // la línea baja pegada al muslo, no a 0.080 del centro del cuerpo.
+          const z = p.zc + front * surfaceZ(p.w, p.d, x - p.cx * side, p.n)
+          return { x, y: p.y, z }
+        }
         for (let i = 0; i < chain.length - 1; i++) {
-          this._lightSegment(size, at(chain[i]), at(chain[i + 1]))
+          const from = skin(chain[i])
+          const to = skin(chain[i + 1])
+          // La barra, con su cara exterior a ras de piel: dentro del canal.
+          this._lightSegment(
+            size,
+            { ...from, z: from.z + front * (offset - size / 2) },
+            { ...to, z: to.z + front * (offset - size / 2) },
+          )
+          this._lightChannelSegment(from, to, front)
         }
       }
+    }
+  }
+
+  /**
+   * **Los dos labios del canal** de un tramo. Con piezas opacas y sin CSG un
+   * canal no se puede restar —un hueco tallado en el prisma sigue tapado por la
+   * cara del prisma—, así que se levanta: dos listones a los lados del recorrido
+   * y la barra al fondo.
+   *
+   * El desplazamiento va **perpendicular al tramo**, no en x: el recorrido se
+   * tuerce en el collar y en la ingle, y un labio en x se cruzaría con la línea.
+   */
+  _lightChannelSegment(from, to, front) {
+    const { width, rail, rise } = AVATAR.lightChannel
+    const h = this.height
+    const dx = to.x - from.x
+    const dy = to.y - from.y
+    const length = Math.hypot(dx, dy)
+    if (length <= 1e-6) return
+    const px = dy / length
+    const py = -dx / length
+    const apart = ((width + rail) / 2) * h
+    for (const lip of [-1, 1]) {
+      const geometry = new THREE.BoxGeometry(rail * h, length, rise * h)
+      geometry.rotateZ(-Math.atan2(dx, dy))
+      geometry.translate(
+        (from.x + to.x) / 2 + px * apart * lip,
+        (from.y + to.y) / 2 + py * apart * lip,
+        (from.z + to.z) / 2 + (front * rise * h) / 2,
+      )
+      this._channel.push(geometry)
     }
   }
 
@@ -608,6 +848,20 @@ export class Avatar {
       this.group.add(new THREE.LineSegments(merged, material))
       this._geometries.push(merged)
     }
+    // El canal va antes que los filos a propósito: sus labios llevan arista como
+    // cualquier otra pieza —es lo que hace que la hendidura se lea como
+    // hendidura y no como dos tiras pegadas— y esa arista entra en el mismo
+    // objeto fusionado, no en uno cuarto.
+    const channel = mergeGeometries(this._channel, false)
+    for (const geometry of this._channel) geometry.dispose()
+    this._channel.length = 0
+    if (channel) {
+      this.channel = new THREE.Mesh(channel, this._channelMaterial)
+      this.group.add(this.channel)
+      this._geometries.push(channel)
+      this._edges.push(new THREE.EdgesGeometry(channel, 24))
+    }
+
     addLines(this._gridBase, this._gridMaterial)
     addLines(this._gridAccent, this._gridAccentMaterial)
     addLines(this._edges, this._edgeMaterial)
