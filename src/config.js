@@ -30,8 +30,10 @@ export const COLORS = {
   targetHit: '#FFFFFF',
   /**
    * Verde FlickLAB. Color de marca para los botones de acción principal
-   * —JUGAR, REANUDAR, REINICIAR—. No se usa en ningún otro sitio: el naranja
-   * sigue siendo el acento de la interfaz y el HUD se queda en blanco y gris.
+   * —JUGAR, REANUDAR, REINICIAR— y, desde la vuelta 38, **la brújula de
+   * orientación** sobre cada muñeco. Es el único sitio donde un color de la
+   * paleta significa dos cosas, y se admite porque no coinciden nunca en
+   * pantalla: los botones son de menú y la brújula es del mundo.
    */
   action: '#2FCB82',
   /**
@@ -71,11 +73,6 @@ export const COLORS = {
    * aviso del color de aquello sobre lo que se dibuja no es un aviso.
    */
   threat: '#FF2D1F',
-  /**
-   * **Hacia dónde mira un muñeco.** El color de la brújula, elegido midiendo:
-   * ver `docs/decisions.md` §37.
-   */
-  facing: '#FFFFFF',
 }
 
 /** Sesión cronometrada. */
@@ -166,6 +163,13 @@ export const TARGET = {
    * golpe porque una brújula que salta 180° en un frame no se lee, se pierde.
    */
   turnRateDeg: 300,
+  /**
+   * **Prefijo del nick provisional** de un muñeco (`VK-01`, `VK-02`…). La ficha
+   * flotante necesita un nombre y hoy no hay cuentas: el número es la ranura del
+   * pool. Cuando existan identidades de verdad, lo que cambia es quién escribe
+   * el campo, no quién lo lee.
+   */
+  nickPrefix: 'VK',
 }
 
 /**
@@ -256,10 +260,19 @@ export const TARGET_TYPES = {
     halfHeight: 2,
     // Proporciones humanoides medidas desde el suelo: con el radio por defecto
     // (0.45) la figura mide 1.8 unidades de alto y la cabeza 0.25 de diámetro.
+    // `shape: 'body'` desde la vuelta 38: las tres zonas son **bandas de un
+    // mismo perfil** (ver `AVATAR.body` y `src/game/body.js`), no una esfera,
+    // una cápsula y un cilindro sueltos. El modelo de zonas no cambia —las
+    // alturas, las alturas de corte y el daño son los de siempre—, cambia la
+    // silueta, y cambia para los dos que la usan: la diana y el avatar.
+    //
+    // `radius` se queda aunque ya no dibuje nada: de él salen la altura total
+    // (`offsetY + radius` de la cabeza) y el escalado de las zonas del jugador
+    // en `player.js`.
     parts: [
       {
         zone: 'head',
-        shape: 'sphere',
+        shape: 'body',
         radius: 0.278,
         offsetY: 3.723,
         damage: 100,
@@ -267,7 +280,7 @@ export const TARGET_TYPES = {
       },
       {
         zone: 'torso',
-        shape: 'capsule',
+        shape: 'body',
         radius: 0.489,
         height: 1.556,
         offsetY: 2.667,
@@ -276,7 +289,7 @@ export const TARGET_TYPES = {
       },
       {
         zone: 'legs',
-        shape: 'cylinder',
+        shape: 'body',
         radius: 0.356,
         height: 1.889,
         offsetY: 0.9445,
@@ -1880,27 +1893,87 @@ export const ENEMY = {
  * del avatar: cambiar `targetRadius` no descoloca el marcador.
  */
 export const MARKERS = {
+  /**
+   * **La brújula**, un volumen de verdad: una cuña de sección triangular que
+   * baja de la cola a la punta, con la punta hacia donde mira el muñeco (ver
+   * `Reference/Avatar/avatar-compass.png`).
+   *
+   * Que sea volumen y no un triángulo plano no es un capricho: un triángulo
+   * plano a la altura de los ojos —que es la altura normal, porque la cabeza
+   * del muñeco y la del jugador están a la misma— se ve **de canto**, y de
+   * canto ocupa cero píxeles. Está medido en `docs/decisions.md` §37.4. Con
+   * volumen, lo que se ve al ras es su perfil de cuña, que sigue diciendo hacia
+   * dónde apunta.
+   *
+   * Las medidas van en **fracciones de la altura del muñeco**, como todo lo
+   * demás: cambiar `targetRadius` no descoloca el marcador. La relación
+   * largo/alto (2.6) y el ancho salen de la referencia.
+   */
   compass: {
-    /** Largo de la punta a la cola y ancho de la cola, en alturas de muñeco. */
-    length: 0.30,
-    width: 0.21,
+    length: 0.34,
+    width: 0.11,
+    height: 0.125,
     /**
-     * Cuánto se levanta la cola sobre el plano. **Medido, no elegido**: con
-     * `rise: 0` y la cámara a la altura exacta de la brújula, el marcador ocupa
-     * **cero píxeles** —no es que se lea mal, es que no está—. Con 0.10 son 22 a
-     * doce unidades, y sigue leyéndose como un triángulo desde arriba. Ver
-     * `docs/decisions.md` §37.
+     * **La tapa de la cola va más oscura.** Justo de frente y justo de espaldas
+     * la silueta de una cuña es la misma —su rectángulo de cola— y en esta
+     * escena no hay ni una luz, así que no hay sombreado que las separe: un
+     * muñeco encarado y uno de espaldas se verían igual. Con la cola en un verde
+     * al 45%, de frente se ve el claro y de espaldas el oscuro.
      */
-    rise: 0.10,
+    tailShade: 0.45,
     /** Por encima de la coronilla. */
-    gap: 0.10,
-    opacity: 0.92,
+    gap: 0.06,
   },
   icon: {
     /** Alto del glifo, en alturas de muñeco. */
-    size: 0.30,
+    size: 0.26,
     /** Por encima de la brújula. */
-    gap: 0.10,
+    gap: 0.05,
+  },
+  /**
+   * **La ficha flotante**: arma arriba, nick debajo, por encima de todo lo
+   * demás. Es DOM en el espacio (`CSS3DRenderer`), como lo era el tablero de
+   * acciones, y por el mismo motivo: reutiliza la tipografía y la silueta del
+   * arma que ya existen en vez de repintarlas en WebGL.
+   *
+   * **No sale por estar a la vista**: sale tras mantener la mira encima
+   * `dwellMs`. Una ficha por cada muñeco visible sería una pantalla de rótulos;
+   * el gesto de apuntar es lo que dice a cuál estás mirando.
+   */
+  nameplate: {
+    /** Cuánto hay que sostener la mira encima para que salga. */
+    dwellMs: 350,
+    /** Cuánto sigue puesta al dejar de apuntar: evita el parpadeo al rozarla. */
+    holdMs: 260,
+    /**
+     * Medio ángulo del cono que cuenta como «la mira está encima», en grados.
+     * Se mide por ángulo y no con un raycast por frame: un rayo por muñeco y
+     * por frame es justo lo que el presupuesto no admite (misma regla que la
+     * visión del enemigo). El rayo se lanza **una vez**, al cumplirse el tiempo,
+     * para descartar que haya cobertura por medio.
+     */
+    coneDeg: 2.6,
+    /** Cada cuánto se recomprueba esa cobertura mientras la ficha está puesta. */
+    recheckMs: 400,
+    /** Y cuántos de esos rayos caben en un frame. */
+    raysPerFrame: 1,
+    /**
+     * A qué altura del muñeco se apunta, en fracciones de su altura. **A la
+     * cabeza**: por ángulo daría igual, pero el mismo punto es el destino del
+     * rayo de cobertura, y asomado por encima de una caja lo que se ve de un
+     * muñeco es la cabeza — un rayo al pecho choca contra la caja y dejaría sin
+     * ficha justo al que estás mirando.
+     */
+    aimHeight: 0.92,
+    /** Por encima de los iconos, hasta **el centro** de la ficha. */
+    gap: 0.20,
+    /**
+     * Escala del DOM a unidades de mundo: cuántos píxeles de la ficha entran en
+     * una unidad. Medido sobre la ficha real (70 × 40 px de DOM): con 70, a
+     * siete unidades ocupa unos 40 px de pantalla, que es lo que hace falta para
+     * leer un nick de cinco caracteres.
+     */
+    pixelsPerUnit: 70,
   },
   /**
    * **Tamaño aparente mínimo.** Un marcador en el mundo encoge con la
@@ -2094,337 +2167,104 @@ export const MUSIC = {
  *    —multiplicar negro por 0.62 sigue siendo negro—, así que lo que dibuja el
  *    volumen son las aristas y la grilla.
  */
+/**
+ * **Colores de equipo.** El cuerpo entero de un jugador va tintado con el suyo, y
+ * es lo único que lo distingue: la forma es la misma para todos.
+ *
+ * La paleta que queda libre es estrecha, y no por capricho. Están cogidos el
+ * **naranja** (dianas), el **rojo** (aviso de que te disparan), el **verde**
+ * FlickLAB (botones de acción y, desde la vuelta 38, la brújula), el **ámbar**
+ * (explosivo), el **amarillo** (te han detectado) y el **azul eléctrico**
+ * (#6FE0FF, el canal de carga: escudo, recargas y núcleo). Lo que sobra es el
+ * azul medio y el violeta, y ahí van los dos equipos de partida.
+ *
+ * Medido contra el fondo real del Plano A: ver `docs/decisions.md` §38.
+ */
+export const TEAMS = {
+  blue: { label: 'Azul', color: '#2F6BF0' },
+  magenta: { label: 'Magenta', color: '#D94BD9' },
+}
+
+/**
+ * **El avatar: un cuerpo simple, y el mismo para todos.**
+ *
+ * Sustituye al humanoide facetado de las vueltas 33-36 —brazos, piernas,
+ * articulaciones, hombreras, dedos y líneas de luz— por una cápsula con cabeza
+ * ovalada. El porqué del giro está en `docs/decisions.md` §38; lo que hay que
+ * saber aquí es que **la forma es una sola y se reutiliza**:
+ *
+ *  - Como **diana de entrenamiento** (Hitbox completo) va en el naranja de
+ *    siempre, con sus tres zonas en sus tres tonos.
+ *  - Como **avatar de jugador** va entera del color de su equipo.
+ *
+ * Y nada más cambia: ni geometría, ni escala, ni detalle. Un rival se reconoce
+ * por el color, que se ve igual desde cualquier ángulo, y hacia dónde mira lo
+ * dice la brújula (`MARKERS`), no el cuerpo.
+ */
 export const AVATAR = {
   /**
-   * Piel base: negro. **Una variable, no un sistema de skins** —eso depende de
-   * economía y cuentas, que no existen—. `setColor()` cambia ésta y con ella
-   * todos los paneles; la luz se queda como está.
-   */
-  color: '#101014',
-  /**
-   * **Canal de luz**, hoy fijo y mañana el color de equipo: las dos líneas
-   * continuas —por delante y por detrás—, el visor y el núcleo. El mismo azul
-   * eléctrico del escudo y de sus recargas.
-   */
-  teamColor: COLORS.electric,
-  /**
-   * Filo de los paneles. Un gris de la misma rampa, **un escalón por encima** de
-   * la grilla del cuerpo: con la piel en negro, el filo es lo que dibuja la
-   * silueta, y si se iguala con la rejilla el modelo se lee como una mancha.
-   */
-  edgeColor: '#6E6E6E',
-  /**
-   * La grilla del cuerpo, con **el par del suelo** y no el de las paredes: es
-   * el más presente de los dos (ver `COLORS`), y sobre negro el de las paredes
-   * no se ve. Misma grilla, mismo generador, el par que se lee.
-   */
-  gridColor: COLORS.gridFloor,
-  gridAccentColor: COLORS.gridFloorAccent,
-  /**
-   * Paso de la grilla sobre el cuerpo. La sala usa 1 u, que sobre un torso de
-   * 0.35 daría **ninguna** línea: es la misma grilla a escala de cuerpo, no otra.
+   * **El perfil del cuerpo**, medido sobre
+   * `Reference/Avatar/avatar-simple-body.png` barriendo su silueta fila a fila.
+   * Cada par es `[nivel, radio]` en fracciones de la altura total: el nivel va
+   * del suelo (0) a la coronilla (1) y el radio es la mitad del ancho.
    *
-   * Bajó de 0.12 a 0.045 al pasar el cuerpo de cajas a prismas de seis y ocho
-   * caras: con ocho caras, cada una mide 0.145 de ancho, y un paso de 0.12 sólo
-   * cabía una vez. La referencia tiene del orden de ocho subdivisiones a lo
-   * ancho del cuerpo, y eso es 0.045.
-   */
-  gridStep: 0.045,
-  gridAccentEvery: 4,
-  /**
-   * Tonos por pieza, como factor de brillo sobre la piel. Con la piel en negro
-   * apenas separan; están por lo que pase el día que alguien pinte el avatar de
-   * un color con recorrido.
-   */
-  shades: { chest: 1, limb: 0.62, joint: 0.34, boot: 0.26 },
-
-  /**
-   * **La figura, medida sobre las referencias.**
+   * Dos cosas que salen de la referencia y no de la cabeza:
    *
-   * Todo lo de aquí sale de medir píxel a píxel —barriendo la silueta fila a
-   * fila— y **no de elegir números bonitos**. Son dos referencias y cada una
-   * pone lo suyo: `player-avatar-style.png` es una vista frontal y de ahí salen
-   * `levels`, `widths`, `armX`, `legX` y el recorrido de las líneas;
-   * `player-avatar-turnaround.png` trae seis vistas y de sus dos perfiles sale
-   * `depths`, que hasta la vuelta 36 era lo único estimado. Está en
-   * **fracciones de la altura total**, que es lo que hace que las proporciones
-   * aguanten aunque el muñeco cambie de tamaño: la altura la sigue poniendo
-   * `TARGET_TYPES.hitbox`, la forma la pone esto.
-   *
-   * `levels` va desde el suelo (0) a la coronilla (1). `widths` es el ancho de
-   * la pieza a esa altura. Los sitios donde una extremidad se estrecha y los
-   * sitios donde se ensancha están medidos por separado a propósito: **esa
-   * diferencia es la anatomía**, y es justo lo que no tenía el modelo de cajas.
+   *  - **El ancho máximo está a media altura** (0.163 a nivel 0.55), no en los
+   *    hombros. Es lo que hace que se lea como una cápsula y no como un cono.
+   *  - **La cabeza es un óvalo aparte**, y en el boceto está **separada** del
+   *    cuerpo. Aquí no se separa: la banda de la cabeza y la del torso son
+   *    contiguas en el modelo de zonas y un hueco entre las dos serían disparos
+   *    que no dan en ninguna. Lo que se hace es **estrangular el cuello**
+   *    (radio 0.030 en el nivel 0.845), que a distancia se lee igual y no deja
+   *    agujeros.
    */
-  figure: {
+  body: {
     /**
-     * Alturas, del suelo (0) a la coronilla (1). Las tres que marcan zona
-     * —barbilla 0.869, cadera 0.470— caen sobre las bandas del hitbox (0.861 y
-     * 0.472) sin forzar nada: la referencia y el muñeco tienen las mismas
-     * proporciones humanas.
+     * Caras de la sección. Diez, no veinticuatro como la esfera de antes: es
+     * una figura facetada, y con veinticuatro se lee como una cápsula lisa.
      */
-    levels: {
-      ankle: 0.070,
-      calf: 0.193,
-      knee: 0.255,
-      thighNarrow: 0.317,
-      hip: 0.470,
-      wrist: 0.505,
-      waist: 0.640,
-      elbow: 0.607,
-      armNarrow: 0.690,
-      ribs: 0.660,
-      chest: 0.750,
-      shoulder: 0.790,
-      neck: 0.845,
-      chin: 0.869,
-      temples: 0.938,
-    },
-    widths: {
-      // Cabeza: ancha en las sienes, cerrada arriba y en la barbilla.
-      crown: 0.082,
-      temples: 0.103,
-      chin: 0.062,
-      neck: 0.081,
-      // Tronco: reloj de arena. La cintura es el punto más estrecho (0.134
-      // contra 0.202 del pecho), y de ahí se abre otra vez a la cadera.
-      chest: 0.202,
-      ribs: 0.160,
-      waist: 0.134,
-      hip: 0.195,
-      crotch: 0.175,
-      // Hombrera: la pieza más ancha del cuerpo, y va por fuera del brazo.
-      pauldron: 0.117,
-      shoulderSpan: 0.284,
-      // Brazo: 0.036 arriba, 0.028 justo antes del codo, 0.059 **en** el codo.
-      // Esa diferencia es la articulación, y es lo que no tenían las cajas.
-      armUpper: 0.036,
-      armNarrow: 0.028,
-      elbow: 0.059,
-      forearm: 0.039,
-      wrist: 0.030,
-      hand: 0.050,
-      // Dedos: la mano mide 0.050 de ancho y son cuatro, así que el dedo sale
-      // en 0.0105 y la separación entre ejes en 0.0118.
-      finger: 0.0105,
-      fingerTip: 0.0078,
-      thumb: 0.015,
-      // Pierna: 0.086 en la cadera, 0.058 antes de la rodilla, 0.086 en ella.
-      thighTop: 0.086,
-      thighNarrow: 0.058,
-      knee: 0.086,
-      shinTop: 0.078,
-      calf: 0.065,
-      ankle: 0.042,
-      boot: 0.078,
-      // Talón: más estrecho que el antepié. Sale de la vista inferior, que es
-      // la primera que enseña la suela.
-      heel: 0.060,
-    },
-    /**
-     * **Profundidad a cada altura, medida — por fin — sobre las dos vistas de
-     * perfil.**
-     *
-     * Hasta la vuelta 36 esto eran siete multiplicadores sobre el ancho («el
-     * torso es 0.74 de lo que mide de ancho») y era **lo único de `figure` que
-     * no salía de una imagen**: la referencia de estilo es una vista frontal, y
-     * de frente no hay profundidad que medir. Con las dos vistas de perfil de
-     * `Reference/Avatar/player-avatar-turnaround.png` esto pasa a las mismas
-     * unidades que `widths`: **fracciones de la altura total**, no factores.
-     *
-     * Lo que cambió al medirlo no es un retoque. El fondo del torso es **casi
-     * constante** de pecho a cadera (0.134 → 0.122) mientras el ancho hace un
-     * reloj de arena (0.202 → 0.134 → 0.195): un multiplicador único no puede
-     * dar eso, y por eso la cintura salía plana y la cadera hinchada. Y la bota
-     * medía 0.148 de largo contra los 0.180 de la referencia, con el pie mucho
-     * menos adelantado de lo que está.
-     *
-     * **El brazo es la excepción, y está marcada.** De perfil cuelga por delante
-     * del torso y no hay **ni una fila** en la que sea él quien pone la silueta:
-     * ni umbral ni relleno lo separan. Sus valores salen de la única pieza del
-     * brazo que sí se mide —la hombrera, 0.137 de fondo contra 0.117 de ancho—
-     * y se afinan de ahí a la muñeca. Da igual de cara al banco de siluetas:
-     * dentro del contorno del torso, un error de fondo en el brazo no se ve ni
-     * de frente ni de perfil.
-     */
-    depths: {
-      // Cabeza: el casco es lo más profundo del cuerpo después de la hombrera,
-      // y su punto máximo está en las sienes (0.938), no arriba.
-      crown: 0.075,
-      temples: 0.119,
-      headMid: 0.107,
-      jaw: 0.103,
-      chin: 0.082,
-      neck: 0.087,
-      neckBase: 0.113,
-      // Tronco.
-      torsoTop: 0.126,
-      chest: 0.134,
-      ribs: 0.120,
-      waist: 0.112,
-      hip: 0.122,
-      crotch: 0.125,
-      // Deltoides: el punto más profundo de todo el cuerpo (nivel 0.79).
-      pauldron: 0.137,
-      // Brazo: ver la nota de arriba. Es lo que el perfil no da.
-      armUpper: 0.041,
-      armNarrow: 0.032,
-      elbow: 0.062,
-      forearm: 0.041,
-      wrist: 0.030,
-      hand: 0.028,
-      finger: 0.020,
-      // Pierna: el cuádriceps a 0.101 y el gemelo a 0.067, los dos medidos.
-      thighTop: 0.101,
-      thighMid: 0.079,
-      thighNarrow: 0.076,
-      knee: 0.084,
-      shinTop: 0.084,
-      calf: 0.067,
-      ankle: 0.044,
-      // Bota: lo que más cambió. La suela mide 0.180 de la puntera al talón.
-      bootShaft: 0.052,
-      bootAnkle: 0.068,
-      bootInstep: 0.074,
-      bootFoot: 0.146,
-      sole: 0.136,
-      heel: 0.049,
-    },
-    /**
-     * **La bota, medida de perfil y por debajo.** Alturas en fracciones de la
-     * altura total y `z` el desplazamiento **hacia delante** del centro de cada
-     * anillo: el pie no está centrado en el eje de la pierna, la suela sale
-     * 0.066 por delante y el talón se queda 0.020 por detrás. Medido igual en
-     * las dos vistas de perfil, hasta el cuarto decimal.
-     *
-     * De la vista inferior sale lo otro que no se veía: la **suela es una pieza
-     * aparte del pie y el talón otra**, y el talón es más estrecho que el
-     * antepié (0.060 contra 0.078).
-     */
-    boot: {
-      shaftTop: 0.105,
-      instep: 0.062,
-      toe: 0.026,
-      soleTop: 0.014,
-      heelTop: 0.042,
-      z: { shaft: 0.002, ankle: 0.005, instep: 0.012, foot: 0.054, sole: 0.066, heel: -0.020 },
-    },
-    /**
-     * **La mano, con los dedos separados.** `knuckles` es la altura de los
-     * nudillos, `length` lo que bajan los dedos desde ahí y `spread` la
-     * separación entre ejes. Cuatro dedos de distinto largo y un pulgar que sale
-     * por delante: la palma mira hacia atrás, como en la referencia.
-     */
-    hand: {
-      knuckles: 0.455,
-      length: 0.037,
-      spread: 0.0118,
-      largo: [0.86, 1, 0.96, 0.8],
-      thumbY: 0.474,
-      thumbLength: 0.028,
-    },
-    /**
-     * **Dónde cae el eje de cada brazo**, medido fila a fila sobre la
-     * referencia: no cuelga recto, se abre de 0.136 en el hombro a 0.177 en la
-     * muñeca. Es la pose en A de siempre, y sin ella los brazos se meten dentro
-     * del tronco —que mide 0.101 de medio ancho en el pecho— o quedan pegados
-     * como dos tablas.
-     */
-    armX: { shoulder: 0.136, elbow: 0.152, wrist: 0.177 },
-    /**
-     * La hombrera va **por dentro**: su centro cae a 0.086 y su borde exterior a
-     * 0.145, que es la mitad de la envergadura. Es una tapa sobre el hombro, no
-     * una pieza colgada del brazo.
-     */
-    pauldronX: 0.086,
-    /**
-     * **El eje de cada pierna no es vertical**: se abre de 0.069 en la cadera a
-     * 0.100 en la suela. Salió de comparar siluetas a la misma altura —las
-     * pantorrillas nos salían un 25% estrechas y no era el grosor, era que las
-     * dos piernas estaban demasiado juntas—. La postura de la referencia apoya
-     * más ancho de lo que arranca.
-     */
-    legX: { hip: 0.069, thighNarrow: 0.071, knee: 0.077, calf: 0.092, ankle: 0.098, sole: 0.100 },
-    /**
-     * Caras de cada prisma: más en el tronco, menos en las extremidades.
-     *
-     * La hombrera pasó a ocho en la vuelta 36 y no por gusto: **la vista cenital
-     * la enseña por arriba**, y con seis caras y una sola pieza se leía como una
-     * tapa lisa. Con ocho y partida en dos —casquete y alerón— tiene facetas que
-     * se ven desde arriba, que es de donde se miran.
-     *
-     * El pie va aparte del resto de la bota (`foot`) y también a ocho, y por lo
-     * contrario: con cuatro, la puntera es un filo y la bota entera se lee como
-     * una cuña de cartón. Ocho caras le dan chaflán. Seis no valen para ninguna
-     * de las dos cosas: con los vértices a medio paso, un prisma de seis tiene
-     * **vértice** al frente y uno de ocho tiene **cara**.
-     */
-    sides: { torso: 8, head: 6, limb: 6, joint: 6, boot: 4, foot: 8, pauldron: 8, finger: 4 },
+    sides: 10,
+    profile: [
+      [0.000, 0.083],
+      [0.050, 0.092],
+      [0.100, 0.101],
+      [0.150, 0.113],
+      [0.205, 0.125],
+      [0.260, 0.137],
+      [0.330, 0.148],
+      [0.400, 0.156],
+      [0.470, 0.161],
+      [0.550, 0.163],
+      [0.650, 0.160],
+      [0.700, 0.152],
+      [0.740, 0.140],
+      [0.770, 0.120],
+      [0.800, 0.090],
+      [0.830, 0.045],
+      [0.845, 0.030],
+      [0.870, 0.072],
+      [0.905, 0.076],
+      [0.940, 0.070],
+      [0.970, 0.057],
+      [1.000, 0.012],
+    ],
   },
-
   /**
-   * El núcleo del pecho, en fracciones de la altura total. Es la pista visual
-   * de la carga eléctrica del escudo, y lo único del canal de luz que no es
-   * una línea.
+   * **Rampa de tono por zona**, sacada del trío de las dianas: las piernas son
+   * exactamente el torso × 0.72 (medido sobre #A5321F contra #E4462B, los tres
+   * canales dan 0.72) y la cabeza es el torso aclarado hacia el blanco. Con el
+   * color de equipo se aplica la misma rampa, así que un avatar de equipo tiene
+   * las mismas tres zonas legibles que una diana.
    */
-  coreRadius: 0.032,
-
+  zone: { legsShade: 0.72, headLighten: 0.26 },
   /**
-   * **Las dos líneas de luz.** No son tramos sueltos por las piezas: son dos
-   * filamentos **continuos** que bajan de la coronilla a las botas —cara,
-   * esternón, ingle y cara interna de cada pierna— separándose por el camino, y
-   * **el mismo par por la espalda**, para que el color de equipo se reconozca
-   * igual de frente que de espaldas.
-   *
-   * Los `spread` son la separación entre las dos líneas en cada altura, en
-   * fracciones de la altura total: la inclinación de cada tramo sale de unir un
-   * punto con el siguiente, no de un ángulo escrito a mano.
-   *
-   * `width` va fino a propósito: es un filamento, no una pechera; con el doble
-   * de grosor el azul se comía el modelo entero.
+   * **Agacharse achata el cuerpo.** Sólo escala en Y —no hay esqueleto ni
+   * animación— y el factor sale de la altura de ojos vigente, así que es el
+   * mismo dato que ya decide dónde están las zonas de disparo. Cuesta una
+   * escritura de `scale.y` por frame.
    */
-  stripWidth: 0.0085,
-  /**
-   * **Por dónde pasan**, nivel a nivel y en fracciones de la altura: la
-   * separación de cada línea respecto al eje. Está medida sobre la referencia
-   * igual que los anchos —las líneas son el único azul saturado de la imagen, así
-   * que se localizan por tono— y no es una interpolación entre tres números.
-   *
-   * El recorrido tiene una forma que no se adivina: **se abren en el collar
-   * (0.056), se cierran en el ombligo (0.035) y a partir de ahí sólo se
-   * separan** hasta la bota. Con tres valores sueltos salía al revés —cerradas
-   * en el pecho y abiertas en la cintura— y el pecho se leía como una X.
-   */
-  stripSpread: {
-    crown: 0.029,
-    chin: 0.050,
-    shoulder: 0.056,
-    chest: 0.042,
-    waist: 0.035,
-    hip: 0.062,
-    thighNarrow: 0.080,
-    knee: 0.084,
-    calf: 0.092,
-    ankle: 0.102,
-  },
-  stripOffset: 0.004,
-  /**
-   * **El canal de la línea de luz.** Desde la vuelta 36 la línea no va pegada
-   * *sobre* la piel: va **dentro de una hendidura** que corre por el mismo
-   * recorrido medido, y su cara exterior queda a ras de cuerpo mientras los
-   * labios del canal sobresalen.
-   *
-   * Con piezas opacas y sin CSG, un canal no se puede **restar**: un hueco
-   * tallado en un prisma sigue tapado por la propia cara del prisma y no se ve.
-   * Así que se levanta: dos labios a los lados del recorrido y la barra al
-   * fondo. El relieve es el mismo, y lo que se buscaba también —de refilón el
-   * labio tapa la línea, y la línea deja de flotar por encima de la piel—.
-   *
-   * `width` es el hueco libre entre labios, `rail` el grosor de cada labio y
-   * `rise` lo que sobresalen: la barra queda `rise - stripOffset` por debajo del
-   * borde, que es el fondo del canal.
-   */
-  lightChannel: { width: 0.018, rail: 0.005, rise: 0.006 },
+  crouchSquash: true,
 
   /** Vista de depuración: distancia de la cámara y vueltas por minuto. */
   debugDistance: 3.2,

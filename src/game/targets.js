@@ -24,9 +24,11 @@
  */
 
 import * as THREE from 'three'
+import { bodySection } from './body.js'
 import {
   COLORS,
   COVER,
+  ENEMY,
   FEEDBACK,
   MAX_SIMULTANEOUS_TARGETS,
   ROOM,
@@ -37,6 +39,16 @@ import {
 } from '../config.js'
 
 const DEG_TO_RAD = Math.PI / 180
+
+/**
+ * Altura del muñeco en unidades de su radio: de los pies a la coronilla. La
+ * misma cuenta que hacen `player.js` y `enemyFire.js`, y por el mismo motivo —
+ * la altura no se escribe, sale de las piezas.
+ */
+const BODY_TOP = TARGET_TYPES.hitbox.parts.reduce(
+  (top, part) => Math.max(top, part.offsetY + (part.height ?? part.radius * 2) / 2),
+  0,
+)
 
 /** Huecos extra sobre el tope de dianas vivas, para las que se están apagando. */
 const DYING_SLOTS = 6
@@ -78,6 +90,14 @@ function createPartGeometry(part, radius) {
   const r = part.radius * radius
   const segments = TARGET.widthSegments
   switch (part.shape) {
+    case 'body': {
+      // La banda del cuerpo simple que le toca a esta zona. Sale del mismo
+      // módulo que el avatar del jugador (`body.js`): una sola forma, y el
+      // color es lo único que cambia entre una diana y un rival.
+      const half = (part.height ?? part.radius * 2) / 2
+      const top = BODY_TOP
+      return bodySection((part.offsetY - half) / top, (part.offsetY + half) / top, top * radius)
+    }
     case 'cone':
       return new THREE.ConeGeometry(r, part.height * radius, segments)
     case 'cylinder':
@@ -900,6 +920,16 @@ export class TargetManager {
         routeIndex: -1,
         /** Dónde cayó la última vez. No vuelve a nacer ahí. */
         lastPoint: null,
+        /**
+         * **Identidad provisional.** La ficha flotante necesita un nick y un
+         * arma, y hoy no hay ni cuentas ni inventario: el nick es la ranura del
+         * pool y el arma, la del `ENEMY`. Cuando existan de verdad, lo que
+         * cambia es quién escribe estos dos campos, no quién los lee.
+         */
+        nick: `${TARGET.nickPrefix}-${String(i + 1).padStart(2, '0')}`,
+        weaponKey: ENEMY.weapon,
+        /** El día que haya equipos: a un compañero se le ve la ficha siempre. */
+        friendly: false,
         /**
          * **Hacia dónde mira**, en yaw, con la convención de siempre: la
          * dirección es `(sin yaw, 0, cos yaw)`.

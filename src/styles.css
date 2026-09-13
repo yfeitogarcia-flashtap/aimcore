@@ -1328,6 +1328,47 @@ body {
   transition: opacity 120ms linear;
 }
 
+/* La ficha flotante sobre un muñeco: silueta del arma arriba y nick debajo.
+   Es DOM en el espacio (CSS3DRenderer), como lo era el tablero de acciones, y
+   por el mismo motivo: reutiliza la tipografía y la silueta del arma que ya
+   existen en vez de repintarlas en WebGL. Sin fondo opaco — lo que hay detrás
+   es el mapa, y taparlo para poner un nombre es justo lo contrario de lo que
+   sirve. */
+.nameplate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+  background: rgba(10, 10, 10, 0.52);
+  border: 1px solid rgba(234, 234, 234, 0.18);
+  border-radius: 3px;
+}
+
+.nameplate__weapon {
+  display: block;
+  width: 46px;
+  height: 16px;
+  fill: none;
+  stroke: var(--text-primary);
+  /* El trazado viene en las coordenadas del encuadre común, no en píxeles: a
+     46 px de ancho contra los 136 del HUD, el grosor se compensa por la misma
+     proporción (1.5 × 136/46). */
+  stroke-width: 4.4;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.nameplate__nick {
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  color: #eaeaea;
+}
+
 /* Segundos de gracia tras reaparecer: un marco encendido y lo que queda. Va
    arriba del todo y en el borde para no tapar nada de lo que se está mirando,
    pero **nunca invisible**: una invulnerabilidad que no se ve no se aprovecha. */

@@ -184,13 +184,14 @@ export class Engine {
     /** Los muñecos disparando, y los recogibles que hacen falta para aguantarlo. */
     this.enemyFire = new EnemyFire(this.scene, (hit) => this._onPlayerHit(hit))
     /** Brújula e iconos de estado sobre cada muñeco. Sólo dibuja; no decide. */
-    this.markers = new DummyMarkers(this.scene)
+    this.markers = new DummyMarkers(this.scene, this.cssScene)
     // Enlazado una vez: pasarlo como flecha en el bucle sería una función nueva
     // por frame, y el bucle caliente no aloca.
     this._enemyPhase = (instance, now) => this.enemyFire.phaseOf(instance, now)
     this.pickups = new PickupField(this.scene, COVER.heights, (kind) => this._collect(kind))
     this.pickups.setSites(this.scenario.pickupSites)
     this.enemyFire.setOccluders(this.scenario.occluders)
+    this.markers.setOccluders(this.scenario.occluders)
     /** Mando del zumbido de carga, mientras dure. */
     this._shieldSound = null
 
@@ -546,6 +547,7 @@ export class Engine {
     this.objective.setSites(this.scenario.objectiveSites)
     this.pickups.setSites(this.scenario.pickupSites)
     this.enemyFire.setOccluders(this.scenario.occluders)
+    this.markers.setOccluders(this.scenario.occluders)
     this.enemyFire.setEnabled(this.scenario.hasGeometry && getSettings().targetType === 'hitbox')
     this._syncMarkers(getSettings())
 
@@ -811,7 +813,7 @@ export class Engine {
     this.enemyFire.update(now, this.targets.instances, body)
     // Los marcadores van **después** del fuego: enseñan el estado de este frame,
     // no el del anterior.
-    this.markers.update(now, this.targets.instances, this.camera, this._enemyPhase)
+    this.markers.update(now, deltaMs, this.targets.instances, this.camera, this._enemyPhase)
     this.pickups.update(now, deltaMs / 1000, this.camera)
   }
 
@@ -1345,6 +1347,10 @@ export class Engine {
     // La vista del avatar se lleva la cámara mientras esté abierta. Va después
     // del movimiento y antes de dibujar, como cualquier otra cosa que la mueva.
     if (this._avatarDebug) this._updateAvatarDebug(delta / 1000)
+    // Agacharse achata el cuerpo. Va aquí y no en el movimiento porque es
+    // presentación, no física: una escritura de escala con la altura de ojos
+    // que el movimiento ya ha resuelto este frame.
+    this.avatar?.setEyeHeight(this.movement.eyeHeight)
 
     const targetDelta = this.phase === PHASE.RUNNING ? delta / 1000 : 0
     this.targets.update(now, targetDelta, this.camera)

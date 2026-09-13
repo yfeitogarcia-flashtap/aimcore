@@ -1,41 +1,45 @@
 /**
- * **Lo que se ve encima de un muñeco**: la brújula de orientación y los dos
- * iconos de estado.
+ * **Lo que se ve encima de un muñeco**: la brújula, los dos iconos de estado y
+ * la ficha de identificación.
  *
  * Todo vive en el mundo, no en la interfaz. No es un capricho de estilo: son
  * datos **de un sitio concreto del mapa**, y una lista en una esquina de la
  * pantalla obliga a traducir «hay dos» a «cuáles», que es justo el trabajo que
  * se quería ahorrar.
  *
- * **Tres piezas y dos comportamientos distintos, a propósito:**
+ * **Tres capas, de abajo arriba, y cada una con su regla:**
  *
- *  - **La brújula** dice hacia dónde mira el muñeco, y por eso **no se
- *    billboardea**: va paralela al suelo y gira sólo en yaw. Un triángulo que se
- *    girase hacia la cámara apuntaría siempre al jugador y no diría nada. Está
- *    siempre que el muñeco esté: es orientación pasiva, no un aviso.
- *  - **Los iconos `?` y `!`** sí se billboardean, como cualquier icono flotante:
- *    lo que tienen que hacer es leerse. `?` mientras el muñeco te ha visto y aún
- *    no dispara, `!` mientras te dispara. Son situacionales y se apagan al
- *    perder el contacto o al caer el muñeco — lo segundo sale solo, porque un
- *    muñeco que no está vivo no tiene marcador.
+ *  1. **La brújula** (verde, volumen 3D, *siempre*). Dice hacia dónde mira el
+ *     muñeco, y por eso **no se billboardea**: gira sólo en yaw. Un marcador que
+ *     se girase hacia la cámara apuntaría siempre al jugador y no diría nada.
+ *     Es volumen y no un triángulo plano porque un triángulo plano a la altura
+ *     de los ojos —que es la altura normal— se ve de canto y ocupa cero píxeles
+ *     (medido, `docs/decisions.md` §37.4).
+ *  2. **Los iconos `?` y `!`** (billboard, *situacionales*). `?` mientras el
+ *     muñeco te ha visto y aún no dispara, `!` mientras te dispara. Se
+ *     billboardean porque lo suyo es leerse, no orientar.
+ *  3. **La ficha arma + nick** (billboard, *condicionada*). Sale tras mantener
+ *     la mira encima `MARKERS.nameplate.dwellMs`, nunca por estar a la vista: una
+ *     ficha por muñeco visible sería una pantalla de rótulos. Es DOM en el
+ *     espacio (`CSS3DRenderer`), igual que era el tablero de acciones, para
+ *     reutilizar la tipografía y la silueta del arma que ya existen.
  *
  * **Un marcador no encoge con la distancia más allá de `referenceDistance`.**
  * A 30 u —el largo del Plano A— un icono de tamaño de mundo son cuatro píxeles,
- * y lo que no se ve no se cuenta. A partir de esa distancia el marcador escala
- * con ella, de modo que conserva su tamaño en pantalla, con un tope para que de
- * cerca no tape al muñeco.
+ * y lo que no se ve no se cuenta.
  *
  * **Los glifos son geometría, no una textura.** Aquí no hay assets de ningún
  * tipo, tampoco un lienzo con texto pintado: el `!` son dos polígonos y el `?`
  * es un arco muestreado, construidos una vez y compartidos por todo el pool.
  *
- * No decide nada: le dan el pool y en qué fase está cada muñeco (`phaseOf`, de
- * `enemyFire.js`) y coloca. Si algún día hay más estados, la máquina sigue
- * estando en un solo sitio.
+ * No decide nada del juego: le dan el pool y en qué fase está cada muñeco
+ * (`phaseOf`, de `enemyFire.js`) y coloca.
  */
 
 import * as THREE from 'three'
-import { COLORS, MARKERS, TARGET_TYPES } from '../config.js'
+import { CSS3DSprite } from 'three/examples/jsm/renderers/CSS3DRenderer.js'
+import { COLORS, ENEMY, MARKERS, TARGET_TYPES, WEAPONS } from '../config.js'
+import { WEAPON_PATHS } from '../ui/weaponPaths.js'
 
 /** Altura del muñeco en unidades de su radio, igual que en `enemyFire.js`. */
 const DUMMY_HEIGHT = TARGET_TYPES.hitbox.parts.reduce(
@@ -43,35 +47,55 @@ const DUMMY_HEIGHT = TARGET_TYPES.hitbox.parts.reduce(
   0,
 )
 
+const DEG_TO_RAD = Math.PI / 180
+
+// Vectores de módulo: el bucle no aloca.
+const _toTarget = new THREE.Vector3()
+const _forward = new THREE.Vector3()
+const _origin = new THREE.Vector3()
+const _dir = new THREE.Vector3()
+
 /**
- * **La brújula.** Un triángulo isósceles en el plano XZ, con la punta hacia +Z
- * —la convención de yaw de todo el motor: la dirección de `facing` es
- * `(sin yaw, 0, cos yaw)`— y los dos vértices de la cola levantados `rise`.
+ * **La brújula.** Una cuña: rectángulo en la cola y punta en el morro, con el
+ * morro hacia +Z —la convención de yaw de todo el motor: la dirección de
+ * `facing` es `(sin yaw, 0, cos yaw)`—.
  *
- * Ese levantamiento es lo único que no es un triángulo plano, y está medido: con
- * la brújula perfectamente plana el jugador la ve **de canto** —su cabeza y la
- * del muñeco están a la misma altura— y desaparece. Con la cola arriba, de perfil
- * queda una cuña cuya pendiente sigue diciendo hacia dónde apunta.
+ * Desde arriba se lee como un triángulo que apunta; de canto, como una cuña que
+ * baja hacia la punta. Las dos lecturas dicen lo mismo, que es de lo que se
+ * trata: la referencia (`avatar-compass.png`) la dibuja precisamente de perfil.
  */
 function compassGeometry(height) {
-  const length = MARKERS.compass.length * height
-  const width = MARKERS.compass.width * height
-  const rise = MARKERS.compass.rise * height
+  const l = MARKERS.compass.length * height
+  const w = MARKERS.compass.width * height
+  const h = MARKERS.compass.height * height
+  const positions = [
+    // Cola: cuatro esquinas.
+    -w / 2, 0, -l / 2,
+    w / 2, 0, -l / 2,
+    w / 2, h, -l / 2,
+    -w / 2, h, -l / 2,
+    // Morro: un solo vértice, a media altura.
+    0, h / 2, l / 2,
+  ]
   const geometry = new THREE.BufferGeometry()
-  geometry.setAttribute(
-    'position',
-    new THREE.Float32BufferAttribute(
-      [
-        0, 0, length / 2,
-        -width / 2, rise, -length / 2,
-        width / 2, rise, -length / 2,
-      ],
-      3,
-    ),
-  )
-  // Las dos caras: se mira desde arriba y desde abajo según dónde esté el
-  // muñeco, y una cara sola desaparece por el lado malo.
-  geometry.setIndex([0, 1, 2, 0, 2, 1])
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  geometry.setIndex([
+    // Las cuatro caras que van al morro.
+    0, 1, 4,
+    1, 2, 4,
+    2, 3, 4,
+    3, 0, 4,
+    // Tapa de la cola, en su propio grupo: lleva otro material.
+    0, 2, 1, 0, 3, 2,
+  ])
+  // **Dos tonos, y no es decoración.** Visto justo de frente o justo de espaldas,
+  // la silueta de una cuña es la misma —el rectángulo de la cola— y sin luces en
+  // la escena no hay sombreado que las separe: un muñeco encarado y uno de
+  // espaldas se verían igual. Con la tapa de la cola en un verde más oscuro, de
+  // frente se ve el claro y de espaldas el oscuro.
+  geometry.addGroup(0, 12, 0)
+  geometry.addGroup(12, 6, 1)
+  geometry.computeBoundingSphere()
   return geometry
 }
 
@@ -127,43 +151,76 @@ function queryShapes(size) {
   for (let i = inner.length - 1; i >= 0; i--) arc.lineTo(inner[i][0], inner[i][1])
   arc.closePath()
 
-  // El tallo baja desde el final del arco hasta encima del punto.
   const end = outer[outer.length - 1]
-  const stem = barShape((end[0] + inner[inner.length - 1][0]) / 2 * 0.4, -size * 0.06, thickness, size * 0.3)
+  const stem = barShape(((end[0] + inner[inner.length - 1][0]) / 2) * 0.4, -size * 0.06, thickness, size * 0.3)
   return [arc, stem, barShape(0, -size * 0.38, thickness, thickness)]
 }
 
-/** Un glifo: sus formas fusionadas en una sola geometría plana. */
-function glyphGeometry(shapes) {
-  return new THREE.ShapeGeometry(shapes)
+/**
+ * La ficha: dos filas de DOM, silueta arriba y nick debajo. Se construye a mano
+ * y no con React porque vive en la escena del `CSS3DRenderer`, fuera del árbol.
+ */
+function nameplateElement() {
+  const root = document.createElement('div')
+  root.className = 'nameplate'
+  const weapon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  weapon.setAttribute('class', 'nameplate__weapon')
+  const path = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+  weapon.appendChild(path)
+  const nick = document.createElement('span')
+  nick.className = 'nameplate__nick'
+  root.appendChild(weapon)
+  root.appendChild(nick)
+  return { root, weapon, path, nick }
 }
 
 export class DummyMarkers {
-  /** @param {THREE.Scene} scene */
-  constructor(scene) {
+  /**
+   * @param {THREE.Scene} scene
+   * @param {THREE.Scene} cssScene escena paralela del `CSS3DRenderer`
+   */
+  constructor(scene, cssScene) {
     this.scene = scene
+    this.cssScene = cssScene
     this.enabled = false
     this.radius = 0
     /** @type {Array<object>} un juego de marcadores por ranura del pool */
     this.slots = []
     this._geometries = []
+    this.occluders = []
+    this._ray = new THREE.Raycaster()
 
     this._compassMaterial = new THREE.MeshBasicMaterial({
-      color: new THREE.Color(COLORS.facing),
-      transparent: true,
-      opacity: MARKERS.compass.opacity,
+      color: new THREE.Color(COLORS.action),
+      // Las cuatro caras de la cuña: se mira desde cualquier lado.
       side: THREE.DoubleSide,
-      depthWrite: false,
+    })
+    /** La tapa de la cola, más oscura: es lo que separa «de frente» de «de espaldas». */
+    this._compassTailMaterial = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(COLORS.action).multiplyScalar(MARKERS.compass.tailShade),
+      side: THREE.DoubleSide,
     })
     this._alertMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color(COLORS.alert) })
     this._threatMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color(COLORS.threat) })
-    this._materials = [this._compassMaterial, this._alertMaterial, this._threatMaterial]
+    this._materials = [
+      this._compassMaterial,
+      this._compassTailMaterial,
+      this._alertMaterial,
+      this._threatMaterial,
+    ]
+
+    this._cosCone = Math.cos(MARKERS.nameplate.coneDeg * DEG_TO_RAD)
   }
 
   /** Sólo donde hay quien dispare: la misma condición que `enemyFire`. */
   setEnabled(value) {
     this.enabled = Boolean(value)
     if (!this.enabled) this._hideAll()
+  }
+
+  /** La geometría del escenario, para el único rayo que lanza esto. */
+  setOccluders(occluders) {
+    this.occluders = occluders || []
   }
 
   /**
@@ -179,34 +236,65 @@ export class DummyMarkers {
     const height = DUMMY_HEIGHT * radius
     const compass = compassGeometry(height)
     const iconSize = MARKERS.icon.size * height
-    const bang = glyphGeometry(bangShapes(iconSize))
-    const query = glyphGeometry(queryShapes(iconSize))
+    const bang = new THREE.ShapeGeometry(bangShapes(iconSize))
+    const query = new THREE.ShapeGeometry(queryShapes(iconSize))
     this._geometries.push(compass, bang, query)
 
-    this.compassY = height + MARKERS.compass.gap * height
-    this.iconY = this.compassY + MARKERS.icon.gap * height + iconSize / 2
+    /**
+     * **Dónde va cada capa, y por qué en dos trozos.**
+     *
+     * La altura de un marcador sobre la cabeza es `bodyTop + offset · escala`:
+     * la coronilla **no** escala con la distancia —está donde está— y la pila
+     * de marcadores sí, porque su tamaño también. Multiplicar la altura entera
+     * por la escala, que es lo que hacía el grupo escalado sin más, manda los
+     * marcadores a volar tres cuerpos por encima de un muñeco lejano.
+     */
+    this.bodyTop = height
+    this.compassOffset = MARKERS.compass.gap * height
+    this.iconOffset =
+      this.compassOffset + MARKERS.compass.height * height + MARKERS.icon.gap * height + iconSize / 2
+    this.plateOffset = this.iconOffset + iconSize / 2 + MARKERS.nameplate.gap * height
 
     for (let i = 0; i < count; i++) {
       const group = new THREE.Group()
       group.visible = false
-      // La brújula cuelga de su propio grupo: el de fuera lleva la posición y la
-      // escala por distancia, y éste el yaw. Así el icono no hereda el giro.
-      const needle = new THREE.Mesh(compass, this._compassMaterial)
-      needle.position.y = this.compassY
+      const needle = new THREE.Mesh(compass, [this._compassMaterial, this._compassTailMaterial])
       group.add(needle)
 
       const alert = new THREE.Mesh(query, this._alertMaterial)
-      alert.position.y = this.iconY
       alert.visible = false
       group.add(alert)
 
       const threat = new THREE.Mesh(bang, this._threatMaterial)
-      threat.position.y = this.iconY
       threat.visible = false
       group.add(threat)
 
+      // La ficha va en la escena del CSS3DRenderer, que es otra escena: se
+      // coloca en mundo, no colgada del grupo.
+      const dom = nameplateElement()
+      const plate = new CSS3DSprite(dom.root)
+      plate.scale.setScalar(1 / MARKERS.nameplate.pixelsPerUnit)
+      plate.visible = false
+      this.cssScene.add(plate)
+
       this.scene.add(group)
-      this.slots.push({ group, needle, alert, threat })
+      this.slots.push({
+        group,
+        needle,
+        alert,
+        threat,
+        plate,
+        dom,
+        /** Cuánto lleva la mira encima, y hasta cuándo sigue puesta la ficha. */
+        dwellMs: 0,
+        plateUntil: 0,
+        /** Lo que se comprobó de cobertura, y cuándo toca volver a mirarlo. */
+        clear: false,
+        nextCheckAt: 0,
+        /** Lo último que se escribió en el DOM, para no tocarlo por frame. */
+        shownNick: null,
+        shownWeapon: null,
+      })
     }
   }
 
@@ -214,17 +302,24 @@ export class DummyMarkers {
    * Coloca los marcadores del frame.
    *
    * @param {number} now
+   * @param {number} deltaMs tiempo de juego; en pausa, cero
    * @param {Array<object>} instances el pool, tal cual
    * @param {THREE.Camera} camera
    * @param {(instance: object, now: number) => string} phaseOf de `enemyFire`
    */
-  update(now, instances, camera, phaseOf) {
+  update(now, deltaMs, instances, camera, phaseOf) {
     if (!this.enabled || this.slots.length === 0) return
+    camera.getWorldDirection(_forward)
+    let rayBudget = MARKERS.nameplate.raysPerFrame
+
     for (let i = 0; i < instances.length && i < this.slots.length; i++) {
       const instance = instances[i]
       const slot = this.slots[i]
       if (instance.state !== 'alive') {
         slot.group.visible = false
+        slot.plate.visible = false
+        slot.dwellMs = 0
+        slot.plateUntil = 0
         continue
       }
       const position = instance.group.position
@@ -237,6 +332,12 @@ export class DummyMarkers {
       const distance = camera.position.distanceTo(position)
       const scale = Math.min(MARKERS.maxScale, Math.max(1, distance / MARKERS.referenceDistance))
       slot.group.scale.setScalar(scale)
+      // El grupo va escalado, así que las alturas se dividen por la escala para
+      // que la coronilla no se mueva: en mundo queda `bodyTop + offset · escala`.
+      const anchor = this.bodyTop / scale
+      slot.needle.position.y = anchor + this.compassOffset
+      slot.alert.position.y = anchor + this.iconOffset
+      slot.threat.position.y = anchor + this.iconOffset
 
       const phase = phaseOf(instance, now)
       slot.alert.visible = phase === 'alert'
@@ -246,16 +347,111 @@ export class DummyMarkers {
         slot.alert.quaternion.copy(camera.quaternion)
         slot.threat.quaternion.copy(camera.quaternion)
       }
+
+      rayBudget = this._updateNameplate(now, deltaMs, instance, slot, camera, distance, scale, rayBudget)
     }
-    for (let i = instances.length; i < this.slots.length; i++) this.slots[i].group.visible = false
+    for (let i = instances.length; i < this.slots.length; i++) {
+      this.slots[i].group.visible = false
+      this.slots[i].plate.visible = false
+    }
+  }
+
+  /**
+   * **La ficha, y la única decisión de este módulo**: se enseña a quien lleves
+   * un rato apuntando, o a un compañero siempre.
+   *
+   * El «apuntando» se mide **por ángulo**, no con un rayo por frame: un rayo por
+   * muñeco y por frame es justo lo que el presupuesto no admite, la misma regla
+   * que la visión del enemigo. El rayo se lanza una sola vez, al cumplirse el
+   * tiempo, para descartar que haya cobertura por medio, y se repite cada
+   * `recheckMs` mientras la ficha siga puesta.
+   */
+  _updateNameplate(now, deltaMs, instance, slot, camera, distance, scale, rayBudget) {
+    const plate = slot.plate
+    // El día que haya equipos, a un compañero se le ve la ficha siempre: no hay
+    // que apuntar a alguien para saber quién es si juega contigo.
+    const friendly = instance.friendly === true
+
+    _toTarget.copy(instance.group.position)
+    // **A la cabeza, no al centro del cuerpo.** Por ángulo daría igual, pero este
+    // mismo vector es el que se usa para el rayo de cobertura, y ahí no da igual:
+    // asomado por encima de una caja, lo que se ve de un muñeco es la cabeza, y
+    // un rayo al pecho choca contra la caja y dejaría sin ficha justo al que
+    // estás mirando.
+    _toTarget.y += this.bodyTop * MARKERS.nameplate.aimHeight
+    _toTarget.sub(camera.position)
+    const length = _toTarget.length()
+    const aiming = length > 1e-3 && _toTarget.dot(_forward) / length >= this._cosCone
+
+    if (aiming && deltaMs > 0) slot.dwellMs += deltaMs
+    else if (!aiming) slot.dwellMs = 0
+
+    if (friendly || (aiming && slot.dwellMs >= MARKERS.nameplate.dwellMs)) {
+      // Un solo rayo, y sólo cuando toca: al cumplirse el tiempo y cada
+      // `recheckMs`. Sin presupuesto, se queda con lo que sabía.
+      if (!friendly && now >= slot.nextCheckAt && rayBudget > 0) {
+        rayBudget -= 1
+        slot.nextCheckAt = now + MARKERS.nameplate.recheckMs
+        slot.clear = !this._blocked(camera.position, _toTarget, length)
+      }
+      if (friendly || slot.clear) slot.plateUntil = now + MARKERS.nameplate.holdMs
+    }
+
+    const show = friendly || now < slot.plateUntil
+    plate.visible = show
+    if (!show) return rayBudget
+
+    // La ficha va **sin escalar con la distancia**: es DOM, y el CSS3DSprite ya
+    // la mantiene de frente. Lo que sí sigue es la misma corrección de tamaño
+    // aparente que el resto, para que a 30 u se siga leyendo.
+    plate.position.copy(instance.group.position)
+    plate.position.y += this.bodyTop + this.plateOffset * scale
+    plate.scale.setScalar(scale / MARKERS.nameplate.pixelsPerUnit)
+
+    const nick = instance.nick ?? ''
+    const weaponKey = instance.weaponKey ?? ENEMY.weapon
+    if (nick !== slot.shownNick) {
+      slot.dom.nick.textContent = nick
+      slot.shownNick = nick
+    }
+    if (weaponKey !== slot.shownWeapon) {
+      const shape = WEAPON_PATHS[weaponKey]
+      if (shape) {
+        slot.dom.weapon.setAttribute('viewBox', shape.viewBox)
+        slot.dom.path.setAttribute('d', shape.d)
+      }
+      slot.dom.root.title = WEAPONS[weaponKey]?.label ?? ''
+      slot.shownWeapon = weaponKey
+    }
+    return rayBudget
+  }
+
+  /** ¿Hay geometría del escenario entre la cámara y la ficha? */
+  _blocked(origin, direction, distance) {
+    if (this.occluders.length === 0) return false
+    _origin.copy(origin)
+    _dir.copy(direction).normalize()
+    this._ray.set(_origin, _dir)
+    this._ray.near = 0
+    this._ray.far = distance - 0.2
+    const hit = this._ray.intersectObjects(this.occluders, false)
+    this._ray.far = Infinity
+    return hit.length > 0
   }
 
   _hideAll() {
-    for (const slot of this.slots) slot.group.visible = false
+    for (const slot of this.slots) {
+      slot.group.visible = false
+      slot.plate.visible = false
+    }
   }
 
   dispose() {
-    for (const slot of this.slots) this.scene.remove(slot.group)
+    for (const slot of this.slots) {
+      this.scene.remove(slot.group)
+      this.cssScene.remove(slot.plate)
+      slot.dom.root.remove()
+    }
     for (const geometry of this._geometries) geometry.dispose()
     this.slots = []
     this._geometries = []

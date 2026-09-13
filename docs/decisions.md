@@ -3291,6 +3291,156 @@ una pieza de otra es la silueta: una visera que no asoma no cambia nada. Lo caza
 una aserción sobre la caja de la geometría, que con la visera dentro sale
 simétrica en z.
 
+## Ronda 38 — El giro: se tira el avatar humanoide
+
+### 38.1 Qué se tira, y por qué no se intenta reconciliar
+
+Las vueltas 33 a 36 construyeron un humanoide facetado y lo midieron con cuidado:
+cuarenta y dos piezas, brazos que se afinaban de 0.036 a 0.028, articulaciones
+que envolvían la junta, hombreras de dos piezas y ocho caras, botas de cuatro
+piezas con talón, manos de cinco dedos, cuatro líneas de luz metidas en su canal,
+profundidad medida sobre dos vistas de perfil y un banco de siluetas que lo
+comparaba nivel a nivel contra la referencia. Terminó en un 16% de desviación en
+el peor nivel de frente y un 12% de perfil.
+
+Se tira entero. No se conserva nada y no se intenta reconciliar: es un cambio de
+dirección, no una iteración. Las razones, por orden de peso:
+
+1. **Un modelo con extremidades promete información que no da.** Sin esqueleto ni
+   animación, los brazos de ese avatar no apuntan a ningún sitio, las piernas no
+   caminan y el torso no gira: es un maniquí en pose fija. En un juego de
+   puntería, una figura que *parece* que apunta y no apunta no es neutra, engaña.
+2. **La forma no puede ser lo que distinga a un rival.** Un cuerpo se ve distinto
+   desde cada ángulo —de frente, de perfil, de espaldas, asomando media cabeza—.
+   El color se ve igual desde todos. Si lo que hay que reconocer en un cuarto de
+   segundo es «de qué equipo es», eso tiene que ir por el canal que no depende del
+   ángulo.
+3. **Se paga por avatar.** Cuarenta y dos mallas y tres objetos de líneas por
+   jugador, en una partida llena, contra tres mallas.
+
+Lo que sobrevive del trabajo anterior **no es geometría, es método**: medir la
+referencia en vez de mirarla, tener un banco que falle, y que la silueta que se ve
+sea la que recibe los disparos. Eso se aplica igual al cuerpo nuevo.
+
+### 38.2 Una sola forma, y el color como única diferencia
+
+El cuerpo simple —cápsula con cabeza ovalada, medido sobre
+`avatar-simple-body.png`— vive en `src/game/body.js` y lo construyen **los dos**
+que lo necesitan: el pool de dianas y el avatar del jugador. No es reutilización
+por ahorrar: si cada uno construyera el suyo, a la primera vuelta se separarían
+**la silueta que ves y la que recibe los disparos**, que es peor que feo. La suite
+lo comprueba vértice a vértice.
+
+Y las tres zonas del hitbox dejan de ser una esfera, una cápsula y un cilindro
+sueltos: son **bandas del mismo perfil**. El modelo de daño ya decía a qué altura
+empieza y acaba cada una; una banda es el trozo de perfil entre esas dos alturas,
+y dos contiguas comparten anillo, así que la junta no se ve. El modelo de zonas
+—alturas, cortes y daño— no se tocó: cambió la silueta dentro de cada banda.
+
+**El boceto separa la cabeza del cuerpo; el modelo no.** Un hueco entre la banda
+de la cabeza y la del torso serían disparos que no dan en ninguna zona. Lo que se
+hace es estrangular el cuello (radio 0.030 en el nivel 0.845), que a distancia se
+lee igual y no deja agujeros.
+
+### 38.3 Los colores de equipo, medidos y con la paleta casi llena
+
+La paleta libre a estas alturas es estrecha, y no por capricho: el naranja es de
+las dianas, el rojo de «te están disparando», el verde de los botones y —desde
+esta vuelta— de la brújula, el ámbar del explosivo, el amarillo de «te han
+detectado» y el azul eléctrico del canal de carga. Quedan el azul medio y el
+magenta.
+
+Se eligieron midiendo en **CIELAB**, que es donde una diferencia de color se
+parece a lo que ve un ojo; en RGB, dos azules muy distintos pueden salir «cerca».
+Barriendo candidatos:
+
+| par | ΔE entre equipos | ΔE al reservado más cercano |
+|---|---|---|
+| #2F6BF0 + #8B5CF6 | 25 | 79 |
+| #2F6BF0 + #A64BF0 | 37 | 79 |
+| **#2F6BF0 + #D94BD9** | **51** | **79** |
+| #3B82F6 + #E04BB8 | 63 | 64 |
+
+Gana el tercero: separa los equipos entre sí sin acercarse a nada que ya
+signifique algo. Y contra el fondo real del Plano A, con el método de la vuelta
+37 —el mismo frame con muñecos y sin ellos, la diferencia da sus píxeles—: magenta
+3.02 de contraste medio, azul 2.28, contra 2.63 del naranja de hoy.
+
+### 38.4 La brújula pasa a verde y a tener volumen
+
+Dos cambios, y el segundo tiene más miga que el primero.
+
+El color lo pide el encargo: verde FlickLAB. Es el único sitio donde un color de
+la paleta significa dos cosas —también son verdes los botones de acción— y se
+admite porque no coinciden nunca en pantalla: los botones son de menú y la brújula
+es del mundo.
+
+El volumen resuelve lo que la vuelta 37 dejó a medias. Allí se midió que un
+triángulo **plano** a la altura de los ojos ocupa cero píxeles, y se parcheó
+levantando la cola. Con volumen de verdad —una cuña: rectángulo en la cola, punta
+en el morro— el perfil es la forma, no un parche.
+
+Pero apareció un problema nuevo que sólo se ve mirando: **justo de frente y justo
+de espaldas, la silueta de una cuña es la misma** —su rectángulo de cola—, y en
+esta escena no hay ni una luz, así que no hay sombreado que las separe. Un muñeco
+encarado y uno de espaldas se veían igual, que es exactamente lo contrario de lo
+que sirve una brújula. La solución no es geometría: es **la tapa de la cola en un
+verde al 45%**, en su propio grupo de material. De frente se ve el claro, de
+espaldas el oscuro.
+
+### 38.5 La ficha: apuntar es la condición
+
+Arma y nick, dos filas, por encima de todo lo demás. Y **no sale por estar a la
+vista**: sale tras sostener la mira encima 350 ms. Una ficha por cada muñeco
+visible es una pantalla de rótulos; el gesto de apuntar es lo que dice a cuál
+estás mirando.
+
+Es DOM en el espacio (`CSS3DRenderer`), como era el tablero de acciones, y por el
+mismo motivo: reutiliza la tipografía y la silueta del arma que ya existen en vez
+de repintarlas en WebGL. Ahí se rompió, de paso, una aserción de
+`estabilidad.mjs` que decía «con el tablero apagado la capa CSS3D está vacía»: ya
+no lo está, y lo que había que comprobar —que el tablero no pone nada— se comprueba
+igual.
+
+Dos detalles del mecanismo:
+
+- **El «apuntar» se mide por ángulo, no con un rayo por frame.** Un rayo por
+  muñeco y por frame es justo lo que el presupuesto no admite, misma regla que la
+  visión del enemigo. El rayo va **una vez**, al cumplirse el tiempo, para
+  descartar cobertura por medio, y se repite cada 400 ms mientras la ficha siga
+  puesta, con presupuesto de uno por frame.
+- **Ese rayo va a la cabeza, no al pecho.** Con el pecho, la primera prueba real
+  dio `clear: false` en todos los casos: asomado por encima de una caja, lo que se
+  ve de un muñeco es la cabeza, y un rayo al pecho choca contra la caja y deja sin
+  ficha justo al que estás mirando.
+
+El nick es hoy la ranura del pool (`VK-01`) y el arma la del `ENEMY`, hasta que
+haya identidades de verdad. Y `instance.friendly` ya existe en false: el día que
+haya equipos, a un compañero se le ve la ficha siempre — saber quién juega contigo
+no se gana apuntando.
+
+### 38.6 Un bug que sólo se ve con la pila puesta
+
+Los marcadores se escalan con la distancia para no encoger en pantalla, y el
+grupo escalado llevaba también **las alturas**. Con una sola brújula pegada a la
+cabeza apenas se notaba; con tres capas encima, un muñeco a 25 u tenía su pila
+flotando tres cuerpos por encima.
+
+La regla correcta: la coronilla **no** escala —está donde está— y la pila sí,
+porque su tamaño también. O sea `bodyTop + offset · escala`, que con el grupo
+escalado se escribe dividiendo las alturas por la escala.
+
+### 38.7 Agacharse achata, y es lo más barato que se hizo
+
+Una escritura de `scale.y` por frame con la altura de ojos que el movimiento ya
+ha resuelto. Sin esqueleto, sin animación y sin tocar el ancho. Es el mismo dato
+del que salen las zonas de disparo al agacharse, así que no hay dos ideas de
+«estar agachado» que se puedan desincronizar.
+
+Hoy no se ve jugando —en primera persona no te ves, y la vista F3 aparca al
+jugador—, así que lo que lo sostiene es una aserción: agachado el cuerpo mide
+0.618 de su alto, que es exactamente la proporción de las alturas de ojos.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
@@ -3379,9 +3529,13 @@ objetivo era medir tiempos y rendimiento de verdad.
   candidatos, contraste WCAG píxel a píxel sobre el fondo que le toca a cada uno.
 - **Visibilidad de la brújula en asomos parciales**: 400 puestos × 69 puntos de
   ruta, con un rayo a la cabeza y otro al marcador.
-- **La silueta del avatar contra la referencia, en dos vistas**: de frente
-  contra la referencia de estilo y de perfil contra la media de las dos vistas
-  laterales del turnaround, nivel a nivel y con la cámara casi ortográfica.
+- **La silueta del avatar contra la referencia, en dos vistas** (vueltas 35-36,
+  para el humanoide que se retiró en la 38): de frente contra la referencia de
+  estilo y de perfil contra la media de las dos laterales del turnaround.
+- **Que el avatar y la diana son la misma geometría**, vértice a vértice y zona
+  por zona.
+- **Los colores de equipo**, por distancia CIELAB contra la paleta reservada y
+  por contraste contra el fondo real del Plano A.
 
 Lo que **no** está verificado automáticamente: la sensación de juego, el balance
 entre armas y la legibilidad del HUD en pantallas pequeñas. Eso sigue siendo

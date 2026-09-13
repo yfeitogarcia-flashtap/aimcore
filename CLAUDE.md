@@ -55,11 +55,12 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Transición | `src/game/transition.js` | **Módulo sustituible entero.** Contrato único: `run(build)` tapa la escena, llama a `build()` y destapa. Nada más del motor sabe qué forma tiene. |
 | React | `src/App.jsx`, `src/ui/` | Sólo conoce la *fase* (inicio / juego / pausa / resumen) y el resumen final. |
 | HUD | `src/ui/Hud.jsx` | Se actualiza **imperativamente por refs** desde el bucle. Cero `setState` por frame. |
-| Avatar | `src/game/avatar.js` | Modelo humanoide del jugador. Geometría, sin lógica. |
+| Cuerpo | `src/game/body.js` | **La única forma de figura humana**: la usan las dianas y el avatar. |
+| Avatar | `src/game/avatar.js` | El cuerpo del jugador, tintado con su equipo. Geometría, sin lógica. |
 | Grilla | `src/game/grid.js` | Generador de líneas. Lo usan la sala **y** la piel del avatar. |
 | Jugador | `src/game/player.js` | Vida, escudo, casco, reaparición y **dónde te han dado**. |
 | Fuego enemigo | `src/game/enemyFire.js` | Los muñecos disparando: visión, reacción, cadencia y cono. Y **publica en qué fase está cada uno**. |
-| Marcadores | `src/game/markers.js` | Brújula e iconos `?` / `!` sobre cada muñeco. Sólo dibuja; no decide nada. |
+| Marcadores | `src/game/markers.js` | Brújula, iconos `?` / `!` y ficha arma+nick sobre cada muñeco. Sólo dibuja. |
 | Recogibles | `src/game/pickups.js` | Cruces de vida, cargas de escudo y casco por el suelo. |
 | Música | `src/audio/music.js` | Ambiente de menús, generado. Su propio volumen. |
 | Config | `src/config.js` | Todo el tuning, sin excepción. |
@@ -387,11 +388,35 @@ cuatro píxeles, y lo que no se ve no se cuenta.
 **Hay dos colores nuevos y ninguno reutiliza los que ya significan algo.** El `?`
 es amarillo limón (`COLORS.alert`) y **no** el ámbar del explosivo; el `!` es rojo
 puro (`COLORS.threat`) y **no** el naranja de las dianas — un aviso que se dibuja
-encima de un muñeco naranja no puede ser naranja. La brújula es **blanca, y salió
-de medir**: seis candidatos contra el fondo real del Plano A, contraste WCAG
-píxel a píxel sobre el fondo que le toca a cada uno. Blanco da 10.7 de contraste
-medio y 2.58 en el peor decil; el siguiente, 2.14. Los cianes pierden porque la
-cobertura del mapa es gris media y ahí se apagan. Ver `docs/decisions.md` §37.
+encima de un muñeco naranja no puede ser naranja. La brújula va en el **verde
+FlickLAB** (`COLORS.action`), y es el único sitio donde un color de la paleta
+significa dos cosas: se admite porque no coinciden nunca en pantalla —los botones
+son de menú y la brújula es del mundo—.
+
+**Y su cola va más oscura, que tampoco es decoración.** Justo de frente y justo de
+espaldas la silueta de una cuña es la misma —su rectángulo de cola— y en esta
+escena no hay ni una luz, así que no hay sombreado que las separe: un muñeco
+encarado y uno de espaldas se verían igual. Con la tapa de la cola al 45% del
+verde, de frente se ve el claro y de espaldas el oscuro.
+
+**La ficha flotante no sale por estar a la vista, sale por apuntar.** Una ficha
+por cada muñeco visible es una pantalla de rótulos; el gesto de sostener la mira
+es lo que dice a cuál estás mirando, y `MARKERS.nameplate.dwellMs` es cuánto hay
+que sostenerla. Dos detalles que no son evidentes:
+
+- **El «apuntar» se mide por ángulo, no con un rayo por frame.** Un rayo por
+  muñeco y por frame es justo lo que el presupuesto no admite (misma regla que la
+  visión del enemigo). El rayo se lanza **una vez**, al cumplirse el tiempo, para
+  descartar que haya cobertura por medio, y se repite cada `recheckMs` mientras la
+  ficha siga puesta, con un presupuesto de uno por frame.
+- **Ese rayo va a la cabeza, no al pecho.** Por ángulo daría igual, pero asomado
+  por encima de una caja lo que se ve de un muñeco es la cabeza: un rayo al pecho
+  choca contra la caja y dejaría sin ficha justo al que estás mirando.
+
+Y el día que haya equipos, **a un compañero se le ve siempre** (`instance.friendly`):
+saber quién juega contigo no se gana apuntando. Hoy el campo existe y está en
+false para todos, y el nick es la ranura del pool (`VK-01`) hasta que haya
+identidades de verdad.
 
 **Reaparecer da unos segundos de gracia** (`PLAYER.respawn.invulnerableMs`), y van
 **antes que el casco**: si no, un tiro a la cabeza durante la gracia gastaría el
@@ -445,161 +470,56 @@ marcha de verdad borra la cuenta entera. Ojo con una consecuencia que no es un
 fallo: **encadenar desde parado no perdona**, porque un encadenado conserva la
 marcha del aterrizaje y la de un rebote es cero.
 
-**El avatar comparte anatomía con el muñeco de puntería, y proporciones con las
-referencias.** La **altura** y las tres zonas salen de `TARGET_TYPES.hitbox.parts`
-—el modelo del jugador *es* la representación visual del sistema de zonas que ya
-existe—; la **forma** sale de `AVATAR.figure`, medido barriendo siluetas fila a
-fila. Todo en fracciones de la altura total, de modo que las proporciones aguantan
-aunque el muñeco cambie de tamaño.
+**Una sola forma de figura humana, y vive en `body.js`.** Desde la vuelta 38 el
+avatar del jugador y la diana de *Hitbox completo* son **la misma geometría**:
+una cápsula con la cabeza ovalada, medida sobre
+`Reference/Avatar/avatar-simple-body.png`. Lo único que cambia entre una cosa y
+otra es **el color** —naranja para una diana, el de su equipo para un jugador—, y
+eso no es una casualidad de implementación, es la decisión: un rival se reconoce
+por el color, que se ve igual desde cualquier ángulo, y no por su forma, que se
+ve distinta desde cada uno.
 
-**Son dos referencias y cada una pone lo suyo.** `player-avatar-style.png` es una
-vista frontal: de ahí salen `levels`, `widths`, `armX`, `legX` y el recorrido de
-las líneas. `player-avatar-turnaround.png` trae seis vistas del mismo diseño
-—frontal, dos perfiles, posterior, cenital e inferior— y de sus perfiles sale
-`depths`. **De frente no hay profundidad que medir**, así que hasta la vuelta 36
-`depths` eran siete multiplicadores sobre el ancho y era lo único de `figure` que
-no salía de una imagen.
+Antes había un humanoide de cuarenta y dos piezas con brazos que se afinaban,
+hombreras, dedos y cuatro líneas de luz. Se tiró entero. El porqué del giro está
+en `docs/decisions.md` §38; lo que hay que saber para no rehacerlo: un modelo con
+extremidades **promete** información que no da —no hay esqueleto ni animación, así
+que los brazos no apuntan a ningún sitio— y cuesta en cada avatar de una partida
+llena.
 
-**El fondo del torso es casi constante; el ancho no.** De pecho a cadera el fondo
-va de 0.134 a 0.122 mientras el ancho hace el reloj de arena de 0.202 a 0.134 y
-vuelve a 0.195. Un multiplicador único no puede dar las dos cosas, y por eso la
-cintura salía plana y la cadera hinchada. Ése es el motivo de que `depths` esté
-ahora en las **mismas unidades que `widths`** —fracciones de la altura, clave a
-clave— y no en factores.
+**Las zonas son bandas del mismo perfil, no tres primitivas.** El modelo de daño
+—cabeza 100, torso 50, piernas 34— ya dice a qué altura empieza y acaba cada zona;
+una banda es el trozo de perfil entre esas dos alturas, y dos bandas contiguas
+comparten el mismo anillo, así que la junta no se ve. De ahí sale lo que importa:
+**la silueta que ves es exactamente la que recibe los disparos**, y la suite lo
+comprueba vértice a vértice contra la del pool de dianas.
 
-**El brazo es la excepción, y está marcada.** De perfil cuelga por delante del
-torso y no hay **ni una fila** en la que sea él quien pone la silueta: ni umbral
-ni relleno lo separan. Sus fondos salen de la única pieza del brazo que sí se
-mide —la hombrera— y se afinan hasta la muñeca. Da igual de cara al banco:
-metido dentro del contorno del torso, un error de fondo en el brazo no se ve ni
-de frente ni de perfil.
+**En el boceto la cabeza está separada del cuerpo; en el modelo, no.** Un hueco
+entre la banda de la cabeza y la del torso serían disparos que no dan en ninguna
+zona. Lo que se hace es **estrangular el cuello** —radio 0.030 en el nivel
+0.845—, que a distancia se lee igual y no deja agujeros.
 
-Las referencias **no se vectorizan**: son guías para reconstruir la geometría, como
-el blockout de los escenarios. Lo que hay que respetar de ellas son las
-proporciones y las dos líneas continuas, no el número de facetas.
+**Agacharse achata el cuerpo, y sólo eso.** Una escritura de `scale.y` con la
+altura de ojos que el movimiento ya ha resuelto: sin esqueleto, sin animación y
+sin tocar el ancho. Es el mismo dato del que salen las zonas de disparo al
+agacharse, así que no hay dos ideas de «estar agachado».
 
-**Todo el cuerpo es un solo primitivo: el prisma de anillos.** Un anillo es un
-corte horizontal —altura, ancho, fondo y desplazamiento— y una pieza es la lista
-de sus cortes. De ahí salen las tres cosas que las cajas no podían dar:
+**Sin arma visible, en ninguna parte.** Ni en tercera persona ni en primera. Lo
+que se dibuja de un arma es su silueta —en el HUD y en la ficha flotante—, no un
+modelo en la mano.
 
-- **Extremidades que se afinan.** El brazo mide 0.036 de la altura en el hombro y
-  0.028 antes del codo; el muslo, 0.086 en la cadera y 0.058 antes de la rodilla.
-  Son anillos de una misma pieza, no dos cajas de grosor distinto.
-- **Articulaciones que envuelven la junta.** Hombro, codo, cadera y rodilla son
-  piezas estrecha-ancha-estrecha cuyos extremos **entran dentro** de los dos
-  tramos que unen. En la referencia el codo mide 0.059 contra los 0.028 del brazo
-  justo encima: la articulación **es** ese ensanchamiento.
-- **Secciones de más de cuatro caras**: ocho en el tronco, seis en extremidades y
-  cabeza. Una caja tiene cuatro siluetas posibles.
-
-**Con los vértices a medio paso, seis caras tienen vértice al frente y ocho
-tienen cara.** No es un detalle de implementación: es lo que decide dónde se
-apoya una línea de luz y si una puntera sale en filo. La hombrera pasó a ocho
-porque la vista cenital la enseña por arriba y con seis era una tapa lisa; el pie
-pasó a ocho porque con cuatro la bota entera se leía como una cuña de cartón.
-
-**Tres piezas tienen detalle propio, y cada una porque hay una vista que la
-enseña.** La hombrera son dos piezas por lado —casquete y alerón volado—; la bota
-son cuatro —caña, pie, suela y talón—; la mano son seis —palma y cinco dedos de
-largos distintos, con el pulgar por delante—. Lo de la bota no es capricho: **un
-anillo tiene un solo ancho a cada altura**, así que un talón estrecho detrás y un
-antepié ancho delante no caben en la misma pieza.
-
-Dos cosas que no son evidentes y que salieron de comparar siluetas a la misma
-altura, no de mirar el modelo:
-
-- **El eje de cada pierna no es vertical**: se abre de 0.069 a 0.100 de la cadera
-  a la suela (`figure.legX`). Las pantorrillas salían un 25% estrechas y no era
-  el grosor, era que las dos piernas estaban demasiado juntas.
-- **El tramo de una extremidad tiene que llegar hasta dentro de su
-  articulación.** Cortarlo en su anillo más estrecho deja un dedo de aire entre
-  el brazo y el codo que desde lejos parece un modelo roto.
-
-**Tres canales, y sólo uno es personalizable:**
-
-- **Piel.** Paneles negros con **la misma grilla del suelo y las paredes** encima.
-  No es una textura ni una imagen: es el generador de `grid.js`, el mismo que
-  monta la sala, a paso de cuerpo (`AVATAR.gridStep`) en vez de a paso de sala.
-  Es la skin de serie, y es lo único que cambia `setColor()`.
-- **Luz.** **Cuatro líneas continuas** de la coronilla a las botas: el par de
-  delante y **su espejo por la espalda**, más el núcleo del pecho. Canal **fijo**,
-  y el día que haya equipos es el que llevará su color — por eso `setColor()` no
-  lo toca y por eso va también por detrás: a un rival se le reconoce igual
-  persiguiéndolo que de frente.
-
-  **La línea va dentro de un canal, no encima de la piel.** Y el canal se
-  levanta, no se resta: con piezas opacas y sin CSG, una hendidura tallada en un
-  prisma sigue tapada por la propia cara del prisma y no se ve. Son dos labios a
-  los lados del recorrido (`AVATAR.lightChannel`) y la barra al fondo, con su
-  cara exterior a ras de cuerpo. Los labios llevan arista como cualquier pieza
-  —por eso se fusionan **antes** que los filos, para no ser un cuarto objeto de
-  líneas— y **no los toca `setColor()`**: son pared del canal de luz, no piel.
-
-  **Y cada punto se apoya en la cara, no en la profundidad máxima.** Media
-  profundidad del anillo sólo es la superficie si el punto cae en la cara
-  frontal; en la cadera la línea pasa a 0.062 del eje, que en un prisma de ocho
-  ya es la diagonal de al lado, y allí flotaba. `surfaceZ` devuelve el contorno
-  **en esa x**, y la x se mide respecto al eje de la pieza: por la pierna la
-  línea baja pegada al muslo, no a 0.080 del centro del cuerpo.
-
-  Su recorrido está medido como los anchos (`AVATAR.stripSpread`), y tiene una
-  forma que no se adivina: **se abren en el collar (0.056), se cierran en el
-  ombligo (0.035) y a partir de ahí sólo se separan** hasta la bota. Con tres
-  valores interpolados salía al revés y el pecho se leía como una X. Se localizan
-  en la referencia por tono: son el único azul saturado de la imagen.
-
-  Y cada punto de la cadena lleva la **media profundidad de la pieza sobre la que
-  va montado**, que es lo único que mantiene la línea pegada al cuerpo: a media
-  profundidad del modelo, en las rodillas —que sobresalen— se metía dentro y la
-  línea desaparecía justo en la articulación.
-- **Aristas.** El filo de cada panel, un gris por encima del de la grilla. El
-  umbral de arista va alto a propósito: entre anillo y anillo de un mismo tramo
-  el giro es de pocos grados y no debe salir una raya, o el afinado continuo se
-  leería como una pila de rodajas.
-
-Y **sin texturas, porque en esta escena no hay ni una luz**: todo se dibuja con
-materiales planos. Con la piel en negro el tono ya no separa nada —multiplicar
-negro por 0.62 sigue siendo negro—, así que el volumen entero lo dibujan las
-aristas y la rejilla.
-
-Tres detalles que costaron una pasada cada uno: las líneas de grilla, aristas y
-luz se **fusionan** en tres objetos para todo el cuerpo —con una rejilla por cara
-serían cientos, y en multijugador habrá varios avatares—; la rejilla se **mide**
-por el anillo estrecho de cada tramo pero se **coloca** sobre el plano de la cara
-—al revés se queda dentro de la pieza y no se ve ni una línea—; y el giro de las
-caras laterales del prisma hacia fuera, porque con `FrontSide` una cara al revés
-no se dibuja y el modelo sale hueco.
-
-**La comparación con la referencia se mide, no se mira, y ahora por dos vistas.**
-`silueta.mjs` renderiza el avatar con la sala apagada y sus piezas en blanco
-—sobre negro, la piel es más oscura que la rejilla de la sala y ninguna
-umbralización las separa— y `comparar.mjs` pone las dos siluetas a la misma altura
-en píxeles y lista la desviación nivel a nivel. `comparar.mjs frente` mide contra
-la referencia de estilo y `comparar.mjs perfil` contra la media de las dos vistas
-laterales del turnaround. Resultado: **16% en el peor nivel de frente** (30 de 32
-dentro del 8%) y **12% de perfil** (28 de 32).
-
-Tres trampas de medida, las tres de las que no avisan:
-
-- **La cámara tiene que ser casi ortográfica.** A 2.4 u de un cuerpo de 1.8 la
-  pierna cercana sale un 16% más grande que la otra, y la puntera de la bota
-  —que asoma 0.13 por delante y está 0.8 por debajo del eje de cámara— se
-  proyecta sobre las filas del tobillo y las engorda un 30%. La referencia es un
-  dibujo ortográfico; para compararse con ella hay que mirar como ella: cámara a
-  30 u y campo de 4.4°.
-- **El canal de luz no es cuerpo.** Dejando puestas las barras y sus labios, la
-  silueta de perfil de la pierna engordaba un 25% y se estaba midiendo el canal,
-  no el gemelo. `silueta.mjs` los apaga, igual que el núcleo.
-- **En el turnaround el cuerpo es casi negro por dentro** (r 0-8, lo mismo que el
-  fondo del panel): el canal rojo no separa cuerpo de fondo, sólo contorno de
-  fondo. Lo que vale es `r > 22 || g > 32` con lo azul fuera, porque el charco de
-  luz reflejado bajo las botas pasa por contorno en brillo y lo delata el tono. Y
-  las cuatro vistas **no están a la misma escala** —hay un 3% entre la frontal y
-  las de perfil—, así que cada una se normaliza por su propia altura.
+**Los colores de equipo se eligieron midiendo, y la paleta libre es estrecha.**
+Están cogidos el naranja (dianas), el rojo (te disparan), el verde (botones y
+brújula), el ámbar (explosivo), el amarillo (te han detectado) y el azul
+eléctrico (carga). Quedan el azul medio y el magenta, y son ésos: `#2F6BF0` y
+`#D94BD9`. Medido en CIELAB —que es donde una diferencia de color se parece a lo
+que ve un ojo—, entre los dos equipos hay ΔE 51 y contra el más cercano de los
+reservados, 79. Y contra el fondo real del Plano A: magenta 3.02 de contraste
+medio, azul 2.28, contra los 2.63 del naranja de hoy.
 
 La vista de depuración (F3) sólo se abre **fuera de una sesión en marcha**: la
 cámara es del jugador y el cronómetro corre, y mirarse el modelo no puede costar
 segundos de ronda.
+
 
 **Lo que se dibuja de unos datos no se guarda como imagen.** La miniatura de
 cada escenario se dibuja en SVG desde `SCENARIOS`, con `coverHeight` y
@@ -821,7 +741,8 @@ defecto, más **PRÁCTICA LIBRE ∞** sin límite de tiempo con finalización ma
 **Dianas:** tres tipos — *clásica* y *cono* (ancladas al centro, esfera), e
 *hitbox completo* (anclado a los pies, tres zonas con **vida compartida** y daño
 por zona: cabeza 100 / torso 50 / piernas 34; cono de aparición más ancho y
-distancia variable por muñeco). Modo dinámico opcional: destino aleatorio a
+distancia variable por muñeco). Desde la vuelta 38 el hitbox se dibuja con **el
+cuerpo simple de `body.js`**, el mismo que el avatar del jugador. Modo dinámico opcional: destino aleatorio a
 velocidad constante, con comprobación de separación para evitar solapes.
 Selector de dianas simultáneas x1 / x2 / x3 / x5 / x8. **Ojo:** con cobertura, el
 nivel es un *techo*, no una cantidad — el número real lo pone cuántos puntos de
@@ -863,10 +784,10 @@ sistema** y el panel lo dice.
 con su propio volumen en opciones. Suena en inicio, opciones y pausa; se calla al
 jugar.
 
-**Avatar del jugador (sólo visual):** humanoide de cuarenta y dos piezas con la
-anatomía del hitbox, facetas planas y costuras eléctricas **metidas en su canal**.
-Ancho medido de frente y **fondo medido de perfil**; hombreras de varias facetas,
-botas de cuatro piezas y manos con cinco dedos. Color en una variable. **F3** abre
+**Avatar del jugador (sólo visual):** **el mismo cuerpo que una diana** —cápsula
+con cabeza ovalada, tres piezas, una por zona del hitbox— tintado con el color de
+su equipo (`TEAMS`: azul `#2F6BF0` y magenta `#D94BD9`). Sin extremidades, sin
+esqueleto, sin animación y **sin arma visible**. Agacharse lo achata. **F3** abre
 una vista en tercera persona que orbita el modelo, fuera de partida.
 
 **Movimiento:** WASD, tres marchas (correr / SHIFT andar / **C** agachado —CTRL
@@ -933,13 +854,19 @@ contra las **tres zonas del jugador**, que son las del hitbox.
 y Difícil (5°, 400). Un nivel fija los dos números; ver convenciones. La velocidad
 de movimiento no entra ahí a propósito: ya es el ajuste `patrolSpeed`.
 
-**Marcadores sobre cada muñeco (mismo sitio que el fuego enemigo):** una
-**brújula** blanca paralela al suelo que gira en yaw hacia donde mira el muñeco
-—siempre, es orientación pasiva— y, por encima, un icono situacional: `?` amarillo
-mientras te ha visto y aún no dispara, `!` rojo mientras te dispara, uno por
-muñeco, para contar amenazas de un vistazo. Se apagan al perder contacto o al
-caer. Medido contra el Plano A: de 10.390 pares puesto×punto con la cabeza a la
-vista, la cobertura tapa la brújula en **4** (0.04%).
+**Tres capas sobre cada muñeco, de abajo arriba** (mismo sitio que el fuego
+enemigo):
+
+1. **Brújula**, cuña verde con volumen que gira en yaw hacia donde mira el muñeco.
+   Siempre puesta: es orientación pasiva. Medido contra el Plano A: de 10.390
+   pares puesto×punto con la cabeza a la vista, la cobertura la tapa en **3**
+   (0.03%).
+2. **Icono situacional**, billboard: `?` amarillo mientras te ha visto y aún no
+   dispara, `!` rojo mientras te dispara, uno por muñeco para contar amenazas de
+   un vistazo. Se apagan al perder contacto o al caer.
+3. **Ficha arma + nick**, billboard y **condicionada**: sale tras sostener la mira
+   encima 350 ms, nunca por estar a la vista. Es DOM en el espacio
+   (`CSS3DRenderer`), como era el tablero de acciones.
 
 **Al reaparecer, 2 s de invulnerabilidad** (`PLAYER.respawn.invulnerableMs`), con
 marco azul y cuenta junto al bloque de vida. Y al morir, **ABATIDO** en grande con

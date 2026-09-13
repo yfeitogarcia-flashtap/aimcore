@@ -119,81 +119,46 @@ los efectos.
 
 ## Avatar del jugador
 
-El modelo que llevará quien juegue cuando haya multijugador. Hoy sólo se puede
+El cuerpo que llevará quien juegue cuando haya multijugador. Hoy sólo se puede
 mirar: **F3** abre una vista en tercera persona que lo orbita, fuera de partida
 —con el cronómetro corriendo la cámara es del jugador—.
 
-No es el muñeco de las dianas con más polígonos: **la altura y las tres zonas**
-—cabeza, torso, piernas— salen de las mismas medidas que el hitbox, así que el
-avatar es la representación visual de ese sistema para cuando exista un rival de
-verdad. Lo que añade es lo que una diana no necesita: hombros, brazos,
-articulaciones, cuello y botas.
+**Es exactamente el mismo cuerpo que una diana**, y eso es la idea, no una
+simplificación: una cápsula con la cabeza ovalada, tres piezas —una por zona del
+hitbox: cabeza, torso y piernas— y **lo único que cambia es el color**. Naranja
+si es una diana de entrenamiento; el de su equipo si es un jugador.
 
-**Las proporciones están medidas, no elegidas.** Salen de barrer las siluetas de
-las referencias fila a fila y anotar el ancho y el fondo a cada altura, todo en
-fracciones de la altura total. `player-avatar-style.png` es una vista frontal y
-pone los anchos; `player-avatar-turnaround.png` trae seis vistas del mismo
-diseño y sus dos perfiles ponen **la profundidad**, que hasta entonces era lo
-único estimado. Puestas las siluetas a la misma escala, la desviación es del 16%
-en el peor nivel de frente y del 12% de perfil, y menor del 8% en 30 de 32 y en
-28 de 32 niveles respectivamente.
+Así, a un rival se le reconoce por **el color**, que se ve igual desde cualquier
+ángulo, y no por su forma, que se ve distinta desde cada uno. Hacia dónde mira lo
+dice la brújula que lleva encima, no el cuerpo.
 
-De ahí salen tres cosas que no tenía la primera versión:
+**Colores de equipo de partida:** azul `#2F6BF0` y magenta `#D94BD9`. La paleta
+libre es estrecha —el naranja es de las dianas, el rojo de que te disparan, el
+verde de los botones y la brújula, el ámbar del explosivo, el amarillo de que te
+han detectado y el azul eléctrico de la carga—, y los dos que quedan se
+eligieron midiendo: entre ellos hay ΔE 51 en CIELAB, y contra el más cercano de
+los reservados, 79.
 
-- **Extremidades que se afinan.** El brazo pasa de 0.036 de la altura en el
-  hombro a 0.028 antes del codo; el muslo, de 0.086 en la cadera a 0.058 antes
-  de la rodilla.
-- **Articulaciones que envuelven la junta.** Hombro, codo, cadera y rodilla son
-  piezas que se ensanchan por el medio y se meten por dentro de los dos tramos
-  que unen. En la referencia el codo mide 0.059 contra los 0.028 del brazo justo
-  encima: la articulación **es** ese ensanchamiento, no un anillo pegado.
-- **Las piernas se abren hacia abajo**, de 0.069 a 0.100 entre la cadera y la
-  suela. Eso apareció comparando siluetas: las pantorrillas salían estrechas y
-  no era el grosor, era que las dos piernas estaban demasiado juntas.
-- **Volumen, no sólo contorno.** Con los perfiles medidos, el deltoides es el
-  punto más profundo del cuerpo (0.137 de fondo contra 0.117 de ancho), el
-  cuádriceps mide 0.101 y el gemelo 0.067 — y el fondo del torso resultó ser
-  **casi constante** de pecho a cadera mientras el ancho hace un reloj de arena.
-  Eso no se puede sacar de un multiplicador sobre el ancho, que es lo que había:
-  por eso la cintura salía plana y la cadera hinchada.
+Tres cosas más:
 
-Y tres piezas tienen su propio detalle, cada una porque hay una vista que la
-enseña de cerca:
+- **Agacharse lo achata.** Sólo escala en vertical: no hay esqueleto ni
+  animación, y el factor sale de la misma altura de ojos de la que salen las
+  zonas de disparo.
+- **Sin arma visible**, ni en primera ni en tercera persona. Lo que se dibuja de
+  un arma es su silueta —en el HUD y en la ficha flotante—, no un modelo en la
+  mano.
+- **Sin texturas y sin líneas**, como todo lo demás: en esta escena no hay ni una
+  luz, así que un mapa no se vería.
 
-- **Hombreras de varias facetas** —dos piezas por lado, casquete y alerón
-  volado—, que es lo que se ve en la vista cenital.
-- **Botas con caña, pie, suela y talón**, con el talón más estrecho que el
-  antepié: eso lo enseña la vista desde abajo, y no cabía en una sola pieza
-  porque un anillo tiene un solo ancho a cada altura.
-- **Manos con los cinco dedos separados**, de largos distintos y con el pulgar
-  por delante de la palma.
-
-Se lee en **tres capas** que no se mezclan:
-
-- **La piel.** Paneles planos y angulares —cada pieza cambia de ancho de un
-  corte al siguiente, nada redondo— en **negro con la rejilla de la sala
-  encima**. Es la misma grilla del suelo y las paredes, generada por el mismo
-  código, sólo que a paso de cuerpo. Ésta es la skin de serie, la que se tiene
-  sin comprar nada, y es lo único que cambia el color personalizable.
-- **La luz.** **Cuatro líneas continuas** de la coronilla a las botas: dos por
-  delante —cara, esternón, ingle y cara interna de cada pierna— y **las mismas
-  por la espalda**, más el núcleo del pecho, en el azul eléctrico del escudo. Es
-  un canal **fijo**: el día que haya equipos, éste llevará su color, y por eso va
-  también por detrás — a un rival hay que reconocerlo igual persiguiéndolo que de
-  frente. Y no van pegadas encima de la piel: cada línea corre **por dentro de
-  una hendidura**, con su borde a ras de cuerpo, así que de refilón el canal la
-  tapa en vez de verse una tira flotando.
-- **Los filos.** El borde de cada panel, en un gris de la rejilla.
-
-**Sin texturas, y no por ahorrar:** en esta escena no hay ni una luz, así que un
-mapa no se vería. Con la piel en negro el tono tampoco separa nada, de modo que
-todo el volumen lo dibujan los filos y la rejilla.
-
-La referencia **no se vectoriza**: es una guía para reconstruir la geometría,
-como el blockout de los escenarios.
+Antes de esto había un humanoide de cuarenta y dos piezas con brazos que se
+afinaban, hombreras, dedos y costuras de luz. Se tiró entero, y a propósito: un
+modelo con extremidades **promete** información que no da —sin esqueleto ni
+animación, los brazos no apuntan a ningún sitio— y hay que pagarlo por cada
+jugador de una partida. El porqué largo está en `docs/decisions.md` §38.
 
 Nada de esto es un sistema de skins de pago: eso depende de economía y cuentas,
 que no existen.
+
 
 ## Modos de sesión
 
@@ -391,21 +356,28 @@ como **velocidad de patrulla** en el panel de opciones.
 
 ### Qué se ve encima de un muñeco
 
-Tres cosas, en el mundo y no en una esquina de la pantalla — son datos **de un
+Tres capas, en el mundo y no en una esquina de la pantalla — son datos **de un
 sitio del mapa**, y una lista en el HUD obliga a traducir «hay dos» a «cuáles».
+De abajo arriba:
 
-- **Una brújula**: un triángulo blanco flotando sobre la cabeza, paralelo al
-  suelo, que gira para apuntar hacia donde mira el muñeco. **No se gira hacia
-  ti**: si lo hiciera apuntaría siempre al jugador y no diría nada. Está siempre
-  que se vea el muñeco — es orientación, no un aviso.
-- **Un `?` amarillo** mientras te ha visto y todavía no dispara. Ésa es su ventana
-  de reacción, y es exactamente el hueco que tienes para cubrirte.
-- **Un `!` rojo** mientras te dispara. Uno por muñeco, así que se cuentan las
-  amenazas de un vistazo.
+1. **La brújula**: una cuña verde con volumen flotando sobre la cabeza, que gira
+   para apuntar hacia donde mira el muñeco. **No se gira hacia ti**: si lo
+   hiciera apuntaría siempre al jugador y no diría nada. Está siempre que se vea
+   el muñeco — es orientación, no un aviso. Su cola va más oscura que el resto, y
+   eso es lo que distingue a uno que te encara de uno de espaldas: sin luces en
+   la escena, de frente y de espaldas la silueta sería la misma.
+2. **Un `?` amarillo** mientras te ha visto y todavía no dispara —ésa es su
+   ventana de reacción, y es exactamente el hueco que tienes para cubrirte— o
+   **un `!` rojo** mientras te dispara, uno por muñeco, así que se cuentan las
+   amenazas de un vistazo. Se apagan al perder el contacto y al caer el muñeco.
+3. **La ficha**: silueta del arma arriba y nick debajo. **No sale por estar a la
+   vista**: sale tras mantener la mira encima un instante. Una ficha por cada
+   muñeco visible sería una pantalla de rótulos; apuntar es lo que dice a cuál
+   estás mirando. El día que haya equipos, a un compañero se le verá siempre —
+   saber quién juega contigo no se gana apuntando.
 
-Los dos iconos se apagan al perder el contacto y al caer el muñeco. El `?` y el
-`!` sí miran a la cámara, porque lo suyo es leerse; la brújula no, porque lo suyo
-es orientar.
+El `?`, el `!` y la ficha sí miran a la cámara, porque lo suyo es leerse; la
+brújula no, porque lo suyo es orientar.
 
 Tres cosas más que conviene saber:
 
