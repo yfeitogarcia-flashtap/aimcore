@@ -31,13 +31,13 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 - **Audio:** todo sintetizado en tiempo real con la Web Audio API
   (`src/audio/sfx.js`): osciladores + un buffer de ruido pregenerado. No hay
   ficheros de sonido en el repositorio ni los habrá.
-- **Siluetas de armas y logotipo:** vectorizados con `potrace` a partir de
-  `Reference/Weapons/` y `Reference/Logo/` mediante los scripts *one-off*
-  `npm run trace:weapons` y `npm run trace:logo`, que emiten
-  `src/ui/weaponPaths.js`, `src/ui/logoPaths.js` y `public/favicon.svg`. Los dos
-  scripts comparten máscara, opciones de potrace y utilidades en
-  `scripts/lib/trace.mjs`: dos pipelines de vectorización acaban dando contornos
-  con distinto detalle según la carpeta de origen. Las PNG de referencia
+- **Siluetas de armas, logotipo e iconos:** vectorizados con `potrace` a partir de
+  `Reference/Weapons/`, `Reference/Logo/` y `Reference/Icons/` mediante los
+  scripts *one-off* `npm run trace:weapons`, `trace:logo` y `trace:icons`, que
+  emiten `src/ui/weaponPaths.js`, `src/ui/logoPaths.js`, `src/ui/iconPaths.js` y
+  `public/favicon.svg`. Los tres scripts comparten máscara, opciones de potrace y
+  utilidades en `scripts/lib/trace.mjs`: tres pipelines de vectorización acaban
+  dando contornos con distinto detalle según la carpeta de origen. Las PNG de referencia
   **nunca** entran en el build: son material de trazado, no assets. Verifica que
   no aparezcan en `dist/` si tocas esa zona.
 - **Geometría y texturas:** todo procedural (rejilla, dianas, sala).
@@ -58,7 +58,8 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Avatar | `src/game/avatar.js` | Modelo humanoide del jugador. Geometría, sin lógica. |
 | Grilla | `src/game/grid.js` | Generador de líneas. Lo usan la sala **y** la piel del avatar. |
 | Jugador | `src/game/player.js` | Vida, escudo, casco, reaparición y **dónde te han dado**. |
-| Fuego enemigo | `src/game/enemyFire.js` | Los muñecos disparando: visión, reacción, cadencia y cono. |
+| Fuego enemigo | `src/game/enemyFire.js` | Los muñecos disparando: visión, reacción, cadencia y cono. Y **publica en qué fase está cada uno**. |
+| Marcadores | `src/game/markers.js` | Brújula e iconos `?` / `!` sobre cada muñeco. Sólo dibuja; no decide nada. |
 | Recogibles | `src/game/pickups.js` | Cruces de vida, cargas de escudo y casco por el suelo. |
 | Música | `src/audio/music.js` | Ambiente de menús, generado. Su propio volumen. |
 | Config | `src/config.js` | Todo el tuning, sin excepción. |
@@ -320,6 +321,26 @@ sí—, y como los dos trazados salen de la misma imagen comparten `viewBox` y s
 superponen solos. Es el único sitio del pipeline donde el color decide algo, y
 decide **partir** una imagen en dos, no inventar una forma.
 
+**Los iconos del HUD se trazan con potrace, como las armas y el logo.**
+`npm run trace:icons` vectoriza `Reference/Icons/` y emite `src/ui/iconPaths.js`;
+al navegador no llega ni potrace ni la imagen. Dos cosas que hay que saber:
+
+- **El casco lleva dos contornos en el mismo trazado** —la silueta y la visera—
+  y se pinta con `fill-rule: evenodd`, que es lo que convierte el segundo en un
+  hueco. La silueta exterior sola es un pentágono redondeado que no se lee como
+  casco: lo que lo delata es la visera. Es la misma regla del logotipo, y el mismo
+  fallo si se olvida. `dummies.mjs` lo guarda midiendo con `isPointInFill` que el
+  centro de la visera está hueco.
+- **La cruz de vida no se cambió por el corazón de la referencia**, y no es un
+  olvido: el icono del HUD y el recogible del suelo son **el mismo objeto visto en
+  dos sitios**, y cambiar sólo uno los separa. El trazado está hecho y espera en
+  `iconPaths.js` a que cambien los dos a la vez.
+
+**Un contorno plano no es un objeto.** El casco del suelo no se puede vectorizar:
+se reconstruye con la misma disciplina que el avatar —cúpula, faldón y una visera
+**que sobresale**—, porque sin luces lo único que distingue una pieza de otra es
+la silueta, y una visera metida dentro de la cúpula no cambia la silueta.
+
 **El jugador también es un blanco, y sus zonas son las del muñeco.** Desde que
 los muñecos disparan, un disparo recibido tiene que caer en algún sitio, y ese
 sitio sale de `TARGET_TYPES.hitbox.parts` escalado a la altura de ojos del
@@ -328,6 +349,55 @@ segunda tabla de alturas. El cuerpo es **el mismo cilindro que usa la
 colisión** (`COVER.playerRadius`) y el corte se resuelve analíticamente, sin
 malla: el jugador es una cámara, y montarle un cuerpo invisible sólo para que le
 disparen serían dos cuerpos que se desincronizan.
+
+**La dificultad de los muñecos es un nivel, no dos sliders.** Precisión
+(`spreadDeg`) y reacción (`reactionMs`) van juntas en `ENEMY_DIFFICULTIES` y las
+elige el ajuste `enemyDifficulty`; **no están además sueltas en `ENEMY`**. Dos
+mandos separados producen combinaciones que no corresponden a ninguna dificultad
+real —un tirador de élite que tarda un segundo en reaccionar— y lo que se nota
+jugando es una sola cosa: cuánto aprietan. Los tres niveles (15°/900, 9°/650,
+5°/400) son **puntos de partida a calibrar jugando**: Normal es exactamente lo
+que había hasta la vuelta 37.
+
+**La fase de un muñeco la publica quien la tiene, no la deduce quien la pinta.**
+`enemyFire.phaseOf()` devuelve `idle` / `alert` / `firing` a partir del estado que
+ese módulo ya lleva, y `markers.js` sólo lo dibuja. Deducir «está en su ventana de
+reacción» desde fuera mirando relojes sería una segunda copia de la misma máquina
+de estados, y se desincronizarían a la primera.
+
+**La brújula no se billboardea; los iconos sí.** No es una inconsistencia: es que
+dicen cosas distintas. La brújula dice **hacia dónde mira el muñeco**, así que va
+paralela al suelo y gira sólo en yaw —girada hacia la cámara apuntaría siempre al
+jugador y no diría nada—. Los iconos `?` y `!` sólo tienen que leerse, y para eso
+mirar a la cámara es lo correcto.
+
+**Un triángulo perfectamente plano a la altura de los ojos no se ve.** Medido: con
+`rise: 0` y la cámara a la altura exacta de la brújula, el marcador ocupa **cero
+píxeles**. No se lee mal: no está. Por eso los dos vértices de la cola van
+levantados (`MARKERS.compass.rise`), que deja una cuña cuya pendiente sigue
+diciendo hacia dónde apunta al ras y sigue siendo un triángulo desde arriba.
+Medido a 12 u y promediando tres orientaciones: 28 px con la cola a cero contra
+80 con 0.10.
+
+**Y un marcador de mundo deja de encoger a partir de cierta distancia.** Más allá
+de `MARKERS.referenceDistance` escala **con** la distancia, así que conserva su
+tamaño en pantalla, con tope. Sin eso, a 30 u —el largo del Plano A— un icono son
+cuatro píxeles, y lo que no se ve no se cuenta.
+
+**Hay dos colores nuevos y ninguno reutiliza los que ya significan algo.** El `?`
+es amarillo limón (`COLORS.alert`) y **no** el ámbar del explosivo; el `!` es rojo
+puro (`COLORS.threat`) y **no** el naranja de las dianas — un aviso que se dibuja
+encima de un muñeco naranja no puede ser naranja. La brújula es **blanca, y salió
+de medir**: seis candidatos contra el fondo real del Plano A, contraste WCAG
+píxel a píxel sobre el fondo que le toca a cada uno. Blanco da 10.7 de contraste
+medio y 2.58 en el peor decil; el siguiente, 2.14. Los cianes pierden porque la
+cobertura del mapa es gris media y ahí se apagan. Ver `docs/decisions.md` §37.
+
+**Reaparecer da unos segundos de gracia** (`PLAYER.respawn.invulnerableMs`), y van
+**antes que el casco**: si no, un tiro a la cabeza durante la gracia gastaría el
+casco sin quitar vida y la invulnerabilidad habría costado el casco. Reloj por
+delta como los otros dos de `player.js`, así que en pausa no corre. Y nunca es
+invisible para quien la tiene: marco azul y cuenta junto al bloque de vida.
 
 **El escudo cubre el cuerpo; la cabeza es del casco.** El escudo absorbe el
 `shieldAbsorb` del arma **que dispara** —fijo por arma, sin caída por distancia
@@ -833,8 +903,9 @@ su sitio es un disparo normal. Su hueco reservado se sigue auditando.
 
 **HUD:** **abajo a la izquierda**, y sólo donde hay quien dispare, el bloque de
 vida: cruz en CSS, barra fina, escudo de tres segmentos recortado en silueta,
-contador de cargas y marca del casco, con parpadeo rojo por debajo de 45 de vida
-**y sin escudo**. Al recibir un disparo se enciende un anillo alrededor de la
+contador de cargas y **casco trazado con potrace** (silueta y visera con
+`evenodd`, que es lo que lo hace reconocible), con parpadeo rojo por debajo de 45
+de vida **y sin escudo**. Al recibir un disparo se enciende un anillo alrededor de la
 mira, y abatido sale en el centro lo que falta para reaparecer. Además, la
 **marca de Vektor** arriba a la izquierda —icono discreto, sin
 texto, en el mismo gris apagado que el contador—; aciertos, fallos, precisión y
@@ -854,12 +925,26 @@ pitido del explosivo; el módulo es genérico para pasos y rivales.
 **Dummies que disparan (sólo con escenario y hitbox completo):** con línea de
 visión y dentro de `ENEMY.engageRange` (24 u), un muñeco abre fuego con el
 **modelo de arma de siempre** —cadencia, cargador, recarga y sonido salen de
-`WEAPONS`, hoy la Axis-7— apuntando al centro del cuerpo del jugador con un cono
-de `ENEMY.spreadDeg`. Dos parámetros de dificultad: **precisión** (el cono) y
-**reacción** (`reactionMs`, 650). La velocidad de movimiento no está ahí a
-propósito: ya es el ajuste `patrolSpeed` del panel. Dispara en ráfagas de cuatro
-con pausa, y el disparo se resuelve contra las **tres zonas del jugador**, que
-son las del hitbox.
+`WEAPONS`, hoy la Axis-7— apuntando al centro del cuerpo del jugador con el cono
+de la dificultad. Dispara en ráfagas de cuatro con pausa, y el disparo se resuelve
+contra las **tres zonas del jugador**, que son las del hitbox.
+
+**Dificultad en el panel:** Fácil (15°, 900 ms), Normal (9°, 650 — lo de siempre)
+y Difícil (5°, 400). Un nivel fija los dos números; ver convenciones. La velocidad
+de movimiento no entra ahí a propósito: ya es el ajuste `patrolSpeed`.
+
+**Marcadores sobre cada muñeco (mismo sitio que el fuego enemigo):** una
+**brújula** blanca paralela al suelo que gira en yaw hacia donde mira el muñeco
+—siempre, es orientación pasiva— y, por encima, un icono situacional: `?` amarillo
+mientras te ha visto y aún no dispara, `!` rojo mientras te dispara, uno por
+muñeco, para contar amenazas de un vistazo. Se apagan al perder contacto o al
+caer. Medido contra el Plano A: de 10.390 pares puesto×punto con la cabeza a la
+vista, la cobertura tapa la brújula en **4** (0.04%).
+
+**Al reaparecer, 2 s de invulnerabilidad** (`PLAYER.respawn.invulnerableMs`), con
+marco azul y cuenta junto al bloque de vida. Y al morir, **ABATIDO** en grande con
+una viñeta que oscurece los bordes y se aclara según se acerca la reaparición: el
+propio aclarado es la cuenta atrás.
 
 **Vida, escudo y casco:** 100 de vida; escudo de hasta 150 en tres segmentos de
 50, que se aplican de uno en uno con **4** en dos segundos y con su zumbido
@@ -904,7 +989,8 @@ estaban.
 **Opciones** (accesibles antes de empezar y desde la pausa, persistidas):
 escenario, sensibilidad, tipo de diana, arma, tamaño de diana, distancia de spawn, cadencia
 de aparición, dianas simultáneas, límite de FPS, supresor (sólo si el arma lo
-admite), **audio espacial**, mensajes de ayuda, modo dinámico y **velocidad de
+admite), **audio espacial**, mensajes de ayuda, **dificultad de los muñecos**,
+modo dinámico y **velocidad de
 patrulla** (1.5–8 u/s, por defecto 4: `TARGET.moveSpeed` pasa a ser sólo el valor
 por defecto del ajuste, y el motor lee el del store).
 

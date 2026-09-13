@@ -3125,6 +3125,172 @@ no la pieza, porque en la bota el frente lo pone el pie y la espalda el talón�
 lo compara con la referencia leída en el momento. Un número escrito a mano en un
 test no prueba nada.
 
+## Ronda 37 — Leer al enemigo
+
+### 37.1 Una dificultad, no dos mandos
+
+`spreadDeg` y `reactionMs` estaban sueltos en `ENEMY` desde la vuelta 34, con un
+comentario que decía «los dos parámetros de dificultad». Sacarlos al panel como
+dos sliders habría sido lo obvio y habría estado mal: lo que se nota jugando no es
+«cuánto falla» ni «cuánto tarda» por separado, es **cuánto aprietan**, y con dos
+mandos independientes se llega enseguida a combinaciones que no corresponden a
+ninguna dificultad real —un tirador de élite con un segundo de reacción—.
+
+Así que es un catálogo (`ENEMY_DIFFICULTIES`) y un ajuste con tres opciones, con
+la misma forma que `SIMULTANEOUS_TARGETS` o `FRAME_LIMITS`: saneado contra el
+catálogo, botón de «por defecto» propio, y **los números se van de `ENEMY`**. Que
+se vayan no es limpieza: mientras estuvieran, habría dos sitios de los que leer la
+dificultad y el de `ENEMY` sería el que se queda viejo. `enemigos.mjs`, que los
+leía de ahí, se actualizó para leerlos de donde los lee el motor — un test que
+sabe dónde vivía un número prueba el número, no la regla.
+
+### 37.2 La fase la publica quien la tiene
+
+El `?` y el `!` necesitan saber si un muñeco está en su ventana de reacción o ya
+disparando. Ese estado **ya existe** dentro de `enemyFire`: hay contacto, hay un
+reloj y hay un primer disparo. Deducirlo desde fuera —«si `nextShotAt` está en el
+futuro y el burst es cero…»— habría sido una segunda copia de la misma máquina de
+estados, y la primera vez que cambiara una de las dos se desincronizarían.
+
+`phaseOf(instance, now)` devuelve `idle` / `alert` / `firing`, y lo sostiene un
+booleano explícito (`state.reacting`) que se enciende al ganar contacto y se apaga
+en el primer disparo. Un booleano con nombre, no una inferencia sobre tres relojes.
+
+### 37.3 La brújula no se billboardea, y los iconos sí
+
+Parece una inconsistencia y es justo lo contrario. La brújula dice **hacia dónde
+mira el muñeco**: girada hacia la cámara apuntaría siempre al jugador y no diría
+nada. Los iconos sólo tienen que leerse, y para eso mirar a la cámara es lo
+correcto. Dos comportamientos porque son dos cosas.
+
+Para que haya un «hacia dónde mira» hubo que inventarlo: los muñecos no tenían
+orientación —sus piezas son simétricas y disparan igual miren a donde miren—. Se
+añadió `facing`, y con una regla: **`facingTarget` lo escribe quien lo sabe** —la
+patrulla mientras camina, el fuego enemigo mientras te ve— y **`facing` lo integra
+un solo sitio**, acotado a `TARGET.turnRateDeg`. Con dos escritores del valor
+final, la brújula daría saltos según quién escribiera el último.
+
+### 37.4 Un triángulo plano a la altura de los ojos son cero píxeles
+
+El encargo pedía un triángulo **plano**, paralelo al suelo. Medido en banco
+controlado —un muñeco, 12 u, la cámara a la altura exacta de la brújula, tres
+orientaciones promediadas— eso da **0 píxeles**. No se lee mal: no está. Y no es
+un caso raro: la cabeza del muñeco y la del jugador están a la misma altura, así
+que el caso de canto es el normal.
+
+Levantar los dos vértices de la cola (`MARKERS.compass.rise`) le da perfil sin
+dejar de ser un triángulo visto desde arriba. Medido, a 12 u:
+
+| `rise` | elevación 0 | +0.3 u | +1.5 u |
+|---|---|---|---|
+| 0 (plano) | 28 px | 34 | 22 |
+| 0.05 | 53 | 50 | 38 |
+| **0.10** | **80** | 103 | 91 |
+| 0.14 | 91 | 135 | 129 |
+
+(Los 28 píxeles del plano a elevación 0 son la raya antialiasada de canto: se ve
+algo, pero es una línea sin dirección.) Se eligió 0.10.
+
+Lo otro que hacía falta para verlo de lejos no es el color: es que **un marcador
+de mundo encoge**. A 30 u —el largo del Plano A— un icono de tamaño de mundo son
+cuatro píxeles. Pasada `MARKERS.referenceDistance` el marcador escala con la
+distancia y conserva su tamaño en pantalla, con tope para que de cerca no tape al
+muñeco.
+
+### 37.5 El color de la brújula, medido contra el mapa real
+
+La propuesta era cian, y el cian ya significa algo: el azul eléctrico es el canal
+de carga —escudo, recargas, visor y líneas del avatar—. Así que se midió, con seis
+candidatos y el método de siempre: se dibuja el mismo frame con marcadores y sin
+ellos, la diferencia da **exactamente** los píxeles del marcador, y sobre el frame
+sin marcadores se lee el fondo que le toca a cada píxel. De ahí, contraste WCAG.
+
+| color | contraste medio | peor decil |
+|---|---|---|
+| **blanco #FFFFFF** | **10.67** | **2.58** |
+| lima #C6F04A | 7.66 | 2.14 |
+| eléctrico #6FE0FF | 6.62 | 1.85 |
+| turquesa #35D6C4 | 2.32 | 1.18 |
+| azul claro #8FB6FF | 2.22 | 1.08 |
+| cian profundo #2FA8C9 | 2.93 | 1.01 |
+
+Lo que decide es el **peor** decil y no la media: una brújula que se ve sobre el
+suelo negro y desaparece sobre una caja de cobertura no vale, y en el Plano A hay
+de las dos cosas en el mismo encuadre. Los cianes pierden porque la cobertura es
+gris media y ahí se apagan. Ganó el blanco, que además es el único que no compite
+con ningún significado del mundo —el naranja es diana, el ámbar explosivo, el azul
+carga—.
+
+Una trampa de medida por el camino: **los bordes antialiasados empatan a todos los
+candidatos**. Un píxel de borde es una mezcla del marcador y del fondo, así que su
+contraste tiende a 1 diga lo que diga el color; con los bordes dentro, los seis
+candidatos daban 1.0 y la medida no medía nada. Se cuenta sólo el interior, y con
+el material opaco durante la medición, porque con opacidad 0.92 lo que sale por
+pantalla también es una mezcla.
+
+Los dos iconos llevan colores nuevos por la misma regla: el `?` es amarillo limón
+y no el ámbar del explosivo; el `!` es rojo puro y no el naranja de las dianas —un
+aviso que se dibuja **encima** de un muñeco naranja no puede ser naranja—.
+
+### 37.6 ¿Tapa la cobertura la brújula?
+
+El marcador va por encima de la cabeza, así que el fallo posible no es el obvio
+—si se ve la cabeza, lo que está más arriba se ve mejor— sino algo que tape **por
+arriba**, y en el Plano A eso existe: la plataforma del Balcón vuela sobre el
+suelo de al lado.
+
+Se midió a lo bruto: 400 puestos del jugador por los 69 puntos de ruta, un rayo a
+la cabeza y otro a la brújula. La cabeza se ve en **10.390** pares, y de ésos la
+cobertura tapa la brújula en **4** (0.04%), los cuatro de canto contra el borde de
+una pieza. Queda anotado y no se toca el mapa por cuatro casos.
+
+### 37.7 La gracia va antes que el casco
+
+Dos segundos de invulnerabilidad al reaparecer, por lo de siempre: reaparecer
+donde estabas con los mismos muñecos encarados al mismo sitio es morir otra vez
+antes de ver la pantalla.
+
+El detalle que no es evidente es **el orden dentro de `takeHit`**. El casco se come
+el primer disparo a la cabeza y se rompe; si la comprobación de invulnerabilidad
+fuera después, un tiro a la cabeza durante la gracia gastaría el casco sin quitar
+vida — y la invulnerabilidad habría costado el casco. Va primero, y hay una
+aserción que lo guarda.
+
+El reloj va por delta como los otros dos de `player.js`, así que en pausa no corre.
+Y la señal nunca es invisible para quien la tiene: marco azul —el canal de la
+carga, que es lo que protege al jugador— y cuenta junto al bloque de vida, no en
+el centro, que es donde ya están el cronómetro y las estrellas.
+
+### 37.8 El casco que no se leía como casco
+
+El icono anterior era un arco de borde CSS: media píldora. La silueta exterior de
+un casco tampoco basta —es un pentágono redondeado—: **lo que lo delata es la
+visera**.
+
+Se traza dos veces la misma referencia, una por alfa y otra filtrando por
+luminosidad —la imagen es bimodal, 25.013 píxeles por debajo de 32 y 53.000 por
+encima de 160, así que el umbral no es una interpretación—, los dos contornos van
+al mismo trazado y se pinta con `fill-rule: evenodd`. Es la misma regla del
+logotipo de la vuelta 30, y el mismo fallo si se olvida: con `nonzero` sale
+macizo. `dummies.mjs` lo guarda midiendo con `isPointInFill` que el centro de la
+visera está hueco.
+
+El escudo del HUD se pasó al trazado también, y con un detalle de implementación
+que costó una vuelta: sus tres segmentos se recortan **dentro del SVG**, no con
+`clip-path` de CSS, porque `clip-path: path()` no escala con el elemento y el
+trazado viene en coordenadas de la referencia, no en píxeles de HUD.
+
+**La cruz de vida no se cambió por el corazón**, y no es un olvido: el icono del
+HUD y el recogible del suelo son el mismo objeto visto en dos sitios, y cambiar
+sólo uno los separa. El trazado está hecho y espera a que cambien los dos.
+
+Y el casco del suelo no se puede vectorizar —un contorno plano no es un objeto—,
+así que se reconstruye: cúpula, faldón y una visera **que sobresale**. La primera
+versión la tenía metida dentro de la cúpula, y sin luces lo único que distingue
+una pieza de otra es la silueta: una visera que no asoma no cambia nada. Lo caza
+una aserción sobre la caja de la geometría, que con la visera dentro sale
+simétrica en z.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
@@ -3209,6 +3375,10 @@ objetivo era medir tiempos y rendimiento de verdad.
 - **Tiempos de recarga** contra los valores de `config.js`.
 - **Coste por frame**: ~0.1–0.2 ms p99 frente a los 4.17 ms disponibles a 240 Hz.
 - **Las PNG de referencia no llegan a `dist/`.**
+- **Contraste de los marcadores contra el fondo real del Plano A**: seis colores
+  candidatos, contraste WCAG píxel a píxel sobre el fondo que le toca a cada uno.
+- **Visibilidad de la brújula en asomos parciales**: 400 puestos × 69 puntos de
+  ruta, con un rayo a la cabeza y otro al marcador.
 - **La silueta del avatar contra la referencia, en dos vistas**: de frente
   contra la referencia de estilo y de perfil contra la media de las dos vistas
   laterales del turnaround, nivel a nivel y con la cámara casi ortográfica.

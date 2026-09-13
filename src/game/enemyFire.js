@@ -13,7 +13,8 @@
  *     por eso **no es por frame**: se recomprueba cada `ENEMY.sightCheckMs` y se
  *     reparte entre muñecos, para que ocho no la comprueben en el mismo. Es la
  *     misma regla que la visibilidad de los puntos de aparición.
- *  3. **Reacción.** Desde que te ve hasta que abre fuego pasa `ENEMY.reactionMs`.
+ *  3. **Reacción.** Desde que te ve hasta que abre fuego pasa el `reactionMs`
+ *     del nivel de dificultad elegido.
  *     Perderte de vista lo reinicia: asomarse y volver a cubrirse funciona.
  *  4. **Cadencia.** La del arma, con el **mismo cálculo que el jugador**: el
  *     siguiente disparo se cuenta desde el instante en que tocaba éste, no desde
@@ -21,15 +22,28 @@
  *     240 Hz.
  *
  * El disparo se resuelve **analíticamente** contra el cuerpo del jugador (ver
- * `player.js`): una dirección desviada dentro del cono de `ENEMY.spreadDeg` y un
+ * `player.js`): una dirección desviada dentro del cono de la dificultad y un
  * corte contra el cilindro. Ni un raycast más por bala.
  *
  * No sabe de vida ni de escudo: avisa por callback de dónde ha dado y con qué
  * arma, y quien lleva la cuenta decide.
+ *
+ * **Y publica en qué estado está cada muñeco** (`phaseOf`), que es lo que leen
+ * los marcadores de `markers.js`. Es un dato que este módulo ya tiene —hay
+ * visión, ha pasado la reacción— y calcularlo otra vez fuera sería una segunda
+ * versión de la misma máquina de estados.
  */
 
 import * as THREE from 'three'
-import { AUDIO, ENEMY, TARGET, TARGET_TYPES, WEAPONS } from '../config.js'
+import {
+  AUDIO,
+  ENEMY,
+  ENEMY_DEFAULT_DIFFICULTY,
+  ENEMY_DIFFICULTIES,
+  TARGET,
+  TARGET_TYPES,
+  WEAPONS,
+} from '../config.js'
 import { playShot } from '../audio/sfx.js'
 import { createEmitter } from '../audio/spatial.js'
 import { aimPoint, hitPlayer, zoneDamage } from './player.js'
@@ -88,11 +102,43 @@ export class EnemyFire {
     this.shotsHit = 0
     /** Radio con el que están dibujados los muñecos. Lo refresca `setRadius`. */
     this._radius = TARGET.radius
+    /** Nivel de dificultad vigente. Lo pone el ajuste, no la constante. */
+    this.difficultyKey = ENEMY_DEFAULT_DIFFICULTY
   }
 
   /** El arma con la que disparan, tal cual la declara `WEAPONS`. */
   get weapon() {
     return WEAPONS[ENEMY.weapon]
+  }
+
+  /**
+   * El nivel de dificultad vigente. Sale del ajuste y **no de `ENEMY`**: los dos
+   * números van juntos (ver `ENEMY_DIFFICULTIES`) y quien los elige es el panel.
+   */
+  get difficulty() {
+    return ENEMY_DIFFICULTIES[this.difficultyKey] ?? ENEMY_DIFFICULTIES.normal
+  }
+
+  /** @param {string} key una clave de `ENEMY_DIFFICULTIES` */
+  setDifficulty(key) {
+    this.difficultyKey = key
+  }
+
+  /**
+   * **En qué anda un muñeco ahora mismo**, para quien lo quiera enseñar:
+   *
+   * - `'idle'` — ni te ve ni te tiene encarado.
+   * - `'alert'` — te ve y está en su ventana de reacción: aún no dispara.
+   * - `'firing'` — te ve y ya ha abierto fuego. Incluye las pausas de ráfaga y
+   *   la recarga: sigue encarado y el siguiente tiro va a salir.
+   *
+   * Sale del estado que este módulo ya lleva, no de una segunda cuenta.
+   */
+  phaseOf(instance, now) {
+    if (!this.enabled) return 'idle'
+    const state = this._states.get(instance)
+    if (!state || !state.hasSight) return 'idle'
+    return state.reacting ? 'alert' : 'firing'
   }
 
   setOccluders(occluders) {
@@ -115,6 +161,9 @@ export class EnemyFire {
 
   _resetState(state) {
     state.hasSight = false
+    // Te ve y todavía no ha disparado. Se apaga en cuanto sale el primer tiro,
+    // así que no hay que deducirlo de los relojes desde fuera.
+    state.reacting = false
     state.nextShotAt = 0
     state.burst = 0
     state.ammo = this.weapon.magazine
@@ -141,7 +190,16 @@ export class EnemyFire {
    * @param {Array<object>} instances el pool de dianas, tal cual
    */
   update(now, instances, body) {
-    if (!this.enabled || !body) return
+    // Sin jugador al que disparar —abatido, o el combate apagado— nadie tiene
+    // contacto. Se limpia en vez de salir sin más: si no, los marcadores se
+    // quedarían encendidos sobre muñecos que ya no apuntan a nadie.
+    if (!this.enabled || !body) {
+      for (const state of this._states.values()) {
+        state.hasSight = false
+        state.reacting = false
+      }
+      return
+    }
     const weapon = this.weapon
     const intervalMs = 60000 / weapon.rpm
     /** Presupuesto de rayos de este frame. Ver `ENEMY.sightChecksPerFrame`. */
@@ -159,6 +217,7 @@ export class EnemyFire {
 
       if (flat > ENEMY.engageRange) {
         state.hasSight = false
+        state.reacting = false
         continue
       }
 
@@ -175,11 +234,17 @@ export class EnemyFire {
         const sees = this._canSee(_muzzle, _aim)
         if (sees && !state.hasSight) {
           // Te acaba de ver: el reloj de reacción empieza aquí.
-          state.nextShotAt = now + ENEMY.reactionMs
+          state.nextShotAt = now + this.difficulty.reactionMs
           state.burst = 0
+          state.reacting = true
         }
         state.hasSight = sees
+        if (!sees) state.reacting = false
       }
+      // Mientras te vea, te encara. Sólo escribe **hacia dónde quiere mirar**:
+      // quien gira es el integrador de `targets.js`, para que haya un solo sitio
+      // donde la orientación avanza y no dos que se peleen por ella.
+      if (state.hasSight) instance.facingTarget = Math.atan2(dx, dz)
       if (!state.hasSight) continue
       if (now < state.nextShotAt) continue
 
@@ -222,11 +287,12 @@ export class EnemyFire {
   }
 
   _fire(now, state, muzzle, aim, body, weapon) {
+    state.reacting = false
     _dir.subVectors(aim, muzzle)
     const distance = _dir.length()
     if (distance <= 1e-4) return
     _dir.multiplyScalar(1 / distance)
-    applySpread(_dir, ENEMY.spreadDeg)
+    applySpread(_dir, this.difficulty.spreadDeg)
 
     state.emitter.setPosition(muzzle.x, muzzle.y, muzzle.z)
     playShot(false, state.emitter, AUDIO.enemyShotVolume)

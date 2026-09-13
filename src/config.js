@@ -58,6 +58,24 @@ export const COLORS = {
   health: '#F2F2F2',
   /** Equipo sin carga: el casco. Gris frío, para que no se lea como cobertura. */
   gear: '#9AA3AA',
+  /**
+   * **Te ha visto y aún no dispara.** Amarillo de aviso, y **no** el ámbar del
+   * explosivo (`objective`, #E8B33A) aunque se parezcan: el ámbar significa una
+   * cosa concreta —hay una bomba— y los dos aparecen en el mundo, no en la
+   * interfaz. Éste va más limón y más claro para que no se confundan de reojo.
+   */
+  alert: '#FFD23F',
+  /**
+   * **Te está disparando.** Rojo puro, y **no** el naranja de las dianas
+   * (`target`, #E4462B): el icono sale justo encima de un muñeco naranja, y un
+   * aviso del color de aquello sobre lo que se dibuja no es un aviso.
+   */
+  threat: '#FF2D1F',
+  /**
+   * **Hacia dónde mira un muñeco.** El color de la brújula, elegido midiendo:
+   * ver `docs/decisions.md` §37.
+   */
+  facing: '#FFFFFF',
 }
 
 /** Sesión cronometrada. */
@@ -139,6 +157,15 @@ export const TARGET = {
    * esto, un destino lejano daría carreras largas y previsibles en línea recta.
    */
   moveMaxSeconds: 2.5,
+  /**
+   * A qué ritmo gira un muñeco hacia donde quiere mirar, en grados por segundo.
+   *
+   * **No cambia nada de su comportamiento**: dispara igual mire donde mire, y su
+   * cuerpo no gira —las piezas del hitbox son simétricas—. Es un dato, y lo lee
+   * la brújula de `markers.js`. Va integrado a ritmo acotado y no puesto de
+   * golpe porque una brújula que salta 180° en un frame no se lee, se pierde.
+   */
+  turnRateDeg: 300,
 }
 
 /**
@@ -926,6 +953,34 @@ export const FRAME_LIMITS = {
  * `min`/`max`/`step` alimentan los sliders y, sobre todo, acotan lo que se
  * lee de localStorage: ahí puede haber cualquier cosa.
  */
+/**
+ * **Dificultad de los muñecos.** Un nivel fija los dos parámetros **a la vez**,
+ * y por eso es un catálogo y no dos sliders sueltos: precisión y reacción no son
+ * independientes para quien juega —lo que se nota es «cuánto aprietan»— y con
+ * dos mandos separados se acaba con combinaciones que no corresponden a ninguna
+ * dificultad real (un tirador de élite que tarda un segundo en reaccionar).
+ *
+ * - `spreadDeg` — **precisión**: semiángulo del cono de dispersión. Parece
+ *   enorme para un tirador y no lo es: el disparo es instantáneo y va a donde
+ *   estás **ahora**, así que moverse no le hace fallar ni un poco. Todo lo que
+ *   falla un muñeco sale de aquí. Medido de pie en el spawn del Plano A: con
+ *   4.5° entra el 84% de los disparos, con 9° el 54%.
+ * - `reactionMs` — **reacción**: lo que tarda en abrir fuego desde que te ve.
+ *   Perderlo de vista lo reinicia, así que también es lo que mide cuánto se
+ *   puede asomar uno.
+ *
+ * Los tres niveles son **puntos de partida a calibrar jugando**, no valores
+ * medidos: Normal es exactamente lo que había hasta la vuelta 37.
+ */
+export const ENEMY_DIFFICULTIES = {
+  easy: { label: 'Fácil', spreadDeg: 15, reactionMs: 900 },
+  normal: { label: 'Normal', spreadDeg: 9, reactionMs: 650 },
+  hard: { label: 'Difícil', spreadDeg: 5, reactionMs: 400 },
+}
+
+/** El nivel de partida, y el que usa quien no tenga ajuste guardado. */
+export const ENEMY_DEFAULT_DIFFICULTY = 'normal'
+
 export const SETTINGS = {
   sensitivity: {
     label: 'Sensibilidad',
@@ -1014,6 +1069,15 @@ export const SETTINGS = {
     max: 1,
     step: 0.05,
     decimals: 2,
+  },
+  enemyDifficulty: {
+    label: 'Dificultad de los muñecos',
+    /**
+     * Precisión y reacción de una vez: el catálogo es `ENEMY_DIFFICULTIES`.
+     * Sólo se aplica donde hay quien dispare —escenario con cobertura y hitbox
+     * completo—, igual que el bloque de vida del HUD.
+     */
+    default: ENEMY_DEFAULT_DIFFICULTY,
   },
   dynamic: {
     label: 'Modo dinámico',
@@ -1705,6 +1769,16 @@ export const PLAYER = {
     maxMs: 15000,
     killCreditMs: 3000,
     killCreditAboveMs: 10000,
+    /**
+     * **Invulnerabilidad al reaparecer.** Reaparecer donde estabas, con los
+     * mismos muñecos mirando al mismo sitio, es morir otra vez antes de ver la
+     * pantalla: sin esto la segunda muerte llega en menos de lo que se tarda en
+     * girar. Dos segundos es lo que cuesta orientarse y echar a andar.
+     *
+     * Va **por delta como el resto de relojes de `player.js`**: en pausa no
+     * corre, así que abrir las opciones no se come el margen.
+     */
+    invulnerableMs: 2000,
   },
 }
 
@@ -1719,11 +1793,11 @@ export const PLAYER = {
  * el disparo dentro de un cono, igual que la dispersión por movimiento del
  * jugador desvía el suyo.
  *
- * **Dos parámetros de dificultad**, que son los que hay que tocar para hacerlo
- * más fácil o más difícil: `spreadDeg` (cuánto falla) y `reactionMs` (cuánto
- * tarda en reaccionar). La velocidad de movimiento no está aquí a propósito: ya
- * es un ajuste del panel (`patrolSpeed`), y tener dos sitios donde se decide lo
- * mismo es como se desincronizan.
+ * **Los dos parámetros de dificultad** —cuánto falla y cuánto tarda en
+ * reaccionar— no viven aquí desde la vuelta 37: son un ajuste del panel y salen
+ * de `ENEMY_DIFFICULTIES`, justo debajo. La velocidad de movimiento tampoco
+ * está aquí y por lo mismo: ya es el ajuste `patrolSpeed`, y tener dos sitios
+ * donde se decide lo mismo es como se desincronizan.
  */
 export const ENEMY = {
   /** Con qué disparan. Una entrada de `WEAPONS`, sin copiar ni un número. */
@@ -1734,18 +1808,6 @@ export const ENEMY = {
    * desde el primer segundo.
    */
   engageRange: 24,
-
-  /**
-   * DIFICULTAD 1 — **precisión**: semiángulo del cono de dispersión.
-   *
-   * Parece enorme para un tirador, y no lo es: el disparo es instantáneo y va
-   * a donde estás **ahora**, así que moverse no le hace fallar ni un poco. Todo
-   * lo que falla un muñeco sale de aquí. Medido de pie en el spawn del Plano A:
-   * con 4.5° entra el 84% de los disparos, con 9° el 54%.
-   */
-  spreadDeg: 9,
-  /** DIFICULTAD 2 — **reacción**: lo que tarda en abrir fuego desde que te ve. */
-  reactionMs: 650,
 
   /**
    * Cada cuánto se recomprueba la línea de visión. **No es por frame**: es un
@@ -1792,6 +1854,64 @@ export const ENEMY = {
    * piernas y la cabeza vuelve a ser lo que tiene que ser: mala suerte.
    */
   aimHeightFactor: 0.55,
+}
+
+/**
+ * **Lo que se ve encima de un muñeco**: la brújula de orientación y los dos
+ * iconos de estado. Todo en el mundo, nada en la interfaz.
+ *
+ * Son dos cosas distintas y se comportan distinto a propósito:
+ *
+ * - **La brújula es pasiva y siempre está.** No avisa de nada: dice hacia dónde
+ *   mira el muñeco, lo mire a donde lo mire. Por eso **no se billboardea**: va
+ *   paralela al suelo y gira sólo en yaw, de modo que se lee como una brújula
+ *   —la punta es la dirección— desde cualquier sitio desde el que se mire. Si
+ *   girara hacia la cámara dejaría de decir nada.
+ * - **Los iconos son situacionales y sí se billboardean**, como cualquier icono
+ *   flotante: lo que tienen que hacer es leerse, no orientar.
+ *
+ * `rise` es lo único que no es evidente. Con la brújula **perfectamente plana**,
+ * el jugador la ve de canto —su cabeza y la del muñeco están a la misma altura—
+ * y desaparece; medido, ver `docs/decisions.md` §37. Levantar los dos vértices
+ * de la cola le da un perfil de cuña que sigue diciendo hacia dónde apunta
+ * cuando se mira casi al ras, sin dejar de ser un triángulo visto desde arriba.
+ *
+ * Las medidas van en **fracciones de la altura del muñeco**, como todo lo demás
+ * del avatar: cambiar `targetRadius` no descoloca el marcador.
+ */
+export const MARKERS = {
+  compass: {
+    /** Largo de la punta a la cola y ancho de la cola, en alturas de muñeco. */
+    length: 0.30,
+    width: 0.21,
+    /**
+     * Cuánto se levanta la cola sobre el plano. **Medido, no elegido**: con
+     * `rise: 0` y la cámara a la altura exacta de la brújula, el marcador ocupa
+     * **cero píxeles** —no es que se lea mal, es que no está—. Con 0.10 son 22 a
+     * doce unidades, y sigue leyéndose como un triángulo desde arriba. Ver
+     * `docs/decisions.md` §37.
+     */
+    rise: 0.10,
+    /** Por encima de la coronilla. */
+    gap: 0.10,
+    opacity: 0.92,
+  },
+  icon: {
+    /** Alto del glifo, en alturas de muñeco. */
+    size: 0.30,
+    /** Por encima de la brújula. */
+    gap: 0.10,
+  },
+  /**
+   * **Tamaño aparente mínimo.** Un marcador en el mundo encoge con la
+   * distancia, y a 30 u —el largo del Plano A— un icono de 0.3 de muñeco son
+   * cuatro píxeles: no se cuenta lo que no se ve. A partir de
+   * `referenceDistance` el marcador crece con la distancia, de modo que **deja
+   * de encoger** y conserva su tamaño en pantalla, con un tope para que de
+   * cerca no se coma al muñeco.
+   */
+  referenceDistance: 8,
+  maxScale: 3.4,
 }
 
 /**

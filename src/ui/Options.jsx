@@ -2,6 +2,7 @@ import { useState } from 'react'
 import Controls from './Controls.jsx'
 import ScenarioThumbnail from './ScenarioThumbnail.jsx'
 import {
+  ENEMY_DIFFICULTIES,
   FRAME_LIMITS,
   MOVEMENT,
   SCENARIOS,
@@ -217,6 +218,19 @@ function patrolSpeedHint(settings) {
   return `Más rápidos que tú (${mia} u/s): no los alcanzas corriendo.`
 }
 
+/**
+ * La dificultad sólo existe donde hay quien dispare, y lo que dice el nivel son
+ * sus dos números: enseñarlos evita que «Difícil» sea una palabra sin contenido.
+ */
+function difficultyHint(settings) {
+  const level = ENEMY_DIFFICULTIES[settings.enemyDifficulty]
+  const donde =
+    settings.scenario === 'empty' || settings.targetType !== 'hitbox'
+      ? 'Sólo se aplica con escenario y hitbox completo: en la sala vacía nadie dispara. '
+      : ''
+  return `${donde}Cono de ${level.spreadDeg}° y ${level.reactionMs} ms de reacción.`
+}
+
 function dynamicHint(targetType) {
   return TARGET_TYPES[targetType].anchor === 'feet'
     ? 'Las dianas se desplazan por el suelo, sin cambiar de altura.'
@@ -366,6 +380,14 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
             ? 'Una sola diana viva: la siguiente espera a que caiga la actual.'
             : `Hasta ${SIMULTANEOUS_TARGETS[settings.simultaneousTargets].count} dianas a la vez, saliendo al ritmo de la cadencia.`
         }
+      />
+
+      <SegmentedRow
+        setting="enemyDifficulty"
+        catalog={ENEMY_DIFFICULTIES}
+        value={settings.enemyDifficulty}
+        onChange={onChange}
+        hint={difficultyHint(settings)}
       />
 
       <ToggleRow

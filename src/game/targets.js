@@ -299,6 +299,7 @@ export class TargetManager {
         this._updateDying(instance, now)
       } else if (instance.state === 'alive') {
         this._updateFlashes(instance, now)
+        this._updateFacing(instance, deltaSeconds)
         // Con anclajes curados, el muestreo de destinos sigue prohibido —un
         // punto al azar acabaría dentro de un muro—, pero un muñeco con grupo de
         // patrulla sí se mueve: entre puntos verificados como alcanzables en
@@ -419,6 +420,10 @@ export class TargetManager {
     // Referencia limpia para el primer destino: el punto donde acaba de
     // aparecer, no lo que quedara de su vida anterior.
     instance.destination.copy(instance.group.position)
+    // Nace mirando a donde estaba mirando el que ocupó esa ranura antes sería
+    // un yaw heredado sin sentido: arranca mirando al frente del mapa.
+    instance.facing = 0
+    instance.facingTarget = 0
     // El destino se elige siempre, aunque el modo dinámico esté apagado: así
     // encenderlo a mitad de pausa no deja dianas con un destino inventado.
     this._pickDestination(instance, camera, now)
@@ -714,7 +719,26 @@ export class TargetManager {
       return
     }
     position.addScaledVector(_motion, step / remaining)
+    // Patrullando se mira hacia donde se anda. Lo pisa el fuego enemigo mientras
+    // haya contacto: al que te está viendo se le nota porque te encara.
+    instance.facingTarget = Math.atan2(_motion.x, _motion.z)
     if (now >= instance.destinationUntil) this._pickDestination(instance, camera, now)
+  }
+
+  /**
+   * **El único sitio donde la orientación avanza.** Gira hacia `facingTarget` a
+   * ritmo acotado, por el camino corto.
+   *
+   * Va con el delta de juego, así que en pausa se congela como todo lo demás, y
+   * el ángulo se normaliza a (-π, π] antes de acotarlo: sin eso, ir de 170° a
+   * -170° —diez grados— daría la vuelta larga por los 350.
+   */
+  _updateFacing(instance, deltaSeconds) {
+    if (deltaSeconds <= 0) return
+    let delta = instance.facingTarget - instance.facing
+    delta = Math.atan2(Math.sin(delta), Math.cos(delta))
+    const step = TARGET.turnRateDeg * DEG_TO_RAD * deltaSeconds
+    instance.facing += delta > step ? step : delta < -step ? -step : delta
   }
 
   /**
@@ -876,6 +900,21 @@ export class TargetManager {
         routeIndex: -1,
         /** Dónde cayó la última vez. No vuelve a nacer ahí. */
         lastPoint: null,
+        /**
+         * **Hacia dónde mira**, en yaw, con la convención de siempre: la
+         * dirección es `(sin yaw, 0, cos yaw)`.
+         *
+         * `facingTarget` es hacia dónde **quiere** mirar y lo escribe quien lo
+         * sabe —la patrulla mientras camina, el fuego enemigo mientras te ve—;
+         * `facing` es hacia dónde mira de verdad y lo lleva un solo integrador
+         * (`_updateFacing`), acotado a `TARGET.turnRateDeg`. Con dos escritores
+         * del valor final la brújula daría saltos según quién escribiera último.
+         *
+         * No cambia nada del comportamiento: el muñeco dispara igual mire donde
+         * mire. Es lo que lee la brújula de `markers.js`.
+         */
+        facing: 0,
+        facingTarget: 0,
       }
       for (let p = 0; p < parts.length; p++) parts[p].mesh.userData.instance = instance
 

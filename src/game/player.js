@@ -17,6 +17,11 @@
  * disparo lo rompe y el siguiente mata—. Que mate sale solo del modelo: la
  * cabeza vale 100 de 100.
  *
+ * **Y unos segundos de gracia al reaparecer** (`PLAYER.respawn.invulnerableMs`),
+ * porque reaparecer donde estabas con los mismos muñecos encarados al mismo
+ * sitio es morir otra vez antes de ver la pantalla. Van por delta como los otros
+ * dos relojes de aquí, así que en pausa no corren.
+ *
  * No sabe nada de quién dispara ni de dónde: recibe un rayo y un arma.
  */
 
@@ -63,6 +68,7 @@ export class PlayerStatus {
     this.respawnMs = PLAYER.respawn.baseMs
     this.respawnLeftMs = 0
     this.applyLeftMs = 0
+    this.invulnerableLeftMs = 0
   }
 
   /** Reaparecer: la misma dotación de salida, sin tocar el inventario. */
@@ -72,6 +78,14 @@ export class PlayerStatus {
     this.alive = true
     this.applyLeftMs = 0
     this.respawnLeftMs = 0
+    // Reaparecer donde estabas, con los mismos muñecos encarados al mismo sitio,
+    // es morir otra vez antes de ver la pantalla.
+    this.invulnerableLeftMs = PLAYER.respawn.invulnerableMs
+  }
+
+  /** ¿Está en los segundos de gracia de la reaparición? */
+  get invulnerable() {
+    return this.alive && this.invulnerableLeftMs > 0
   }
 
   get shieldSegments() {
@@ -129,6 +143,10 @@ export class PlayerStatus {
         result.respawnReady = true
       }
     }
+    if (this.invulnerableLeftMs > 0) {
+      this.invulnerableLeftMs -= deltaMs
+      if (this.invulnerableLeftMs <= 0) this.invulnerableLeftMs = 0
+    }
     return result
   }
 
@@ -173,10 +191,19 @@ export class PlayerStatus {
       killed: false,
       helmetBroken: false,
       shieldHit: false,
+      blocked: false,
       damage: 0,
       health: this.health,
     }
     if (!this.alive) return result
+
+    // Los segundos de gracia van **antes que el casco**: si no, reaparecer con
+    // casco y recibir un tiro a la cabeza gastaría el casco sin quitar vida, y
+    // la invulnerabilidad habría costado el casco.
+    if (this.invulnerableLeftMs > 0) {
+      result.blocked = true
+      return result
+    }
 
     // El casco se come el primer disparo a la cabeza entero y se rompe. El
     // siguiente encuentra la cabeza descubierta, y la cabeza vale una vida.
@@ -219,6 +246,7 @@ export class PlayerStatus {
   die() {
     this.alive = false
     this.health = 0
+    this.invulnerableLeftMs = 0
     this.deaths += 1
     this.cancelShieldApply()
     this.respawnLeftMs = this.respawnMs

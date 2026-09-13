@@ -1209,27 +1209,23 @@ body {
   color: var(--accent-color);
 }
 
-/* El escudo: una silueta recortada con tres segmentos dentro. Lo que se ve
-   encendido es lo que queda, y son tres porque el tope son tres cargas. */
+/* El escudo: la silueta trazada de la referencia con tres segmentos recortados
+   dentro. Lo que se ve encendido es lo que queda, y son tres porque el tope son
+   tres cargas. El recorte va dentro del SVG (ver Hud.jsx). */
 .shield {
-  display: flex;
-  flex-direction: column-reverse;
-  gap: 1px;
+  display: block;
   width: 17px;
   height: 21px;
   flex: none;
-  clip-path: polygon(50% 0%, 100% 18%, 100% 62%, 50% 100%, 0% 62%, 0% 18%);
-  background: var(--panel-border);
+  overflow: visible;
 }
 
 .shield__segment {
-  display: block;
-  flex: 1;
-  background: #2a2a2a;
+  fill: #2a2a2a;
 }
 
 .shield__segment--on {
-  background: var(--electric-color);
+  fill: var(--electric-color);
 }
 
 .vitals__charges {
@@ -1247,18 +1243,19 @@ body {
 
 /* El casco no tiene barra: o está o no está. Media cúpula, apagada mientras no
    se lleve — que también es información: dice que hay uno por el mapa. */
+/* El casco: trazado con potrace desde la referencia y pintado con `evenodd`,
+   que es lo que deja la visera hueca. El anterior era un arco de borde CSS y no
+   se leía como casco: era media píldora. */
 .vitals__helmet {
   display: block;
-  width: 18px;
-  height: 10px;
+  width: 15px;
+  height: 18px;
   flex: none;
-  border: 2px solid #2a2a2a;
-  border-bottom: none;
-  border-radius: 9px 9px 0 0;
+  fill: #2a2a2a;
 }
 
 .vitals__helmet--on {
-  border-color: var(--text-soft);
+  fill: var(--text-soft);
 }
 
 .vitals__apply {
@@ -1278,20 +1275,114 @@ body {
   transform-origin: left center;
 }
 
-/* Abatido: lo único que se enseña es cuánto falta. Centrado y por encima de la
-   mira, que es donde ya están puestos los ojos. */
+/* Abatido: el rótulo y cuánto falta. Centrado y por encima de la mira, que es
+   donde ya están puestos los ojos. */
 .downed {
-  z-index: 3;
+  z-index: 4;
   position: absolute;
   left: 50%;
-  top: 38%;
+  top: 34%;
   margin: 0;
   transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.downed__title {
+  font-size: 46px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  /* El interletrado abre por la derecha y descentra la palabra: se compensa con
+     la misma sangría, que es de donde sale el hueco. */
+  text-indent: 0.22em;
+  line-height: 1;
+  color: var(--accent-color);
+  text-transform: uppercase;
+}
+
+.downed__count {
   font-size: 13px;
   letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--accent-color);
+  color: var(--text-soft);
+}
+
+/* Viñeta de abatido: oscurece los **bordes**, no la pantalla. Un negro total
+   taparía justo lo que hay que ver —quién te ha matado y desde dónde—, y el
+   propio aclarado es la cuenta atrás de la reaparición. */
+.vignette {
+  z-index: 3;
+  position: absolute;
+  inset: 0;
   pointer-events: none;
+  background: radial-gradient(
+    ellipse 72% 62% at 50% 50%,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0.35) 52%,
+    rgba(0, 0, 0, 0.88) 100%
+  );
+  opacity: 1;
+  transition: opacity 120ms linear;
+}
+
+/* Segundos de gracia tras reaparecer: un marco encendido y lo que queda. Va
+   arriba del todo y en el borde para no tapar nada de lo que se está mirando,
+   pero **nunca invisible**: una invulnerabilidad que no se ve no se aprovecha. */
+.grace {
+  z-index: 3;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* El tinte del borde es el mismo azul del escudo: todo lo que protege al
+     jugador va por ese canal. */
+  box-shadow: inset 0 0 120px rgba(111, 224, 255, 0.16);
+  animation: grace-pulse 1s ease-in-out infinite;
+}
+
+/* La lectura va **con el bloque de vida**, no en el centro: es estado del
+   jugador, y arriba en medio ya están el cronómetro y las estrellas. */
+.grace__badge {
+  position: absolute;
+  left: 24px;
+  bottom: 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.grace__label {
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  color: var(--electric-color);
+}
+
+.grace__track {
+  display: block;
+  width: 120px;
+  height: 2px;
+  background: var(--panel-border);
+}
+
+.grace__bar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--electric-color);
+  transform: scaleX(1);
+  transform-origin: left center;
+}
+
+@keyframes grace-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.62;
+  }
 }
 
 /* Anillo de daño: alrededor de la mira y no un tinte de pantalla, que taparía

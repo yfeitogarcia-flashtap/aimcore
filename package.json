@@ -9,6 +9,7 @@
     "build": "vite build",
     "preview": "vite preview --host",
     "trace:weapons": "node scripts/trace-weapons.mjs",
+    "trace:icons": "node scripts/trace-icons.mjs",
     "trace:logo": "node scripts/trace-logo.mjs"
   },
   "dependencies": {

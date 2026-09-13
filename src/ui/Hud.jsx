@@ -2,6 +2,7 @@ import { forwardRef, useImperativeHandle, useRef } from 'react'
 import { VektorMark } from './Logo.jsx'
 import WeaponSilhouette from './WeaponSilhouette.jsx'
 import { STAR_PATH } from './Stars.jsx'
+import { ICON_PATHS } from './iconPaths.js'
 import { PLAYER, WEAPONS } from '../config.js'
 
 /**
@@ -44,6 +45,16 @@ const GEAR_PATH = (() => {
  * caro de todo el frame. Además sólo se toca el DOM cuando el valor cambia de
  * verdad — el cronómetro cambia ~10 veces por segundo, no 240.
  */
+/**
+ * La caja del escudo, sacada de su propio `viewBox`: los segmentos se colocan
+ * dentro de ella. Escribirla a mano sería un segundo sitio del que sale el
+ * tamaño del icono, y volvería a desincronizarse al retrazar la referencia.
+ */
+const SHIELD_BOX = (() => {
+  const [x, y, width, height] = ICON_PATHS.shield.viewBox.split(' ').map(Number)
+  return { x, y, width, height }
+})()
+
 const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
   const fpsRef = useRef(null)
   const timeRef = useRef(null)
@@ -70,6 +81,10 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
   const applyRef = useRef(null)
   const applyBarRef = useRef(null)
   const downedRef = useRef(null)
+  const downedCountRef = useRef(null)
+  const vignetteRef = useRef(null)
+  const graceRef = useRef(null)
+  const graceBarRef = useRef(null)
 
   // Últimos valores mostrados, como números: comparamos antes de formatear,
   // así que un frame que no cambia nada no genera ni un string.
@@ -91,9 +106,11 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
     segments: -1,
     charges: -1,
     helmet: null,
+    graceTenths: -1,
     applying: null,
     lowHealth: null,
     alive: null,
+    grace: null,
     respawnTenths: -1,
   })
 
@@ -238,18 +255,40 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
         applyBarRef.current.style.transform = `scaleX(${stats.applyProgress.toFixed(3)})`
       }
 
-      // Abatido: lo único que se enseña es cuánto falta. Décimas, como el resto
-      // del HUD, y sólo se toca el DOM cuando cambia la décima.
-      if (stats.alive !== last.alive && downedRef.current) {
-        downedRef.current.hidden = stats.alive
+      // Abatido: el rótulo, la cuenta y la viñeta. Décimas, como el resto del
+      // HUD, y sólo se toca el DOM cuando cambia la décima.
+      if (stats.alive !== last.alive) {
+        if (downedRef.current) downedRef.current.hidden = stats.alive
+        if (vignetteRef.current) vignetteRef.current.hidden = stats.alive
         last.alive = stats.alive
         last.respawnTenths = -1
       }
       if (!stats.alive) {
         const tenths = Math.ceil(stats.respawnLeftMs / 100)
-        if (tenths !== last.respawnTenths && downedRef.current) {
-          downedRef.current.textContent = `Abatido · reapareces en ${(tenths / 10).toFixed(1)} s`
+        if (tenths !== last.respawnTenths && downedCountRef.current) {
+          downedCountRef.current.textContent = `reapareces en ${(tenths / 10).toFixed(1)} s`
           last.respawnTenths = tenths
+        }
+        // La viñeta se aclara según se acerca la reaparición: el oscurecimiento
+        // **es** la cuenta atrás, sin tener que leer el número.
+        if (vignetteRef.current) {
+          const left = stats.respawnMs > 0 ? stats.respawnLeftMs / stats.respawnMs : 0
+          vignetteRef.current.style.opacity = (0.25 + 0.75 * left).toFixed(3)
+        }
+      }
+
+      // Segundos de gracia tras reaparecer.
+      const grace = stats.invulnerableLeftMs > 0
+      if (grace !== last.grace) {
+        if (graceRef.current) graceRef.current.hidden = !grace
+        last.grace = grace
+        last.graceTenths = -1
+      }
+      if (grace) {
+        const tenths = Math.ceil(stats.invulnerableLeftMs / 100)
+        if (tenths !== last.graceTenths && graceBarRef.current) {
+          graceBarRef.current.style.transform = `scaleX(${(stats.invulnerableLeftMs / stats.invulnerableMs).toFixed(3)})`
+          last.graceTenths = tenths
         }
       }
     },
@@ -349,24 +388,55 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
         </div>
 
         <div className="vitals__row vitals__row--gear">
-          {/* El escudo son literalmente tres segmentos dentro de una silueta de
-              escudo: lo que se ve encendido es lo que queda. */}
-          <span className="shield">
-            {[0, 1, 2].map((i) => (
-              <i
-                key={i}
-                className="shield__segment"
-                ref={(node) => {
-                  shieldRefs.current[i] = node
-                }}
-              />
-            ))}
-          </span>
+          {/* El escudo son literalmente tres segmentos **recortados con la
+              silueta trazada**: lo que se ve encendido es lo que queda. El
+              recorte va dentro del SVG y no en CSS porque `clip-path: path()`
+              no escala con el elemento y el trazado viene en las coordenadas
+              de la referencia, no en píxeles de HUD. */}
+          <svg
+            className="shield"
+            viewBox={ICON_PATHS.shield.viewBox}
+            role="presentation"
+            aria-hidden="true"
+          >
+            <defs>
+              <clipPath id="hud-shield-clip">
+                <path d={ICON_PATHS.shield.d} />
+              </clipPath>
+            </defs>
+            <g clipPath="url(#hud-shield-clip)">
+              {[0, 1, 2].map((i) => (
+                <rect
+                  key={i}
+                  className="shield__segment"
+                  x={SHIELD_BOX.x}
+                  y={SHIELD_BOX.y + (SHIELD_BOX.height * (2 - i)) / 3}
+                  width={SHIELD_BOX.width}
+                  // Un pelo menos de un tercio: la rendija entre segmentos es lo
+                  // que hace que se cuenten tres y no una barra.
+                  height={(SHIELD_BOX.height / 3) * 0.9}
+                  ref={(node) => {
+                    shieldRefs.current[i] = node
+                  }}
+                />
+              ))}
+            </g>
+          </svg>
           <span className="vitals__charges vitals__charges--empty" ref={chargesRef}>
             ×0
           </span>
-          {/* El casco no tiene barra: o está o no está. */}
-          <span className="vitals__helmet" ref={helmetRef} role="presentation" />
+          {/* El casco no tiene barra: o está o no está. Va trazado con potrace
+              desde la referencia y pintado con `evenodd`, que es lo que deja la
+              visera hueca; sin ella un casco es un pentágono cualquiera. */}
+          <svg
+            className="vitals__helmet"
+            viewBox={ICON_PATHS.helmet.viewBox}
+            role="presentation"
+            aria-hidden="true"
+            ref={helmetRef}
+          >
+            <path d={ICON_PATHS.helmet.d} fillRule="evenodd" />
+          </svg>
         </div>
 
         <span className="vitals__apply" ref={applyRef} hidden>
@@ -374,7 +444,27 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
         </span>
       </div>
 
-      <p className="downed" ref={downedRef} hidden />
+      {/* Viñeta de abatido: **no** un negro total. Lo que se oscurece son los
+          bordes, y se va aclarando según se acerca la reaparición, así que el
+          propio oscurecimiento es la cuenta atrás. Ver qué te ha matado sigue
+          siendo información. */}
+      <div className="vignette" ref={vignetteRef} hidden />
+
+      <div className="downed" ref={downedRef} hidden>
+        <strong className="downed__title">ABATIDO</strong>
+        <span className="downed__count" ref={downedCountRef} />
+      </div>
+
+      {/* Los segundos de gracia: un marco encendido y lo que queda. Nunca es
+          invisible para quien lo tiene, que es de lo que sirve. */}
+      <div className="grace" ref={graceRef} hidden>
+        <div className="grace__badge">
+          <span className="grace__label">INVULNERABLE</span>
+          <span className="grace__track">
+            <span className="grace__bar" ref={graceBarRef} />
+          </span>
+        </div>
+      </div>
 
       <div className="hud__weapon">
         {/* Silueta y munición en una sola fila: la silueta ya identifica el

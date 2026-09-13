@@ -53,13 +53,72 @@ function createGeometry(kind, size) {
       return merged
     }
     case 'helmet':
-      // Media esfera de pocos lados: un casco es lo único con forma de cabeza.
-      return new THREE.SphereGeometry(size * 1.2, 6, 3, 0, Math.PI * 2, 0, Math.PI / 2)
+      return helmetGeometry(size)
     case 'shield':
     default:
       // La carga: el mismo octaedro que el núcleo del avatar, y el mismo azul.
       return new THREE.OctahedronGeometry(size * 1.3)
   }
+}
+
+/**
+ * **El casco, en tres dimensiones.** Aquí no vale el trazado del HUD —un
+ * contorno plano no es un objeto—, así que se reconstruye con la misma
+ * disciplina que el avatar: la referencia da las proporciones y la geometría
+ * sale de primitivos.
+ *
+ * Tres piezas, y cada una está por algo:
+ *
+ *  - **La cúpula**, media esfera de ocho gajos y tres anillos. Ocho y no seis
+ *    porque el casco se mira desde cualquier lado y con seis la silueta cambia
+ *    de ancho al girar.
+ *  - **La visera**, una banda achatada por delante. Es lo único que distingue un
+ *    casco de una piedra, y es lo que faltaba: la media esfera sola se leía como
+ *    un cuenco.
+ *  - **El faldón**, un aro corto bajo la cúpula que cierra el volumen por abajo.
+ *    Sin él, visto desde el suelo el casco es un agujero.
+ *
+ * Se fusiona en una sola geometría porque un recogible es **un** objeto: tres
+ * mallas por casco serían tres objetos que mover y ordenar por cada uno.
+ */
+function helmetGeometry(size) {
+  const dome = new THREE.SphereGeometry(size * 1.15, 8, 3, 0, Math.PI * 2, 0, Math.PI / 2)
+  const skirt = new THREE.CylinderGeometry(size * 1.15, size * 1.02, size * 0.5, 8, 1, true)
+  skirt.translate(0, -size * 0.25, 0)
+  // La visera: una barra de seis caras **cruzada** por delante de la cara, y
+  // sobresaliendo de la cúpula. Metida dentro no serviría de nada: sin luces, lo
+  // único que distingue una pieza de otra es la silueta, y una visera que no
+  // asoma no cambia la silueta.
+  const visor = new THREE.CylinderGeometry(size * 0.36, size * 0.3, size * 1.5, 6)
+  visor.rotateZ(Math.PI / 2)
+  visor.translate(0, size * 0.12, size * 0.95)
+  return mergeGeometries([dome, skirt, visor])
+}
+
+/**
+ * Fusión mínima de geometrías indexadas o no: `BufferGeometryUtils` traería una
+ * dependencia de `examples` a un módulo que sólo necesita esto.
+ */
+function mergeGeometries(parts) {
+  const positions = []
+  const index = []
+  let offset = 0
+  for (const part of parts) {
+    const attribute = part.getAttribute('position')
+    positions.push(...attribute.array)
+    const source = part.getIndex()
+    if (source) {
+      for (const i of source.array) index.push(i + offset)
+    } else {
+      for (let i = 0; i < attribute.count; i++) index.push(i + offset)
+    }
+    offset += attribute.count
+    part.dispose()
+  }
+  const merged = new THREE.BufferGeometry()
+  merged.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
+  merged.setIndex(index)
+  return merged
 }
 
 const COLOR_BY_KIND = {

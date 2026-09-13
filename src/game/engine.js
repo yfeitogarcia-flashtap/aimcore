@@ -56,6 +56,7 @@ import { attachListener, detachListener, setSpatialEnabled } from '../audio/spat
 import { ActionPanel } from './actionPanel.js'
 import { Avatar } from './avatar.js'
 import { EnemyFire } from './enemyFire.js'
+import { DummyMarkers } from './markers.js'
 import { PickupField } from './pickups.js'
 import { PlayerStatus, playerBody } from './player.js'
 import { getSettings, subscribeSettings, updateSettings } from '../settings.js'
@@ -182,6 +183,11 @@ export class Engine {
     this.status = new PlayerStatus()
     /** Los muñecos disparando, y los recogibles que hacen falta para aguantarlo. */
     this.enemyFire = new EnemyFire(this.scene, (hit) => this._onPlayerHit(hit))
+    /** Brújula e iconos de estado sobre cada muñeco. Sólo dibuja; no decide. */
+    this.markers = new DummyMarkers(this.scene)
+    // Enlazado una vez: pasarlo como flecha en el bucle sería una función nueva
+    // por frame, y el bucle caliente no aloca.
+    this._enemyPhase = (instance, now) => this.enemyFire.phaseOf(instance, now)
     this.pickups = new PickupField(this.scene, COVER.heights, (kind) => this._collect(kind))
     this.pickups.setSites(this.scenario.pickupSites)
     this.enemyFire.setOccluders(this.scenario.occluders)
@@ -275,6 +281,10 @@ export class Engine {
       applyProgress: 0,
       alive: true,
       respawnLeftMs: 0,
+      respawnMs: PLAYER.respawn.baseMs,
+      /** Segundos de gracia que quedan tras reaparecer. */
+      invulnerableLeftMs: 0,
+      invulnerableMs: PLAYER.respawn.invulnerableMs,
       lowHealth: false,
     }
 
@@ -361,6 +371,7 @@ export class Engine {
     this.avatar?.dispose()
     this._stopShieldSound()
     this.enemyFire.dispose()
+    this.markers.disposeMaterials()
     this.pickups.dispose()
     this.actionPanel.dispose()
     this.cssRenderer.domElement.remove()
@@ -490,8 +501,10 @@ export class Engine {
     // cobertura no habría dónde meterse, y una esfera flotante no dispara.
     this.enemyFire.setEnabled(this.scenario.hasGeometry && settings.targetType === 'hitbox')
     this.enemyFire.setRadius(settings.targetRadius)
+    this.enemyFire.setDifficulty(settings.enemyDifficulty)
     const hadSession = this.targets.sessionActive
     this.targets.configure(settings)
+    this._syncMarkers(settings)
     // Con un cambio de escenario en marcha la siembra la hace `_buildScenario`,
     // ya con el mundo nuevo montado: sembrar aquí usaría los anclajes viejos.
     if (hadSession && !this.transition.active) {
@@ -534,6 +547,7 @@ export class Engine {
     this.pickups.setSites(this.scenario.pickupSites)
     this.enemyFire.setOccluders(this.scenario.occluders)
     this.enemyFire.setEnabled(this.scenario.hasGeometry && getSettings().targetType === 'hitbox')
+    this._syncMarkers(getSettings())
 
     // Las dianas vivas estaban ancladas a un mundo que ya no existe. Si había
     // sesión en marcha se vuelve a sembrar desde la posición nueva del jugador.
@@ -795,7 +809,28 @@ export class Engine {
       ? playerBody(this.camera, this.movement.eyeHeight, this.movement.feetY)
       : null
     this.enemyFire.update(now, this.targets.instances, body)
+    // Los marcadores van **después** del fuego: enseñan el estado de este frame,
+    // no el del anterior.
+    this.markers.update(now, this.targets.instances, this.camera, this._enemyPhase)
     this.pickups.update(now, deltaMs / 1000, this.camera)
+  }
+
+  /**
+   * Los marcadores siguen al pool: mismas ranuras, mismo radio y la misma
+   * condición de encendido que el fuego enemigo —sin quien dispare no hay
+   * estado que enseñar, y una brújula sobre una esfera flotante no dice nada—.
+   *
+   * Se reconstruyen sólo cuando cambia el tamaño o el número de ranuras, no por
+   * frame ni por sesión.
+   */
+  _syncMarkers(settings) {
+    const enabled = this.enemyFire.enabled
+    this.markers.setEnabled(enabled)
+    if (!enabled) return
+    const slots = this.targets.instances.length
+    if (this.markers.slots.length !== slots || this.markers.radius !== settings.targetRadius) {
+      this.markers.build(slots, settings.targetRadius)
+    }
   }
 
   /**
@@ -804,6 +839,9 @@ export class Engine {
    */
   _onPlayerHit({ zone, damage, weaponKey }) {
     const result = this.status.takeHit(zone, damage, weaponKey)
+    // En los segundos de gracia el disparo no existe: ni daño, ni sonido, ni
+    // anillo. Un anillo de daño sin daño enseñaría lo contrario de lo que pasa.
+    if (result.blocked) return
     if (result.helmetBroken) {
       // El único aviso de que la cabeza se ha quedado descubierta.
       playHelmetCrack()
@@ -1399,6 +1437,9 @@ export class Engine {
     stats.applyProgress = status.applyProgress
     stats.alive = status.alive
     stats.respawnLeftMs = status.respawnLeftMs
+    stats.respawnMs = status.respawnMs
+    stats.invulnerableLeftMs = status.invulnerableLeftMs
+    stats.invulnerableMs = PLAYER.respawn.invulnerableMs
     stats.lowHealth = status.lowHealth
     this.callbacks.onFrame?.(stats)
   }

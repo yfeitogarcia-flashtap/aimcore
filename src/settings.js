@@ -11,6 +11,7 @@
  */
 
 import {
+  ENEMY_DIFFICULTIES,
   FRAME_LIMITS,
   SCENARIOS,
   SETTINGS,
@@ -30,6 +31,7 @@ const NUMERIC_KEYS = Object.keys(SETTINGS).filter((key) => SETTINGS[key].min !==
  */
 const CATALOGS = {
   scenario: SCENARIOS,
+  enemyDifficulty: ENEMY_DIFFICULTIES,
   targetType: TARGET_TYPES,
   weapon: WEAPONS,
   simultaneousTargets: SIMULTANEOUS_TARGETS,

@@ -367,20 +367,45 @@ sonido salen de `WEAPONS` —hoy lleva la Axis-7— así que no hay una segunda 
 de lo que es un arma. Lo único suyo es la puntería: apunta al centro de tu cuerpo
 y desvía el disparo dentro de un cono.
 
-Dos parámetros de dificultad, en `ENEMY`:
+**La dificultad se elige en el panel**, y es un nivel, no dos mandos:
 
-| Parámetro | Qué es | De partida |
+| Nivel | Cono (cuánto falla) | Reacción (cuánto tarda en abrir fuego) |
 |---|---|---|
-| `spreadDeg` | Cuánto falla: el ancho del cono | 9° |
-| `reactionMs` | Cuánto tarda en abrir fuego desde que te ve | 650 ms |
+| Fácil | 15° | 900 ms |
+| Normal | 9° | 650 ms |
+| Difícil | 5° | 400 ms |
+
+Van juntos a propósito. Lo que se nota jugando es una sola cosa —cuánto
+aprietan—, y con dos mandos separados se acaba con combinaciones que no
+corresponden a ninguna dificultad real: un tirador de élite que tarda un segundo
+en reaccionar. Normal es exactamente lo que había antes, y los tres son puntos de
+partida a calibrar jugando.
 
 El cono parece enorme para un tirador y no lo es: **el disparo es instantáneo y
 va a donde estás ahora**, así que moverse no le hace fallar ni un poco. Todo lo
 que falla sale de ahí. Medido de pie en el punto de aparición del Plano A: con
 4.5° entra el 84% de los disparos; con 9°, el 54%.
 
-La velocidad de movimiento no es un parámetro nuevo a propósito: ya existe como
-**velocidad de patrulla** en el panel de opciones.
+La velocidad de movimiento no es un parámetro de dificultad a propósito: ya existe
+como **velocidad de patrulla** en el panel de opciones.
+
+### Qué se ve encima de un muñeco
+
+Tres cosas, en el mundo y no en una esquina de la pantalla — son datos **de un
+sitio del mapa**, y una lista en el HUD obliga a traducir «hay dos» a «cuáles».
+
+- **Una brújula**: un triángulo blanco flotando sobre la cabeza, paralelo al
+  suelo, que gira para apuntar hacia donde mira el muñeco. **No se gira hacia
+  ti**: si lo hiciera apuntaría siempre al jugador y no diría nada. Está siempre
+  que se vea el muñeco — es orientación, no un aviso.
+- **Un `?` amarillo** mientras te ha visto y todavía no dispara. Ésa es su ventana
+  de reacción, y es exactamente el hueco que tienes para cubrirte.
+- **Un `!` rojo** mientras te dispara. Uno por muñeco, así que se cuentan las
+  amenazas de un vistazo.
+
+Los dos iconos se apagan al perder el contacto y al caer el muñeco. El `?` y el
+`!` sí miran a la cámara, porque lo suyo es leerse; la brújula no, porque lo suyo
+es orientar.
 
 Tres cosas más que conviene saber:
 
@@ -417,12 +442,24 @@ ninguno en el Vestíbulo, que es donde apareces. Se cogen **por proximidad**, si
 tecla, y vuelven a aparecer al cabo de un rato. Si no te hacen falta —vida llena,
 inventario lleno— se quedan donde están.
 
-**Si te matan**, reapareces en el punto de salida tras una espera que empieza en
-3 s, **sube 2 s por cada muerte** hasta un tope de 15, y **baja 3 s con cada baja
-tuya**, sólo si la espera ya pasaba de 10.
+**Si te matan**, sale **ABATIDO** en grande y la pantalla se oscurece por los
+bordes —no a negro: ver quién te ha matado y desde dónde sigue siendo
+información—. La viñeta se va aclarando según se acerca la reaparición, así que el
+propio aclarado es la cuenta atrás.
+
+Reapareces en el punto de salida tras una espera que empieza en 3 s, **sube 2 s
+por cada muerte** hasta un tope de 15, y **baja 3 s con cada baja tuya**, sólo si
+la espera ya pasaba de 10.
+
+Y al volver tienes **dos segundos de invulnerabilidad**, con su marco azul y su
+cuenta junto al bloque de vida. Sin ellos, reaparecer donde estabas con los
+mismos muñecos encarados al mismo sitio es morir otra vez antes de ver la
+pantalla.
 
 En el HUD: barra fina de vida con su cruz, escudo de tres segmentos, cargas y
-casco, abajo a la izquierda. Por debajo de 45 de vida **y sin escudo**, parpadea
+casco, abajo a la izquierda. El escudo y el casco son **siluetas vectorizadas de
+sus referencias**, con la visera del casco recortada de verdad: el icono anterior
+era un arco de CSS que no se leía como casco. Por debajo de 45 de vida **y sin escudo**, parpadea
 en rojo —el mismo aviso que el cargador corto—. Al recibir un disparo se enciende
 un anillo suave alrededor de la mira, que es donde ya estás mirando; nada de
 tintes de pantalla completa, que taparían justo lo que hay que mirar.
@@ -559,6 +596,7 @@ vieja.
 | Distancia de aparición | distancia base del cono respecto al jugador |
 | Cadencia | milisegundos entre apariciones. Menos es más difícil |
 | Dianas simultáneas | x1 · x2 · x3 · x5 · x8 — cuántas pueden estar vivas a la vez |
+| Dificultad de los muñecos | Fácil · Normal · Difícil — cono y reacción a la vez |
 | Modo dinámico | las dianas vivas se desplazan mientras están en pantalla |
 | Velocidad de patrulla | 1.5 a 8 u/s, sólo con el modo dinámico puesto |
 | Límite de fotogramas | 60 · 144 · 240 · Sin límite |
