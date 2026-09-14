@@ -4438,6 +4438,135 @@ por frame, así que el techo real iba con el monitor —3600 RPM a 60 Hz, 14400 
 habría quedado en 1800 RPM. Ahora son **3600 RPM en cualquier máquina**, muy por
 encima de las 800 de la Volt.
 
+## Ronda 45 — Dos pestañas, un servidor, y el movimiento sincronizado
+
+Segundo paso de `docs/propuestas/02-multijugador-1v1.md`. Un servidor `ws` local
+(`npm run net`) y una página de pruebas (`net/prueba.html`) que se abre en dos
+pestañas. Sin nube, sin despliegue, sin disparos: **sólo movimiento**.
+
+### Lo que hay que mirar del servidor: cuánto código de juego tiene
+
+Ninguno. `net/servidor.mjs` importa `movement.js`, `scenario.js` y `config.js`
+tal cual, les pone un objeto plano donde iría la cámara (`net/pose.js`, catorce
+usos de `position.{x,y,z}` y `rotation.y`, nada más) y ya tiene la física del
+juego corriendo fuera del navegador. Lo único propio del servidor es repartir
+entradas y llevar el paso del reloj.
+
+La otra mitad de que esto funcione es la vuelta 44: reejecutar entradas sólo
+converge si los dos lados dan los mismos pasos.
+
+### Tres decisiones que son el diseño
+
+**1. El reloj de la red es el número de paso, no el de nadie.** Cada entrada
+viaja sellada con su paso `n` y **los dos extremos la ejecutan con
+`now = n · SIM_STEP_MS`**. El reloj del cliente y el del servidor no tienen por
+qué coincidir; el número de paso sí. Sin esto, el aterrizaje que el servidor
+despeja de la parábola y la pulsación de salto que selló el cliente estarían en
+relojes distintos y la ventana de encadenado no significaría nada. Por lo mismo
+la pulsación viaja con **su fracción de paso** (`jt`, 0..1): redondearla al paso
+costaría 16.7 ms de precisión en una mecánica que mide 130.
+
+**2. El servidor no adivina.** Si a un jugador no le ha llegado la entrada de un
+paso, ese jugador **no avanza** ese paso, y cuando llegue se pone al día
+consumiendo hasta `NET.maxCatchUpTicks` seguidas. La alternativa —repetir la
+última entrada, que es lo que hacen muchos ejemplos— mete un paso que el cliente
+nunca predijo: una corrección **inventada por el servidor**. Así, la corrección
+aparece sólo cuando hay una causa de verdad.
+
+**3. El estado serializable vive en `movement.js`.** `snapshot()` / `restore()`
+son 24 campos y están junto a los campos, no en quien los manda: una lista de
+nombres escrita en el módulo de red se desincroniza el día que alguien añada
+estado al movimiento. 357 B en JSON.
+
+### Lo que sale medido
+
+**La reconciliación es exacta.** Con el cliente prediciendo y el servidor
+decidiendo, el error entre lo que el cliente había predicho y lo que queda tras
+reejecutar es **cero** — literalmente, o un ULP de coma flotante (1.8e-15 u):
+
+| ida | RTT medido | entradas sin confirmar | reejecución | error máx |
+|---|---|---|---|---|
+| 0 ms | 59 ms | 2 | 33 ms | 0 |
+| 25 ms | 165 ms | 6 | 100 ms | 0 |
+| 50 ms | 233 ms | 14 | 233 ms | 0 |
+| 80 ms | 333 ms | 22 | 367 ms | 0 |
+| 150 ms | 353 ms | 24 | 400 ms | 0 |
+
+La latencia **no** mete error de predicción: lo único que crece es la cola a
+reejecutar. Y la tubería tiene un suelo de **59 ms** sin red de por medio
+—colchón de jitter (33 ms), ritmo de fotos y frame del navegador—, que es un
+número a tener presente y es ajustable.
+
+**Donde sí corrige es con pérdida de paquetes**, que es lo correcto:
+
+| pérdida | correcciones | error máximo |
+|---|---|---|
+| 0% | 0 de 181 fotos | 0 |
+| 2% | 5 de 181 | 0.11 u |
+| 10% | 13 de 182 | 0.22 u |
+| 25% | 27 de 182 | 0.33-2.6 u |
+
+Andando, ni al 25% de pérdida la corrección pasa de un tercio de unidad. El peor
+caso no es andar: es **perder la pulsación de saltar**. El servidor no despega,
+el cliente sí, y hasta la foto siguiente divergen lo que dura un vuelo —578 ms,
+o sea unas 3.8 u a marcha de carrera—. Es el techo de la corrección, y por eso
+el listón de la suite se pone ahí y no en un metro: al 25% de pérdida se han
+medido 2.62 u, dentro de ese techo.
+
+**Al rival se le ve en el pasado, y poco.** 3.0 pasos (50 ms) por detrás de la
+última foto recibida; contando medio viaje, **~151 ms** de retraso visual con
+228 ms de RTT. A marcha de carrera, un metro.
+
+**Cuesta nada.** Predecir un paso: 0.8 µs. Reejecutar una entrada: **0.6-0.9 µs**
+según la carga, así que el presupuesto de 0.2 ms por frame da para 220-340
+entradas — entre 3.7 y 5.7 segundos de RTT. Caudal en JSON, sin comprimir ni recortar: **↑3.5 KB/s,
+↓59-81 KB/s**, o sea 1.0-1.4 KB por foto. Sube cuando los jugadores saltan, y no
+es casualidad: en el aire los campos llevan decimales largos y JSON los escribe
+enteros.
+
+### Tres cosas que salieron mal y lo que enseñaron
+
+**El rival se dibujaba medio segundo tarde.** La primera versión buscaba el
+instante a dibujar con el paso **propio** menos el retraso de interpolación.
+Pero el cliente corre por delante del servidor lo que tarda el viaje, así que ese
+instante caía por delante de la última foto recibida, no había pareja de fotos
+que lo rodease y se acababa dibujando la más vieja del buffer: 46 pasos, 770 ms.
+**El reloj del rival es el de las fotos**, no el propio: se sitúa
+`interpDelayTicks` por detrás de la última que llegó y avanza en tiempo real
+desde que llegó. Con eso, 3.0 pasos clavados.
+
+**Hay que adelantarse el RTT entero, no la mitad.** Se cuenta dos veces y no es
+evidente: la foto que dice en qué paso va el servidor **ya salió hace un viaje de
+ida**, así que el servidor está medio RTT más allá; y la entrada que se mande
+ahora tardará otro medio en llegar. Con la mitad, el servidor se quedaba sin
+entrada en **un tercio** de los pasos y el retraso efectivo salía en 1.5 veces el
+RTT inyectado (+451 ms para 300). Con el RTT entero, +294 ms para 300.
+
+**El contador de pasos del cliente no puede ir libre.** Si el navegador pierde un
+frame largo, el acumulador acota el delta y ese paso no se recupera nunca: el
+cliente se va quedando atrás y manda entradas selladas con un paso cada vez más
+viejo, que es latencia añadida y gratuita. Medido antes de arreglarlo: 25 pasos
+de desfase en cuatro segundos. Se engancha al reloj del servidor con banda muerta
+de dos pasos.
+
+### Lo que queda claro para el paso siguiente
+
+- **La foto se manda entera a todo el mundo, y no hace falta.** Los 24 campos son
+  para que **tú** reejecutes tu propio movimiento; del rival sólo se dibujan
+  cinco (`x`, `z`, `feetY`, `eyeHeight`, `yaw`). Mandar a cada uno lo suyo baja
+  la foto a la mitad, y en binario —24 `Float32` son 96 B— a menos de la sexta
+  parte.
+- **Los pasos sin entrada de este banco son del contenedor, no del diseño.** Con
+  una sola pestaña a 60 fps: 0 de 240. Con dos pestañas de WebGL por software
+  quitándose frames (27-44 fps): 20-40 de 150. Y el colchón lo absorbe — con 1
+  paso de colchón, 3%; con 2 o más, 0%.
+- **Quedarse sin entrada no rompe nada**: el error de predicción sigue en cero en
+  toda la tabla. Lo que se nota es en la suavidad con que el **otro** te ve.
+- **`Math.sin`/`Math.cos` no están obligados a dar el mismo bit en dos motores
+  distintos.** Aquí los dos lados son V8 y el error es cero; en Cloudflare
+  también lo serían. Aunque no lo fueran, no se acumula: cada foto vuelve a
+  anclar.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
@@ -4550,6 +4679,10 @@ objetivo era medir tiempos y rendimiento de verdad.
   del acumulador, comportamiento tras un parón, dispersión del aire entre 60 y
   360 Hz, curva de ritmo de giro, ventana de encadenado por el bucle real y coste
   por paso (`tick44.mjs`).
+- **El 1v1 local**: error de reconciliación contra latencia y pérdida, retraso
+  con que se ve al rival, coste de predecir y reejecutar, caudal y pasos sin
+  entrada, con dos pestañas de verdad contra el servidor (`red45.mjs`,
+  `colchon45.mjs`).
 
 Lo que **no** está verificado automáticamente: la sensación de juego, el balance
 entre armas y la legibilidad del HUD en pantallas pequeñas. Eso sigue siendo

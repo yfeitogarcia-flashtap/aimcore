@@ -1,8 +1,19 @@
 # Propuesta 02 — Primer 1v1 real entre dos personas
 
-**Estado:** evaluado en la vuelta 44 y **decidido**. El primer paso —fijar el
-tick de simulación a 60 Hz— está **construido** (ver `docs/decisions.md` §44).
-Nada de red escrito todavía.
+**Estado:** evaluado en la vuelta 44 y **decidido**. Dos pasos construidos:
+
+1. **Tick de simulación fijo a 60 Hz** (vuelta 44, `docs/decisions.md` §44). El
+   requisito de la predicción: reejecutar entradas sólo converge si los dos lados
+   dan los mismos pasos.
+2. **Transporte y movimiento sincronizado, en local** (vuelta 45, §45). Servidor
+   `ws` en `net/` y dos pestañas con predicción y reconciliación. Medido: error
+   de reconciliación **cero** hasta 300 ms de RTT, 0.6-0.9 µs por entrada
+   reejecutada, ↓59-81 KB/s en JSON. **El punto 4 de esta propuesta queda
+   validado**, salvo la compensación de retraso, que no toca hasta que haya
+   disparos.
+
+Siguiente: Cloudflare Durable Objects (punto 2) y partida por código (punto 5).
+Sigue sin haber nada desplegado ni una sola cuenta.
 
 Partida privada entre amigos por código o enlace. Sin cuentas, sin ranking y sin
 matchmaking público: eso viene después y se monta encima, no en lugar de esto.
@@ -114,9 +125,11 @@ esa forma y no cambia nada del fichero.
   Hecho y medido (`docs/decisions.md` §44).
 - **Compensación de retraso.** El servidor guarda por tick los siete números de
   `playerBody()` —3.3 KB por segundo con dos jugadores— y, al llegar un disparo,
-  rebobina al instante que el tirador tenía en pantalla (`RTT/2 + interpolación`,
-  ≈45 ms) y llama a `hitPlayer` y `hasLineOfSight`, las mismas dos funciones que
-  ya existen. **21 µs por disparo.**
+  rebobina al instante que el tirador tenía en pantalla y llama a `hitPlayer` y
+  `hasLineOfSight`, las mismas dos funciones que ya existen. **21 µs por
+  disparo.** Y ya hay medido cuánto hay que rebobinar: en la vuelta 45, al rival
+  se le dibuja **3 pasos (50 ms)** por detrás de la última foto, o **~151 ms**
+  contando medio viaje con 228 ms de RTT.
 - **La asimetría se acota, no se arregla:** rebobinado máximo de 200 ms, como en
   Source. Y ojo con el muro de la vuelta 43, que es justo la geometría donde la
   ventaja del que asoma se nota más.
@@ -140,4 +153,12 @@ El marcador de TAB ya está construido con una rejilla que admite la segunda fil
 4. **Trampas.** Con servidor autoritativo siguen siendo posibles el aimbot y el
    wallhack. Entre amigos da igual; el día del matchmaking público, no.
 5. **WebSocket con mala línea.** Mitigación: el transporte aislado tras tres
-   funciones.
+   funciones. Medido en la vuelta 45 con la red estropeada a mano: andando, al
+   25% de pérdida la corrección máxima es de 0.33 u y al 10% de 0.22 u. El peor
+   caso es perder la pulsación de saltar, y ahí el techo es lo que desplaza un
+   vuelo entero: 3.8 u.
+6. **La foto se manda entera a todo el mundo** (vuelta 45). Los 24 campos del
+   estado son para que reejecutes **tu** movimiento; del rival sólo se dibujan
+   cinco. Mandar a cada uno lo suyo baja la foto a la mitad, y en binario (24
+   `Float32` son 96 B) a menos de la sexta parte. Es la primera optimización
+   obvia, y todavía no hace falta.

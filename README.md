@@ -1154,6 +1154,62 @@ Pedir el mismo límite que el refresco de la pantalla lleva una tolerancia: sin
 ella, un tick de 4.166 ms no llegaría por los pelos a un objetivo de 4.167 y el
 ritmo se quedaría a la mitad.
 
+## Multijugador 1v1 (prototipo local)
+
+Hay un primer 1v1 entre dos personas, **en local y sin nube**. Sólo movimiento:
+ni disparos, ni compensación de retraso, ni cuentas, ni despliegue.
+
+```
+npm run dev     # el juego, como siempre
+npm run net     # el servidor de partida, en ws://localhost:5199
+```
+
+Y se abre `http://localhost:5173/net/prueba.html` **en dos pestañas**. Clic en
+cada una para capturar el ratón; WASD, espacio, C y Shift como en el juego. Cada
+pestaña ve a la otra como un cuerpo del color del equipo contrario, moviéndose
+por el Plano A.
+
+El panel de la izquierda enseña en vivo lo que hay que mirar, y los mandos de
+abajo permiten **estropear la red a propósito**: latencia de ida, jitter y
+porcentaje de paquetes perdidos, por pestaña.
+
+### Cómo funciona
+
+- **Predicción.** Cada paso de 60 Hz el cliente muestrea la entrada, la numera y
+  la aplica **ya**. Nada de lo que haces con tu propio cuerpo espera a un viaje
+  de ida y vuelta.
+- **El servidor decide.** Corre el mismo `movement.update` con las mismas
+  entradas, y manda una foto del mundo por paso.
+- **Reconciliación.** Al llegar la foto, el cliente coloca el estado autoritativo
+  y **reejecuta** las entradas que el servidor todavía no había visto. Como es
+  literalmente el mismo módulo con las mismas entradas, sin pérdida de paquetes
+  el resultado es idéntico y la corrección no se ve.
+- **Al rival se le dibuja en el pasado**, entre dos fotos ya recibidas.
+  Extrapolar al futuro es inventarse dónde está.
+
+El servidor **no tiene código de juego**: importa `movement.js` y `scenario.js`
+tal cual y les pone un objeto plano donde iría la cámara. La física del juego
+corre en Node sin navegador, sin three y sin cambiar una línea.
+
+### Lo que sale medido
+
+| | |
+|---|---|
+| Error de reconciliación, de 0 a 300 ms de RTT | **0** (a lo sumo un ULP de coma flotante) |
+| Correcciones con 0% de pérdida | **0** de 181 fotos |
+| Corrección máxima con 10% / 25% de pérdida | 0.22 u / hasta 2.6 u |
+| Entradas sin confirmar, de 0 a 150 ms de ida | 2 → 24 |
+| Coste de reejecutar una entrada | **0.6-0.9 µs** (0.2 ms dan para 220-340) |
+| Al rival se le ve | 3 pasos (50 ms) tras la última foto |
+| Caudal en JSON, sin comprimir | ↑3.5 KB/s · ↓59-81 KB/s |
+| Suelo de la tubería sin red de por medio | 59 ms |
+
+La latencia **no** mete error de predicción: lo único que crece es la cola a
+reejecutar. Donde sí aparece la corrección es con pérdida de paquetes, que es lo correcto.
+El peor caso no es andar —ahí no pasa de un tercio de unidad— sino **perder la
+pulsación de saltar**: el servidor no despega, tú sí, y hasta la foto siguiente
+divergís lo que dura un vuelo (578 ms, unas 3.8 u a marcha de carrera).
+
 ## Ajustes por defecto
 
 **Todo lo ajustable vive en [`src/config.js`](src/config.js)** — colores,
@@ -1245,6 +1301,13 @@ src/
 │   ├── movement.js     desplazamiento, salto y agachado
 │   └── targets.js      dianas: tipos, zonas, vida y apariciones
 └── ui/                 Hud, Crosshair, Options, Summary
+
+net/                    prototipo de 1v1 local — fuera de src/ y fuera del build
+├── servidor.mjs        servidor ws autoritativo (npm run net)
+├── cliente.js          predicción y reconciliación
+├── protocolo.js        lo que viaja por el cable, y en qué reloj
+├── pose.js             el objeto plano que hace de cámara en el servidor
+└── prueba.html/.js     la página que se abre en dos pestañas
 ```
 
 ### Por qué React no toca el bucle de render
@@ -1358,9 +1421,13 @@ Sin Supabase, sin login y sin cuentas: lo único que persiste son los ajustes,
 en el `localStorage` de este navegador. Las estadísticas de partida siguen en
 memoria y se pierden al recargar.
 
-Fuera de alcance también, por decisión explícita: minimapa, pasos sonoros,
-escenarios con cobertura y colisión con estructuras. Cuentas, ranking y backend
-van aparte.
+Fuera de alcance también, por decisión explícita: minimapa, pasos sonoros.
+Cuentas, ranking y matchmaking van aparte.
+
+El **multijugador** dejó de estar fuera de alcance en la vuelta 45, pero sólo
+hasta donde llega el prototipo de arriba: un servidor local para dos pestañas y
+nada más. El plan completo, con costes y riesgos, está en
+[`docs/propuestas/02-multijugador-1v1.md`](docs/propuestas/02-multijugador-1v1.md).
 
 ## Documentación interna
 

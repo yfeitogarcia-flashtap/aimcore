@@ -1,0 +1,54 @@
+<meta charset="utf-8" />
+<title>Vektor · 1v1 local</title>
+<link rel="icon" href="/favicon.svg" />
+<style>
+  :root { color-scheme: dark; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #0A0A0A; color: #E8E8E8;
+    font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; overflow: hidden; }
+  canvas { display: block; width: 100%; height: 100%; }
+  #panel { position: fixed; top: 12px; left: 12px; width: 352px; padding: 12px 14px;
+    background: rgba(10,10,10,.82); border: 1px solid #2A2A2A; border-radius: 6px; }
+  #panel h1 { margin: 0 0 8px; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: #E4462B; }
+  .fila { display: flex; justify-content: space-between; gap: 10px; white-space: nowrap; }
+  .fila span:last-child { color: #FFF; font-variant-numeric: tabular-nums; }
+  .apagado { color: #6A6A6A; }
+  hr { border: 0; border-top: 1px solid #222; margin: 9px 0; }
+  label { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 4px 0; }
+  input[type=range] { width: 150px; accent-color: #2FCB82; }
+  #aviso { position: fixed; inset: 0; display: grid; place-items: center; cursor: pointer;
+    background: rgba(10,10,10,.75); text-align: center; letter-spacing: .06em; }
+  #aviso[hidden] { display: none !important; }
+  kbd { border: 1px solid #333; border-bottom-width: 2px; border-radius: 3px; padding: 1px 5px; color: #FFF; }
+  .bien { color: #2FCB82; } .mal { color: #E4462B; }
+</style>
+<canvas id="lienzo"></canvas>
+<div id="panel">
+  <h1>Vektor · 1v1 local</h1>
+  <div class="fila"><span class="apagado">yo / rival</span><span id="quien">—</span></div>
+  <div class="fila"><span class="apagado">paso · servidor · ack</span><span id="pasos">—</span></div>
+  <div class="fila"><span class="apagado">RTT medido</span><span id="rtt">—</span></div>
+  <div class="fila"><span class="apagado">sin confirmar</span><span id="pendientes">—</span></div>
+  <hr />
+  <div class="fila"><span class="apagado">error reconciliación</span><span id="error">—</span></div>
+  <div class="fila"><span class="apagado">error máximo</span><span id="errorMax">—</span></div>
+  <div class="fila"><span class="apagado">correcciones</span><span id="correcciones">—</span></div>
+  <div class="fila"><span class="apagado">paquetes perdidos</span><span id="perdidos">—</span></div>
+  <hr />
+  <div class="fila"><span class="apagado">caudal ↑ / ↓</span><span id="caudal">—</span></div>
+  <div class="fila"><span class="apagado">pasos sin entrada</span><span id="hambre">—</span></div>
+  <div class="fila"><span class="apagado">rival dibujado</span><span id="retraso">—</span></div>
+  <div class="fila"><span class="apagado">coste del paso</span><span id="coste">—</span></div>
+  <hr />
+  <label>latencia ida <input id="lat" type="range" min="0" max="150" step="5" value="0" /><b id="latV">0</b></label>
+  <label>jitter <input id="jit" type="range" min="0" max="40" step="1" value="0" /><b id="jitV">0</b></label>
+  <label>pérdida <input id="per" type="range" min="0" max="20" step="1" value="0" /><b id="perV">0</b></label>
+  <label>fantasma <input id="gho" type="checkbox" checked /></label>
+</div>
+<div id="aviso"><div>
+  <p><b>Abre esta página en dos pestañas</b> y haz clic en cada una.</p>
+  <p class="apagado"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> mover ·
+     <kbd>Espacio</kbd> saltar · <kbd>C</kbd> agachar · <kbd>Shift</kbd> andar · <kbd>Esc</kbd> soltar</p>
+  <p class="apagado">clic para capturar el ratón</p>
+</div></div>
+<script type="module" src="./prueba.js"></script>

@@ -1,0 +1,247 @@
+/**
+ * **El banco del 1v1 local** (vuelta 45). Dos pestañas contra `net/servidor.mjs`.
+ *
+ * No es una pantalla del juego y no entra en el build: Vite sólo empaqueta
+ * `index.html`. Aquí sólo hay lo justo para ver moverse a dos personas —la sala
+ * y el escenario de verdad, un cuerpo por jugador, ratón y teclado— más el
+ * panel de medidas, que es el motivo de la vuelta.
+ *
+ * El bucle es el del motor: **paso fijo de 60 Hz con arrastre del resto**, y la
+ * cámara se dibuja interpolada entre los dos últimos pasos. No se reutiliza
+ * `engine.js` a propósito: ahí dentro están el HUD, el audio, las dianas y las
+ * fases, y nada de eso hace falta para responder a la pregunta de esta vuelta.
+ */
+import * as THREE from 'three'
+import { CAMERA, NET, RENDER, SIM_STEP_MS, TEAMS } from '../src/config.js'
+import { createScene } from '../src/game/scene.js'
+import { Scenario } from '../src/game/scenario.js'
+import { MovementController } from '../src/game/movement.js'
+import { Avatar } from '../src/game/avatar.js'
+import { LookControls } from '../src/game/lookControls.js'
+import { ClienteRed } from './cliente.js'
+
+const lienzo = document.getElementById('lienzo')
+const aviso = document.getElementById('aviso')
+const $ = (id) => document.getElementById(id)
+
+const renderer = new THREE.WebGLRenderer({ canvas: lienzo, antialias: RENDER.antialias })
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, RENDER.maxPixelRatio))
+const { scene, setRoom } = createScene()
+const camara = new THREE.PerspectiveCamera(CAMERA.fov, 1, CAMERA.near, CAMERA.far)
+camara.rotation.order = 'YXZ'
+
+const escenario = new Scenario(scene, 'largoYPuerta')
+setRoom(escenario.room)
+
+const movimiento = new MovementController(camara)
+movimiento.setScenario(escenario)
+movimiento.reset()
+movimiento.setEnabled(true)
+
+const controles = new LookControls(camara)
+const equipos = Object.keys(TEAMS)
+
+/** El rival, con el cuerpo de siempre y el color del otro equipo. */
+const rival = new Avatar(0.45, TEAMS[equipos[1]].color)
+rival.group.visible = false
+scene.add(rival.group)
+
+/**
+ * **El fantasma: dónde dice el servidor que estás tú.** Es lo que hace visible
+ * la reconciliación — sin pérdida de paquetes va clavado dentro de tu cabeza y
+ * no se ve; con pérdida se despega, y eso es exactamente la corrección.
+ */
+const fantasma = new Avatar(0.45, TEAMS[equipos[0]].color)
+for (const zona of Object.keys(fantasma.zones)) {
+  for (const malla of fantasma.zones[zona]) {
+    malla.material.transparent = true
+    malla.material.opacity = 0.3
+    malla.material.depthWrite = false
+  }
+}
+scene.add(fantasma.group)
+
+const cliente = new ClienteRed({
+  camara,
+  movimiento,
+  url: `ws://${location.hostname}:${NET.port}`,
+})
+cliente.onBienvenida = (m) => {
+  $('quien').textContent = `${m.id} · ${m.escenario}`
+  document.title = `Vektor 1v1 · ${m.id}`
+}
+cliente.conectar()
+
+// ---------------------------------------------------------------- entrada
+const MAPA = {
+  KeyW: 'forward', KeyS: 'back', KeyA: 'left', KeyD: 'right',
+  Space: 'jump', KeyC: 'crouch', ShiftLeft: 'walk',
+}
+// Cuándo empezó el paso que se está dando, para repartir la pulsación de salto.
+let inicioDePaso = performance.now()
+addEventListener('keydown', (e) => {
+  const accion = MAPA[e.code]
+  if (!accion || e.repeat) return
+  e.preventDefault()
+  cliente.teclas[accion] = true
+  // El salto se sella con el instante real del evento, no con el del paso que
+  // lo atiende: es lo que conserva la precisión de la ventana de encadenado.
+  if (accion === 'jump') {
+    cliente.pulsarSalto(Number.isFinite(e.timeStamp) && e.timeStamp > 0 ? e.timeStamp : performance.now())
+  }
+})
+addEventListener('keyup', (e) => {
+  const accion = MAPA[e.code]
+  if (accion) cliente.teclas[accion] = false
+})
+addEventListener('blur', () => {
+  for (const k of Object.keys(cliente.teclas)) cliente.teclas[k] = false
+})
+
+lienzo.addEventListener('click', () => lienzo.requestPointerLock())
+document.addEventListener('pointerlockchange', () => {
+  const capturado = document.pointerLockElement === lienzo
+  aviso.hidden = capturado
+  controles.enabled = capturado
+  if (capturado) controles.connect(document)
+  else controles.disconnect()
+})
+
+for (const [id, campo] of [['lat', 'latenciaMs'], ['jit', 'jitterMs']]) {
+  $(id).addEventListener('input', (e) => {
+    cliente[campo] = +e.target.value
+    $(id + 'V').textContent = e.target.value
+  })
+}
+$('per').addEventListener('input', (e) => {
+  cliente.perdida = +e.target.value / 100
+  $('perV').textContent = e.target.value
+})
+$('gho').addEventListener('change', (e) => { fantasma.group.visible = e.target.checked })
+
+// ------------------------------------------------------------------ bucle
+let ultimoFrame = performance.now()
+let acumulador = 0
+let paso = 0
+const previa = new THREE.Vector3()
+const actual = new THREE.Vector3()
+let posaLista = false
+let epoca = movimiento.poseEpoch
+const costes = []
+
+function redimensionar() {
+  const { clientWidth: w, clientHeight: h } = lienzo
+  if (w === 0 || h === 0) return
+  camara.aspect = w / h
+  camara.updateProjectionMatrix()
+  renderer.setSize(w, h, false)
+}
+addEventListener('resize', redimensionar)
+redimensionar()
+
+function bucle(ahora) {
+  requestAnimationFrame(bucle)
+  const delta = Math.min(ahora - ultimoFrame, 100)
+  ultimoFrame = ahora
+
+  const tolerancia = Math.min(1, SIM_STEP_MS * 0.1)
+  acumulador += delta
+  let pasos = 0
+  while (acumulador >= SIM_STEP_MS - tolerancia) {
+    acumulador -= SIM_STEP_MS
+    pasos += 1
+  }
+  // **Y engancharse al reloj del servidor.** El acumulador solo no basta: un
+  // frame largo se acota a 100 ms y los pasos que se pierden ahí no se
+  // recuperan nunca, así que el cliente se iría quedando atrás y sus entradas
+  // llegarían selladas con un paso cada vez más viejo. Con banda muerta de dos
+  // pasos, para no oscilar.
+  const objetivo = cliente.pasoObjetivo()
+  if (objetivo > 0) {
+    const desfase = objetivo - (paso + pasos)
+    if (desfase > NET.clockDeadbandTicks) pasos += Math.min(NET.maxCatchUpTicks, desfase)
+    else if (desfase < -NET.clockDeadbandTicks && pasos > 0) pasos -= 1
+  }
+
+  for (let i = 0; i < pasos; i++) {
+    paso = cliente.paso + 1
+    // Cuándo empezó **este** paso en tiempo real, para repartir la pulsación de
+    // salto dentro de él.
+    inicioDePaso = ahora - acumulador - (pasos - i) * SIM_STEP_MS
+    previa.copy(camara.position)
+    const t0 = performance.now()
+    cliente.dar(paso, inicioDePaso)
+    costes.push(performance.now() - t0)
+    if (costes.length > 600) costes.shift()
+    if (epoca !== movimiento.poseEpoch) { epoca = movimiento.poseEpoch; previa.copy(camara.position) }
+    actual.copy(camara.position)
+    posaLista = true
+  }
+
+  // El rival, en el pasado y entre dos fotos.
+  const pose = cliente.poseDelRival()
+  if (pose) {
+    rival.group.visible = true
+    rival.group.position.set(pose.x, pose.feetY, pose.z)
+    rival.group.rotation.y = pose.yaw
+    rival.setEyeHeight(pose.eyeHeight)
+    $('retraso').textContent = `${pose.retraso.toFixed(1)} pasos · ${(pose.retraso * SIM_STEP_MS).toFixed(0)} ms atrás`
+  } else {
+    rival.group.visible = false
+    $('retraso').textContent = 'esperando rival'
+  }
+
+  // El fantasma: la última palabra del servidor sobre ti.
+  if (cliente.autoritativo && $('gho').checked) {
+    fantasma.group.visible = true
+    fantasma.group.position.set(cliente.autoritativo.x, cliente.autoritativo.feetY, cliente.autoritativo.z)
+    fantasma.setEyeHeight(cliente.autoritativo.eyeHeight)
+  } else {
+    fantasma.group.visible = false
+  }
+
+  // Dibujado interpolado, igual que en el motor: la pose intermedia vive lo que
+  // dura el `render()` y después se devuelve la autoritativa.
+  let interpolando = false
+  if (posaLista) {
+    const alfa = Math.min(1, Math.max(0, acumulador / SIM_STEP_MS))
+    camara.position.lerpVectors(previa, actual, alfa)
+    interpolando = true
+  }
+  renderer.render(scene, camara)
+  if (interpolando) camara.position.copy(actual)
+
+  pintarPanel()
+}
+
+let ultimoInforme = 0
+function pintarPanel() {
+  const ahora = performance.now()
+  if (ahora - ultimoInforme < 200) return
+  const ventana = (ahora - ultimoInforme) / 1000
+  ultimoInforme = ahora
+  const m = cliente.medidas
+  $('pasos').textContent = `${paso} · ${m.pasoServidor} · ${m.ack}`
+  $('rtt').textContent = `${m.rtt.toFixed(1)} ms`
+  $('pendientes').textContent = `${m.pendientes}`
+  const err = m.errorUltimo
+  $('error').innerHTML = `<span class="${err > NET.visibleCorrection ? 'mal' : 'bien'}">${err.toExponential(2)} u</span>`
+  $('errorMax').textContent = `${m.errorMax.toExponential(2)} u`
+  $('correcciones').textContent = `${m.correcciones} de ${m.fotos} fotos`
+  $('perdidos').textContent = `${m.perdidos} de ${m.enviados}`
+  $('hambre').textContent = `${m.hambre}`
+  $('caudal').textContent =
+    `${(m.bytesSalida / ventana / 1024).toFixed(2)} / ${(m.bytesEntrada / ventana / 1024).toFixed(2)} KB/s`
+  m.bytesSalida = 0
+  m.bytesEntrada = 0
+  if (costes.length > 30) {
+    const orden = [...costes].sort((a, b) => a - b)
+    $('coste').textContent =
+      `p50 ${orden[Math.floor(orden.length * 0.5)].toFixed(3)} · p99 ${orden[Math.floor(orden.length * 0.99)].toFixed(3)} ms`
+  }
+}
+
+requestAnimationFrame(bucle)
+
+// Para las sondas de medida: todo lo que hace falta, en un solo sitio.
+window.vektorNet = { cliente, movimiento, camara, escenario, get paso() { return paso }, costes }

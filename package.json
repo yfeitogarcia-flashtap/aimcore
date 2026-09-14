@@ -11,7 +11,8 @@
     "trace:weapons": "node scripts/trace-weapons.mjs",
     "trace:icons": "node scripts/trace-icons.mjs",
     "trace:logo": "node scripts/trace-logo.mjs",
-    "audio:weapons": "node scripts/import-weapon-audio.mjs"
+    "audio:weapons": "node scripts/import-weapon-audio.mjs",
+    "net": "node net/servidor.mjs"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -22,6 +23,7 @@
     "@vitejs/plugin-react": "^4.3.4",
     "jimp": "^0.14.0",
     "potrace": "^2.1.8",
-    "vite": "^6.0.11"
+    "vite": "^6.0.11",
+    "ws": "^8.21.3"
   }
 }

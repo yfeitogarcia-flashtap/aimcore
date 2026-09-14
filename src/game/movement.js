@@ -383,6 +383,103 @@ export class MovementController {
     this.spawnZ = spawn ? spawn.z : 0
   }
 
+  /**
+   * **Todo el estado que decide cómo sigue moviéndose este jugador** (vuelta
+   * 45), para mandarlo por la red y volver a colocarlo tal cual.
+   *
+   * Vive aquí y no en quien lo manda por la misma razón de siempre: los campos
+   * son de este módulo, y una lista de nombres escrita en otro sitio se
+   * desincroniza el día que se añada uno. Si añades estado que sobreviva a un
+   * frame, añádelo también aquí.
+   *
+   * Lo que **no** entra, y por qué:
+   *  - `camera.position.y`, que sale de `feetY + eyeHeight − landingDip`.
+   *  - `_wishX/_wishZ`, que se recalculan cada paso desde teclas y yaw.
+   *  - `_safe*`, la red de `_guardState`: se resiembra sola con el primer paso
+   *    sano, y mandar un estado de emergencia sería mandar el problema.
+   *  - `loadFactor`, `room`, `scenario` y `spawn*`, que son configuración de la
+   *    partida y no cambian de un paso a otro.
+   */
+  snapshot(out = {}) {
+    const p = this.camera.position
+    out.x = p.x
+    out.z = p.z
+    out.feetY = this.feetY
+    out.verticalVelocity = this.verticalVelocity
+    out.airborne = this.airborne
+    // El vuelo en curso, que es lo que resuelve la parábola en forma cerrada.
+    out.airTime = this._airTime
+    out.launchY = this._launchY
+    out.launchVelocity = this._launchVelocity
+    // La marcha aérea, en los dos modelos.
+    out.airSpeed = this._airSpeed
+    out.airVelX = this._airVelX
+    out.airVelZ = this._airVelZ
+    // Lo que conserva un encadenado, y las dos marcas que deciden si lo hay.
+    out.landingSpeed = this._landingSpeed
+    out.landingVelX = this._landingVelX
+    out.landingVelZ = this._landingVelZ
+    out.landedAt = this._landedAt
+    out.jumpPressedAt = this._jumpPressedAt
+    out.chainedJump = this.chainedJump
+    // Fatiga de salto.
+    out.stillJumps = this._stillJumps
+    out.flightMaxSpeed = this._flightMaxSpeed
+    // Postura y hundimiento de cámara.
+    out.eyeHeight = this.eyeHeight
+    out.landingDip = this.landingDip
+    out.dipFrom = this._dipFrom
+    out.dipElapsedMs = this._dipElapsedMs
+    // El yaw del paso anterior: el air-strafe escalar cobra por la diferencia.
+    out.lastYaw = this._lastYaw
+    return out
+  }
+
+  /** Coloca el estado que devolvió `snapshot()`. */
+  restore(state) {
+    const p = this.camera.position
+    p.x = state.x
+    p.z = state.z
+    this.feetY = state.feetY
+    this.verticalVelocity = state.verticalVelocity
+    this.airborne = state.airborne
+    this._airTime = state.airTime
+    this._launchY = state.launchY
+    this._launchVelocity = state.launchVelocity
+    this._airSpeed = state.airSpeed
+    this._airVelX = state.airVelX
+    this._airVelZ = state.airVelZ
+    this._landingSpeed = state.landingSpeed
+    this._landingVelX = state.landingVelX
+    this._landingVelZ = state.landingVelZ
+    // Los dos centinelas son `-Infinity` y JSON no sabe escribirlo: cualquier
+    // cosa que no sea un número finito vuelve a significar «nunca».
+    this._landedAt = Number.isFinite(state.landedAt) ? state.landedAt : -Infinity
+    this._jumpPressedAt = Number.isFinite(state.jumpPressedAt)
+      ? state.jumpPressedAt
+      : -Infinity
+    this.chainedJump = state.chainedJump
+    this._stillJumps = state.stillJumps
+    this._flightMaxSpeed = state.flightMaxSpeed
+    this.eyeHeight = state.eyeHeight
+    this.landingDip = state.landingDip
+    this._dipFrom = state.dipFrom
+    this._dipElapsedMs = state.dipElapsedMs
+    this._lastYaw = state.lastYaw
+    p.y = this.feetY + this.eyeHeight - this.landingDip
+  }
+
+  /**
+   * **Marca una pulsación de salto en un instante dado del reloj del mundo.**
+   * Jugando lo hace el propio `_onKeyDown` con el `timeStamp` del evento; por la
+   * red la pulsación llega dentro de un paquete de entrada y hay que volver a
+   * ponerla en el reloj **compartido**, o los dos extremos de la ventana de
+   * encadenado vivirían en relojes distintos. Ver `net/protocolo.js`.
+   */
+  pressJump(at) {
+    this._jumpPressedAt = at
+  }
+
   /** Devuelve al jugador a su punto de aparición, de pie y en el suelo. */
   reset() {
     this.poseEpoch += 1

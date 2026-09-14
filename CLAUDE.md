@@ -76,6 +76,7 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Recogibles | `src/game/pickups.js` | Cruces de vida, cargas de escudo y casco por el suelo. |
 | Música | `src/audio/music.js` | Ambiente de menús, generado. Su propio volumen. |
 | Config | `src/config.js` | Todo el tuning, sin excepción. |
+| Red (prototipo) | `net/` | Servidor `ws` local, cliente con predicción y reconciliación, y la página de dos pestañas. **Fuera de `src/` y fuera del build.** |
 | Ajustes | `src/settings.js` | Store + persistencia en localStorage + saneado. |
 | Teclas | `src/keybinds.js` | Store de binds: mismo patrón que los ajustes, almacén aparte. |
 
@@ -171,6 +172,37 @@ que **son** el mecanismo:
   paso con la época cambiada no interpola — reaparecer dibujaría un barrido por
   medio mapa. La marca vive donde ocurre el salto, no en una comprobación de
   distancia en quien dibuja.
+
+**La red vive en `net/`, y no entra en el juego** (vuelta 45). Es un prototipo:
+un servidor `ws` local (`npm run net`) y una página de dos pestañas
+(`net/prueba.html`) para ver funcionar la predicción. Vite sólo empaqueta
+`index.html`, así que nada de esto llega a `dist/` — compruébalo si tocas la
+configuración del build. Tres reglas que **son** el diseño, y las tres nacieron
+de un fallo concreto (`docs/decisions.md` §45):
+
+- **El reloj de la red es el número de paso, no el de nadie.** Cada entrada viaja
+  sellada con su paso `n` y los dos extremos la ejecutan con
+  `now = n · SIM_STEP_MS`. El reloj del cliente y el del servidor no tienen por
+  qué coincidir; el número de paso sí. Y la pulsación de salto viaja con **su
+  fracción de paso**: redondearla costaría 16.7 ms en una ventana que mide 130.
+- **El servidor no adivina.** Sin entrada para un paso, ese jugador no avanza y
+  ya se pondrá al día. Repetir la última entrada mete un paso que el cliente
+  nunca predijo, o sea una corrección inventada por el servidor.
+- **El rival se dibuja con el reloj de las fotos, no con el propio.** El cliente
+  corre por delante del servidor lo que tarda el viaje, así que «mi paso menos el
+  retraso» cae por delante de la última foto recibida y no hay entre qué
+  interpolar: medido, 770 ms de retraso en vez de 50.
+
+Y una cuarta que es aritmética y no se ve: **hay que adelantarse el RTT entero,
+no la mitad.** La foto que dice en qué paso va el servidor ya salió hace un viaje
+de ida, y la entrada que mandes ahora tardará otro. Con la mitad, el servidor se
+queda sin entrada en un tercio de los pasos.
+
+**El estado serializable del movimiento vive en `movement.js`**
+(`snapshot()`/`restore()`, 24 campos). Va junto a los campos y no en el módulo de
+red por la razón de siempre: una lista de nombres escrita en otro sitio se
+desincroniza el día que alguien añada estado. Si añades algo al movimiento que
+sobreviva a un frame, añádelo también ahí.
 
 **Y pausar es una sola cosa**: `_suspend()`. Apaga controles y movimiento, suelta
 el gatillo y pasa a pausa, y lo llaman las dos formas de dejar de jugar sin
@@ -1172,9 +1204,26 @@ que parecía roto y no lo estaba.
 **Si un resultado te parece extraño, reinicia el servidor de desarrollo antes de
 creerte el diagnóstico.** No depures un falso negativo durante media hora.
 
+Y no es sólo «una función que no hace nada»: en la vuelta 45 pasó **dos veces**
+con la batería de pruebas entera. Los síntomas fueron suites que salían con
+`0 pass` —la página ni cargaba— y aserciones devolviendo `undefined` donde había
+un número. Las dos veces, la causa fue haber tocado `config.js` con vite
+corriendo. **Añadir una clave a `config.js` cuenta**: reinicia antes de pasar las
+suites, o la regresión que leas no será la del código que has escrito.
+
 ---
 
 ## 5. Estado actual (resumen)
+
+**Hay un 1v1 local, de prototipo** (vuelta 45): `npm run net` levanta un servidor
+`ws` en el 5199 y `net/prueba.html` abierta en dos pestañas enseña a dos personas
+moviéndose por el Plano A, con predicción local y reconciliación contra el
+servidor. Sólo movimiento —ni disparos, ni compensación de retraso, ni
+despliegue—. El servidor **no tiene código de juego**: importa `movement.js` y
+`scenario.js` tal cual con un objeto plano donde iría la cámara. Medido: error de
+reconciliación **cero** hasta 300 ms de RTT, correcciones sólo con pérdida de
+paquetes (0.33 u al 25%), 0.6 µs por entrada reejecutada y ↓59 KB/s en JSON sin
+recortar nada.
 
 **El mundo va a 60 Hz fijos** (`SIM.hz`) desde la vuelta 44, dibuje el monitor lo
 que dibuje: el frame acumula tiempo real y gasta pasos con arrastre del resto, y
@@ -1442,8 +1491,14 @@ el botón no pueda apuntar a un ajuste distinto del que enseña la fila.
 
 ## 6. Fuera de alcance por decisión, no por olvido
 
-Backend, cuentas, guardado en la nube, rankings, minimapa, pasos sonoros. Si el
-encargo no lo pide explícitamente, no se añade.
+Cuentas, guardado en la nube, rankings, minimapa, pasos sonoros. Si el encargo no
+lo pide explícitamente, no se añade.
+
+**El backend dejó de estarlo en la vuelta 45**, pero sólo hasta donde llega el
+prototipo: hay un servidor `ws` **local** en `net/` para el 1v1 entre dos
+pestañas, y nada más. Ni nube, ni despliegue, ni cuentas, ni matchmaking, ni
+persistencia. El plan y lo que cuesta cada paso están en
+`docs/propuestas/02-multijugador-1v1.md`.
 
 **Economía: tampoco.** La armería de la vuelta 42 equipa y nada más — sin precios,
 sin dinero y sin botón de comprar. Comprar depende de rondas y de una economía que

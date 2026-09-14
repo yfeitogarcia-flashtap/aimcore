@@ -2844,3 +2844,50 @@ export const SIM = {
 
 /** Milisegundos de un paso de mundo. Sale de `SIM.hz` y no se escribe aparte. */
 export const SIM_STEP_MS = 1000 / SIM.hz
+
+/**
+ * **La partida en red.** Vuelta 45: primer 1v1 local, sólo movimiento. El
+ * transporte todavía no está aislado tras una interfaz — eso viene cuando el
+ * concepto esté validado; ver `docs/propuestas/02-multijugador-1v1.md`.
+ *
+ * El reloj de la simulación en red **es el número de paso**, no `performance.now()`
+ * de nadie: cada entrada viaja sellada con su paso `n` y los dos extremos la
+ * ejecutan con `now = n · SIM_STEP_MS`. Sin eso, el aterrizaje que despeja la
+ * parábola en el servidor y la pulsación de salto que se selló en el cliente
+ * estarían en relojes distintos y la ventana de encadenado no significaría nada.
+ */
+export const NET = {
+  /** Puerto del servidor de pruebas local (`npm run net`). */
+  port: 5199,
+  /**
+   * Cuántas entradas acumula el servidor antes de empezar a consumir. Es el
+   * colchón contra el jitter: con menos, una entrada que llega tarde deja al
+   * jugador sin avanzar ese paso.
+   */
+  jitterBufferTicks: 2,
+  /**
+   * Tope de entradas que el servidor consume en un solo paso para ponerse al
+   * día tras un atasco. Sin tope, un cliente que se congela y vuelve dispararía
+   * una avalancha de pasos.
+   */
+  maxCatchUpTicks: 4,
+  /** Cuánto se adelanta el cliente al servidor, en pasos, además del RTT. */
+  leadTicks: 2,
+  /**
+   * Banda muerta al engancharse al reloj del servidor, en pasos. Por debajo de
+   * esto no se corrige: el RTT se mide con ruido y perseguirlo daría tirones.
+   */
+  clockDeadbandTicks: 2,
+  /** Entradas sin confirmar que se guardan para reejecutar. 3 s a 60 Hz. */
+  maxPendingInputs: 180,
+  /** Cada cuántos pasos sale una foto del mundo. 1 = una por paso. */
+  snapshotEvery: 1,
+  /**
+   * Retardo con el que se dibuja al rival, en pasos. Se le dibuja **en el
+   * pasado**, entre dos fotos ya recibidas, porque extrapolar al futuro es
+   * inventarse dónde está.
+   */
+  interpDelayTicks: 3,
+  /** Una corrección por debajo de esto no se cuenta como visible, en unidades. */
+  visibleCorrection: 0.01,
+}
