@@ -229,6 +229,13 @@ export class DummyMarkers {
      */
     this._compassEdgeMaterial = new THREE.LineBasicMaterial({
       color: new THREE.Color(COLORS.outline),
+      // **A media opacidad, que es lo único que se puede afinar de una línea en
+      // WebGL** —`linewidth` se ignora—. Medido en la vuelta 41: devuelve el
+      // anillo exterior de píxeles que el negro entero borraba (116 px contra
+      // 75 a 12 u) y conserva el 96% del filo que compra contra la cobertura
+      // clara. El porqué completo, en `MARKERS.compass.outlineOpacity`.
+      transparent: MARKERS.compass.outlineOpacity < 1,
+      opacity: MARKERS.compass.outlineOpacity,
     })
     this._alertMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color(COLORS.alert) })
     this._threatMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color(COLORS.threat) })

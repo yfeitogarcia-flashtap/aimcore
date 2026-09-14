@@ -4,6 +4,7 @@ import WeaponSilhouette from './WeaponSilhouette.jsx'
 import { STAR_PATH } from './Stars.jsx'
 import { ICON_PATHS } from './iconPaths.js'
 import { FEEDBACK, PLAYER, WEAPONS } from '../config.js'
+import { ratio } from './Summary.jsx'
 
 /**
  * Engranaje de la marca de opciones, en el mismo lienzo de 24×24 que la
@@ -87,6 +88,12 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
   const vignetteRef = useRef(null)
   const graceRef = useRef(null)
   const graceBarRef = useRef(null)
+  /** Marcador: el bloque entero y las cuatro cifras de la fila del jugador. */
+  const scoreboardRef = useRef(null)
+  const scoreKillsRef = useRef(null)
+  const scoreDeathsRef = useRef(null)
+  const scoreAccuracyRef = useRef(null)
+  const scoreRatioRef = useRef(null)
 
   // Últimos valores mostrados, como números: comparamos antes de formatear,
   // así que un frame que no cambia nada no genera ni un string.
@@ -114,6 +121,10 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
     alive: null,
     grace: null,
     respawnTenths: -1,
+    scoreboard: null,
+    scoreKills: -1,
+    scoreDeaths: -1,
+    scoreAccuracy: -1,
   })
 
   useImperativeHandle(ref, () => ({
@@ -293,6 +304,36 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
           last.graceTenths = tenths
         }
       }
+
+      // **El marcador.** Abierto o cerrado es un `hidden`, y sus cifras sólo se
+      // escriben **mientras está abierto**: el resto del tiempo no hay nada que
+      // mirar y escribirlas sería trabajo por frame a cambio de nada.
+      if (stats.scoreboard !== last.scoreboard) {
+        if (scoreboardRef.current) scoreboardRef.current.hidden = !stats.scoreboard
+        last.scoreboard = stats.scoreboard
+      }
+      if (stats.scoreboard) {
+        if (stats.kills !== last.scoreKills) {
+          if (scoreKillsRef.current) scoreKillsRef.current.textContent = String(stats.kills)
+          last.scoreKills = stats.kills
+        }
+        if (stats.deaths !== last.scoreDeaths) {
+          if (scoreDeathsRef.current) scoreDeathsRef.current.textContent = String(stats.deaths)
+          last.scoreDeaths = stats.deaths
+        }
+        // Bajas y muertes mueven el KD, así que se recalcula con cualquiera de
+        // las dos y con la precisión, que cambia en cada disparo.
+        const accuracy = Math.round(stats.accuracy * 10)
+        if (accuracy !== last.scoreAccuracy || stats.kills !== last.scoreKills) {
+          if (scoreAccuracyRef.current) {
+            scoreAccuracyRef.current.textContent = `${(accuracy / 10).toFixed(1)}%`
+          }
+          last.scoreAccuracy = accuracy
+        }
+        if (scoreRatioRef.current) {
+          scoreRatioRef.current.textContent = ratio(stats.kills, stats.deaths)
+        }
+      }
     },
 
     /**
@@ -346,6 +387,36 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
           con el centro recortado por su máscara: cuando te disparan, lo último
           que se puede tapar es el sitio al que hay que apuntar. */}
       <div className="hud__damage-arc" ref={damageArcRef} aria-hidden="true" />
+
+      {/*
+        **El marcador.** Una tabla de una fila: cabecera, la tuya, y nada más.
+        El layout es una rejilla de cinco columnas con el nick a la izquierda y
+        las cifras a la derecha, así que **una fila más es un div más** el día
+        que haya con quién compararse. Hoy no lo hay —no hay cuentas ni
+        multijugador—, y una lista de rivales vacía o inventada diría que sí.
+      */}
+      <div className="scoreboard" ref={scoreboardRef} hidden>
+        <div className="scoreboard__panel">
+          <div className="scoreboard__head">
+            <span className="scoreboard__title">Marcador</span>
+            <span className="scoreboard__mode">sesión en curso</span>
+          </div>
+          <div className="scoreboard__row scoreboard__row--head">
+            <span>Jugador</span>
+            <span>Bajas</span>
+            <span>Muertes</span>
+            <span>Precisión</span>
+            <span>KD</span>
+          </div>
+          <div className="scoreboard__row scoreboard__row--you">
+            <span className="scoreboard__nick">{PLAYER.nick}</span>
+            <span ref={scoreKillsRef}>0</span>
+            <span ref={scoreDeathsRef}>0</span>
+            <span ref={scoreAccuracyRef}>0.0%</span>
+            <span ref={scoreRatioRef}>0.00</span>
+          </div>
+        </div>
+      </div>
 
       <div className="hud__fps">
         <span className="hud__fps-value" ref={fpsRef}>

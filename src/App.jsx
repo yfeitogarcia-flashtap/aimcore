@@ -6,7 +6,15 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react'
-import { COLORS, FEEDBACK, MOVEMENT, SESSION_DURATION_S } from './config.js'
+import {
+  COLORS,
+  DEATHMATCH_DURATIONS,
+  FEEDBACK,
+  MOVEMENT,
+  SESSION_DURATION_S,
+  SESSION_MODES,
+  scenarioHasCover,
+} from './config.js'
 import { Engine, PHASE } from './game/engine.js'
 import { disposeAudio } from './audio/sfx.js'
 import { setMusicVolume, startMusic, stopMusic } from './audio/music.js'
@@ -130,8 +138,8 @@ export default function App() {
     engineRef.current?.requestLock()
   }, [])
 
-  const startTimed = useCallback(() => engineRef.current?.requestStart(false), [])
-  const startEndless = useCallback(() => engineRef.current?.requestStart(true), [])
+  const startTimed = useCallback(() => engineRef.current?.requestStart('timed'), [])
+  const startDeathmatch = useCallback(() => engineRef.current?.requestStart('deathmatch'), [])
   const finishSession = useCallback(() => engineRef.current?.finishSession(), [])
   const backToStart = useCallback(() => {
     setSummary(null)
@@ -151,6 +159,18 @@ export default function App() {
   const closeOptions = useCallback(() => setOptionsOpen(false), [])
 
   const showHud = phase === PHASE.RUNNING || phase === PHASE.PAUSED
+
+  /**
+   * Rótulo del segundo botón: **Deathmatch** donde hay contra quién —escenario
+   * con cobertura— y práctica libre donde no. Y con su duración detrás, si no
+   * es «sin límite»: el modo se configura en opciones y el botón es el único
+   * sitio donde se ve antes de empezar.
+   */
+  const deathmatch = scenarioHasCover(settings.scenario)
+  const duration = DEATHMATCH_DURATIONS[settings.deathmatchDuration]
+  const deathmatchLabel = deathmatch
+    ? `${SESSION_MODES.deathmatch.label}${duration.seconds > 0 ? ` · ${duration.label}` : ' ∞'}`
+    : SESSION_MODES.deathmatch.plainLabel
 
   const optionsPanel = (
     <Options
@@ -208,7 +228,12 @@ export default function App() {
                 <VektorLogo />
               </h1>
               <p className="panel__byline">by FlickLAB</p>
-              <p className="panel__eyebrow">gridshot · {SESSION_DURATION_S}s</p>
+              {/* Qué se juega al pulsar el primer botón, que depende del
+                  escenario: con cobertura es la ronda del explosivo y con la
+                  sala vacía, el gridshot de siempre. */}
+              <p className="panel__eyebrow">
+                {deathmatch ? 'ronda con explosivo' : `gridshot · ${SESSION_DURATION_S}s`}
+              </p>
               <p className="panel__body">
                 Click para capturar el ratón y empezar. Click izquierdo para disparar.
               </p>
@@ -228,13 +253,18 @@ export default function App() {
                 >
                   Jugar ahora
                 </button>
+                {/* **El segundo modo tiene nombre propio donde lo tiene.** Con
+                    cobertura y muñecos que disparan es un Deathmatch y se llama
+                    así; en la sala vacía no hay contra quién, así que sigue
+                    siendo la práctica libre de siempre. El rótulo sale del
+                    escenario elegido, no de un interruptor aparte. */}
                 <button
                   type="button"
                   className="button button--primary"
                   onMouseDown={swallowClick}
-                  onClick={startEndless}
+                  onClick={startDeathmatch}
                 >
-                  Práctica libre ∞
+                  {deathmatchLabel}
                 </button>
                 {optionsButton}
               </div>

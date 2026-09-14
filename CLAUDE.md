@@ -39,7 +39,8 @@ sin gestor de estado. Tres dependencias de producción y nada más.
   todavía viaja, suena el disparo sintetizado de siempre. Hoy no hay ninguno, así
   que suena todo sintetizado. El resto del audio no tiene esta puerta.
 - **Siluetas de armas, logotipo e iconos:** vectorizados con `potrace` a partir de
-  `Reference/Weapons/`, `Reference/Logo/` y `Reference/Icons/` mediante los
+  `Reference/Weapons/` —donde la convención es `<arma>.png` y `ghost-<arma>.png`,
+  la misma arma con silenciador—, `Reference/Logo/` y `Reference/Icons/` mediante los
   scripts *one-off* `npm run trace:weapons`, `trace:logo` y `trace:icons`, que
   emiten `src/ui/weaponPaths.js`, `src/ui/logoPaths.js`, `src/ui/iconPaths.js` y
   `public/favicon.svg`. Los tres scripts comparten máscara, opciones de potrace y
@@ -451,11 +452,19 @@ encima, con `polygonOffset` en las caras para que la línea gane el desempate—
   `bloque`) el verde se queda en **1.26-1.34 de contraste**, o sea sin filo, y el
   negro da 7.46-12.55. Con el par verde+negro el peor caso de todo el mapa sube a
   **3.96**; ninguno de los dos colores cubre la rampa de grises solo.
-- **Lo que cuesta:** contra el fondo oscuro se come el anillo exterior de píxeles
-  verdes. A 12 u el marcador pasa de **117 a 75 px** de verde y de 24×9 a 19×7,
-  por debajo del listón de 80 px de la vuelta 37 —aunque la silueta, mirada
-  píxel a píxel, sigue siendo la misma cuña—. Es la única cifra que empeoró en la
-  vuelta 40 y está anotada a propósito.
+- **Lo que costaba, y cómo se arregló.** Opaco, el contorno **borraba el anillo
+  exterior** de píxeles del marcador: a 12 u caía de 117 a 75 px, por debajo del
+  listón de 80 de la vuelta 37. En WebGL el grosor de una línea no se toca
+  —`linewidth` se ignora—, así que lo único afinable es la opacidad, y se barrió
+  (`br41.mjs`): **a 0.5 quedan 116 px de 117 y se conserva el 96% del filo**. El
+  anillo exterior son píxeles de antialias a medio cubrir, así que a media
+  opacidad vuelven a ser verde a medias en vez de desaparecer, y el filo apenas
+  lo nota. Ése es el valor: `MARKERS.compass.outlineOpacity`.
+- **Ojo con el contraste de dos colores contra el contraste medido.** La vuelta
+  40 anotó 7.46 para el negro contra el gris `alta`; **en pantalla son 2.69**,
+  porque una línea de un píxel con antialias nunca se pinta negra del todo.
+  Contra ese gris ninguna opacidad cruza el 3.0 de la norma —el contorno ayuda,
+  no lo arregla—; contra `bloque`, el más claro, sobra.
 
 **La ficha flotante no sale por estar a la vista, sale por apuntar.** Una ficha
 por cada muñeco visible es una pantalla de rótulos; el gesto de sostener la mira
@@ -475,6 +484,32 @@ Y el día que haya equipos, **a un compañero se le ve siempre** (`instance.frie
 saber quién juega contigo no se gana apuntando. Hoy el campo existe y está en
 false para todos, y el nick es la ranura del pool (`VK-01`) hasta que haya
 identidades de verdad.
+
+**Con el explosivo armado, el selector de simultáneas es el total de la ronda.**
+`maxAlive` y `roundBudget` conviven porque miden cosas distintas —techo de a la
+vez y total de la sesión—, y con bomba los fija el mismo selector: los muertos no
+se reponen. Una fuente infinita de muñecos mientras corre una cuenta atrás
+convierte la ronda en una carrera contra el respawn; con cupo, limpiar el mapa es
+una forma legítima de llegar a la bomba. **El cupo se descuenta cuando la diana
+sale, no cuando se intenta** —un intento sin punto visible se reintenta— y se
+comprueba también dentro de `_spawn`, porque la primera la siembra `beginSession`
+por su cuenta. Fuera de ese modo, el respawn es el de siempre.
+
+**Las estrellas puntúan cumplir un objetivo, así que en Deathmatch no salen.** La
+mitad de la nota es el tiempo, y ese tiempo se mide contra lo que tardaste en
+desactivar: sin bomba, media fórmula se cae o se inventa. Además, en un modo sin
+límite cualquier métrica acumulativa sube por estar ahí, y las normalizadas
+—precisión, KD— ya se leen solas. Los cortes de `starThresholds` están calibrados
+contra una ronda de 45 s con explosivo; reusarlos en diez minutos diría cinco
+estrellas por algo que no se ha medido nunca. El día que el modo tenga condición
+de victoria, se revisa.
+
+**El marcador (TAB) se abre mientras se mantenga la tecla, y sólo jugando.** TAB
+**sí** se puede interceptar —comprobado pulsándola de verdad, no supuesto: ver
+`docs/decisions.md` §41.5— pero fuera de la partida es del navegador: en la pausa
+y en opciones es como se recorre un panel con el teclado. El layout es una
+rejilla lista para más filas y **hoy tiene una sola**, la tuya: no hay cuentas ni
+multijugador, y una lista de rivales vacía o inventada diría que sí.
 
 **Que te disparan se dice por tres canales, y ninguno pide que estés mirando.**
 Hasta la vuelta 40 todo el aviso estaba delante —el anillo de la mira dice *que*
@@ -668,7 +703,7 @@ Tres consecuencias que **son** el sistema:
   es el aviso, que dice a cuál se aplica.
 
 Y estrechar el catálogo de un ajuste **borra el valor guardado**: un
-`weapon: 'scalar-2'` de antes de la vuelta 39 cae a fábrica en el siguiente
+`weapon: 'pulse'` de antes de la vuelta 39 cae a fábrica en el siguiente
 saneado, que es exactamente lo que hace el saneado con cualquier clave obsoleta.
 
 **Un disparo puede venir de un fichero; todo lo demás, no.** `samples.js` es el
@@ -689,6 +724,22 @@ saberlo. Cuatro reglas que sostienen el respaldo:
   cierra el contexto y el siguiente `initAudio()` crea otro: se guarda *sobre qué
   contexto* se decodificó, igual que la espera de `music.js`. React en modo
   estricto monta, desmonta y vuelve a montar.
+
+**Renombrar una clave de catálogo borra lo que hay guardado, salvo que se
+traduzca.** En la vuelta 41 las tres armas cambiaron de nombre sin tocar ni una
+estadística, y la clave vieja está en el `localStorage` de quien ya jugó: el
+saneado, que no la conoce, la habría mandado a fábrica y quien tuviera el
+Volt habría abierto el juego con otra arma sin explicación.
+`LEGACY_WEAPON_KEYS` traduce **antes** de validar contra el catálogo. Es una
+tabla de renombrado y no un catálogo: no añade opciones, dice cómo se llamaba
+cada una. Lo que no esté en ella sigue el camino de siempre —clave desconocida,
+valor de fábrica—, que es lo correcto para una opción que dejó de existir.
+
+**Cada arma trae sus dos siluetas, y la silenciada es otra foto.** `<arma>` y
+`ghost-<arma>`: el silenciador **alarga** el arma, así que lo que se iguala entre
+las dos fotos es la altura, y el interruptor no cambia de tamaño el arma. Desde
+la vuelta 41 las tres las tienen, así que `trace-weapons.mjs` saca las seis de un
+bucle y `WeaponSilhouette` elige con una línea. Añadir un arma es añadir su clave.
 
 **El gatillo en seco suena también durante la recarga, y no es un detalle.** La
 última bala arranca la recarga sola (`_consumeAmmo`), así que «cargador vacío y
@@ -871,8 +922,12 @@ creerte el diagnóstico.** No depures un falso negativo durante media hora.
 ## 5. Estado actual (resumen)
 
 Sala vacía de **80×80×16**, rejilla en suelo y paredes. **Cada escenario puede
-traer la suya**: el Plano A vive en **40×40×10**. Sesión de **30 s** por
-defecto, más **PRÁCTICA LIBRE ∞** sin límite de tiempo con finalización manual.
+traer la suya**: el Plano A vive en **40×40×10**. **Dos modos de sesión** (`SESSION_MODES`): `timed`, la ronda de **30 s** —y con
+escenario, **la del explosivo**—, y `deathmatch`, el escenario sin bomba, que
+dura lo que diga `SETTINGS.deathmatchDuration` (sin límite, 3, 5 o 10 minutos).
+En la sala vacía ese segundo botón se sigue llamando **práctica libre**: sin
+cobertura ni muñecos que disparen no hay deathmatch que valga. `endless` sigue
+existiendo y sigue significando sólo una cosa: esta sesión no acaba sola.
 
 **Dianas:** tres tipos — *clásica* y *cono* (ancladas al centro, esfera), e
 *hitbox completo* (anclado a los pies, tres zonas con **vida compartida** y daño
@@ -909,8 +964,9 @@ quedan en su punto, porque un destino aleatorio las metería dentro de un muro.
 
 **Controles reasignables:** un mapa único en `KEYBINDS` con las acciones que
 funcionan hoy —movimiento, salto, agachado, caminar, disparar, recargar, cambiar
-de arma, silenciador, la contextual **E**, el escudo en la **4** y, desde la
-vuelta 39, **1** y **2** para equipar principal y pistola— y las **reservadas sin
+de arma, silenciador, la contextual **E**, el escudo en la **4**, **1** y **2**
+para equipar principal y pistola y, desde la vuelta 41, **TAB** para el
+marcador— y las **reservadas sin
 lógica**: 3 para el cuerpo a cuerpo, 5 para el artilugio y **G** para el
 arrojadizo. Sección **Controles** en opciones: tecla actual, reasignar
 capturando la siguiente pulsación, botón por acción y por lo general.
@@ -949,9 +1005,14 @@ con sonido propio.
 
 | Arma | Ranura | Modo | RPM | Cargador | Recarga | Supresor |
 |---|---|---|---|---|---|---|
-| Scalar-2 | secundaria (tecla **2**, siempre) | semi | 500 | 18 | 1200 ms | sí |
-| Axis-7 | principal (tecla **1**) | auto | 600 | 30 | 2300 ms | no |
-| Vertex-9 | principal (tecla **1**) | auto | 800 | 25 | 1800 ms | sí |
+| Pulse | secundaria (tecla **2**, siempre) | semi | 500 | 18 | 1200 ms | sí |
+| Rift | principal (tecla **1**) | auto | 600 | 30 | 2300 ms | sí |
+| Volt | principal (tecla **1**) | auto | 800 | 25 | 1800 ms | sí |
+
+Se llamaban Scalar-2, Axis-7 y Vertex-9 hasta la vuelta 41: el renombrado no tocó
+ni una estadística, y un ajuste guardado con el nombre viejo se traduce al nuevo
+en vez de caer a fábrica. Cada una trae sus dos siluetas —`<arma>` y
+`ghost-<arma>`, con silenciador— y desde esta vuelta **las tres lo admiten**.
 
 **Se llevan dos: la principal, que se elige en opciones, y la pistola, que va
 siempre.** La 1 saca una, la 2 la otra y **Q** alterna. Cada una lleva su propio
@@ -996,7 +1057,7 @@ pitido del explosivo; el módulo es genérico para pasos y rivales.
 **Dummies que disparan (sólo con escenario y hitbox completo):** con línea de
 visión y dentro de `ENEMY.engageRange` (24 u), un muñeco abre fuego con el
 **modelo de arma de siempre** —cadencia, cargador, recarga y sonido salen de
-`WEAPONS`, hoy la Axis-7— apuntando al centro del cuerpo del jugador con el cono
+`WEAPONS`, hoy la Rift— apuntando al centro del cuerpo del jugador con el cono
 de la dificultad. Dispara en ráfagas de cuatro con pausa, y el disparo se resuelve
 contra las **tres zonas del jugador**, que son las del hitbox.
 
@@ -1025,6 +1086,10 @@ enemigo):
 3. **Ficha arma + nick**, billboard y **condicionada**: sale tras sostener la mira
    encima 350 ms, nunca por estar a la vista. Es DOM en el espacio
    (`CSS3DRenderer`), como era el tablero de acciones.
+
+**Marcador con TAB:** panel superpuesto con nick (placeholder `VK-00` hasta que
+haya cuentas), bajas, muertes, precisión y KD de la sesión en curso. Se abre
+mientras se mantenga la tecla y sólo durante la partida.
 
 **Al reaparecer, 2 s de invulnerabilidad** (`PLAYER.respawn.invulnerableMs`), con
 marco azul y cuenta junto al bloque de vida. Y al morir, **ABATIDO** en grande con
@@ -1072,8 +1137,9 @@ selector crece en filas con cada escenario nuevo en vez de encoger los que ya
 estaban.
 
 **Opciones** (accesibles antes de empezar y desde la pausa, persistidas):
-escenario, sensibilidad, tipo de diana, **arma principal** (sólo Axis-7 y
-Vertex-9: la pistola se lleva siempre y no se elige), tamaño de diana, distancia de spawn, cadencia
+escenario, sensibilidad, tipo de diana, **arma principal** (sólo Rift y
+Volt: la pistola se lleva siempre y no se elige), **duración de Deathmatch**
+(sin límite / 3 / 5 / 10 minutos), tamaño de diana, distancia de spawn, cadencia
 de aparición, dianas simultáneas, límite de FPS, supresor (sólo si el arma lo
 admite), **audio espacial**, mensajes de ayuda, **dificultad de los muñecos**,
 modo dinámico y **velocidad de

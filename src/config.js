@@ -413,8 +413,9 @@ export const HELP = {
  * - `mode`: `'semi'` dispara una vez por click; `'auto'` dispara en continuo
  *   mientras se mantenga pulsado.
  * - `magazine`: balas por cargador; `reloadMs`, lo que tarda en recargarse.
- * - `supportsSuppressor`: si admite silenciador. El interruptor del panel sólo
- *   aparece con un arma que lo admita.
+ * - `supportsSuppressor`: si admite silenciador. Desde la vuelta 41 lo admiten
+ *   las tres —cada una trae su silueta `ghost-<arma>`—, pero el campo se queda:
+ *   lo que decide es el dato, no cuántas armas hay hoy.
  * - `rpm`: disparos por minuto. Fija el intervalo mínimo entre disparos, y en
  *   las semiautomáticas actúa además de tope por si se hace clic muy rápido.
  * - `recoil`: patrón de retroceso, un `[pitch, yaw]` en **grados** por cada
@@ -427,14 +428,14 @@ export const HELP = {
  * jugando, igual que la sensibilidad o el tamaño de diana.
  */
 export const WEAPONS = {
-  'scalar-2': {
-    label: 'Scalar-2',
+  'pulse': {
+    label: 'Pulse',
     character: 'sin retroceso',
     /**
      * **La ranura en la que se lleva.** Es lo único que decide qué arma compite
      * por la tecla 1 y cuál va siempre en la 2: no hay una segunda lista de
      * armas principales en ningún sitio, se deriva de aquí (`PRIMARY_WEAPONS`,
-     * `SECONDARY_WEAPON`). La Scalar-2 es la pistola, y por eso **desapareció
+     * `SECONDARY_WEAPON`). La Pulse es la pistola, y por eso **desapareció
      * del desplegable de arma principal**: se lleva siempre, elijas lo que
      * elijas, así que ofrecerla también como principal era ofrecer llevar dos
      * pistolas.
@@ -463,17 +464,20 @@ export const WEAPONS = {
     // armas. Sin patrón, no hay empuje de cámara en absoluto.
     recoil: [],
   },
-  'axis-7': {
-    label: 'Axis-7',
+  'rift': {
+    label: 'Rift',
     character: 'rifle',
-    /** Ver `slot` de Scalar-2. */
+    /** Ver `slot` de Pulse. */
     slot: 'primary',
     mode: 'auto',
     rpm: 600,
     magazine: 30,
     reloadMs: 2300,
-    supportsSuppressor: false,
-    /** Ver `precisionTarget` de Scalar-2. */
+    // Desde la vuelta 41 **sí** lo admite: la referencia de Rift trae su
+    // variante silenciada (`ghost-rift.png`) como las otras dos, así que ya no
+    // hay ningún arma del arsenal sin silueta con silenciador.
+    supportsSuppressor: true,
+    /** Ver `precisionTarget` de Pulse. */
     precisionTarget: 0.5,
     /**
      * **Cuánto daño al cuerpo se come el escudo** cuando el que dispara lleva
@@ -503,17 +507,17 @@ export const WEAPONS = {
       [0.04, 0.22],
     ],
   },
-  'vertex-9': {
-    label: 'Vertex-9',
+  'volt': {
+    label: 'Volt',
     character: 'SMG',
-    /** Ver `slot` de Scalar-2. */
+    /** Ver `slot` de Pulse. */
     slot: 'primary',
     mode: 'auto',
     rpm: 800,
     magazine: 25,
     reloadMs: 1800,
     supportsSuppressor: true,
-    /** Ver `precisionTarget` de Scalar-2. */
+    /** Ver `precisionTarget` de Pulse. */
     precisionTarget: 0.4,
     /**
      * **Cuánto daño al cuerpo se come el escudo** cuando el que dispara lleva
@@ -522,7 +526,7 @@ export const WEAPONS = {
      * cubre torso y piernas; la cabeza no, y por eso esto no la toca.
      */
     shieldAbsorb: 0.35,
-    // Patada más inmediata que la del Axis-7 —el primer disparo ya empuja más—
+    // Patada más inmediata que la del Rift —el primer disparo ya empuja más—
     // pero con la mitad de techo vertical (≈ 3.9°). El bamboleo lateral
     // alterna lado a lado y suma más recorrido que la vertical (≈ 4.4°), sin
     // deriva neta hacia ningún lado.
@@ -544,6 +548,25 @@ export const WEAPONS = {
       [0.02, -0.16],
     ],
   },
+}
+
+/**
+ * **Los nombres viejos del arsenal, y a qué se llaman ahora.**
+ *
+ * En la vuelta 41 las tres armas cambiaron de nombre —Scalar-2 → Pulse, Axis-7
+ * → Rift, Vertex-9 → Volt— sin tocar ni una estadística. El problema es que la
+ * clave vieja está **guardada en el navegador de quien ya jugó**, y el saneado,
+ * que no conoce esa clave, la tiraría al valor de fábrica: quien tuviera puesto
+ * el Vertex-9 abriría el juego con el Rift y sin explicación.
+ *
+ * Así que se traduce antes de sanear. Es una tabla de renombrado, no un
+ * catálogo: no añade armas ni opciones, sólo dice cómo se llamaba cada una.
+ * `scalar-2` no está porque desde la vuelta 39 la pistola ya no era un valor
+ * válido de este ajuste — ésa cae a fábrica como cualquier clave obsoleta.
+ */
+export const LEGACY_WEAPON_KEYS = {
+  'axis-7': 'rift',
+  'vertex-9': 'volt',
 }
 
 /**
@@ -634,6 +657,17 @@ export const KEYBINDS = {
   shield: { label: 'Escudo', default: 'Digit4', group: 'Equipo' },
   gadget: { label: 'Artilugio', default: 'Digit5', reserved: true, group: 'Equipo' },
   throwable: { label: 'Arrojadizo', default: 'KeyG', reserved: true, group: 'Equipo' },
+
+  /**
+   * **El marcador, mientras se mantenga pulsada.** Va en su propio grupo porque
+   * no es ni movimiento ni combate ni equipo: es la interfaz.
+   *
+   * TAB **sí** se puede interceptar, al contrario que Ctrl+W (ver la regla de la
+   * vuelta 27): el navegador la usa para mover el foco, y eso lo cancela
+   * `preventDefault()` porque el evento llega a la página antes. Comprobado
+   * jugando en `marcador41.mjs`, no supuesto.
+   */
+  scoreboard: { label: 'Marcador', default: 'Tab', group: 'Interfaz' },
 
   avatarDebug: { label: 'Vista del avatar', default: 'F3', group: 'Depuración' },
 }
@@ -1074,7 +1108,7 @@ export const SETTINGS = {
    */
   weapon: {
     label: 'Arma principal',
-    default: 'axis-7',
+    default: 'rift',
   },
   targetRadius: {
     label: 'Tamaño de diana',
@@ -1138,6 +1172,15 @@ export const SETTINGS = {
     max: 1,
     step: 0.05,
     decimals: 2,
+  },
+  /**
+   * **Cuánto dura un Deathmatch.** Sólo se aplica a ese modo: la ronda con
+   * explosivo la sigue midiendo el temporizador de la bomba, y el gridshot de
+   * la sala vacía, `SESSION_DURATION_S`. El catálogo es `DEATHMATCH_DURATIONS`.
+   */
+  deathmatchDuration: {
+    label: 'Duración de Deathmatch',
+    default: 'none',
   },
   enemyDifficulty: {
     label: 'Dificultad de los muñecos',
@@ -1265,7 +1308,7 @@ export const LANDING = {
 
   /**
    * Perfil del golpe. Deliberadamente lejos del disparo silenciado de la
-   * Scalar-2, con el que se confundía: aquel es un chasquido con pasa-banda a
+   * Pulse, con el que se confundía: aquel es un chasquido con pasa-banda a
    * 700 Hz y ataque de 2 ms; este es un golpe sordo —onda triangular mucho más
    * grave, ataque de 12 ms que quita todo el "clic" y una cola cuatro veces más
    * larga— y el ruido va filtrado tan abajo que suena a suela, no a percutor.
@@ -1710,6 +1753,52 @@ export const SCENARIOS = {
 }
 
 /**
+ * **¿Este escenario tiene cobertura?** Mismo criterio que `scenario.hasGeometry`
+ * pero sobre los datos, sin montar nada: lo necesita la pantalla de inicio para
+ * saber si el segundo botón es Deathmatch o práctica libre, y montar un
+ * escenario para preguntárselo sería montar el mundo entero por un rótulo.
+ */
+export function scenarioHasCover(key) {
+  const definition = SCENARIOS[key] ?? SCENARIOS.empty
+  return (definition.boxes?.length ?? 0) > 0 || (definition.ramps?.length ?? 0) > 0
+}
+
+/**
+ * **Los dos modos de sesión**, con nombre propio desde la vuelta 41.
+ *
+ * Antes eran un booleano (`endless`) y el nombre salía del botón que lo
+ * encendía. Con el explosivo y las duraciones de Deathmatch por medio eso ya no
+ * daba: «sin cronómetro» y «sin explosivo» dejaron de ser la misma cosa el día
+ * que un Deathmatch pudo durar cinco minutos.
+ *
+ *  - `timed` — lo de siempre: cronómetro corto y, con escenario, **explosivo**.
+ *    Es la ronda con objetivo.
+ *  - `deathmatch` — escenario sin bomba. Dura lo que diga
+ *    `SETTINGS.deathmatchDuration`, incluido «sin límite», que es la práctica
+ *    libre de toda la vida. En la sala vacía se llama así, práctica libre: sin
+ *    cobertura ni muñecos que disparen no hay deathmatch que valga.
+ *
+ * `endless` sigue existiendo en el motor y sigue significando exactamente una
+ * cosa —**esta sesión no acaba sola**—, que es lo que leen el HUD y el resumen.
+ */
+export const SESSION_MODES = {
+  timed: { label: 'Jugar ahora' },
+  deathmatch: { label: 'Deathmatch', plainLabel: 'Práctica libre ∞' },
+}
+
+/**
+ * Duraciones de Deathmatch. `seconds: 0` es «sin límite», que es el modo con el
+ * que nació y por eso sigue siendo el valor de fábrica: quien ya lo usaba no se
+ * encuentra con un cronómetro que no pidió.
+ */
+export const DEATHMATCH_DURATIONS = {
+  none: { label: 'Sin límite', seconds: 0 },
+  m3: { label: '3 minutos', seconds: 180 },
+  m5: { label: '5 minutos', seconds: 300 },
+  m10: { label: '10 minutos', seconds: 600 },
+}
+
+/**
  * Explosivo de escenario. Sólo existe con un escenario con cobertura montado y
  * en sesiones con cronómetro: la práctica libre no acaba sola por definición, y
  * un explosivo que la cierre rompería ese contrato.
@@ -1792,6 +1881,15 @@ export const PLAYER = {
   /** Vida base. Es también la referencia del daño por zona: cabeza = 100 = muerte. */
   maxHealth: 100,
   /**
+   * **El nick del jugador, y hoy es un placeholder.** No hay cuentas ni nombres
+   * configurables —eso depende de un backend que esta fase no tiene— así que el
+   * marcador enseña una ranura, igual que los muñecos enseñan `VK-01`. Que sea
+   * `VK-00` no es un guiño: es decir «tú eres el cero de esta lista» con el
+   * mismo vocabulario, para que el día que haya nombres de verdad se note que
+   * esto era el sitio donde iba uno.
+   */
+  nick: 'VK-00',
+  /**
    * Por debajo de esto **y sin escudo**, el HUD parpadea en rojo. Es el mismo
    * mecanismo del cargador corto: estado derivado del frame, sin temporizador
    * aparte.
@@ -1870,7 +1968,7 @@ export const PLAYER = {
  */
 export const ENEMY = {
   /** Con qué disparan. Una entrada de `WEAPONS`, sin copiar ni un número. */
-  weapon: 'axis-7',
+  weapon: 'rift',
   /**
    * Distancia de enganche, en unidades. Más allá no disparan aunque vean: el
    * mapa mide 40 y sin este límite un muñeco del fondo del Balcón hostigaría
@@ -2053,6 +2151,29 @@ export const MARKERS = {
      * justo donde el tono no dice nada porque se ven las dos caras a la vez.
      */
     noseDrop: 0.5,
+    /**
+     * **Opacidad del contorno, que es lo único que se puede afinar de él.**
+     *
+     * En WebGL el grosor de una línea no se toca: `linewidth` se ignora y todas
+     * salen de un píxel. Así que «contorno más fino» sólo puede significar
+     * «menos opaco», y eso se midió (`br41.mjs`) con las dos cifras que se
+     * pelean, a la vez:
+     *
+     *  - **Área del marcador contra el fondo oscuro** (el listón de 80 px de la
+     *    vuelta 37): 117 px sin contorno, **116 a 0.5** y 75 a opacidad plena.
+     *    El contorno negro entero borraba el anillo exterior; a media opacidad
+     *    ese anillo vuelve a ser verde a medias en vez de desaparecer.
+     *  - **Filo contra la cobertura clara**: 1.23 sin contorno, **6.54 a 0.5** y
+     *    6.84 a opacidad plena, contra el gris más claro del plano. O sea que a
+     *    media opacidad se conserva el 96% de lo que compra el negro entero.
+     *
+     * Medio contorno se lleva casi todo el beneficio y devuelve casi toda el
+     * área. Y una cifra que corrige lo que decía la vuelta 40: contra el gris
+     * `alta` el filo se queda en **2.69** aunque el contorno sea negro puro, no
+     * en los 7.46 que da la comparación de colores sobre el papel — una línea de
+     * un píxel con antialias nunca llega a pintarse negra del todo.
+     */
+    outlineOpacity: 0.5,
     /** Por encima de la coronilla. */
     gap: 0.06,
   },

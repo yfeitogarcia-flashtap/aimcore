@@ -159,6 +159,18 @@ export class TargetManager {
     this.aliveCount = 0
     this.sessionActive = false
     this._nextSpawnAt = 0
+    /**
+     * **Cupo de la ronda**: cuántas dianas pueden llegar a salir *en total*
+     * mientras dure la sesión. Cero es el comportamiento de siempre —sin cupo,
+     * el que cae se repone— y lo enciende quien sabe de modos de juego
+     * (`engine.js`), no esto.
+     *
+     * Con cupo, `maxAlive` sigue siendo el techo de **a la vez**: lo que cambia
+     * es que un muerto ya no se repone. Los dos números conviven porque miden
+     * cosas distintas, y en la práctica el mismo selector fija los dos.
+     */
+    this.roundBudget = 0
+    this._spawnedThisRound = 0
     this._hasLastSpawn = false
     this._lastSpawnPosition = new THREE.Vector3()
 
@@ -284,6 +296,24 @@ export class TargetManager {
     return this.aliveCount > 0
   }
 
+  /**
+   * **Cuántas dianas caben en toda la ronda**, en total y no a la vez. Cero
+   * quita el cupo, que es lo de siempre.
+   */
+  setRoundBudget(total) {
+    this.roundBudget = Math.max(0, Math.floor(total) || 0)
+  }
+
+  /** ¿Se ha gastado el cupo de la ronda? Sin cupo, nunca. */
+  get roundExhausted() {
+    return this.roundBudget > 0 && this._spawnedThisRound >= this.roundBudget
+  }
+
+  /** Cuántas quedan por salir en esta ronda. Sin cupo, `Infinity`. */
+  get roundLeft() {
+    return this.roundBudget > 0 ? Math.max(0, this.roundBudget - this._spawnedThisRound) : Infinity
+  }
+
   /** Arranca una sesión: limpia todo y saca la primera diana. */
   beginSession(camera, now) {
     this.clear()
@@ -301,6 +331,10 @@ export class TargetManager {
     for (let i = 0; i < this.routes.length; i++) this.routes[i].liveCount = 0
     this.aliveCount = 0
     this.sessionActive = false
+    // Sin sesión no hay ronda, así que el cupo gastado vuelve a cero aquí y no
+    // sólo al empezar la siguiente: dejarlo contando sería que una sesión
+    // terminada siguiera bloqueando apariciones de la próxima.
+    this._spawnedThisRound = 0
     this._hasLastSpawn = false
     this._recentZone = null
   }
@@ -331,6 +365,9 @@ export class TargetManager {
     }
 
     if (!this.sessionActive || now < this._nextSpawnAt) return
+    // Gastado el cupo de la ronda no sale ninguna más, aunque sobre sitio: es
+    // toda la diferencia entre «ocho a la vez» y «ocho en total».
+    if (this.roundExhausted) return
 
     // Sale una diana cada `spawnIntervalMs` mientras quede sitio. Con
     // `maxAlive` a 1 el sitio sólo se libera al caer la que hubiera, que es el
@@ -399,6 +436,10 @@ export class TargetManager {
   // --- interno -------------------------------------------------------------
 
   _spawn(camera, now) {
+    // El cupo se comprueba aquí también, y no sólo en `update`: `beginSession`
+    // saca la primera por su cuenta, y un cupo de cero dianas tiene que ser
+    // cero de verdad.
+    if (this.roundExhausted) return
     let instance = null
     for (let i = 0; i < this.instances.length; i++) {
       if (this.instances[i].state === 'free') {
@@ -457,6 +498,9 @@ export class TargetManager {
     instance.group.visible = true
 
     this.aliveCount += 1
+    // El cupo se descuenta **aquí**, con la diana ya puesta: un intento que se
+    // queda sin punto visible se reintenta, y gastaría cupo por no haber salido.
+    this._spawnedThisRound += 1
     this._lastSpawnPosition.copy(_candidate)
     this._hasLastSpawn = true
     this._nextSpawnAt = now + this.spawnIntervalMs

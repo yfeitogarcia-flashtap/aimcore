@@ -27,7 +27,9 @@ import {
   RECOIL_RESET_MS,
   RENDER,
   SECONDARY_WEAPON,
+  DEATHMATCH_DURATIONS,
   SESSION_DURATION_S,
+  SESSION_MODES,
   TARGET,
   WEAPONS,
 } from '../config.js'
@@ -227,9 +229,19 @@ export class Engine {
 
     this.phase = PHASE.IDLE
     this.durationMs = SESSION_DURATION_S * 1000
-    /** Sesión sin cronómetro: no termina sola, la cierra el jugador. */
+    /**
+     * **El modo de la sesión** (`SESSION_MODES`): `timed` es la ronda con
+     * cronómetro —y con explosivo, donde lo haya— y `deathmatch` es el
+     * escenario sin bomba, que dura lo que diga su ajuste.
+     */
+    this.mode = 'timed'
+    this._pendingMode = 'timed'
+    /**
+     * Sesión sin cronómetro: no termina sola, la cierra el jugador. Se deriva
+     * del modo y su duración, y sigue significando **sólo** eso, que es lo que
+     * leen el HUD y el resumen.
+     */
     this.endless = false
-    this._pendingEndless = false
     this.elapsedMs = 0
     this.shots = 0
     this.hits = 0
@@ -274,6 +286,8 @@ export class Engine {
 
     /** Tecla de desactivar mantenida. */
     this._defuseHeld = false
+    /** Marcador abierto: la tecla del marcador está pulsada ahora mismo. */
+    this._scoreboardHeld = false
     /** Desenlace del explosivo de la sesión, o null si no hubo explosivo. */
     this.objectiveOutcome = null
 
@@ -298,6 +312,10 @@ export class Engine {
       /** Hay puntuación por estrellas que enseñar. */
       scoring: false,
       stars: 5,
+      /** Marcador abierto, y lo que enseña. */
+      scoreboard: false,
+      nick: PLAYER.nick,
+      deaths: 0,
       /** Estado del jugador. Sólo tiene sentido con muñecos que disparan. */
       combat: false,
       health: PLAYER.maxHealth,
@@ -458,8 +476,8 @@ export class Engine {
    * cuando llega el evento de pointerlock.
    */
   restart() {
-    // Reiniciar conserva el modo: quien estaba en práctica libre sigue en ella.
-    this._pendingEndless = this.endless
+    // Reiniciar conserva el modo: quien estaba en Deathmatch sigue en él.
+    this._pendingMode = this.mode
     this.controls.reset()
     this.requestLock()
   }
@@ -469,8 +487,8 @@ export class Engine {
    * El modo se guarda aquí y lo recoge `_beginSession` cuando llega el evento
    * de pointerlock, que es cuando la sesión empieza de verdad.
    */
-  requestStart(endless = false) {
-    this._pendingEndless = endless
+  requestStart(mode = 'timed') {
+    this._pendingMode = SESSION_MODES[mode] ? mode : 'timed'
     this.controls.reset()
     this.requestLock()
   }
@@ -543,6 +561,10 @@ export class Engine {
     // Con un cambio de escenario en marcha la siembra la hace `_buildScenario`,
     // ya con el mundo nuevo montado: sembrar aquí usaría los anclajes viejos.
     if (hadSession && !this.transition.active) {
+      // Volver a sembrar es volver a empezar la ronda, así que el cupo se
+      // recalcula: cambiar el selector de simultáneas en la pausa, con el
+      // explosivo puesto, cambia cuántos muñecos quedan por salir.
+      this.targets.setRoundBudget(this.objectiveRunning ? this.targets.maxAlive : 0)
       this.targets.beginSession(this.camera, performance.now())
     }
   }
@@ -586,8 +608,12 @@ export class Engine {
     this._syncMarkers(getSettings())
 
     // Las dianas vivas estaban ancladas a un mundo que ya no existe. Si había
-    // sesión en marcha se vuelve a sembrar desde la posición nueva del jugador.
-    if (hadSession) this.targets.beginSession(this.camera, performance.now())
+    // sesión en marcha se vuelve a sembrar desde la posición nueva del jugador,
+    // con el cupo de ronda recalculado como en cualquier otra resiembra.
+    if (hadSession) {
+      this.targets.setRoundBudget(this.objectiveRunning ? this.targets.maxAlive : 0)
+      this.targets.beginSession(this.camera, performance.now())
+    }
   }
 
   /** El arma vigente, tal cual está descrita en config.js. */
@@ -657,7 +683,7 @@ export class Engine {
    */
   _publishWeapon(settings) {
     // El silenciador sólo cuenta si el arma **vigente** lo admite: la pistola lo
-    // lleva y el Axis-7 no, así que esto cambia al cambiar de ranura.
+    // lleva y el Rift no, así que esto cambia al cambiar de ranura.
     this.suppressorEnabled = settings.suppressor && this.weapon.supportsSuppressor
     this.actionPanel.update({
       weaponLabel: this.weapon.label,
@@ -741,11 +767,22 @@ export class Engine {
     else if (this.status.applying) {
       this._shieldSound = playShieldCharge(this.status.applyLeftMs / 1000)
     }
+    // Salir de la partida cierra el marcador: si no, quedaría abierto sobre el
+    // resumen con los datos de una sesión que ya terminó.
+    if (phase !== PHASE.RUNNING) this._scoreboardHeld = false
     this.callbacks.onPhaseChange?.(phase)
   }
 
   _beginSession() {
-    this.endless = this._pendingEndless
+    this.mode = this._pendingMode
+    // **La duración sale del modo**, y «sin cronómetro» es una duración más, no
+    // un modo aparte: un Deathmatch de cinco minutos y uno sin límite son el
+    // mismo modo con dos relojes. `endless` queda como lo que siempre fue —esta
+    // sesión no acaba sola— para el HUD y el resumen.
+    const deathmatchSeconds = DEATHMATCH_DURATIONS[getSettings().deathmatchDuration].seconds
+    this.endless = this.mode === 'deathmatch' && deathmatchSeconds === 0
+    this.durationMs =
+      (this.mode === 'deathmatch' ? deathmatchSeconds : SESSION_DURATION_S) * 1000
     this.stats.endless = this.endless
     this.elapsedMs = 0
     this.shots = 0
@@ -773,12 +810,19 @@ export class Engine {
     // La primera diana nace en la posición ya reseteada del jugador.
     this.camera.updateMatrixWorld()
     const now = performance.now()
+    // **Con explosivo armado no hay reaparición**: el selector de simultáneas
+    // pasa a decir cuántos muñecos hay *en toda la ronda*, no cuántos a la vez.
+    // Es lo que convierte la ronda en una ronda —se acaban— en vez de en una
+    // fuente infinita mientras corre la cuenta atrás. Se decide **antes** de
+    // sembrar, porque la primera diana sale dentro de `beginSession`.
+    const conExplosivo = this.mode === 'timed' && this.objective.available
+    this.targets.setRoundBudget(conExplosivo ? this.targets.maxAlive : 0)
     this.targets.beginSession(this.camera, now)
     // El explosivo sólo existe con escenario y con cronómetro. En práctica libre
     // no: esa modalidad existe para no terminar sola, y un explosivo que la
     // cerrase a los 45 s rompería su único contrato.
     this.objective.clear()
-    if (!this.endless && this.objective.available) this.objective.begin(now)
+    if (conExplosivo) this.objective.begin(now)
     this._setPhase(PHASE.RUNNING)
   }
 
@@ -811,6 +855,8 @@ export class Engine {
       scoreValue: score ? score.value : 0,
       scoreParts: score ? score.parts : null,
       endless: this.endless,
+      mode: this.mode,
+      deaths: this.status.deaths,
       hits: this.hits,
       misses: this.shots - this.hits,
       shots: this.shots,
@@ -1066,10 +1112,15 @@ export class Engine {
   _onWindowBlur() {
     // Alt-tab con E pulsada dejaría el explosivo desactivándose solo.
     this._defuseHeld = false
+    // Y con TAB pulsada —que es justo la mitad de un alt-tab— dejaría el
+    // marcador abierto para siempre: la tecla se suelta fuera de la ventana y
+    // el `keyup` no llega nunca.
+    this._scoreboardHeld = false
   }
 
   _onKeyUp(event) {
     if (this._isBind('use', event)) this._defuseHeld = false
+    if (this._isBind('scoreboard', event)) this._scoreboardHeld = false
   }
 
   _onKeyDown(event) {
@@ -1078,6 +1129,20 @@ export class Engine {
     if (this._isBind('avatarDebug', event) && !event.repeat) {
       event.preventDefault()
       this._toggleAvatarDebug()
+      return
+    }
+    // **El marcador se abre mientras se mantenga la tecla.** Va antes del filtro
+    // de `repeat` porque el navegador repite TAB mientras está pulsada y cada
+    // repetición hay que cancelarla también: sin `preventDefault` en todas, el
+    // foco se pasea por la página por debajo del juego.
+    if (this._isBind('scoreboard', event)) {
+      // **Fuera de la partida, TAB es del navegador.** En la pausa y en
+      // opciones es como se recorre un panel con el teclado, y quedárnosla ahí
+      // dejaría los ajustes sin navegación. Sólo se intercepta jugando, que es
+      // donde no hay nada que enfocar y sí un marcador que enseñar.
+      if (this.phase !== PHASE.RUNNING) return
+      event.preventDefault()
+      this._scoreboardHeld = true
       return
     }
     if (this.phase !== PHASE.RUNNING || !this.isLocked || event.repeat) return
@@ -1587,6 +1652,12 @@ export class Engine {
     stats.misses = this.shots - this.hits
     stats.kills = this.kills
     stats.accuracy = this.shots > 0 ? (this.hits / this.shots) * 100 : 0
+    // **El marcador**, con los datos de la sesión y no con una copia aparte:
+    // bajas y precisión ya estaban aquí, y muertes es el único dato nuevo.
+    // Sólo se abre jugando; en pausa y en el resumen hay paneles de verdad.
+    stats.scoreboard = this._scoreboardHeld && this.phase === PHASE.RUNNING
+    stats.deaths = this.status.deaths
+    stats.nick = PLAYER.nick
     // Estrellas en vivo: sólo hay puntuación donde hay objetivo que puntuar.
     stats.scoring = this.objective.active
     if (stats.scoring) stats.stars = this._currentScore().stars

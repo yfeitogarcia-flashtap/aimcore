@@ -27,17 +27,24 @@ const SOURCE_DIR = resolve(ROOT, 'Reference/Weapons')
 const OUTPUT = resolve(ROOT, 'src/ui/weaponPaths.js')
 
 /**
- * Cada entrada es una silueta a vectorizar. `matchHeightOf` escala el trazado
- * para que su altura coincida con la de otra: las dos variantes de Scalar-2
- * son la misma pistola fotografiada aparte, así que sin esto el interruptor
- * del silenciador la cambiaría de tamaño.
+ * Cada entrada es una silueta a vectorizar.
+ *
+ * **La convención es `<arma>.png` y `ghost-<arma>.png`**: la segunda es la misma
+ * arma con silenciador. Las tres la tienen desde la vuelta 41, y por eso las
+ * seis entradas salen de un bucle en vez de escribirse a mano: añadir un arma
+ * es añadir su clave a `ARSENAL`, no cuatro líneas aquí.
+ *
+ * `matchHeightOf` escala el trazado para que su altura coincida con la de otra:
+ * las dos variantes de un arma son la misma arma fotografiada aparte, así que
+ * sin esto el interruptor del silenciador la cambiaría de tamaño. El silenciador
+ * **alarga** el arma, no la engorda, y lo que tiene que cuadrar entre las dos
+ * fotos es la altura.
  */
-const WEAPONS = [
-  { key: 'axis-7', file: 'axis-7.png' },
-  { key: 'vertex-9', file: 'vertex-9.png' },
-  { key: 'scalar-2', file: 'scalar-2.png' },
-  { key: 'scalar-2-plain', file: 'scalar-2-nonsilenced.png', matchHeightOf: 'scalar-2' },
-]
+const ARSENAL = ['pulse', 'rift', 'volt']
+const WEAPONS = ARSENAL.flatMap((key) => [
+  { key, file: `${key}.png` },
+  { key: `ghost-${key}`, file: `ghost-${key}.png`, matchHeightOf: key },
+])
 
 const traced = {}
 for (const { key, file, matchHeightOf } of WEAPONS) {
@@ -59,7 +66,7 @@ for (const { key, file, matchHeightOf } of WEAPONS) {
   console.log(`${key.padEnd(14)} ${d.length} caracteres | caja ${Math.round(bounds.width)}x${Math.round(bounds.height)} px`)
 }
 
-// Un único encuadre para las cuatro, con margen: así conservan su tamaño
+// Un único encuadre para todas, con margen: así conservan su tamaño
 // relativo —una pistola no se ve tan larga como un fusil— y se centran solas.
 const PADDING = 1.06
 const frameWidth = Math.max(...Object.values(traced).map((t) => t.bounds.width)) * PADDING
@@ -84,11 +91,12 @@ const file = `/**
  * \`Reference/Weapons/\`. La máscara sale del canal alfa, así que el trazado es
  * el del recorte y no una interpretación de la forma.
  *
- * Las cuatro entradas comparten el tamaño de \`viewBox\` y sólo cambian de
+ * Todas las entradas comparten el tamaño de \`viewBox\` y sólo cambian de
  * origen, de modo que se dibujan a la misma escala y cada una queda centrada.
- * Las dos variantes de Scalar-2 salen de fotos distintas de la misma pistola,
- * así que la versión sin silenciador se escala para que su altura coincida con
- * la silenciada y el interruptor no la cambie de tamaño.
+ * Cada arma tiene dos: \`<arma>\` y \`ghost-<arma>\`, la misma arma con
+ * silenciador. Salen de fotos distintas, así que la silenciada se escala para
+ * que su altura coincida con la normal y el interruptor no cambie de tamaño el
+ * arma — lo que tiene que crecer es el cañón, no el arma entera.
  */
 export const WEAPON_PATHS = {
 ${entries.join('\n')}

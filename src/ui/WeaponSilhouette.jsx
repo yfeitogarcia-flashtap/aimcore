@@ -16,18 +16,19 @@ import { WEAPON_PATHS } from './weaponPaths.js'
  */
 
 /**
- * Armas cuyo trazado base corresponde a una variante concreta. La referencia
- * de Scalar-2 está fotografiada **con** silenciador, así que el trazado real
- * es el silenciado y la versión corta es la que se deriva de él.
+ * **Con silenciador se dibuja otra arma, no la misma con un tubo pegado.**
+ * Cada arma tiene sus dos referencias fotografiadas aparte —`<arma>` y
+ * `ghost-<arma>`— y el trazado sale de la que toque. La regla es de una línea y
+ * vale para las tres desde la vuelta 41; antes sólo la pistola tenía las dos, y
+ * había que declarar a mano cuál era cuál.
+ *
+ * Si algún día un arma no trae su variante, se cae a la normal en vez de no
+ * dibujar nada: perder la silueta entera por no tener la foto silenciada sería
+ * quitar información en vez de matizarla.
  */
-const VARIANTS = {
-  'scalar-2': { suppressed: 'scalar-2', plain: 'scalar-2-plain' },
-}
-
 function resolvePathKey(weaponKey, suppressed) {
-  const variant = VARIANTS[weaponKey]
-  if (!variant) return weaponKey
-  return suppressed ? variant.suppressed : variant.plain
+  if (!suppressed) return weaponKey
+  return WEAPON_PATHS[`ghost-${weaponKey}`] ? `ghost-${weaponKey}` : weaponKey
 }
 
 /**

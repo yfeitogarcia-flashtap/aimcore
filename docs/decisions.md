@@ -327,12 +327,12 @@ es el que importa; el identificador interno es un detalle de implementación.
 
 ### 7.1 Tres arquetipos, no tres estadísticas
 
-Scalar-2 (semi, 500 RPM, sin apenas recoil), Axis-7 (auto, 600 RPM, recoil
-vertical marcado) y Vertex-9 (auto, 800 RPM, techo más bajo pero más bamboleo
+Pulse (semi, 500 RPM, sin apenas recoil), Rift (auto, 600 RPM, recoil
+vertical marcado) y Volt (auto, 800 RPM, techo más bajo pero más bamboleo
 lateral). Cada una entrena algo distinto: precisión por disparo, control de
 patrón vertical, y control de dispersión a alta cadencia.
 
-Scalar-2 es la predeterminada porque es la que menos interfiere con la medida de
+Pulse es la predeterminada porque es la que menos interfiere con la medida de
 la puntería pura: el recoil mínimo hace que un fallo sea del jugador, no del
 arma.
 
@@ -500,7 +500,7 @@ arma) y **se reportó la limitación explícitamente** en lugar de presentarlas
 como trazadas de las referencias.
 
 Fue lo correcto y se demostró a mitad de ronda: el usuario subió `Reference/`
-mientras se trabajaba, y al mirar las imágenes reales resultó que **Scalar-2 es
+mientras se trabajaba, y al mirar las imágenes reales resultó que **Pulse es
 una pistola, no una carabina**. Todo el trazado por arquetipo estaba equivocado
 en su premisa. Si se hubiera presentado como fiel a la referencia, el error
 habría pasado por bueno.
@@ -536,8 +536,8 @@ cambia una referencia — que es casi nunca. Generar en cada build añadiría
 Las PNG de referencia **nunca entran en el build**. Son material de trazado, no
 assets. Se verificó que no aparecen en `dist/`.
 
-**Normalizar el tamaño entre variantes:** `scalar-2-plain` se escala por
-`matchHeightOf: 'scalar-2'` (factor 0.605) porque las dos fotos de referencia
+**Normalizar el tamaño entre variantes:** `pulse-plain` se escala por
+`matchHeightOf: 'pulse'` (factor 0.605) porque las dos fotos de referencia
 estaban tomadas a escalas distintas. Sin esto, activar el supresor cambiaría el
 tamaño de la pistola en el HUD, que se lee como un fallo de renderizado.
 
@@ -617,9 +617,9 @@ pegue a la cara.
 
 ### 12.5 La variante sin supresor se traza, no se deriva
 
-Hasta esta ronda, la Scalar-2 sin supresor se obtenía **acortando el cañón** del
+Hasta esta ronda, la Pulse sin supresor se obtenía **acortando el cañón** del
 trazado con supresor de forma proporcional. Al llegar una referencia real
-(`scalar-2-nonsilenced.png`) se retrazó desde cero.
+(`pulse-nonsilenced.png`) se retrazó desde cero.
 
 Acortar un trazo es reinterpretar la forma, que es exactamente lo que el
 encargo de la ronda 11 prohibía ("usa el contorno que salga del algoritmo"). La
@@ -1371,12 +1371,12 @@ dentro de un ancestro transformado lo ancla a ese ancestro (§9.2).
 ### 21.1 Cada arma se juzga contra lo que es razonable en ella
 
 La precisión se medía en bruto, y eso **castigaba elegir el arma difícil**: una
-Vertex-9 a 800 RPM con bamboleo lateral no puede acertar como una Scalar-2 sin
+Volt a 800 RPM con bamboleo lateral no puede acertar como una Pulse sin
 retroceso, así que la mejor estrategia para puntuar era coger siempre la fácil.
 
 Ahora cada arma lleva un `precisionTarget` —lo que se considera dominarla— y el
 componente vale `min(1, bruto / objetivo)`. Con 0.85 / 0.5 / 0.4, un 40% en bruto
-da 0.47 con la Scalar-2, 0.80 con la Axis-7 y 1.00 con la Vertex-9. El **peso 0.5
+da 0.47 con la Pulse, 0.80 con la Rift y 1.00 con la Volt. El **peso 0.5
 no se toca**: lo que cambia es la escala del componente, no cuánto pesa.
 
 Dos detalles:
@@ -2369,7 +2369,7 @@ datos:
 - El clic seco **no es flojo**: pico 0.0993 contra 0.0719 de un disparo, o sea
   **2.8 dB por encima**. El volumen nunca fue el problema.
 - Tras vaciar el cargador, tres clicks seguidos daban **0.0000**. Silencio
-  absoluto, con Scalar-2, Axis-7 y Vertex-9.
+  absoluto, con Pulse, Rift y Volt.
 
 La causa no era una regresión: nunca se pudo oír. La última bala llama a
 `_consumeAmmo`, que **arranca la recarga sola**, y la condición del clic pedía
@@ -3567,7 +3567,7 @@ Tres decisiones dentro:
    ranura, cambia sola en los tres sitios.
 2. **El catálogo del ajuste se estrecha, y eso borra el valor guardado.** El
    ajuste `weapon` se valida ahora contra `PRIMARY_WEAPONS`, así que un
-   `weapon: 'scalar-2'` guardado antes de esta vuelta cae al valor de fábrica en
+   `weapon: 'pulse'` guardado antes de esta vuelta cae al valor de fábrica en
    el siguiente saneado. Es exactamente lo que hace el saneado con cualquier
    clave obsoleta desde la vuelta 8, y es deliberado: la alternativa era aceptar
    como principal un arma que ya llevas encima.
@@ -3740,6 +3740,159 @@ caído es cero —los mismos cinco vértices— y lo único que añade de frente
 la punta asoma por debajo del rectángulo de la cola, que es un tercer indicio
 pequeño y gratis.
 
+## Ronda 41 — Nombres propios: el arsenal, el modo y el marcador
+
+### 41.1 El arsenal se renombra, y no cambia ni un número
+
+**Scalar-2 → Pulse, Axis-7 → Rift, Vertex-9 → Volt**, con arte nuevo. Lo
+que **no** cambia: cadencias, cargadores, recargas, objetivos de precisión,
+absorción de escudo y patrones de retroceso. Estaban calibrados y un renombrado
+no es una recalibración.
+
+Tres cosas del cambio que sí son decisiones:
+
+- **La convención de las referencias es `<arma>.png` y `ghost-<arma>.png`.** La
+  segunda es la misma arma con silenciador, y desde esta vuelta la tienen las
+  tres: `trace-weapons.mjs` saca las seis siluetas de un bucle sobre el arsenal
+  en vez de cuatro entradas escritas a mano, y `WeaponSilhouette` elige con una
+  línea en vez de una tabla de variantes. Añadir un arma es añadir su clave.
+- **Rift pasa a admitir silenciador**, que antes era el único que no. No es un
+  cambio de equilibrio disfrazado: el motivo por el que no lo admitía era que no
+  había foto de esa variante, y ahora la hay. Con eso, el aviso de «esta arma no
+  lo admite» del panel deja de salir nunca — el `if` se queda porque lo decide el
+  dato (`supportsSuppressor`), no la lista de armas de hoy.
+- **Los nombres viejos guardados se traducen, no se tiran.** La clave del arma
+  está en el `localStorage` de quien ya jugó, y el saneado, que no la conoce, la
+  mandaría al valor de fábrica: quien tuviera el Volt abriría el juego con el
+  Rift sin explicación. `LEGACY_WEAPON_KEYS` traduce antes de validar. Es una
+  tabla de renombrado, no un catálogo: no añade opciones, dice cómo se llamaba
+  cada una. La clave de la pistola no está porque desde la vuelta 39 ya no era un
+  valor válido de ese ajuste, y ésa sí cae a fábrica como cualquier clave
+  obsoleta.
+
+**Nota para leer las entradas anteriores:** el resto de este documento usa ya los
+nombres nuevos, aunque cuente vueltas en las que las armas se llamaban de otra
+forma. Se prefirió que un nombre se pueda buscar y encontrar a conservar el que
+tenía el día que se escribió cada entrada; la equivalencia es la de arriba.
+
+### 41.2 El contorno de la brújula: lo que se puede afinar, y lo que no
+
+**En WebGL el grosor de una línea no se toca.** `LineBasicMaterial.linewidth` se
+ignora en todas las plataformas relevantes y cada línea sale de un píxel. Así que
+«contorno más fino» sólo puede significar **menos opaco**, y eso sí se puede
+medir. El barrido (`br41.mjs`) mide las dos cifras que se pelean sobre los
+mismos píxeles, a la vez:
+
+| opacidad | px del marcador (12 u) | filo vs `alta` | filo vs `bloque` |
+|---|---|---|---|
+| 0.00 (sin contorno) | 117 | 2.07 | 1.23 |
+| 0.35 | 117 | 2.31 | 5.88 |
+| **0.50 (elegido)** | **116** | **2.57** | **6.54** |
+| 0.65 | 116 | 2.66 | 6.77 |
+| 0.80 | 104 | 2.69 | 6.84 |
+| 1.00 | 75 | 2.69 | 6.84 |
+
+**Sí hay punto intermedio, y está en la mitad.** A 0.5 el marcador conserva 116
+de los 117 píxeles que tenía sin contorno —el negro entero dejaba 75, por debajo
+del listón de 80 de la vuelta 37— y se lleva el **96%** del filo que compra el
+negro contra la pieza más clara del plano. La curva es así de asimétrica porque
+lo que estaba haciendo el contorno opaco era **borrar el anillo exterior**, que
+son píxeles de antialias a medio cubrir: a media opacidad vuelven a ser verde a
+medias en vez de desaparecer, y el filo apenas lo nota.
+
+**Y una cifra de la vuelta 40 que esto corrige.** Allí se dijo que el negro daba
+7.46 de contraste contra el gris `alta`. Ése es el contraste de los dos colores
+sobre el papel; **medido en pantalla son 2.69**, porque una línea de un píxel con
+antialias nunca llega a pintarse negra del todo. Contra ese gris concreto, ninguna
+opacidad cruza el 3.0 de la norma: el contorno ayuda, pero no lo arregla. Contra
+`bloque`, el más claro, sí de sobra.
+
+Con un criterio más estricto —contar sólo píxeles con 3:1 contra lo que tienen
+detrás— el resultado es otro y merece quedar escrito: ahí **cualquier** contorno
+cuesta lo mismo (117 → 74) y ninguna opacidad lo recupera. O sea que el
+intermedio existe bajo el criterio con el que se fijó el listón de 80 px, y no
+bajo uno más duro. Se elige 0.5 y se anota de dónde sale cada número.
+
+### 41.3 La ronda se acaba: sin reaparición con el explosivo armado
+
+Con la bomba puesta, el selector de simultáneas pasa a decir **cuántos muñecos
+hay en toda la ronda**, no cuántos a la vez. Los dos números siguen existiendo y
+miden cosas distintas —`maxAlive` es el techo de concurrencia, `roundBudget` el
+total— pero con explosivo los fija el mismo selector.
+
+El porqué es de diseño, no técnico: una fuente infinita de muñecos mientras corre
+una cuenta atrás convierte la ronda en una carrera contra el respawn. Con cupo,
+limpiar el mapa es una forma legítima de llegar a la bomba, y la decisión de si
+merece la pena el tiempo que cuesta vuelve a ser del jugador.
+
+Dos detalles de implementación que evitan errores conocidos:
+
+- **El cupo se descuenta cuando la diana sale, no cuando se intenta.** Un intento
+  que no encuentra punto visible se reintenta (`pointRetryMs`), y contarlo
+  gastaría ronda sin que hubiera salido nadie.
+- **Se comprueba también dentro de `_spawn`**, y no sólo en el bucle: la primera
+  diana la siembra `beginSession` por su cuenta, y un cupo de cero tiene que ser
+  cero de verdad.
+
+### 41.4 Deathmatch, y por qué ahí no hay estrellas
+
+«Práctica libre + escenario, sin bomba» pasa a llamarse **Deathmatch** en la
+interfaz, y sólo donde lo es: en la sala vacía, sin cobertura ni muñecos que
+disparen, el segundo botón sigue siendo práctica libre. El rótulo sale del
+escenario elegido, no de un interruptor aparte.
+
+**El modo deja de ser un booleano.** Antes bastaba `endless` porque «sin
+cronómetro» y «sin explosivo» eran la misma cosa; dejaron de serlo el día que un
+Deathmatch pudo durar cinco minutos. Ahora hay `mode` (`timed` / `deathmatch`) y
+`endless` queda como lo que siempre fue —**esta sesión no acaba sola**—, que es lo
+que leen el HUD y el resumen. Un Deathmatch con cronómetro sigue sin bomba: el
+modo no es «tener reloj».
+
+**Y no lleva estrellas, a propósito.** La recomendación, con su razonamiento:
+
+1. **Las estrellas puntúan cumplir un objetivo.** La mitad de la nota es el
+   tiempo —`SCORING.weights.time`— y ese tiempo se mide contra lo que tardaste en
+   **desactivar**. Sin bomba no hay reloj contra el que medir, así que la mitad de
+   la fórmula o se cae o se inventa.
+2. **Una nota sin condición de victoria premia jugar más rato.** En un modo sin
+   límite, cualquier métrica acumulativa —bajas, aciertos— sube por estar ahí. Y
+   las normalizadas (precisión, KD) ya se leen solas: ponerles cinco cortes
+   encima no añade información, añade una capa que interpretar.
+3. **El listón sería falso.** Los cortes de `starThresholds` están calibrados
+   contra una ronda de 45 segundos con una bomba. Reusarlos en un Deathmatch de
+   diez minutos diría «cinco estrellas» por algo que no se ha medido nunca.
+
+Así que en Deathmatch el resumen enseña **bajas, muertes, KD y precisión**, que es
+lo que pasó, y las estrellas se quedan donde tienen sentido. Si algún día el modo
+tiene condición de victoria —un límite de bajas, por ejemplo— vuelve a haber
+contra qué medir y se revisa.
+
+### 41.5 El marcador de TAB, y la comprobación que no se salta
+
+Manteniendo TAB se abre un marcador con nick, bajas, muertes, precisión y KD, y se
+cierra al soltarla. Tres decisiones:
+
+- **Se comprobó que TAB se puede interceptar, jugando.** Es la misma pregunta que
+  hundió a Ctrl+W en la vuelta 27: hay teclas que el navegador resuelve **antes**
+  de que el evento llegue a la página, y con ésas `preventDefault()` no sirve de
+  nada. Así que no se supuso: `marcador41.mjs` pulsa TAB con el teclado real del
+  navegador —un `KeyboardEvent` fabricado no ejecuta la acción por defecto y no
+  probaría nada— con dos botones enfocables puestos en la página a propósito.
+  Resultado: fuera de la partida TAB mueve el foco (cebo1 → cebo2) y jugando
+  **no se mueve**, ni con la tecla mantenida, que repite el evento.
+- **Fuera de la partida, TAB es del navegador.** En la pausa y en opciones es
+  como se recorre un panel con el teclado; quedárnosla ahí dejaría los ajustes
+  sin navegación. Sólo se intercepta jugando.
+- **El layout está hecho para más filas, pero no hay filas falsas.** Es una
+  rejilla de cinco columnas con cabecera y una fila —la tuya, marcada con el
+  verde de la marca—. El día que haya con quién compararse, una fila más es un
+  div más. Hoy no hay cuentas ni multijugador, y una lista de rivales vacía o
+  inventada diría que sí. El nick es un placeholder (`VK-00`) con el mismo
+  vocabulario que los muñecos (`VK-01`), para que se note que ahí va un nombre.
+
+Y el marcador se cierra solo al salir de la partida y al perder el foco de la
+ventana: alt-tab es literalmente medio TAB, y el `keyup` no llega nunca.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
@@ -3796,7 +3949,7 @@ Durante la suite de regresión (unos 25 scripts de Playwright contra Chromium
 real, ejecutados tras cada ronda), la mayoría de fallos no eran del producto:
 aserciones que comparaban recoil total sin normalizar por número de disparos;
 localizadores ambiguos tras añadir botones; tests disparando más rápido que el
-tope de 500 RPM de la Scalar-2; tests gastando más balas que el cargador (se
+tope de 500 RPM de la Pulse; tests gastando más balas que el cargador (se
 neutralizó `_consumeAmmo` en los tests de recoil y dispersión); un `airborne =
 true` forzado a mano que la gravedad limpiaba al frame siguiente; y un test de
 impactos que se alejaba del spawn una vez el movimiento cubrió la sala entera.

@@ -7,8 +7,10 @@ import {
   MOVEMENT,
   SCENARIOS,
   SETTINGS,
+  scenarioHasCover,
   SIMULTANEOUS_TARGETS,
   TARGET_TYPES,
+  DEATHMATCH_DURATIONS,
   PRIMARY_WEAPONS,
   SECONDARY_WEAPON,
   WEAPONS,
@@ -151,6 +153,20 @@ const FIRE_MODES = { semi: 'Semiautomática', auto: 'Automática' }
 function weaponHint(weaponKey) {
   const weapon = WEAPONS[weaponKey]
   return `${FIRE_MODES[weapon.mode]} · ${weapon.rpm} RPM · ${weapon.character}`
+}
+
+/**
+ * Qué significa la duración con el escenario que haya elegido: en la sala vacía
+ * el segundo botón sigue siendo práctica libre, no un Deathmatch.
+ */
+function deathmatchHint(settings) {
+  const duration = DEATHMATCH_DURATIONS[settings.deathmatchDuration]
+  if (!scenarioHasCover(settings.scenario)) {
+    return 'En la sala vacía el segundo modo es práctica libre y no termina solo.'
+  }
+  return duration.seconds > 0
+    ? `El Deathmatch acaba a los ${duration.label}. La ronda con explosivo no usa esto: la mide la bomba.`
+    : 'El Deathmatch no acaba solo; lo cierras tú. La ronda con explosivo la mide la bomba.'
 }
 
 /** Explica de dónde salen las dianas en el escenario elegido. */
@@ -334,12 +350,11 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
       </div>
 
       {/*
-        **El interruptor se queda siempre**, porque desde la vuelta 39 siempre
-        hay un arma encima que lo admite: la pistola. Lo que cambia es el aviso
-        —el ajuste se aplica al arma **que lleves en la mano**, así que con una
-        principal que no lo admite sólo silencia la pistola—. Antes la fila
-        desaparecía con el Axis-7, y eso dejaría sin silenciador a un arma que sí
-        puede llevarlo.
+        **El interruptor se queda siempre.** Desde la vuelta 41 lo admiten las
+        tres —cada una trae su `ghost-<arma>`—, así que el aviso de «ésta no lo
+        admite» ya no sale nunca; el `if` se queda porque lo decide el dato
+        (`supportsSuppressor`) y no la lista de armas de hoy. El ajuste se aplica
+        al arma **que lleves en la mano**, no a la elegida en el desplegable.
       */}
       <ToggleRow
         setting="suppressor"
@@ -390,6 +405,18 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
             ? 'Una sola diana viva: la siguiente espera a que caiga la actual.'
             : `Hasta ${SIMULTANEOUS_TARGETS[settings.simultaneousTargets].count} dianas a la vez, saliendo al ritmo de la cadencia.`
         }
+      />
+
+      {/* La duración sólo manda en Deathmatch: la ronda con explosivo la mide la
+          bomba y el gridshot de la sala vacía tiene la suya. La fila se queda
+          siempre para no ser un ajuste que aparece y desaparece, y el aviso dice
+          a qué se aplica. */}
+      <SegmentedRow
+        setting="deathmatchDuration"
+        catalog={DEATHMATCH_DURATIONS}
+        value={settings.deathmatchDuration}
+        onChange={onChange}
+        hint={deathmatchHint(settings)}
       />
 
       <SegmentedRow

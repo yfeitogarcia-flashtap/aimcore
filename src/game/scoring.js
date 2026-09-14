@@ -14,8 +14,8 @@
  * ha hecho otra cosa.
  *
  * La precisión se mide **contra el objetivo del arma** (`precisionTarget`), no
- * en bruto. Una Vertex-9 a 800 RPM con bamboleo lateral no puede acertar como
- * una Scalar-2 sin retroceso, y puntuarlas con el mismo listón castigaría elegir
+ * en bruto. Una Volt a 800 RPM con bamboleo lateral no puede acertar como
+ * una Pulse sin retroceso, y puntuarlas con el mismo listón castigaría elegir
  * el arma difícil. Normalizando, alcanzar el objetivo de cada una da la máxima
  * en este componente y el peso 0.5 no se toca.
  */

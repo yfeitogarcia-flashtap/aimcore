@@ -11,7 +11,9 @@
  */
 
 import {
+  DEATHMATCH_DURATIONS,
   ENEMY_DIFFICULTIES,
+  LEGACY_WEAPON_KEYS,
   FRAME_LIMITS,
   SCENARIOS,
   PRIMARY_WEAPONS,
@@ -31,10 +33,11 @@ const NUMERIC_KEYS = Object.keys(SETTINGS).filter((key) => SETTINGS[key].min !==
  */
 const CATALOGS = {
   scenario: SCENARIOS,
+  deathmatchDuration: DEATHMATCH_DURATIONS,
   enemyDifficulty: ENEMY_DIFFICULTIES,
   targetType: TARGET_TYPES,
   // **El catálogo del arma es el de las principales, no el de todas.** La
-  // pistola se lleva siempre y no se elige: un `weapon: 'scalar-2'` guardado de
+  // pistola se lleva siempre y no se elige: un `weapon: 'pulse'` guardado de
   // antes de la vuelta 39 no es una opción válida y cae al valor de fábrica,
   // que es exactamente lo que hace el saneado con cualquier clave obsoleta.
   weapon: PRIMARY_WEAPONS,
@@ -76,7 +79,13 @@ export function sanitizeSettings(raw) {
     if (typeof raw[key] === 'boolean') result[key] = raw[key]
   }
   for (const key of Object.keys(CATALOGS)) {
-    if (Object.prototype.hasOwnProperty.call(CATALOGS[key], raw[key])) result[key] = raw[key]
+    // **Los renombrados se traducen antes de comprobar el catálogo.** Un ajuste
+    // guardado con el nombre viejo de un arma no es un valor corrupto: es el
+    // mismo arma con otro nombre, y tirarlo a fábrica sería cambiarle el arma a
+    // quien ya la tenía elegida. Lo que no esté en la tabla sigue el camino de
+    // siempre: si el catálogo no lo conoce, cae al valor por defecto.
+    const value = key === 'weapon' ? LEGACY_WEAPON_KEYS[raw[key]] ?? raw[key] : raw[key]
+    if (Object.prototype.hasOwnProperty.call(CATALOGS[key], value)) result[key] = value
   }
   return result
 }

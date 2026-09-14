@@ -286,6 +286,96 @@ body {
   );
 }
 
+/**
+ * **El marcador (TAB).** Superpuesto y centrado, con la estética de los paneles
+ * —borde fino, fondo casi negro, monoespaciada y versalitas— porque es interfaz
+ * de menú metida en la partida, no HUD.
+ *
+ * El layout es una **rejilla de cinco columnas**: el nick a la izquierda y las
+ * cuatro cifras a la derecha, todas con el mismo ancho para que cuadren en
+ * columna. Una fila más —el día que haya con quién compararse— es un div más y
+ * no tocar nada de esto.
+ */
+.scoreboard {
+  z-index: 4;
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  /* Oscurece lo justo para que el panel despegue sin tapar la partida: se abre
+     en mitad de un tiroteo y hay que seguir viendo de dónde vienen. */
+  background: rgba(10, 10, 10, 0.45);
+}
+
+.scoreboard__panel {
+  min-width: 520px;
+  padding: 20px 24px;
+  border: 1px solid var(--panel-border);
+  background: rgba(10, 10, 10, 0.92);
+}
+
+.scoreboard__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 14px;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--panel-border);
+}
+
+.scoreboard__title {
+  font-size: 13px;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.scoreboard__mode {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.scoreboard__row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1fr) repeat(4, 84px);
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-soft);
+}
+
+/* Las cifras van alineadas a la derecha y el nick a la izquierda: es lo que
+   hace que una columna de números se pueda comparar de un vistazo. */
+.scoreboard__row > span + span {
+  text-align: right;
+}
+
+.scoreboard__row--head {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* La fila de quien juega, marcada con el verde de la marca en el filo: en una
+   lista de varios, la tuya se encuentra sin leerla. */
+.scoreboard__row--you {
+  border-left: 2px solid var(--action-color);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text-primary);
+}
+
+.scoreboard__nick {
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
 .hud {
   z-index: 2;
   position: absolute;

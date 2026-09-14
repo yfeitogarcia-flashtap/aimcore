@@ -29,6 +29,7 @@ Abre la URL que imprime Vite, haz click en el canvas y a disparar.
 - **R**: recargar. Funciona también con el cargador a medias.
 - **1** saca el arma principal y **2** la pistola, que se lleva siempre. **Q**
   alterna entre las dos.
+- **TAB** (mantenida): marcador de la sesión — bajas, muertes, precisión y KD.
 - **B** conmuta el silenciador, **E** es la acción contextual y **4** aplica una
   carga de escudo. Todo esto se reasigna — ver *Controles reasignables*.
 - **Escape**: suelta el ratón y **pausa** el cronómetro. En la pantalla de pausa
@@ -82,6 +83,7 @@ captura la siguiente pulsación. Cada acción tiene su botón **por defecto**.
 | Movimiento | adelante, atrás, izquierda, derecha, saltar, agacharse, caminar |
 | Combate | disparar, recargar, cambiar de arma, silenciador, **usar / artilugio** |
 | Equipo | **arma principal (1)**, **pistola (2)**, cuerpo a cuerpo (3), escudo (4), artilugio (5), arrojadizo (G) |
+| Interfaz | **marcador (TAB)** |
 | Depuración | vista del avatar (F3) |
 
 De las de **Equipo**, la **1 y la 2 equipan** cada una su ranura, la **4 aplica
@@ -99,7 +101,10 @@ Cuatro reglas que el sistema no se salta:
 
 - **Dos acciones no comparten tecla.** Ni reasignando, ni editando localStorage.
 - **Nada va en Ctrl, Alt o Meta**, ni suelto ni en combinación: **Ctrl+W cierra
-  la pestaña** y el navegador lo resuelve antes que la página.
+  la pestaña** y el navegador lo resuelve antes que la página. **TAB sí se
+  puede**, y se comprobó pulsándola de verdad en vez de suponerlo: jugando no
+  mueve el foco, ni con la tecla mantenida. Fuera de la partida se deja pasar,
+  porque es como se recorren los paneles con el teclado.
 - **Escape no se reasigna**: es la pausa. El panel lo dice.
 - Lo guardado se **sanea** al cargar: un bind corrupto, desconocido o repetido
   cae a su valor de fábrica.
@@ -129,8 +134,8 @@ vacío: hoy no hay ni un mp3, así que las tres armas suenan sintetizadas.
 Para poner una muestra real:
 
 1. Deja el fichero en `Reference/Audio/weapons/` con el nombre de la **clave**
-   del arma —`axis-7.mp3`, `scalar-2.mp3`, `vertex-9.mp3`—, y opcionalmente su
-   variante con supresor: `scalar-2-suppressed.mp3`.
+   del arma —`rift.mp3`, `pulse.mp3`, `volt.mp3`—, y opcionalmente su
+   variante con supresor: `pulse-suppressed.mp3`.
 2. `npm run audio:weapons`. Copia lo que haya a `public/audio/weapons/` y escribe
    el manifiesto `src/audio/weaponSamples.js`. Es un paso manual, como los tres
    scripts de trazado: `Reference/` no se sirve nunca.
@@ -206,14 +211,33 @@ que no existen.
 Dos botones en la pantalla de inicio:
 
 - **Jugar ahora** — sesión cronometrada de `SESSION_DURATION_S`, que termina
-  sola y saca el resumen.
-- **Práctica libre ∞** — sin cronómetro. El HUD pone `∞` donde iría la cuenta
-  atrás y la sesión no acaba nunca por su cuenta: se cierra con **Finalizar
-  sesión** desde el menú de pausa, que saca el mismo resumen. Ahí el ritmo
-  (dianas/s) se mide contra el tiempo realmente jugado.
+  sola y saca el resumen. Con escenario, es **la ronda del explosivo**: la bomba
+  lleva el reloj y los muñecos **no reaparecen** (ver más abajo).
+- **Deathmatch** — el escenario **sin bomba**. Dura lo que diga su ajuste: sin
+  límite (lo de siempre, con `∞` en el HUD y cierre manual desde la pausa) o 3, 5
+  o 10 minutos. En la sala vacía este botón se sigue llamando **Práctica libre
+  ∞**: sin cobertura ni muñecos que disparen no hay deathmatch que valga.
+
+En Deathmatch el resumen enseña **bajas, muertes, KD y precisión**, y **no hay
+estrellas**: las estrellas puntúan cumplir un objetivo —la mitad de la nota es
+lo que tardas en desactivar— y sin bomba no hay contra qué medir. El porqué
+completo está en `docs/decisions.md` §41.4.
 
 **Reiniciar** conserva el modo; **Volver al inicio**, en el resumen, devuelve a
 la pantalla de selección.
+
+## Marcador (TAB)
+
+Manteniendo **TAB** se abre un panel con **nick, bajas, muertes, precisión y KD**
+de la sesión en curso, y se cierra al soltarla. Sólo se abre jugando: en la pausa
+y en opciones, TAB sigue siendo del navegador para recorrer los paneles con el
+teclado.
+
+El nick es un **placeholder** (`VK-00`, el mismo vocabulario que los `VK-01` de
+los muñecos): no hay cuentas ni nombres configurables todavía. Y hay **una sola
+fila**, la tuya. El layout es una rejilla preparada para más —el día que haya con
+quién compararse, una fila es un div más— pero una lista de rivales vacía o
+inventada diría que existe algo que no existe.
 
 ## Variantes de puntería
 
@@ -369,7 +393,7 @@ blancos quietos. Cuando uno te ve y estás dentro de su rango de enganche (24 u)
 abre fuego.
 
 Dispara con **el mismo modelo de arma que tú**: cadencia, cargador, recarga y
-sonido salen de `WEAPONS` —hoy lleva la Axis-7— así que no hay una segunda idea
+sonido salen de `WEAPONS` —hoy lleva la Rift— así que no hay una segunda idea
 de lo que es un arma. Lo único suyo es la puntería: apunta al centro de tu cuerpo
 y desvía el disparo dentro de un cono.
 
@@ -468,8 +492,8 @@ piernas 34— con el cuerpo escalado para el jugador, que a diferencia de un mu�
 tiene que cruzar el mapa bajo fuego. La cabeza **no** se escala: vale una vida.
 
 **Escudo, hasta 150 en tres segmentos de 50.** Cubre el cuerpo y absorbe un
-porcentaje fijo según el arma que te dispara (Scalar-2 50%, Axis-7 45%,
-Vertex-9 35%). Todavía no varía con la distancia.
+porcentaje fijo según el arma que te dispara (Pulse 50%, Rift 45%,
+Volt 35%). Todavía no varía con la distancia.
 
 Se aplican de una en una con **4**: la carga tarda **dos segundos** y suena, un
 zumbido eléctrico que sube. En campo abierto eso es ruido que te delata, así que
@@ -514,11 +538,12 @@ que el sitio al que hay que apuntar queda libre por construcción.
 
 ## Estrellas
 
-En modo escenario el HUD muestra **cinco estrellas que se actualizan mientras
-juegas**, no sólo al final. Salen de dos cosas a partes iguales:
+Con **explosivo** el HUD muestra **cinco estrellas que se actualizan mientras
+juegas**, no sólo al final. En Deathmatch no salen: puntúan cumplir un objetivo,
+y sin bomba no hay contra qué medir (ver *Modos de sesión*). Salen de dos cosas a partes iguales:
 
 - **Precisión** — aciertos entre disparos, **medida contra el objetivo de tu
-  arma**. La Scalar-2 pide un 85% para el máximo, la Axis-7 un 50% y la Vertex-9
+  arma**. La Pulse pide un 85% para el máximo, la Rift un 50% y la Volt
   un 40%: un arma que sacude es más indulgente, así que elegir la difícil no te
   penaliza en la nota.
 - **Tiempo** — cuanto antes desactives dentro de los 45 s, mejor.
@@ -639,11 +664,12 @@ vieja.
 | Sensibilidad | slider y campo numérico sobre el mismo valor |
 | Escenario | Sala vacía · Largo y Puerta, con su plano y su ficha |
 | Tipo de diana | Clásica · Cono · Hitbox completo |
-| Arma principal | Axis-7 · Vertex-9 — la Scalar-2 no está: se lleva siempre |
+| Arma principal | Rift · Volt — la Pulse no está: se lleva siempre |
 | Tamaño de diana | escala la figura entera sin deformar sus proporciones |
 | Distancia de aparición | distancia base del cono respecto al jugador |
 | Cadencia | milisegundos entre apariciones. Menos es más difícil |
-| Dianas simultáneas | x1 · x2 · x3 · x5 · x8 — cuántas pueden estar vivas a la vez |
+| Dianas simultáneas | x1 · x2 · x3 · x5 · x8 — cuántas a la vez; con explosivo, **cuántas en toda la ronda** |
+| Duración de Deathmatch | Sin límite · 3 · 5 · 10 minutos |
 | Dificultad de los muñecos | Fácil · Normal · Difícil — cono y reacción a la vez |
 | Modo dinámico | las dianas vivas se desplazan mientras están en pantalla |
 | Velocidad de patrulla | 1.5 a 8 u/s, sólo con el modo dinámico puesto |
@@ -657,19 +683,22 @@ cambiar de tipo o de tamaño nunca cae dentro del bucle de render.
 
 ## Armas
 
-Tres arquetipos, en el bloque `WEAPONS` de `config.js`.
+Tres arquetipos, en el bloque `WEAPONS` de `config.js`. Se llamaban **Scalar-2,
+Axis-7 y Vertex-9** hasta la vuelta 41: el renombrado no tocó ni una estadística,
+y si tenías una elegida, sigue elegida — el ajuste guardado con el nombre viejo
+se traduce al nuevo en vez de caer al valor de fábrica.
 
 | arma | ranura | modo | RPM | cargador | recarga | silenciador | carácter del retroceso |
 | --- | --- | --- | --- | --- | --- | --- | --- |
-| **Scalar-2** | pistola (**2**) | semi | 500 | 18 | 1.2 s | sí | ninguno — se dispara como antes de que hubiera armas |
-| **Axis-7** | principal (**1**) | auto | 600 | 30 | 2.3 s | no | rifle: subida vertical marcada los primeros ocho disparos, luego deriva a la izquierda |
-| **Vertex-9** | principal (**1**) | auto | 800 | 25 | 1.8 s | sí | SMG: patada más inmediata pero la mitad de techo vertical, y más bamboleo lateral que vertical |
+| **Pulse** | pistola (**2**) | semi | 500 | 18 | 1.2 s | sí | ninguno — se dispara como antes de que hubiera armas |
+| **Rift** | principal (**1**) | auto | 600 | 30 | 2.3 s | sí | rifle: subida vertical marcada los primeros ocho disparos, luego deriva a la izquierda |
+| **Volt** | principal (**1**) | auto | 800 | 25 | 1.8 s | sí | SMG: patada más inmediata pero la mitad de techo vertical, y más bamboleo lateral que vertical |
 
 ### Dos ranuras: la principal se elige, la pistola se lleva
 
 Se sale siempre con **dos armas**: la principal, que se elige en opciones y sale
-con la tecla **1**, y la **Scalar-2**, que va siempre encima y sale con la **2**.
-**Q** alterna entre las dos. Por eso la Scalar-2 **no está en el desplegable de
+con la tecla **1**, y la **Pulse**, que va siempre encima y sale con la **2**.
+**Q** alterna entre las dos. Por eso la Pulse **no está en el desplegable de
 arma principal**: ya la llevas, y ofrecerla también ahí sería ofrecer llevar dos
 pistolas. La ranura la declara cada arma (`WEAPONS[x].slot`), así que no hay una
 segunda lista que se pueda quedar vieja.
@@ -679,13 +708,13 @@ se congela tal cual estaba. Una recarga a medias **no avanza en segundo plano**:
 se guarda lo que le faltaba y sigue desde ahí cuando vuelvas a equiparla. Cambiar
 de arma no es una forma de recargar gratis.
 
-El Axis-7 es la principal por defecto. Si tenías guardada la Scalar-2 como arma
+El Rift es la principal por defecto. Si tenías guardada la Pulse como arma
 —se podía elegir hasta la vuelta 39—, el ajuste vuelve al valor de fábrica: la
 pistola dejó de ser una opción del desplegable porque pasó a estar siempre.
 
 **Modos.** `semi` dispara una vez por click. `auto` dispara en continuo mientras
 se mantenga pulsado, al intervalo que marcan las RPM. Las RPM acotan los dos
-modos por igual: con Scalar-2 no salen más de 8.3 disparos por segundo por
+modos por igual: con Pulse no salen más de 8.3 disparos por segundo por
 mucho que se haga clic.
 
 El intervalo se cuenta desde el momento en que *tocaba* cada disparo, no desde
@@ -701,9 +730,11 @@ cargador vuelve al máximo y el patrón de retroceso al primer disparo: un
 cargador nuevo es una ráfaga nueva.
 
 **Silenciador.** Interruptor en el panel. Se aplica al arma **que lleves en la
-mano**, siempre que ella lo admita (`supportsSuppressor`): con el Axis-7 en la
-mano no hace nada, y al sacar la pistola —que sí lo lleva— pasa a aplicarse sola.
-Cambia el sonido y nada más: ni daño, ni retroceso, ni cadencia.
+mano**, siempre que ella lo admita (`supportsSuppressor`). Desde la vuelta 41 lo
+admiten las tres —cada una trae su referencia `ghost-<arma>`, que es la misma
+arma fotografiada con silenciador— así que el HUD dibuja **otra silueta**, más
+larga, en vez de la misma con un tubo pegado. Cambia el sonido y la silueta, y
+nada más: ni daño, ni retroceso, ni cadencia.
 
 **Retroceso.** El patrón es un `[pitch, yaw]` en grados por cada disparo
 consecutivo de la ráfaga. Son incrementos, no posiciones: el motor los suma.
@@ -834,6 +865,12 @@ la cadencia al pasar de x1.
 El pool de dianas se dimensiona para el mayor valor elegible, así que cambiar
 de opción no obliga a reconstruirlo.
 
+**Con el explosivo armado, el selector cambia de significado**: pasa a ser el
+**total de la ronda**, no el máximo a la vez. Los muñecos que caen **no vuelven a
+salir**, así que la ronda se puede limpiar; si merece la pena el tiempo que
+cuesta, con la bomba corriendo, es cosa tuya. Fuera de esa ronda —Deathmatch,
+práctica libre, gridshot— el respawn es el de siempre.
+
 ## HUD
 
 Arriba a la izquierda, la **marca de Vektor**: un icono discreto, sin texto, en
@@ -857,11 +894,12 @@ Las siluetas **no están dibujadas a mano**: se vectorizan con potrace a partir
 de las referencias recortadas de `Reference/Weapons/` (ver abajo). Se dibujan
 sólo a trazo, sin relleno, con el mismo gris y grosor que el resto del HUD.
 
-Scalar-2 tiene dos variantes y cambia con el interruptor del silenciador. Las
-dos salen de fotos propias —`scalar-2.png` y `scalar-2-nonsilenced.png`—, así
-que ninguna se deriva de la otra. Como están encuadradas distinto, la versión
-sin silenciador se escala para que su **altura** coincida con la silenciada: es
-la misma pistola y el interruptor no debe cambiarla de tamaño.
+**Cada arma tiene dos siluetas**, y la del silenciador es otra foto: la
+convención es `<arma>.png` y `ghost-<arma>.png` —`pulse.png` y
+`ghost-pulse.png`—. Ninguna se deriva de la otra. Como están encuadradas
+distinto, la silenciada se escala para que su **altura** coincida con la normal:
+es la misma arma, y lo que tiene que crecer al ponerle el silenciador es el
+cañón, no el arma entera.
 
 ### Vectorizar las siluetas
 
