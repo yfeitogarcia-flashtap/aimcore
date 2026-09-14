@@ -4281,6 +4281,163 @@ booleanos daba igual; con un objeto, todas las partidas habrían compartido el
 mismo mapa y escribir en uno los habría cambiado todos, el de fábrica incluido.
 Ahora los valores por defecto que son objetos se copian.
 
+## Ronda 44 — El mundo deja de ir al ritmo del monitor
+
+Primer paso de la evaluación de multijugador
+(`docs/propuestas/02-multijugador-1v1.md`): **el tick de simulación se fija a
+60 Hz**. Nada de red todavía.
+
+### Por qué esto va antes que el netcode
+
+La predicción de cliente consiste en aplicar tu entrada al instante, y cuando
+llega el estado autoritativo del servidor, **reejecutar** las entradas
+pendientes sobre el mismo módulo de movimiento. Eso sólo converge si cliente y
+servidor dan **los mismos pasos**. Con delta variable no los dan: a 240 Hz se
+simulaba en pasos de 4.17 ms y en el servidor en pasos de 16.67, y la §32 ya
+tenía medido lo que eso cuesta —**1.38% de diferencia** entre 60 y 240 Hz en el
+banco de cuatro segundos encadenando—. Esa excepción, aceptable para un juego
+de un solo jugador, es exactamente lo que se manifiesta como *rubber banding* en
+cuanto hay un servidor decidiendo la verdad.
+
+Se hace ahora, solo y en local, porque si el aire no sobrevive a esto es mejor
+saberlo antes de haber escrito mil líneas de red encima.
+
+### El mecanismo: el del limitador de FPS, aplicado a la simulación
+
+No hacía falta inventar nada. El limitador de fotogramas ya acumulaba tiempo
+real, descontaba un intervalo objetivo cuando tocaba y **guardaba el sobrante**,
+con una tolerancia de `min(1, intervalo · 0.1)` para el fallo clásico de pedir
+el mismo límite que el refresco del monitor. `_advanceSimulation` es ese mismo
+bucle con dos cambios: lo que reparte son pasos de mundo en vez de dibujados, y
+puede dar más de uno por frame.
+
+Medido (`tick44.mjs` [1]), diez segundos de reloj:
+
+| Hz del monitor | pasos | tiempo real | tiempo simulado | deriva |
+|---|---|---|---|---|
+| 30, 60, 75, 90, 144, 165, 240, 360 | **600** en todos | 10000.00 ms | 10000.00 ms | **0.000 ms** |
+
+Con frames irregulares (±60% de jitter a 240 Hz): 600 pasos, deriva 7.5 ms —el
+arrastre pendiente, que se paga en el frame siguiente—. Y un parón de 3 s del
+navegador da **6 pasos**, no 180: `SIM.maxFrameDeltaMs` (100 ms) acota el delta,
+así que es también el techo de pasos por frame.
+
+### El reloj del mundo es un instante real, y por eso no hay nada que traducir
+
+Lo primero que hice fue lo obvio y estaba mal: como el mundo avanza en pasos
+fijos y el frame no, su reloj queda un resto por detrás, así que traduje el
+`timeStamp` de los eventos de teclado restándole ese resto. Es un error, y de
+los que se ven al escribirlo: el `now` que recibe un paso **es un instante
+real** —el que representa el final de ese paso—, y `_land()` despeja el
+aterrizaje de la parábola a partir de él, así que `_landedAt` sale ya en tiempo
+real. Los dos extremos de la ventana de encadenado viven en el mismo reloj.
+Traducir uno de ellos no quitaba un error: lo metía, de hasta un paso entero.
+
+Lo que sí hace falta es **re-anclar**: `_simTime = now − _simAccumulator` al
+final de cada frame. Por construcción eso no cambia nada; hace falta para el
+caso en que `delta` se haya acotado por un parón, donde si no los dos relojes se
+separarían para siempre.
+
+Medido por el bucle real, con búsqueda binaria sobre el instante de la
+pulsación (`tick44.mjs` [4]): **130.00 ms a 60, 144 y 240 Hz, con 0.0000 ms de
+diferencia entre ellos**. Igual que antes.
+
+### Y el aire sobrevive
+
+La pregunta que decidía la vuelta: el modelo vectorial es una integración cuya
+entrada es el ratón, y el ratón se muestreaba una vez **por frame**. Ahora se
+muestrea una vez **por paso** —dos pasos dentro del mismo frame ven el mismo
+yaw, porque los eventos se atienden entre dibujados—.
+
+Banco de la §32, cuatro segundos girando a 45°/s y encadenando en cada
+aterrizaje (`tick44.mjs` [2]):
+
+| | 60 Hz | 120 Hz | 144 Hz | 165 Hz | 240 Hz | 360 Hz | dispersión |
+|---|---|---|---|---|---|---|---|
+| vectorial, antes | 8.7350 | 8.8138 | 8.8269 | 8.8363 | 8.8554 | 8.8684 | **1.53%** |
+| vectorial, después | 8.7350 | 8.7350 | 8.7289 | 8.7295 | 8.7350 | 8.7350 | **0.07%** |
+| escalar, antes | 9.2567 | 9.2921 | 9.2980 | 9.3017 | 9.3098 | 9.3157 | 0.64% |
+| escalar, después | 9.2567 | 9.2567 | 9.2391 | 9.2589 | 9.2567 | 9.2567 | 0.21% |
+
+Tres lecturas, y la tercera es la importante:
+
+- **En un monitor múltiplo de 60 el resultado es idéntico hasta el último
+  decimal.** 60, 120, 240 y 360 Hz dan 8.7350 clavado: dispersión 0.000000%. No
+  es que se parezcan, es que son el mismo número.
+- **Lo que queda (0.07%) es fase de muestreo en 144 y 165 Hz**, que no son
+  múltiplos de 60: la rejilla de pasos cae en sitios distintos de la secuencia
+  de frames y cada paso ve un yaw un pelo distinto. Es un residuo acotado, no
+  una divergencia que se acumule.
+- **El tiempo en el aire deja de depender del monitor**: 3900 ms en los seis
+  refrescos, contra 3900–3983 antes. Ése era el 0.57 de dispersión que la §32
+  anotó como «ya existía con el modelo escalar»: el contacto con el suelo se
+  cuantizaba al frame. Con paso fijo se cuantiza al paso, que es el mismo en
+  todas partes.
+
+Y la curva de ritmo de giro, que es lo que de verdad se siente
+(`tick44.mjs` [3], marcha final tras 4 s):
+
+| °/s | 0 | 20 | 40 | 60 | 90 | 140 | 220 |
+|---|---|---|---|---|---|---|---|
+| antes, 60 Hz | 6.547 | 7.579 | **8.523** | 7.830 | 5.431 | 3.801 | 1.706 |
+| antes, 240 Hz | 6.547 | 7.602 | **8.617** | 7.902 | 5.564 | 3.819 | 1.769 |
+| después, 60 Hz | 6.547 | 7.579 | **8.523** | 7.830 | 5.431 | 3.801 | 1.706 |
+| después, 240 Hz | 6.547 | 7.579 | **8.523** | 7.830 | 5.431 | 3.801 | 1.706 |
+
+Las dos filas de «después» son la misma fila. **El óptimo sigue en 40°/s**,
+girar como un molino sigue frenando y sin girar sigue sin ganarse nada: el
+mecanismo no se ha tocado, sólo ha dejado de depender de la pantalla.
+
+**Lo que se paga, y quién lo paga.** Un jugador de 240 Hz pierde un **1.36%** de
+marcha final en ese banco (un 1.50% a 360, un 0.89% a 120); uno de 60 Hz no
+pierde **absolutamente nada** —0.000000%—. La razón es que el juego pasa a
+comportarse en todas partes como se comportaba a 60 Hz, que era la referencia
+con la que se calibró el modelo. No es una recalibración: es que el monitor deja
+de ser una variable.
+
+### El dibujado sí sigue al monitor
+
+Un tick fijo sin interpolación de dibujado es medio tick fijo: la cámara daría
+sesenta pasos por segundo en un monitor de 240 y se vería a tirones. Se guardan
+las dos poses del último paso (`_simPrev`, `_simCurr`) y se dibuja el punto
+intermedio que toque según lo que lleve acumulado el frame. Dos reglas:
+
+- **La pose interpolada vive sólo lo que dura el dibujado.** Se pone justo antes
+  de `render()` y se quita justo después: fuera de esas tres líneas
+  `camera.position` **es** la posición autoritativa, la misma de siempre.
+- **Un teletransporte no se interpola.** `movement.reset()` sube `poseEpoch`, y
+  un paso con la época cambiada no interpola: reaparecer dibujaría un barrido
+  por medio mapa. La marca vive donde ocurre el salto, no en una comprobación de
+  distancia en quien dibuja.
+
+La primera regla es el arreglo de un fallo que metí y que cazaron dos suites.
+La primera versión guardaba la pose buena en `_simCurr` y la **restauraba desde
+ahí** al empezar cada paso, de modo que `_simCurr` pasaba a ser la fuente de
+verdad y `camera.position` una copia. Consecuencia: cualquiera que escribiera la
+cámara desde fuera —una prueba colocando al jugador junto al explosivo, otra
+buscando un puesto con vista— veía cómo el paso siguiente lo devolvía al spawn
+sin decir nada. `binds.mjs` lo cazó como una bomba que no se desactivaba y
+`live.mjs` como 67 raycasts de visibilidad donde caben 13, que son los que cuesta
+sembrar desde un sitio donde no se ve nada. Las dos por lo mismo, y el mismo día
+que `CLAUDE.md` insiste en que la fuente de verdad es una.
+
+### Lo que cuesta
+
+Medido en bucle cerrado con ocho muñecos vivos en el Plano A (`tick44.mjs` [7]):
+**0.03 ms p50 y 0.07 ms p99 por paso**, dentro del presupuesto de la casa
+(0.2 ms p99). En un monitor de 240 Hz sólo uno de cada cuatro frames gasta un
+paso, así que el frame medio sale **más barato** que antes. El peor frame
+concebible —seis pasos seguidos tras un parón de 100 ms— cuesta **0.42 ms**, que
+cabe de sobra incluso en un frame de 60 Hz.
+
+### De regalo, un techo que ya no depende de la pantalla
+
+El fuego automático dispara «como mucho una vez por paso». Antes eso era una vez
+por frame, así que el techo real iba con el monitor —3600 RPM a 60 Hz, 14400 a
+240— y con el limitador de FPS: con el tope puesto en 30, un arma automática se
+habría quedado en 1800 RPM. Ahora son **3600 RPM en cualquier máquina**, muy por
+encima de las 800 de la Volt.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
@@ -4389,6 +4546,10 @@ objetivo era medir tiempos y rendimiento de verdad.
   tiempo de cruce—, y la fracción del encuadre que ocupa el muro, con un rayo por
   celda de una rejilla de pantalla.
 - **La alineación de las fichas de la armería**, fila a fila y en píxeles.
+- **El tick fijo de 60 Hz**: pasos por segundo a ocho refrescos distintos, deriva
+  del acumulador, comportamiento tras un parón, dispersión del aire entre 60 y
+  360 Hz, curva de ritmo de giro, ventana de encadenado por el bucle real y coste
+  por paso (`tick44.mjs`).
 
 Lo que **no** está verificado automáticamente: la sensación de juego, el balance
 entre armas y la legibilidad del HUD en pantallas pequeñas. Eso sigue siendo

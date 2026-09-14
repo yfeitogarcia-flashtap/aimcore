@@ -210,6 +210,14 @@ export class MovementController {
      */
     this._landingImpact = 0
 
+    /**
+     * **Cuántas veces se ha teletransportado el jugador.** Sube en cada
+     * `reset()`, que es el único sitio donde la posición salta sin recorrer el
+     * camino. Quien interpole el dibujado mira esto para no dibujar el salto
+     * como un barrido por medio mapa.
+     */
+    this.poseEpoch = 0
+
     this._onKeyDown = this._onKeyDown.bind(this)
     this._onKeyUp = this._onKeyUp.bind(this)
     this._onBlur = this.releaseKeys.bind(this)
@@ -377,6 +385,7 @@ export class MovementController {
 
   /** Devuelve al jugador a su punto de aparición, de pie y en el suelo. */
   reset() {
+    this.poseEpoch += 1
     this.releaseKeys()
     this.feetY = this.scenario
       ? this.scenario.groundHeightAt(this.spawnX, this.spawnZ, 0)
@@ -1063,6 +1072,13 @@ export class MovementController {
     // La marca del salto sale del **evento**, no del frame que lo atiende:
     // `timeStamp` va en el mismo origen de tiempos que `performance.now()`, así
     // que la ventana de encadenado no hereda el retraso del bucle de dibujo.
+    //
+    // Y con el tick fijo de la vuelta 44 sigue valiendo tal cual, que no es
+    // evidente: el `now` que recibe un paso **es un instante real** —el que
+    // representa el final de ese paso, un resto por detrás del frame—, así que
+    // el aterrizaje que se despeja de la parábola sale también en tiempo real.
+    // Los dos extremos de la ventana viven en el mismo reloj sin traducir nada;
+    // traducirlos, que fue lo primero que se probó, es lo que metería el error.
     if (action === 'jump') {
       this._jumpPressedAt =
         Number.isFinite(event.timeStamp) && event.timeStamp > 0

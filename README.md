@@ -639,13 +639,23 @@ trayectoria**, así que en línea recta se gana bastante menos.
 El salto en sí no cambia — misma altura (1.2528 u) y misma duración (578 ms) en
 los dos modelos. Esto sólo toca la marcha horizontal.
 
-**Una excepción conocida, y medida:** el modelo vectorial es una integración
-—la entrada es el ratón, que se muestrea una vez por frame— así que el resultado
-depende un poco del refresco: **1.38%** entre 60 y 240 Hz encadenando durante
-cuatro segundos. De eso, 0.57 puntos ya existían con el modelo escalar, porque el
-contacto con el suelo entre saltos se cuantiza al frame. Es el único sitio del
-juego donde el refresco cambia el resultado; el porqué está en
-`docs/decisions.md` §32.
+**Una excepción conocida que ya no lo es.** El modelo vectorial es una
+integración —la entrada es el ratón— y hasta la vuelta 43 el ratón se muestreaba
+una vez **por frame**, así que el resultado dependía del refresco: **1.38%** entre
+60 y 240 Hz encadenando durante cuatro segundos. Era el único sitio del juego
+donde el monitor cambiaba el resultado.
+
+Desde la vuelta 44 el mundo avanza en **pasos fijos de 60 Hz** y el ratón se
+muestrea una vez por paso, así que esa dependencia se cae: **1.53% → 0.07%** de
+dispersión entre 60 y 360 Hz, y en un monitor múltiplo de 60 (60, 120, 240, 360)
+el resultado es **idéntico hasta el último decimal**. El tiempo en el aire pasa a
+ser el mismo (3900 ms) en todos, y la curva de ritmo de giro a 240 Hz es dígito a
+dígito la de 60, con el óptimo donde estaba (40°/s).
+
+Lo que cambia para quien juega: en un monitor de 240 Hz la marcha final de ese
+banco baja un **1.36%**, porque el juego pasa a comportarse en todas partes como
+se comportaba a 60 —que es la referencia con la que se calibró el modelo—. A 60
+Hz no cambia nada. El porqué está en `docs/decisions.md` §32 y §44.
 
 ## Fatiga de salto
 
@@ -1105,17 +1115,40 @@ Mide los fotogramas realmente dibujados —no los ticks de `requestAnimationFram
 promediados sobre los últimos `RENDER.fpsSampleFrames` (30), porque el valor
 instantáneo de un solo frame salta demasiado para leerlo.
 
-El **límite de fotogramas** acota el ritmo de actualización del juego a 60, 144
-o 240; *Sin límite* (por defecto) lo deja atado sólo al refresco del monitor.
+El **límite de fotogramas** acota el ritmo de **dibujado** a 60, 144 o 240; *Sin
+límite* (por defecto) lo deja atado sólo al refresco del monitor. Lo que ya no
+acota es el ritmo del juego: desde la vuelta 44 el mundo avanza en **pasos fijos
+de 60 Hz**, dibuje el monitor lo que dibuje.
 
 No se descartan fotogramas a lo bruto: se acumula el tiempo de cada tick de
 `requestAnimationFrame` y se descuenta un intervalo objetivo cada vez que se
 dibuja, guardando el sobrante. Así el ritmo medio sale exacto aunque el
 objetivo no sea un divisor del refresco —en un monitor de 144 Hz limitado a 60,
 los intervalos alternan 13.9 y 20.8 ms y promedian 16.7— y el movimiento no va
-a tirones. El delta que recibe la lógica de juego es siempre el tiempo real
-transcurrido desde el fotograma anterior dibujado, nunca el intervalo objetivo,
-de modo que el reloj de la partida no se separa del reloj de pared.
+a tirones.
+
+### El paso fijo del mundo
+
+**El mismo mecanismo, aplicado a la simulación.** El tiempo real de cada
+fotograma dibujado se acumula y se gastan pasos de `SIM_STEP_MS` (16.667 ms)
+mientras quepan, **guardando el sobrante** y con la misma tolerancia. Medido: en
+diez segundos salen **600 pasos exactos** a 30, 60, 75, 90, 144, 165, 240 y 360
+Hz, con **0.000 ms de deriva**; con fotogramas irregulares tampoco se pierde el
+ritmo; y un parón de tres segundos del navegador da **6 pasos**, no 180, porque
+el delta viene acotado a 100 ms.
+
+Por qué: había un sitio del juego donde el refresco cambiaba el resultado —la
+aceleración en el aire, que es una integración con el ratón por entrada— y con
+paso fijo deja de haberlo. Es además el requisito del multijugador: la predicción
+de cliente sólo converge si cliente y servidor dan los mismos pasos
+(`docs/propuestas/02-multijugador-1v1.md`).
+
+**El dibujado sigue yendo al refresco del monitor.** Entre dos pasos, la cámara
+se dibuja en el punto intermedio que le toque, así que una pantalla de 240 Hz
+sigue viendo movimiento a 240 Hz aunque el mundo vaya a 60. La pose interpolada
+existe sólo mientras se dibuja; el resto del tiempo la cámara está donde el
+jugador está de verdad. Y una reaparición no se interpola: se dibujaría como un
+barrido por medio mapa.
 
 Pedir el mismo límite que el refresco de la pantalla lleva una tolerancia: sin
 ella, un tick de 4.166 ms no llegaría por los pelos a un objetivo de 4.167 y el

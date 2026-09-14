@@ -30,6 +30,8 @@ import {
   DEATHMATCH_DURATIONS,
   SESSION_DURATION_S,
   SESSION_MODES,
+  SIM,
+  SIM_STEP_MS,
   TARGET,
   WEAPONS,
 } from '../config.js'
@@ -68,9 +70,6 @@ import { eventCode, getKeybinds, keysOf, subscribeKeybinds } from '../keybinds.j
 
 /** Centro exacto de la pantalla: el crosshair no se mueve, así que es constante. */
 const SCREEN_CENTER = new THREE.Vector2(0, 0)
-
-/** Tope de delta por frame: evita saltos del reloj tras un parón del navegador. */
-const MAX_FRAME_DELTA_MS = 100
 
 const DEG_TO_RAD = Math.PI / 180
 
@@ -360,6 +359,42 @@ export class Engine {
     this._frameAccumulator = 0
     this._lastRafTime = 0
 
+    /**
+     * **El acumulador del mundo** (vuelta 44). Mismo mecanismo que el limitador
+     * de fotogramas —sumar el tiempo real, descontar un intervalo cada vez que
+     * toca y **guardar el sobrante**—, sólo que aquí lo que se reparte son
+     * pasos de simulación y no dibujados.
+     */
+    this._simAccumulator = 0
+    /**
+     * Reloj del mundo, en el origen de tiempos de `performance.now()`. Avanza
+     * de paso en paso, así que el final del último paso queda un
+     * `_simAccumulator` por detrás de este frame. **No es un reloj aparte**: es
+     * un instante real, y por eso el aterrizaje que se despeja de la parábola
+     * se compara sin traducir con el `timeStamp` de un evento de teclado.
+     */
+    this._simTime = 0
+
+    /**
+     * **Las dos poses entre las que se dibuja.** La simulación va a 60 Hz y el
+     * monitor puede ir a 240: sin interpolar, la cámara daría cuatro pasos
+     * iguales y uno de salto. `_simPrev` es dónde estaba el jugador al empezar
+     * el último paso, `_simCurr` dónde acabó, y lo que se dibuja es el punto
+     * intermedio que toque según lo que lleve acumulado el frame.
+     *
+     * **La posición autoritativa sigue siendo `camera.position`**, no esta copia:
+     * la interpolada se pone justo antes de dibujar y se quita justo después
+     * (`_applyRenderPose` / `_restoreSimPose`), así que fuera de esas tres
+     * líneas la cámara está donde el jugador está de verdad y cualquiera puede
+     * escribirla sin que el frame siguiente se la pise.
+     */
+    this._simPrev = new THREE.Vector3()
+    this._simCurr = new THREE.Vector3()
+    /** Épocas de pose vistas: si el movimiento teletransporta, no se interpola. */
+    this._simPoseEpoch = -1
+    /** ¿La cámara lleva ahora mismo la pose de dibujado en vez de la buena? */
+    this._interpolating = false
+
     // Media móvil de FPS sobre una ventana corta de fotogramas ya dibujados.
     this._frameSamples = new Float32Array(RENDER.fpsSampleFrames)
     this._frameSampleIndex = 0
@@ -411,6 +446,7 @@ export class Engine {
 
     this._lastFrameTime = performance.now()
     this._lastRafTime = this._lastFrameTime
+    this._simTime = this._lastFrameTime
     this._rafId = requestAnimationFrame(this._loop)
   }
 
@@ -1618,34 +1654,11 @@ export class Engine {
     // El delta del juego es el tiempo real transcurrido desde el fotograma
     // anterior *dibujado*, no el intervalo objetivo: si se limita a 60 en un
     // monitor de 240, el reloj del juego tiene que seguir yendo a tiempo real.
-    const delta = Math.min(now - this._lastFrameTime, MAX_FRAME_DELTA_MS)
+    const delta = Math.min(now - this._lastFrameTime, SIM.maxFrameDeltaMs)
     this._lastFrameTime = now
     this._sampleFps(delta)
 
-    if (this.phase === PHASE.RUNNING) {
-      // El reloj del mundo avanza aquí y **sólo aquí**: pausar es dejar de
-      // sumarle, y con eso se para todo lo que cuelga de él.
-      this.gameTime += delta
-      this._updateReload(this.gameTime)
-      this.elapsedMs += delta
-      // Con explosivo, el reloj de la sesión es su cuenta atrás: la duración
-      // fija no se aplica, o los 30 s cortarían la partida antes de los 45.
-      if (!this.endless && !this.objectiveRunning && this.elapsedMs >= this.durationMs) {
-        this.elapsedMs = this.durationMs
-        this._finishSession()
-      } else {
-        // `delta` ya viene acotado, así que la integración del salto no pega
-        // un salto raro si el navegador se queda parado un momento.
-        this.movement.update(delta / 1000, now)
-        const landing = this.movement.takeLandingImpact()
-        if (landing > 0) playLanding(landing)
-        // Fuego automático: como mucho un disparo por frame. A 60 Hz eso son
-        // 3600 RPM de techo, muy por encima de cualquier arma del roster.
-        if (this._triggerHeld && !this._triggerConsumedByPanel && this.weapon.mode === 'auto') {
-          this._tryShoot(this.gameTime)
-        }
-      }
-    }
+    this._advanceSimulation(now, delta)
 
     // La vista del avatar se lleva la cámara mientras esté abierta. Va después
     // del movimiento y antes de dibujar, como cualquier otra cosa que la mueva.
@@ -1654,25 +1667,150 @@ export class Engine {
     // presentación, no física: una escritura de escala con la altura de ojos
     // que el movimiento ya ha resuelto este frame.
     this.avatar?.setEyeHeight(this.movement.eyeHeight)
+    // Y la cámara pasa a la pose de dibujado, que ya no es la del último paso.
+    this._applyRenderPose()
 
-    // **El mundo sólo avanza jugando**, y va con el reloj del mundo. Las dos
-    // cosas juntas, porque cada una sola dejaba un agujero: pasar delta cero
-    // congelaba lo que iba por delta y dejaba corriendo lo que iba por fecha
-    // —los muñecos siguieron disparando en pausa hasta la vuelta 42—, y parar
-    // el reloj sin dejar de llamar habría dejado colar el disparo que tocaba
-    // justo en el frame de pausar.
-    if (this.phase === PHASE.RUNNING) {
-      this.targets.update(this.gameTime, delta / 1000, this.camera)
-      // El combate va después de las dianas: los muñecos disparan desde donde
-      // han quedado este frame, no desde donde estaban en el anterior.
-      this._updateCombat(this.gameTime, delta)
-      this._updateObjective(this.gameTime, delta / 1000)
-    }
     this.actionPanel.follow(this.camera)
     this.actionPanel.syncLayout()
     this._publishStats()
     this.renderer.render(this.scene, this.camera)
     this.cssRenderer.render(this.cssScene, this.camera)
+
+    // **Y se devuelve.** La pose interpolada vive sólo lo que dura el dibujado:
+    // fuera de estas tres líneas `camera.position` es siempre la autoritativa,
+    // que es lo que deja que cualquiera la escriba sin que el frame siguiente
+    // se la pise.
+    this._restoreSimPose()
+  }
+
+  /**
+   * **El mundo avanza en pasos de tamaño fijo** (vuelta 44), y el monitor sólo
+   * decide cuándo se dibuja. Es el mismo mecanismo que el limitador de
+   * fotogramas —sumar el tiempo real, descontar un intervalo cuando toca y
+   * **guardar el sobrante**— aplicado a la simulación en vez de al dibujado, y
+   * con la misma tolerancia por la misma razón: sin ella, un monitor a 60 Hz
+   * entrega frames de 16.666 ms contra un paso de 16.667 y el primer paso se
+   * escaparía por los pelos.
+   *
+   * El porqué está en `config.js` (`SIM`): el modelo vectorial del aire es una
+   * integración cuya entrada es el ratón, y con paso variable su resultado
+   * dependía del refresco. Con paso fijo el juego se comporta a 240 Hz
+   * exactamente como se comporta a 60.
+   *
+   * `delta` ya viene acotado por `SIM.maxFrameDeltaMs`, así que un parón del
+   * navegador no se paga con una avalancha de pasos: seis como mucho.
+   */
+  _advanceSimulation(now, delta) {
+    const step = SIM_STEP_MS
+    const tolerance = Math.min(1, step * 0.1)
+    this._simAccumulator += delta
+
+    while (this._simAccumulator >= step - tolerance) {
+      this._simAccumulator -= step
+      this._simTime += step
+      this._simStep(step)
+    }
+
+    // **Re-anclado del reloj del mundo.** Los pasos son fijos y los frames no,
+    // así que el final del último paso queda un `_simAccumulator` por detrás de
+    // este frame: `_simTime` es un **instante real**, no un reloj aparte, y por
+    // eso el aterrizaje que se despeja de la parábola se puede comparar sin
+    // traducir con el `timeStamp` de un evento de teclado. Por construcción
+    // esta línea no cambia nada; hace falta para el caso en que `delta` se haya
+    // acotado —un parón largo—, donde los dos relojes se separarían para
+    // siempre si no se volvieran a juntar aquí.
+    this._simTime = now - this._simAccumulator
+  }
+
+  /**
+   * Un paso de mundo. Es literalmente lo que hacía el frame hasta la vuelta 43,
+   * con dos diferencias: el delta es fijo y las tres actualizaciones del mundo
+   * —dianas, combate y objetivo— viven ya en el mismo sitio que el movimiento
+   * en vez de en un segundo bloque más abajo. La condición de fase sigue siendo
+   * la misma y sigue cubriéndolas a todas: **el mundo sólo avanza jugando**, y
+   * pausar es dejar de sumarle al reloj (ver `CLAUDE.md`).
+   */
+  _simStep(stepMs) {
+    if (this.phase !== PHASE.RUNNING) return
+
+    // El reloj del mundo avanza aquí y **sólo aquí**: pausar es dejar de
+    // sumarle, y con eso se para todo lo que cuelga de él.
+    this.gameTime += stepMs
+    this._updateReload(this.gameTime)
+    this.elapsedMs += stepMs
+    // Con explosivo, el reloj de la sesión es su cuenta atrás: la duración
+    // fija no se aplica, o los 30 s cortarían la partida antes de los 45.
+    if (!this.endless && !this.objectiveRunning && this.elapsedMs >= this.durationMs) {
+      this.elapsedMs = this.durationMs
+      this._finishSession()
+      return
+    }
+
+    // De dónde sale el jugador este paso. Se lee de la cámara y no de la copia
+    // anterior a propósito: **la posición autoritativa es `camera.position`**,
+    // y quien la escriba desde fuera —una reaparición, una prueba, la vista de
+    // depuración— manda sobre lo que hubiera guardado el dibujado.
+    this._simPrev.copy(this.camera.position)
+
+    this.movement.update(stepMs / 1000, this._simTime)
+
+    // Y aquí queda dónde acaba. Si el movimiento ha teletransportado (`reset`),
+    // la época cambia y este paso no se interpola: se dibuja donde toca en vez
+    // de barrer medio mapa.
+    if (this._simPoseEpoch !== this.movement.poseEpoch) {
+      this._simPoseEpoch = this.movement.poseEpoch
+      this._simPrev.copy(this.camera.position)
+    }
+    this._simCurr.copy(this.camera.position)
+
+    const landing = this.movement.takeLandingImpact()
+    if (landing > 0) playLanding(landing)
+    // Fuego automático: como mucho un disparo por paso. A 60 Hz eso son 3600
+    // RPM de techo, muy por encima de cualquier arma del roster — y desde la
+    // vuelta 44 ese techo ya no depende del refresco ni del límite de FPS.
+    if (this._triggerHeld && !this._triggerConsumedByPanel && this.weapon.mode === 'auto') {
+      this._tryShoot(this.gameTime)
+    }
+
+    this.targets.update(this.gameTime, stepMs / 1000, this.camera)
+    // El combate va después de las dianas: los muñecos disparan desde donde
+    // han quedado este paso, no desde donde estaban en el anterior.
+    this._updateCombat(this.gameTime, stepMs)
+    this._updateObjective(this.gameTime, stepMs / 1000)
+  }
+
+  /**
+   * **La pose con la que se dibuja este frame.** Entre dos pasos de mundo la
+   * cámara se coloca en el punto intermedio que le toque, así que un monitor de
+   * 240 Hz sigue viendo movimiento a 240 Hz aunque el mundo vaya a 60. La
+   * rotación no entra aquí: la escribe el ratón evento a evento y ya es fina.
+   *
+   * Sólo mientras se juega. En pausa la cámara se queda en la última pose
+   * autoritativa, que es la que de verdad ocupa el jugador, y la vista de
+   * depuración (F3) mueve la cámara por su cuenta sin que esto la pise.
+   */
+  _applyRenderPose() {
+    this._interpolating = false
+    // La vista de depuración manda sobre la cámara mientras esté abierta.
+    if (this._avatarDebug) return
+    // Fuera de la partida no hay nada entre lo que interpolar: la cámara ya
+    // está donde el jugador está de verdad.
+    if (this.phase !== PHASE.RUNNING) return
+    if (this._simPoseEpoch !== this.movement.poseEpoch) return
+    const alpha = this._simAccumulator / SIM_STEP_MS
+    this.camera.position.lerpVectors(
+      this._simPrev,
+      this._simCurr,
+      alpha < 0 ? 0 : alpha > 1 ? 1 : alpha,
+    )
+    this._interpolating = true
+  }
+
+  /** Devuelve la cámara a la pose autoritativa en cuanto se ha dibujado. */
+  _restoreSimPose() {
+    if (!this._interpolating) return
+    this._interpolating = false
+    this.camera.position.copy(this._simCurr)
   }
 
   /**

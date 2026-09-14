@@ -54,7 +54,7 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 
 | Capa | Dónde | Qué hace |
 |---|---|---|
-| Motor | `src/game/` | Bucle rAF, input, raycast, dianas, armas, panel de acciones. **Vive fuera de React.** |
+| Motor | `src/game/` | Bucle rAF, input, raycast, dianas, armas, panel de acciones. **Vive fuera de React.** El mundo avanza en **pasos fijos de 60 Hz** (`_advanceSimulation` / `_simStep`); el frame sólo dibuja. |
 | Escenario | `src/game/scenario.js` | Convierte los datos de `SCENARIOS` en mallas, colisionadores, oclusores y **rutas**. Y publica su sala (`scenario.room`) y su zona de aparición (`isInSpawnZone`). |
 | Línea de visión | `src/game/sight.js` | `hasLineOfSight`: el **único** raycast de «¿se ve eso desde aquí?». Lo usan la aparición y los marcadores. |
 | Sala | `src/game/scene.js` | Rejilla y paredes, reconstruibles con `setRoom`: cada escenario tiene su tamaño. |
@@ -109,9 +109,37 @@ cambiarlo borraría los ajustes de los usuarios existentes.
 
 **Presupuesto de rendimiento: ~0.2 ms p99 por frame.** A 240 Hz hay 4.17 ms
 disponibles. Todo lo medido hasta ahora se mueve en 0.1–0.2 ms p99. Cualquier
-cambio que se acerque a 1 ms es una regresión aunque "se vea bien".
+cambio que se acerque a 1 ms es una regresión aunque "se vea bien". Desde la
+vuelta 44 el presupuesto se mide **por paso de mundo**, no por frame: un paso
+cuesta 0.07 ms p99 con ocho muñecos, y a 240 Hz sólo uno de cada cuatro frames
+gasta paso. El peor frame posible son seis pasos seguidos tras un parón —0.42
+ms—, que es el techo que pone `SIM.maxFrameDeltaMs`.
 
-**Hay un reloj del mundo, y es `engine.gameTime`.** Suma delta **sólo** mientras
+**El mundo avanza en pasos de tamaño fijo, y el monitor sólo decide cuándo se
+dibuja** (vuelta 44). `_advanceSimulation` acumula el tiempo real del frame y
+gasta pasos de `SIM_STEP_MS` (60 Hz) mientras quepan, **guardando el sobrante**:
+es el mismo acumulador con arrastre y tolerancia que el limitador de FPS, y por
+la misma razón —sin tolerancia, un monitor a 60 Hz entrega frames de 16.666 ms
+contra un paso de 16.667 y el primero se escaparía por los pelos—. Un paso es
+`_simStep`, y ahí dentro va **todo** lo que antes hacía el frame.
+
+Con esto se cierra la excepción de la vuelta 32: el modelo vectorial del aire es
+una integración cuya entrada es el ratón, y con delta variable su resultado
+dependía del refresco. Medido: la dispersión entre 60 y 360 Hz pasa del **1.53%
+al 0.07%**, y en un monitor múltiplo de 60 el resultado es **idéntico hasta el
+último decimal**. Es además el requisito de la predicción de cliente —reejecutar
+entradas sólo converge si los dos lados dan los mismos pasos—; ver
+`docs/propuestas/02-multijugador-1v1.md`.
+
+**`_simTime` no es un reloj aparte: es un instante real**, el que representa el
+final de ese paso, un resto por detrás del frame. Por eso el aterrizaje que
+despeja la parábola sale ya en tiempo real y se compara sin traducir con el
+`timeStamp` de un evento de teclado. Traducirlo —que fue lo primero que se
+probó— es lo que metería un error de hasta un paso entero. Y se **re-ancla**
+(`_simTime = now − _simAccumulator`) porque un parón largo acota el delta y si no
+los dos relojes se separarían para siempre.
+
+**Hay un reloj del mundo, y es `engine.gameTime`.** Suma un paso **sólo** mientras
 se juega, así que pausar es dejar de sumarle. De él cuelgan todos los tiempos del
 mundo: cadencia, recarga, aparición, cuenta atrás del explosivo, reaparición y
 carga del escudo. `performance.now()` se queda donde sigue teniendo sentido —el
@@ -122,7 +150,27 @@ fase**: las dos cosas juntas, porque cada una sola dejaba un agujero —pasar de
 cero congelaba lo que iba por delta y dejaba corriendo lo que iba por fecha, que
 es cómo los muñecos siguieron disparando en pausa hasta la vuelta 42, y parar el
 reloj sin dejar de llamar habría dejado colar el disparo que tocaba justo en el
-frame de pausar—. Si añades algo temporizado al mundo, va con `gameTime`.
+frame de pausar—. Desde la 44 esa condición es **una sola**, la de `_simStep`. Si
+añades algo temporizado al mundo, va con `gameTime` y dentro del paso.
+
+**Y el dibujado sí sigue al monitor.** Un tick fijo sin interpolación de dibujado
+es medio tick fijo: a 240 Hz la cámara daría sesenta pasos por segundo y se
+vería a tirones. Se guardan las dos poses del último paso (`_simPrev`,
+`_simCurr`) y `_applyRenderPose` dibuja el punto intermedio que toque. Dos reglas
+que **son** el mecanismo:
+
+- **La pose interpolada vive sólo lo que dura el dibujado.** `_applyRenderPose`
+  la pone antes de `render()` y `_restoreSimPose` la quita después: fuera de esas
+  tres líneas `camera.position` **es** la posición autoritativa, como siempre. No
+  lo cambies por guardar la buena aparte y restaurarla al simular: eso convierte
+  `camera.position` en una copia y se lleva por delante a cualquiera que la
+  escriba desde fuera —una reaparición, la vista de depuración, una prueba
+  colocando al jugador—. Pasó, y lo cazaron `binds.mjs` y `live.mjs` (ver
+  `docs/decisions.md` §44).
+- **Un teletransporte no se interpola.** `movement.reset()` sube `poseEpoch` y un
+  paso con la época cambiada no interpola — reaparecer dibujaría un barrido por
+  medio mapa. La marca vive donde ocurre el salto, no en una comprobación de
+  distancia en quien dibuja.
 
 **Y pausar es una sola cosa**: `_suspend()`. Apaga controles y movimiento, suelta
 el gatillo y pasa a pausa, y lo llaman las dos formas de dejar de jugar sin
@@ -138,11 +186,19 @@ jugador parado, o sea encima de él—. El cupo de ronda sí se recalcula siempr
 eso no necesita rehacer nada.
 
 **El tiempo del juego no puede depender de cuándo dibuja el monitor.** Se aplica
-en dos sitios y vale para cualquier mecánica temporizada que se añada:
+en tres sitios y vale para cualquier mecánica temporizada que se añada:
 
+- *El paso del mundo*: desde la vuelta 44 es **fijo** (60 Hz). Lo de abajo sigue
+  valiendo tal cual —y con el paso fijo sale reforzado, no sustituido: lo que
+  está resuelto en forma cerrada no acumula error aunque el paso cambie de
+  tamaño, que es justo lo que hace falta cuando un día el servidor simule a otro
+  ritmo—.
 - *Cadencia y recoil*: `_nextShotAt` se calcula desde el instante en que el
   disparo **tocaba**, no desde `performance.now()` del frame que lo ejecuta. Sin
-  esto un arma de 600 RPM dispara distinto a 60 que a 240 Hz.
+  esto un arma de 600 RPM dispara distinto a 60 que a 240 Hz. Y el techo del
+  fuego automático —un disparo por paso— pasa a ser **3600 RPM en cualquier
+  máquina**: antes iba con el monitor y con el limitador de FPS, que con el tope
+  en 30 habría dejado un arma automática en 1800.
 - *Salto*: la vertical **no se integra frame a frame**. Se guarda el estado del
   despegue y se evalúa la parábola —`y = y0 + v0·t − ½gt²`— desde `_airTime`.
   Integrar por pasos acumula error de Euler y ese error va con el tamaño del
@@ -271,18 +327,34 @@ va aparte: no tiene techo que superar, así que siempre corta. Medido después, 
 ventana para subirse a la Baja vuelve a ser idéntica en los dos modelos (de 0.6 a
 2.7 u de anticipo, a 60, 144 y 240 Hz).
 
-**La excepción del refresco, aceptada y medida.** El vector es una integración y
-no tiene forma cerrada, porque la entrada es el ratón. Medido con un jugador que
-gira sin parar y encadena durante 4 s: **1.38%** de diferencia entre 60 y 240 Hz.
-De eso, **0.57 puntos ya existían** con el modelo escalar en el mismo banco: el
-contacto con el suelo entre saltos se cuantiza al frame y a 60 Hz se vuela 75 ms
-menos. Lo que añade el vector es el resto. Dos cosas que **sí** se arreglaron
-porque eran cuantización evitable: el frame del despegue no aceleraba (se corrige
-pasando `dt` a `_takeOff`) y el del aterrizaje aceleraba de más (se acota al
-tiempo que queda de vuelo, `_airTimeLeft`, de la misma parábola cerrada que el
-resto). Subdividir la integración **no** ayuda: medido en simulación, no cambia
-ni el cuarto decimal, porque el residuo es que el ratón se muestrea una vez por
-frame. Ver `docs/decisions.md` §32.
+**La excepción del refresco se cerró en la vuelta 44, y así es como estaba.** El
+vector es una integración y no tiene forma cerrada, porque la entrada es el
+ratón. Medido en la 32 con un jugador que gira sin parar y encadena durante 4 s:
+**1.38%** de diferencia entre 60 y 240 Hz. De eso, **0.57 puntos ya existían**
+con el modelo escalar en el mismo banco: el contacto con el suelo entre saltos se
+cuantizaba al frame y a 60 Hz se volaba 75 ms menos. Dos cosas se arreglaron
+entonces porque eran cuantización evitable: el frame del despegue no aceleraba
+(se corrige pasando `dt` a `_takeOff`) y el del aterrizaje aceleraba de más (se
+acota al tiempo que queda de vuelo, `_airTimeLeft`). Subdividir la integración
+**no** ayudaba: el residuo era que el ratón se muestrea una vez por frame.
+
+Lo que lo arregla es quitar el frame de la ecuación. Con el paso fijo el ratón se
+muestrea una vez **por paso**, y medido en el mismo banco (`tick44.mjs` [2]):
+
+- **1.53% → 0.07%** de dispersión entre 60 y 360 Hz.
+- En un monitor **múltiplo de 60** (60, 120, 240, 360) el resultado es idéntico
+  hasta el último decimal: 8.7350 clavado, dispersión 0.000000%.
+- Lo que queda es fase de muestreo en 144 y 165 Hz, que no son múltiplos: un
+  residuo acotado, no una divergencia que se acumule.
+- El tiempo en el aire pasa a ser **3900 ms en los seis refrescos** (antes
+  3900–3983): ése era el 0.57 heredado del escalar.
+- La curva de ritmo de giro a 240 Hz es ahora **la misma fila** que a 60, dígito a
+  dígito, y el óptimo sigue en **40°/s**.
+
+Lo que se paga: un jugador de 240 Hz pierde un **1.36%** de marcha final en ese
+banco y uno de 60 Hz no pierde nada, porque el juego pasa a comportarse en todas
+partes como se comportaba a 60 —que es la referencia con la que se calibró—.
+Ver `docs/decisions.md` §32 y §44.
 
 **Modelo escalar (`airVector: false`): el air-strafe es el único sitio donde sube
 `_airSpeed`, y tiene techo duro.**
@@ -1039,7 +1111,11 @@ entera. En juego normal `recoveries` vale cero y las auditorías lo comprueban.
 **El límite de FPS usa un acumulador de delta con arrastre del resto y
 tolerancia** (`tolerance = min(1, interval * 0.1)`), no salto crudo de frames.
 Sin la tolerancia, un tope igual al refresco del monitor lo parte por la mitad
-(tick de 4.166 ms contra objetivo de 4.167 ms).
+(tick de 4.166 ms contra objetivo de 4.167 ms). **Y es el mismo mecanismo que
+reparte los pasos del mundo** desde la vuelta 44 (`_advanceSimulation`), con la
+misma tolerancia y por la misma razón: un monitor a 60 Hz entrega frames de
+16.666 ms contra un paso de 16.667. Lo que cambia es que el limitador **descarta**
+lo que sobra y la simulación **lo gasta** —puede dar más de un paso por frame—.
 
 **Las teclas son un mapa único en `KEYBINDS`, y el store las sanea como los
 ajustes.** Antes estaban repartidas entre `MOVEMENT.keys`, `WEAPON_KEYS` y
@@ -1099,6 +1175,13 @@ creerte el diagnóstico.** No depures un falso negativo durante media hora.
 ---
 
 ## 5. Estado actual (resumen)
+
+**El mundo va a 60 Hz fijos** (`SIM.hz`) desde la vuelta 44, dibuje el monitor lo
+que dibuje: el frame acumula tiempo real y gasta pasos con arrastre del resto, y
+la cámara se dibuja interpolada entre los dos últimos. Con eso el juego se
+comporta igual en cualquier pantalla —dispersión del aire del 1.53% al 0.07%, y
+**cero** en monitores múltiplo de 60— y queda montada la condición que necesita
+la predicción de cliente del 1v1.
 
 Sala vacía de **80×80×16**, rejilla en suelo y paredes. **Cada escenario puede
 traer la suya**: el Plano A vive en **40×40×10**. **Dos modos de sesión** (`SESSION_MODES`): `timed`, la ronda de **30 s** —y con
@@ -1170,7 +1253,9 @@ una vista en tercera persona que orbita el modelo, fuera de partida.
 
 **Movimiento:** WASD, tres marchas (correr / SHIFT andar / **C** agachado —CTRL
 no, ver convenciones—, gana la más lenta), salto sin doble salto **resuelto en forma cerrada** —misma
-trayectoria a cualquier refresco—, **salto encadenado** con SPACE dentro de
+trayectoria a cualquier refresco, y desde la vuelta 44 **el mundo entero va en
+pasos fijos de 60 Hz**, así que tampoco depende del monitor lo que sí era una
+integración—, **salto encadenado** con SPACE dentro de
 `MOVEMENT.chainJumpWindowMs` (130 ms a cada lado del aterrizaje exacto), que
 conserva la marcha del aterrizaje —con vector, también **la dirección**—, y
 **air-strafe**: en el aire, girar el ratón hacia el lado de la tecla de estrafe

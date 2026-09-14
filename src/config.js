@@ -2812,3 +2812,35 @@ export const RENDER = {
    */
   fpsSampleFrames: 30,
 }
+
+/**
+ * **El tick de simulación.** El mundo avanza en pasos de tamaño fijo, y el
+ * monitor sólo decide cuándo se dibuja.
+ *
+ * Hasta la vuelta 44 el mundo avanzaba con el delta del frame: a 240 Hz se
+ * simulaba en pasos de 4.17 ms y a 60 en pasos de 16.67. Casi todo el motor
+ * aguantaba esa diferencia porque estaba resuelto en forma cerrada —la parábola
+ * del salto, la cadencia, la ganancia por ángulo del air-strafe escalar—, pero
+ * el modelo vectorial del aire es una **integración** cuya entrada es el ratón,
+ * y el ratón se muestrea una vez por frame: de ahí el 1.38% de diferencia entre
+ * 60 y 240 Hz que documenta `docs/decisions.md` §32. Con paso fijo esa
+ * diferencia desaparece por construcción, porque el paso deja de depender del
+ * refresco.
+ *
+ * Es además el requisito de la predicción de cliente: reejecutar las entradas
+ * pendientes sobre el mismo módulo sólo converge si cliente y servidor dan los
+ * mismos pasos. Ver `docs/propuestas/02-multijugador-1v1.md`.
+ */
+export const SIM = {
+  /** Pasos de mundo por segundo. 60 es el tick de CS2; Valorant va a 128. */
+  hz: 60,
+  /**
+   * Tope de delta por frame: evita saltos del reloj tras un parón del
+   * navegador. Es también el techo de pasos por frame —seis a 60 Hz—, así que
+   * un parón largo no se paga con una avalancha de simulación.
+   */
+  maxFrameDeltaMs: 100,
+}
+
+/** Milisegundos de un paso de mundo. Sale de `SIM.hz` y no se escribe aparte. */
+export const SIM_STEP_MS = 1000 / SIM.hz
