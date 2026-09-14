@@ -58,6 +58,7 @@ import { ActionPanel } from './actionPanel.js'
 import { Avatar } from './avatar.js'
 import { EnemyFire } from './enemyFire.js'
 import { DummyMarkers } from './markers.js'
+import { MuzzleFlash } from './muzzleFlash.js'
 import { PickupField } from './pickups.js'
 import { PlayerStatus, playerBody } from './player.js'
 import { getSettings, subscribeSettings, updateSettings } from '../settings.js'
@@ -76,6 +77,8 @@ const _spreadU = new THREE.Vector3()
 const _spreadV = new THREE.Vector3()
 const _spreadUp = new THREE.Vector3(0, 1, 0)
 const _spreadFallback = new THREE.Vector3(1, 0, 0)
+/** Hacia dónde mira la cámara, para saber de qué lado te han disparado. */
+const _bearingForward = new THREE.Vector3()
 
 /**
  * Desvía una dirección un ángulo aleatorio dentro de un cono de `spreadDeg`.
@@ -183,7 +186,13 @@ export class Engine {
      */
     this.status = new PlayerStatus()
     /** Los muñecos disparando, y los recogibles que hacen falta para aguantarlo. */
-    this.enemyFire = new EnemyFire(this.scene, (hit) => this._onPlayerHit(hit))
+    /** El fogonazo de cada disparo enemigo. Sólo dibuja: el aviso viene de fuera. */
+    this.muzzleFlash = new MuzzleFlash(this.scene)
+    this.enemyFire = new EnemyFire(
+      this.scene,
+      (hit) => this._onPlayerHit(hit),
+      (x, y, z, now) => this.muzzleFlash.flash(x, y, z, now),
+    )
     /** Brújula e iconos de estado sobre cada muñeco. Sólo dibuja; no decide. */
     this.markers = new DummyMarkers(this.scene, this.cssScene)
     // Enlazado una vez: pasarlo como flecha en el bucle sería una función nueva
@@ -393,6 +402,7 @@ export class Engine {
     this._stopShieldSound()
     this.enemyFire.dispose()
     this.markers.disposeMaterials()
+    this.muzzleFlash.dispose()
     this.pickups.dispose()
     this.actionPanel.dispose()
     this.cssRenderer.domElement.remove()
@@ -476,6 +486,7 @@ export class Engine {
     this._cancelReload()
     this.targets.clear()
     this.pickups.clear()
+    this.muzzleFlash.clear()
     this._stopShieldSound()
     if (this.isLocked) document.exitPointerLock()
     this._setPhase(PHASE.IDLE)
@@ -756,6 +767,7 @@ export class Engine {
     // su sitio. El combate se enciende solo: `enemyFire` ya sabe si toca.
     this.status.reset()
     this._stopShieldSound()
+    this.muzzleFlash.clear()
     this.enemyFire.begin()
     this.pickups.begin()
     // La primera diana nace en la posición ya reseteada del jugador.
@@ -914,6 +926,9 @@ export class Engine {
     // Los marcadores van **después** del fuego: enseñan el estado de este frame,
     // no el del anterior.
     this.markers.update(now, deltaMs, this.targets.instances, this.camera, this._enemyPhase)
+    // Los fogonazos van con `now` y no con el delta de juego: son de los
+    // disparos que acaban de salir, y en pausa no sale ninguno.
+    this.muzzleFlash.update(now, this.camera)
     this.pickups.update(now, deltaMs / 1000, this.camera)
   }
 
@@ -932,6 +947,9 @@ export class Engine {
     const slots = this.targets.instances.length
     if (this.markers.slots.length !== slots || this.markers.radius !== settings.targetRadius) {
       this.markers.build(slots, settings.targetRadius)
+      // El pool de fogonazos va con el mismo disparador y por el mismo motivo:
+      // una ranura por muñeco y el tamaño escalado con el suyo.
+      this.muzzleFlash.build(slots, settings.targetRadius)
     }
   }
 
@@ -939,21 +957,44 @@ export class Engine {
    * Un disparo enemigo ha entrado. Aquí se decide qué significa; el módulo que
    * dispara sólo sabe de geometría.
    */
-  _onPlayerHit({ zone, damage, weaponKey }) {
+  _onPlayerHit({ zone, damage, weaponKey, fromX, fromZ }) {
     const result = this.status.takeHit(zone, damage, weaponKey)
     // En los segundos de gracia el disparo no existe: ni daño, ni sonido, ni
     // anillo. Un anillo de daño sin daño enseñaría lo contrario de lo que pasa.
     if (result.blocked) return
+    const bearing = this._bearingTo(fromX, fromZ)
     if (result.helmetBroken) {
       // El único aviso de que la cabeza se ha quedado descubierta.
       playHelmetCrack()
-      this.callbacks.onDamage?.(0)
+      this.callbacks.onDamage?.(0, bearing)
       return
     }
     playDamage(Math.min(1, damage / PLAYER.maxHealth))
-    this.callbacks.onDamage?.(damage / PLAYER.maxHealth)
+    this.callbacks.onDamage?.(damage / PLAYER.maxHealth, bearing)
     if (!result.killed) return
     this._downPlayer()
+  }
+
+  /**
+   * **Hacia dónde queda un punto del mundo, desde donde miras ahora.** Cero es
+   * justo delante, positivo a la derecha, π a la espalda.
+   *
+   * Se mide **en horizontal**, con la misma razón que el cono de aparición: un
+   * disparo que llega desde arriba sigue llegando desde un lado, y mirar al
+   * suelo no puede cambiar de qué lado. Y sale del vector de la cámara y no de
+   * su `rotation.y` porque el empuje del retroceso también mueve la mira: lo que
+   * hay que contestar es hacia dónde girar **desde lo que se ve**.
+   */
+  _bearingTo(x, z) {
+    this.camera.getWorldDirection(_bearingForward)
+    const fx = _bearingForward.x
+    const fz = _bearingForward.z
+    const flat = Math.hypot(fx, fz)
+    if (flat < 1e-6) return 0
+    const dx = x - this.camera.position.x
+    const dz = z - this.camera.position.z
+    // Derecha de la cámara, en el plano: forward × arriba.
+    return Math.atan2((-fz * dx + fx * dz) / flat, (fx * dx + fz * dz) / flat)
   }
 
   /** Abatido: se congela al jugador y arranca la cuenta de reaparición. */

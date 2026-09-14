@@ -69,6 +69,7 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Jugador | `src/game/player.js` | Vida, escudo, casco, reaparición y **dónde te han dado**. |
 | Fuego enemigo | `src/game/enemyFire.js` | Los muñecos disparando: visión, reacción, cadencia y cono. Y **publica en qué fase está cada uno**. |
 | Marcadores | `src/game/markers.js` | Brújula, iconos `?` / `!` y ficha arma+nick sobre cada muñeco. Sólo dibuja. |
+| Fogonazo | `src/game/muzzleFlash.js` | El destello de cada disparo enemigo. Pool de estrellas aditivas; sólo dibuja. |
 | Recogibles | `src/game/pickups.js` | Cruces de vida, cargas de escudo y casco por el suelo. |
 | Música | `src/audio/music.js` | Ambiente de menús, generado. Su propio volumen. |
 | Config | `src/config.js` | Todo el tuning, sin excepción. |
@@ -431,6 +432,31 @@ escena no hay ni una luz, así que no hay sombreado que las separe: un muñeco
 encarado y uno de espaldas se verían igual. Con la tapa de la cola al 45% del
 verde, de frente se ve el claro y de espaldas el oscuro.
 
+**Y desde la vuelta 40 el morro cae, que es la otra mitad de lo mismo.** Las dos
+señales de orientación no se solapan: **se reparten los ángulos**.
+
+- **De frente y de espaldas** la silueta es casi la misma —8×8 px contra 8×10 a
+  12 u— y lo que separa es el **tono**: Δ de luminancia 34-62.
+- **De perfil** el tono no dice nada, porque se ven las dos caras a la vez, y lo
+  que habla es la **pendiente**. Con `noseDrop: 0` el perfil era un rombo
+  simétrico; con 0.5 es un triángulo que baja hacia la punta.
+
+Antes de quitar una de las dos, mira a qué ángulo deja ciego.
+
+**El contorno negro cuesta verde y compra filo, y las dos cosas están medidas.**
+Es la técnica de siempre —`EdgesGeometry` sobre la propia malla y `LineSegments`
+encima, con `polygonOffset` en las caras para que la línea gane el desempate—.
+
+- **Lo que compra:** sobre las piezas claras del mapa (`alta`, `parapeto`,
+  `bloque`) el verde se queda en **1.26-1.34 de contraste**, o sea sin filo, y el
+  negro da 7.46-12.55. Con el par verde+negro el peor caso de todo el mapa sube a
+  **3.96**; ninguno de los dos colores cubre la rampa de grises solo.
+- **Lo que cuesta:** contra el fondo oscuro se come el anillo exterior de píxeles
+  verdes. A 12 u el marcador pasa de **117 a 75 px** de verde y de 24×9 a 19×7,
+  por debajo del listón de 80 px de la vuelta 37 —aunque la silueta, mirada
+  píxel a píxel, sigue siendo la misma cuña—. Es la única cifra que empeoró en la
+  vuelta 40 y está anotada a propósito.
+
 **La ficha flotante no sale por estar a la vista, sale por apuntar.** Una ficha
 por cada muñeco visible es una pantalla de rótulos; el gesto de sostener la mira
 es lo que dice a cuál estás mirando, y `MARKERS.nameplate.dwellMs` es cuánto hay
@@ -449,6 +475,41 @@ Y el día que haya equipos, **a un compañero se le ve siempre** (`instance.frie
 saber quién juega contigo no se gana apuntando. Hoy el campo existe y está en
 false para todos, y el nick es la ranura del pool (`VK-01`) hasta que haya
 identidades de verdad.
+
+**Que te disparan se dice por tres canales, y ninguno pide que estés mirando.**
+Hasta la vuelta 40 todo el aviso estaba delante —el anillo de la mira dice *que*
+te han dado y los marcadores sólo existen para quien tienes en pantalla—, así que
+a un tirador a la espalda sólo se le podía buscar girando a ciegas. Las tres
+señales se reparten el trabajo y **cada una entra por un sitio distinto**:
+
+- **La cuña direccional** (`FEEDBACK.damageArc*`), cuando te dan. El ángulo sale
+  del **vector de la cámara** y se mide **en horizontal** —el retroceso mueve la
+  mira de verdad, y mirar al suelo no cambia de qué lado te disparan—. La pinta
+  un `conic-gradient` centrado en ese ángulo, que cuenta los grados desde arriba
+  y en el sentido del reloj: la misma convención, así que no hay conversión que
+  pueda salir espejada. Y **el hueco de la mira es una máscara radial**, no una
+  opacidad afinada: la regla de no tapar el centro queda garantizada por
+  construcción.
+- **El silbido** (`ENEMY.whizz`), cuando fallan cerca. Se mide contra los
+  **oídos** y el emisor va al **punto de máxima aproximación**, que es por donde
+  pasó. Su rayo de cobertura lleva **presupuesto por frame** como el de la
+  visión: pasado el tope se pierde un silbido, no una bala. Medido con ocho
+  muñecos: 13.8 disparos y 5.7 silbidos por segundo, +0.1 ms p99 en el combate.
+- **El fogonazo** (`muzzleFlash.js`), en cada disparo. Aditivo, una geometría y
+  un material para todo el pool, ningún rayo.
+
+**Un destello en el eje del cuerpo se dibuja dentro del muñeco.** Medido: de los
+340 píxeles que tocaban a 6 u se veían 24, los de las esquinas. Por eso el
+fogonazo sale un palmo por delante del pecho (`ENEMY.muzzleForwardFactor`), que
+es donde está la boca de un arma — **la bala sigue saliendo del eje**, eso no se
+tocó. Y es una **estrella de cuatro puntas** y no un cuadrado: sin luces en la
+escena la silueta es lo único que dice qué es una cosa, y un cuadrado blanco se
+lee como una tarjeta pegada al pecho. Misma regla que la visera del casco.
+
+**El silbido es una voz propia, no el disparo con otro volumen.** Ruido por un
+pasa-banda que **cae** de 4.2 kHz a 1.25 kHz en 90 ms y sin nada por debajo de
+900 Hz; el disparo lleva cuerpo grave y esto no lleva ninguno. La caída de tono
+es lo que se lee como «ha pasado de largo» en vez de «ha sonado ahí».
 
 **Reaparecer da unos segundos de gracia** (`PLAYER.respawn.invulnerableMs`), y van
 **antes que el casco**: si no, un tiro a la cabeza durante la gracia gastaría el
@@ -914,7 +975,9 @@ vida: cruz en CSS, barra fina, escudo de tres segmentos recortado en silueta,
 contador de cargas y **casco trazado con potrace** (silueta y visera con
 `evenodd`, que es lo que lo hace reconocible), con parpadeo rojo por debajo de 45
 de vida **y sin escudo**. Al recibir un disparo se enciende un anillo alrededor de la
-mira, y abatido sale en el centro lo que falta para reaparecer. Además, la
+mira **y una cuña roja en el borde hacia quien te ha disparado** —dos avisos, uno
+dice cuánto y el otro de dónde—, y abatido sale en el centro lo que falta para
+reaparecer. Además, la
 **marca de Vektor** arriba a la izquierda —icono discreto, sin
 texto, en el mismo gris apagado que el contador—; aciertos, fallos, precisión y
 tiempo arriba; contador de FPS en la esquina de enfrente y, **justo debajo, un
@@ -936,6 +999,12 @@ visión y dentro de `ENEMY.engageRange` (24 u), un muñeco abre fuego con el
 `WEAPONS`, hoy la Axis-7— apuntando al centro del cuerpo del jugador con el cono
 de la dificultad. Dispara en ráfagas de cuatro con pausa, y el disparo se resuelve
 contra las **tres zonas del jugador**, que son las del hitbox.
+
+**Y se nota aunque no lo estés mirando** (vuelta 40): cada disparo enciende un
+**fogonazo** blanco —estrella aditiva de 0.22 u— por delante de su pecho; una bala
+que falla y pasa a menos de 1.8 u del oído **silba** desde el punto por el que
+pasó, con dirección real; y un impacto enciende una **cuña roja en el borde de la
+pantalla** hacia el lado del que disparó, medio segundo y con el centro libre.
 
 **Dificultad en el panel:** Fácil (15°, 900 ms), Normal (9°, 650 — lo de siempre)
 y Difícil (5°, 400). Un nivel fija los dos números; ver convenciones. La velocidad

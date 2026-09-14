@@ -6,7 +6,7 @@ import {
   useState,
   useSyncExternalStore,
 } from 'react'
-import { COLORS, MOVEMENT, SESSION_DURATION_S } from './config.js'
+import { COLORS, FEEDBACK, MOVEMENT, SESSION_DURATION_S } from './config.js'
 import { Engine, PHASE } from './game/engine.js'
 import { disposeAudio } from './audio/sfx.js'
 import { setMusicVolume, startMusic, stopMusic } from './audio/music.js'
@@ -61,6 +61,11 @@ export default function App() {
     root.setProperty('--action-color', COLORS.action)
     root.setProperty('--electric-color', COLORS.electric)
     root.setProperty('--health-color', COLORS.health)
+    // El rojo de «te disparan» y las medidas de la cuña direccional: el tuning
+    // sigue viviendo en config.js aunque quien lo dibuje sea una hoja de estilos.
+    root.setProperty('--threat-color', COLORS.threat)
+    root.setProperty('--damage-spread', `${FEEDBACK.damageArcSpreadDeg}deg`)
+    root.setProperty('--damage-inner', `${FEEDBACK.damageArcInner * 100}%`)
   }, [])
 
   useEffect(() => {
@@ -74,7 +79,13 @@ export default function App() {
         },
         onFrame: (stats) => hudRef.current?.update(stats),
         onShot: () => crosshairRef.current?.flash(),
-        onDamage: (severity) => crosshairRef.current?.damage(severity),
+        onDamage: (severity, bearing) => {
+          // Dos avisos y no uno: el anillo dice **cuánto** te han dado y la cuña
+          // del borde **de dónde**. El primero está en la mira porque hay que
+          // seguir mirando ahí; el segundo, justo en el borde contrario.
+          crosshairRef.current?.damage(severity)
+          hudRef.current?.damageFrom(bearing ?? 0, severity)
+        },
         onHelp: (text, durationMs) => hudRef.current?.showHelp(text, durationMs),
         onOpenOptions: () => setOptionsOpen(true),
         onAvatarDebug: setAvatarDebug,

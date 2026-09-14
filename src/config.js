@@ -29,6 +29,21 @@ export const COLORS = {
   /** Flash/pop de la diana al ser acertada. */
   targetHit: '#FFFFFF',
   /**
+   * **Negro de contorno.** No es el fondo: es el filo que separa una pieza de
+   * lo que tenga detrás cuando las dos son claras. Lo usa el contorno de la
+   * brújula, con la misma técnica que las aristas de la cobertura.
+   */
+  outline: '#000000',
+  /**
+   * **El fogonazo de un disparo enemigo**, y el segundo blanco de la paleta.
+   * No reutiliza ninguno de los que ya significan algo —naranja las dianas, rojo
+   * la amenaza, ámbar el explosivo, amarillo la detección— porque no es un aviso
+   * codificado: es lo que hace un arma al dispararse, y eso es blanco. Que
+   * coincida con el pop del acierto no estorba: uno sale donde disparas y el
+   * otro donde te disparan, y nunca en el mismo sitio.
+   */
+  muzzleFlash: '#FFFFFF',
+  /**
    * Verde FlickLAB. Color de marca para los botones de acción principal
    * —JUGAR, REANUDAR, REINICIAR— y, desde la vuelta 38, **la brújula de
    * orientación** sobre cada muñeco. Es el único sitio donde un color de la
@@ -1899,6 +1914,18 @@ export const ENEMY = {
   /** Altura de la boca del arma sobre los pies del muñeco, en fracción de su altura. */
   muzzleHeightFactor: 0.72,
   /**
+   * **Cuánto sale la boca por delante del pecho**, en fracción de la altura del
+   * muñeco y en la dirección del disparo.
+   *
+   * Sólo lo usa el **fogonazo**: la bala sigue saliendo del eje del cuerpo, que
+   * es de donde salía antes de que hubiera fogonazo, y esto no cambia ni una
+   * trayectoria. Existe porque un destello en el eje del cuerpo se dibuja
+   * **dentro** del muñeco y lo tapa su propia malla: medido, de 342 píxeles
+   * esperados a 6 u se veían 24, los de las esquinas. Con la boca por delante
+   * del pecho —que es donde está la boca de un arma— se ve entera.
+   */
+  muzzleForwardFactor: 0.24,
+  /**
    * A qué parte del jugador apuntan, como fracción de su altura: 0 los pies, 1
    * la coronilla. **Al centro del cuerpo, y no más arriba**: la cabeza empieza
    * en 0.86 y vale 100 de 100, así que apuntar al pecho alto convertía cada
@@ -1908,6 +1935,41 @@ export const ENEMY = {
    * piernas y la cabeza vuelve a ser lo que tiene que ser: mala suerte.
    */
   aimHeightFactor: 0.55,
+
+  /**
+   * **La bala que pasa cerca.** Un disparo que falla pero te roza el oído tiene
+   * que sonar, y sonar **desde el lado por el que pasó**: es la otra mitad de
+   * saber que te disparan sin estar mirando al que dispara. El silbido es una
+   * voz propia (`playBulletWhizz`), no el disparo con otro volumen: lo que dice
+   * no es «alguien ha disparado» sino «esa bala venía a por ti».
+   *
+   * Se mide contra **los oídos**, o sea contra la cámara, y no contra el cuerpo:
+   * lo que se está modelando es el chasquido al pasar, que se oye donde se oye.
+   * El emisor se coloca en el **punto de máxima aproximación** de la trayectoria,
+   * que es exactamente por donde pasó.
+   */
+  whizz: {
+    /** A cuánto del oído tiene que pasar para oírse, en unidades. */
+    radius: 1.8,
+    /**
+     * Y a cuánto tiene que estar el que dispara. De cerca el propio disparo ya
+     * te dice de dónde viene, y encima el punto de máxima aproximación cae casi
+     * encima de la cámara: serían dos sonidos fuertes a la vez diciendo lo mismo.
+     */
+    minShooterDistance: 5,
+    /**
+     * **Rayos por frame**, como los de visión y los de la ficha flotante. Con
+     * ocho muñecos a 600 RPM salen 1.3 disparos por frame a 60 Hz y **cuatro de
+     * cada diez fallan cerca** (medido: 13.8 disparos y 5.7 silbidos por
+     * segundo), así que sin tope un frame malo puede pagar ocho rayos de golpe
+     * —0.24 ms, todo el presupuesto— por un sonido.
+     *
+     * Lo que se pierde al tocar el tope es un silbido, no una bala: si tres
+     * balas te pasan cerca en el mismo frame, se oyen dos y la información
+     * —«te están pasando cerca, por ahí»— llega igual.
+     */
+    raysPerFrame: 2,
+  },
 }
 
 /**
@@ -1980,6 +2042,17 @@ export const MARKERS = {
      * al 45%, de frente se ve el claro y de espaldas el oscuro.
      */
     tailShade: 0.45,
+    /**
+     * **Cuánto cae el morro**, en fracciones de `height`, medido desde la media
+     * altura de la cola: 0 deja la cuña simétrica —como hasta la vuelta 39— y
+     * 0.5 pone la punta al ras de la base.
+     *
+     * Es una **segunda señal de orientación, de forma**, que convive con la de
+     * tono (`tailShade`). No sobra: el tono se lee de frente y de espaldas, que
+     * es cuando la silueta es la misma; la pendiente se lee **de perfil**, que es
+     * justo donde el tono no dice nada porque se ven las dos caras a la vez.
+     */
+    noseDrop: 0.5,
     /** Por encima de la coronilla. */
     gap: 0.06,
   },
@@ -2134,6 +2207,56 @@ export const FEEDBACK = {
    */
   damageRingMs: 320,
   damageRingOpacity: 0.55,
+  /**
+   * **El indicador direccional de daño**: un tinte en el borde de la pantalla
+   * hacia el lado real de donde vino el disparo.
+   *
+   * Es la respuesta a un agujero de información concreto: el anillo de la mira
+   * dice *que* te han dado, y los marcadores sólo dicen algo de quien tienes
+   * delante. Un tirador a la espalda no aparecía por ningún sitio, así que la
+   * única forma de encontrarlo era girar a ciegas.
+   *
+   * Va **rojo** (`COLORS.threat`, el mismo del `!`), que en esta paleta ya
+   * significa «te están disparando», y **no** naranja como el anillo de la mira:
+   * son dos avisos distintos y el naranja es de las dianas.
+   *
+   * Y va breve y en el borde a propósito. Es la misma regla que impidió el
+   * tinte rojo de pantalla completa del anillo: cuando te disparan, lo último
+   * que se puede tapar es el sitio al que hay que apuntar. La cuña se pinta con
+   * un `conic-gradient` centrado en el ángulo y se recorta con una máscara
+   * radial, así que el centro de la pantalla queda intacto por construcción, no
+   * por ajustar opacidades.
+   */
+  damageArcMs: 520,
+  damageArcOpacity: 0.5,
+  /** Medio ángulo de la cuña, en grados: cuánto abarca a cada lado. */
+  damageArcSpreadDeg: 34,
+  /**
+   * Dónde empieza el tinte, en fracción del radio de la máscara. Por dentro de
+   * eso no se pinta nada: es el hueco que deja la mira libre.
+   */
+  damageArcInner: 0.55,
+  /**
+   * **El fogonazo del muñeco que dispara.** Un plano encarado a la cámara en la
+   * boca del arma, del tamaño de un puño y encendido unas decenas de
+   * milisegundos. No es una luz: en esta escena no hay ninguna, así que es un
+   * `MeshBasicMaterial` aditivo — el mismo truco de «emisivo» que ya usan el
+   * pop de la diana y el marcador del explosivo.
+   *
+   * Va en **blanco** y es el único elemento del mundo que lo usa: el naranja es
+   * de las dianas, el rojo del aviso de amenaza, el ámbar del explosivo y el
+   * amarillo de la detección. Un fogonazo blanco no se confunde con ninguno y
+   * es lo que hace un arma al dispararse.
+   */
+  muzzleFlashMs: 55,
+  /**
+   * Ancho de punta a punta, **en fracciones de la altura del muñeco**, como
+   * todo lo que se dibuja encima de uno: cambiar `targetRadius` no lo descoloca.
+   * A 0.12 son ~0.22 u, un puño. La primera versión iba a 0.4 u y de lejos se
+   * leía como una tarjeta blanca pegada al pecho, no como un fogonazo.
+   */
+  muzzleFlashSize: 0.12,
+  muzzleFlashOpacity: 0.85,
 }
 
 /** Sonido sintetizado (Web Audio API). Sin assets externos. */
@@ -2147,6 +2270,12 @@ export const AUDIO = {
   hitVolume: 0.8,
   /** Disparo enemigo: el mismo perfil que el del jugador, un punto más bajo. */
   enemyShotVolume: 0.62,
+  /**
+   * **El silbido de una bala que pasa cerca.** Por debajo del disparo: lo que
+   * hace útil el silbido es de dónde viene, no cuánto suena, y a la altura del
+   * disparo taparía las ráfagas de los demás.
+   */
+  whizzVolume: 0.5,
   /**
    * **Ajuste de nivel de las muestras grabadas** (`src/audio/samples.js`), que
    * se multiplica por el volumen del disparo. Una grabación de verdad viene

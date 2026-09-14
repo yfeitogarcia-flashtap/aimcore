@@ -3,7 +3,7 @@ import { VektorMark } from './Logo.jsx'
 import WeaponSilhouette from './WeaponSilhouette.jsx'
 import { STAR_PATH } from './Stars.jsx'
 import { ICON_PATHS } from './iconPaths.js'
-import { PLAYER, WEAPONS } from '../config.js'
+import { FEEDBACK, PLAYER, WEAPONS } from '../config.js'
 
 /**
  * Engranaje de la marca de opciones, en el mismo lienzo de 24×24 que la
@@ -68,6 +68,8 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
   const reloadBarRef = useRef(null)
   const helpRef = useRef(null)
   const helpTimer = useRef(0)
+  /** Tinte direccional de daño: la cuña del borde hacia quien te ha disparado. */
+  const damageArcRef = useRef(null)
   const starsRef = useRef(null)
   // Cinco nodos fijos: encender estrellas es cambiar clases, no crear elementos.
   const starRefs = useRef([])
@@ -293,6 +295,31 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
       }
     },
 
+    /**
+     * **De qué lado te han disparado.** Una cuña en el borde de la pantalla
+     * centrada en el ángulo que da el motor: 0 es justo delante y positivo a la
+     * derecha, que es exactamente cómo cuenta los grados un `conic-gradient`
+     * —desde arriba y en el sentido del reloj—, así que el ángulo se escribe tal
+     * cual y no hay ninguna conversión que pueda salir espejada.
+     *
+     * Va por la Web Animations API como el anillo de la mira, no por estado de
+     * React: recibir un disparo no puede repintar el HUD.
+     */
+    damageFrom(bearingRad, severity = 0.5) {
+      const element = damageArcRef.current
+      if (!element) return
+      element.style.setProperty('--damage-angle', `${(bearingRad * 180) / Math.PI}deg`)
+      const peak = FEEDBACK.damageArcOpacity * (0.5 + 0.5 * Math.min(1, Math.max(0, severity)))
+      element.animate(
+        [
+          { opacity: 0 },
+          { opacity: peak, offset: 0.16 },
+          { opacity: 0 },
+        ],
+        { duration: FEEDBACK.damageArcMs, easing: 'ease-out' },
+      )
+    },
+
     /** Aviso temporal que se retira solo. */
     showHelp(text, durationMs) {
       const element = helpRef.current
@@ -314,6 +341,11 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
       {/* La marca, discreta y sin texto, en la esquina de enfrente del contador
           de FPS. Es firma, no información: mismo gris apagado y ni un rótulo. */}
       <VektorMark className="hud__mark" />
+
+      {/* El tinte direccional de daño. Va el primero y a pantalla completa, pero
+          con el centro recortado por su máscara: cuando te disparan, lo último
+          que se puede tapar es el sitio al que hay que apuntar. */}
+      <div className="hud__damage-arc" ref={damageArcRef} aria-hidden="true" />
 
       <div className="hud__fps">
         <span className="hud__fps-value" ref={fpsRef}>

@@ -4,6 +4,8 @@
  * Dos sonidos:
  *  - `playShot()`  click seco y corto en cada disparo, acierte o falle.
  *  - `playHit()`   tono más alto y brillante al acertar.
+ *  - `playBulletWhizz()` el chasquido de una bala que pasa cerca, que es otra
+ *    cosa que un disparo: dice que esa iba a por ti.
  * No hay sonido de fallo a propósito: no queremos penalizar de más.
  *
  * **Este módulo decide cómo suena algo, no desde dónde.** Las voces que pueden
@@ -159,6 +161,58 @@ export function playShot(suppressed = false, emitter = null, volume = AUDIO.shot
   body.onended = () => {
     body.disconnect()
     bodyGain.disconnect()
+  }
+}
+
+/**
+ * **La bala que pasa cerca**: un chasquido fino que baja de tono, con el silbido
+ * detrás. Es una voz aparte del disparo a propósito —no el disparo con otro
+ * volumen—, porque dice otra cosa: no «alguien ha disparado» sino «esa venía a
+ * por ti».
+ *
+ * Cómo se distingue del disparo, que es lo único que importa aquí: el disparo
+ * lleva **cuerpo grave** (un triángulo cayendo de tono) y esto no lleva nada por
+ * debajo de mil hercios. Es ruido pasado por un pasa-banda estrecho que **cae**
+ * de agudo a medio en menos de cien milisegundos, que es lo que hace que se
+ * oiga como algo que pasa de largo y no como algo que ocurre donde estás.
+ *
+ * Va con emisor como el disparo: la gracia del silbido es **por qué lado** pasó,
+ * y quien lo coloca es `enemyFire.js`, en el punto de máxima aproximación.
+ *
+ * @param {{input: AudioNode|null}} [emitter] emisor posicionado, si lo hay
+ * @param {number} [volume] volumen base
+ */
+export function playBulletWhizz(emitter = null, volume = AUDIO.whizzVolume) {
+  if (!ctx || !master || !noiseBuffer) return
+  const t = ctx.currentTime
+  const out = emitter?.input ?? master
+
+  const noise = ctx.createBufferSource()
+  noise.buffer = noiseBuffer
+  // El pasa-banda barre hacia abajo: el efecto Doppler de una bala que se aleja,
+  // que es lo que el oído lee como «ha pasado» y no como «ha sonado ahí».
+  const band = ctx.createBiquadFilter()
+  band.type = 'bandpass'
+  band.frequency.setValueAtTime(4200, t)
+  band.frequency.exponentialRampToValueAtTime(1250, t + 0.09)
+  band.Q.value = 5.5
+  // Y por debajo no queda nada: el cuerpo grave es del disparo, y dejarlo aquí
+  // sería el mismo sonido dos veces.
+  const high = ctx.createBiquadFilter()
+  high.type = 'highpass'
+  high.frequency.value = 900
+  const gain = ctx.createGain()
+  gain.gain.setValueAtTime(0.0001, t)
+  gain.gain.exponentialRampToValueAtTime(0.9 * volume, t + 0.004)
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.1)
+  noise.connect(band).connect(high).connect(gain).connect(out)
+  noise.start(t)
+  noise.stop(t + 0.12)
+  noise.onended = () => {
+    noise.disconnect()
+    band.disconnect()
+    high.disconnect()
+    gain.disconnect()
   }
 }
 

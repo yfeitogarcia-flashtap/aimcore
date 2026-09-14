@@ -248,6 +248,44 @@ body {
 
 /* ---------- HUD ---------- */
 
+/**
+ * **El tinte direccional de daño.** Una cuña en el borde de la pantalla hacia
+ * el lado real del que dispara, encendida medio segundo al recibir un impacto.
+ *
+ * Dos decisiones están en estas cuatro líneas:
+ *
+ *  - **La cuña la pinta un `conic-gradient`**, que cuenta los grados desde
+ *    arriba y en el sentido del reloj: exactamente la convención del ángulo que
+ *    manda el motor (0 delante, positivo a la derecha). Nada que convertir, nada
+ *    que pueda salir espejado.
+ *  - **El centro está recortado por una máscara radial**, no apagado bajando la
+ *    opacidad. Así el hueco de la mira es geometría y no un ajuste fino: por
+ *    dentro de `--damage-inner` no se pinta, se mire lo que se mire.
+ */
+.hud__damage-arc {
+  z-index: 1;
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  background: conic-gradient(
+    from calc(var(--damage-angle, 0deg) - var(--damage-spread)),
+    transparent 0deg,
+    var(--threat-color) var(--damage-spread),
+    transparent calc(var(--damage-spread) * 2)
+  );
+  -webkit-mask-image: radial-gradient(
+    closest-side circle at 50% 50%,
+    transparent var(--damage-inner),
+    #000 100%
+  );
+  mask-image: radial-gradient(
+    closest-side circle at 50% 50%,
+    transparent var(--damage-inner),
+    #000 100%
+  );
+}
+
 .hud {
   z-index: 2;
   position: absolute;

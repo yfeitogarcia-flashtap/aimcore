@@ -68,14 +68,21 @@ function compassGeometry(height) {
   const l = MARKERS.compass.length * height
   const w = MARKERS.compass.width * height
   const h = MARKERS.compass.height * height
+  // **El morro cae.** A media altura de la cola la cuña es simétrica de perfil y
+  // de frente y de espaldas se ve la misma silueta; con el morro por debajo, el
+  // perfil tiene pendiente y la pendiente **apunta**. Es una segunda señal de
+  // orientación, independiente del claro/oscuro de la cola: una es de forma y la
+  // otra de tono, y se leen en sitios distintos —la forma de perfil, el tono de
+  // frente—.
+  const noseY = h / 2 - MARKERS.compass.noseDrop * h
   const positions = [
     // Cola: cuatro esquinas.
     -w / 2, 0, -l / 2,
     w / 2, 0, -l / 2,
     w / 2, h, -l / 2,
     -w / 2, h, -l / 2,
-    // Morro: un solo vértice, a media altura.
-    0, h / 2, l / 2,
+    // Morro: un solo vértice.
+    0, noseY, l / 2,
   ]
   const geometry = new THREE.BufferGeometry()
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
@@ -194,17 +201,41 @@ export class DummyMarkers {
       color: new THREE.Color(COLORS.action),
       // Las cuatro caras de la cuña: se mira desde cualquier lado.
       side: THREE.DoubleSide,
+      // **Empujada un pelo hacia atrás** para que el contorno gane el desempate
+      // de profundidad. Sin esto, la línea y la cara están exactamente en el
+      // mismo plano y el contorno aparece a trozos según el ángulo.
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
     })
     /** La tapa de la cola, más oscura: es lo que separa «de frente» de «de espaldas». */
     this._compassTailMaterial = new THREE.MeshBasicMaterial({
       color: new THREE.Color(COLORS.action).multiplyScalar(MARKERS.compass.tailShade),
       side: THREE.DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
+    })
+    /**
+     * **El contorno negro de la brújula.** La misma técnica que las aristas de
+     * la cobertura y del marcador del explosivo: `EdgesGeometry` sobre la propia
+     * malla y `LineSegments` encima, o sea el mismo volumen dibujado dos veces y
+     * ningún vértice escrito aparte.
+     *
+     * Lo que resuelve: la brújula es verde y se dibuja sobre lo que haya detrás
+     * —una caja gris clara, un muñeco naranja, la rejilla—. Sin borde, contra una
+     * cara clara pierde el filo y la cuña deja de leerse como cuña, que es de
+     * donde sale la orientación.
+     */
+    this._compassEdgeMaterial = new THREE.LineBasicMaterial({
+      color: new THREE.Color(COLORS.outline),
     })
     this._alertMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color(COLORS.alert) })
     this._threatMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color(COLORS.threat) })
     this._materials = [
       this._compassMaterial,
       this._compassTailMaterial,
+      this._compassEdgeMaterial,
       this._alertMaterial,
       this._threatMaterial,
     ]
@@ -235,10 +266,13 @@ export class DummyMarkers {
     this.radius = radius
     const height = DUMMY_HEIGHT * radius
     const compass = compassGeometry(height)
+    // El contorno sale de la propia cuña, no de una lista de aristas escrita a
+    // mano: si el morro cambia de altura, el borde cambia con él.
+    const compassEdges = new THREE.EdgesGeometry(compass)
     const iconSize = MARKERS.icon.size * height
     const bang = new THREE.ShapeGeometry(bangShapes(iconSize))
     const query = new THREE.ShapeGeometry(queryShapes(iconSize))
-    this._geometries.push(compass, bang, query)
+    this._geometries.push(compass, compassEdges, bang, query)
 
     /**
      * **Dónde va cada capa, y por qué en dos trozos.**
@@ -259,6 +293,9 @@ export class DummyMarkers {
       const group = new THREE.Group()
       group.visible = false
       const needle = new THREE.Mesh(compass, [this._compassMaterial, this._compassTailMaterial])
+      // El contorno cuelga de la aguja, así que hereda su giro en yaw y el
+      // escalado de tamaño aparente sin una segunda escritura por frame.
+      needle.add(new THREE.LineSegments(compassEdges, this._compassEdgeMaterial))
       group.add(needle)
 
       const alert = new THREE.Mesh(query, this._alertMaterial)

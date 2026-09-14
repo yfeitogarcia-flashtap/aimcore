@@ -406,10 +406,15 @@ De abajo arriba:
    hiciera apuntaría siempre al jugador y no diría nada. Está siempre que se vea
    el muñeco — es orientación, no un aviso. Su cola va más oscura que el resto, y
    eso es lo que distingue a uno que te encara de uno de espaldas: sin luces en
-   la escena, de frente y de espaldas la silueta sería la misma. **Es pequeña a
-   propósito**: ocupa el 61% del ancho de la silueta del muñeco —la primera
-   versión ocupaba el 105%, más que el propio muñeco— sin dejar de leerse a media
-   distancia, porque más allá de 8 u deja de encoger en pantalla.
+   la escena, de frente y de espaldas la silueta sería la misma. **Y la punta
+   cae**, que es la misma información por el otro canal: de perfil, donde el
+   claro/oscuro no dice nada porque se ven las dos caras a la vez, lo que apunta
+   es la pendiente. Lleva **contorno negro**, que es lo que le conserva el filo
+   sobre las piezas claras del mapa —contra ellas el verde solo se queda en 1.3
+   de contraste—. **Es pequeña a propósito**: ocupa el 61% del ancho de la
+   silueta del muñeco —la primera versión ocupaba el 105%, más que el propio
+   muñeco— sin dejar de leerse a media distancia, porque más allá de 8 u deja de
+   encoger en pantalla.
 2. **Un `?` amarillo** mientras te ha visto y todavía no dispara —ésa es su
    ventana de reacción, y es exactamente el hueco que tienes para cubrirte— o
    **un `!` rojo** mientras te dispara, uno por muñeco, así que se cuentan las
@@ -422,6 +427,30 @@ De abajo arriba:
 
 El `?`, el `!` y la ficha sí miran a la cámara, porque lo suyo es leerse; la
 brújula no, porque lo suyo es orientar.
+
+### Saber que te disparan sin estar mirando
+
+Todo lo anterior está **delante**: la brújula, el `?` y el `!` sólo existen para
+los muñecos que tienes en pantalla, y el anillo de la mira dice *que* te han dado
+pero no de dónde. A un tirador a la espalda sólo se le podía buscar girando a
+ciegas. Tres señales más, y **ninguna necesita que le estés mirando**:
+
+- **Una cuña roja en el borde de la pantalla**, hacia el lado real del que te ha
+  disparado, medio segundo y con el centro libre —cuando te disparan, lo último
+  que se puede tapar es el sitio al que hay que apuntar—. El ángulo se mide desde
+  donde miras **en ese instante**, así que sirve para girar: si te gira la mira el
+  retroceso, la cuña lo tiene en cuenta. Y se mide en horizontal: un disparo desde
+  el Balcón sigue viniendo de un lado, mires al suelo o no.
+- **El silbido de la bala que falla por poco.** Un chasquido fino que baja de
+  tono, distinto del disparo, y que suena **desde el punto por el que pasó la
+  bala**: si te pasa por la derecha, se oye por la derecha. Salta cuando pasa a
+  menos de 1.8 u del oído, y no cuando la para una caja ni cuando el que dispara
+  está a bocajarro —ahí el propio disparo ya lo dice—.
+- **Un fogonazo blanco** en el pecho del que dispara, unas decenas de
+  milisegundos. Es lo que delata a un muñeco quieto entre cajas al fondo del
+  mapa. No hay arma dibujada: lo que se enciende es la boca del arma.
+
+No hay trazadoras: una bala visible es otra cosa y se decide aparte.
 
 Tres cosas más que conviene saber:
 
@@ -476,9 +505,12 @@ En el HUD: barra fina de vida con su cruz, escudo de tres segmentos, cargas y
 casco, abajo a la izquierda. El escudo y el casco son **siluetas vectorizadas de
 sus referencias**, con la visera del casco recortada de verdad: el icono anterior
 era un arco de CSS que no se leía como casco. Por debajo de 45 de vida **y sin escudo**, parpadea
-en rojo —el mismo aviso que el cargador corto—. Al recibir un disparo se enciende
-un anillo suave alrededor de la mira, que es donde ya estás mirando; nada de
-tintes de pantalla completa, que taparían justo lo que hay que mirar.
+en rojo —el mismo aviso que el cargador corto—. Al recibir un disparo se encienden
+dos avisos que dicen cosas distintas: un **anillo suave alrededor de la mira**,
+que dice cuánto te han dado y está donde ya estás mirando, y una **cuña roja en
+el borde** hacia el lado del que disparó, que dice de dónde. Ninguno de los dos
+tapa el centro: la cuña lleva el hueco de la mira recortado por una máscara, así
+que el sitio al que hay que apuntar queda libre por construcción.
 
 ## Estrellas
 
@@ -1053,6 +1085,7 @@ src/
 ├── styles.css
 ├── audio/sfx.js        sonido sintetizado con la Web Audio API
 ├── audio/samples.js    disparos grabados, con la síntesis siempre detrás
+├── game/muzzleFlash.js el fogonazo de cada disparo enemigo
 ├── game/
 │   ├── engine.js       bucle rAF, sesión, input y raycasting
 │   ├── scene.js        sala de líneas

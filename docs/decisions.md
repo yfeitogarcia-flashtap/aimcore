@@ -3591,6 +3591,155 @@ Y «cambiar de arma» (Q) pasa a **alternar las dos que llevas** en vez de recor
 el catálogo y guardarlo como preferencia. Antes, cambiar de arma en mitad de una
 partida se te quedaba puesto para la siguiente.
 
+## Ronda 40 — Saber que te disparan sin estar mirando
+
+### 40.1 El agujero que se cierra
+
+Hasta aquí, todo lo que decía que te estaban disparando estaba **delante**: el
+anillo de la mira dice *que* te han dado pero no de dónde, y la brújula, el `?` y
+el `!` sólo existen para los muñecos que tienes en pantalla. Un tirador a la
+espalda no aparecía por ningún sitio, así que la única respuesta posible era girar
+a ciegas.
+
+Las tres señales nuevas atacan el mismo agujero por tres canales distintos, y
+**ninguna necesita que estés mirando al que dispara**:
+
+| señal | canal | cuándo |
+|---|---|---|
+| Cuña direccional en el borde | vista periférica | cuando te **dan** |
+| Silbido de la bala | oído, con dirección | cuando **fallan cerca** |
+| Fogonazo en el pecho | vista, en el mundo | en **cada** disparo |
+
+Se reparten el trabajo en ese orden de intensidad, que no es casualidad: de las
+tres, la única que cuesta vida es la primera.
+
+### 40.2 La cuña: el ángulo se calcula, y el hueco de la mira es geometría
+
+El ángulo sale del **vector de la cámara**, no de su `rotation.y`, y se mide **en
+horizontal**. Las dos cosas por el mismo motivo que el cono de aparición: el
+empuje del retroceso mueve la mira de verdad —lo que hay que contestar es hacia
+dónde girar desde lo que se ve— y un disparo que llega desde arriba sigue
+llegando desde un lado, así que mirar al suelo no puede cambiar de qué lado te
+disparan. Medido: mirando al suelo, el mismo tirador da 89.99° contra 90.00°.
+
+La cuña se pinta con un **`conic-gradient` centrado en ese ángulo**, y no con
+cuatro cuadrantes ni con un elemento rotado. Dos ventajas que no son de estilo:
+
+- **La convención encaja sola.** Un `conic-gradient` cuenta los grados desde
+  arriba y en el sentido del reloj, que es exactamente cómo se define el ángulo
+  (0 delante, positivo a la derecha). No hay conversión que pueda salir
+  espejada, que es el fallo clásico de este indicador.
+- **El hueco central es una máscara radial**, no una opacidad ajustada a ojo. La
+  regla de la vuelta 34 —cuando te disparan, lo último que se puede tapar es el
+  sitio al que hay que apuntar— queda garantizada por construcción: por dentro
+  de `damageArcInner` no se pinta nada, se mire lo que se mire.
+
+Va en **rojo** (`COLORS.threat`), que en esta paleta ya significa «te están
+disparando», y no en el naranja del anillo de la mira: son dos avisos distintos
+—cuánto y de dónde— y el naranja es de las dianas.
+
+### 40.3 El silbido: qué cuenta como «cerca»
+
+Se mide contra **los oídos** —el centro de la banda de la cabeza— y no contra el
+cuerpo, porque lo que se modela es el chasquido al pasar. El emisor se coloca en
+el **punto de máxima aproximación** de la trayectoria, que es por donde pasó de
+verdad: de ahí sale la dirección, que es toda la información que da este sonido.
+Va por el mismo `spatial.js` que el pitido del explosivo, así que con el audio
+espacial apagado cae a volumen sin dirección, como el resto.
+
+Tres cortes antes de sonar, y los tres son la misma idea —que esa bala no te ha
+pasado cerca—: por detrás no (el punto más próximo cae detrás de la boca del
+arma), a bocajarro no (menos de 5 u: ahí el propio disparo ya dice de dónde
+viene, y el punto de aproximación cae casi en la cámara), y si la para una caja
+tampoco.
+
+**Y el rayo que comprueba eso último va con presupuesto por frame**, como el de
+la visión y el de la ficha flotante. Medido en el Plano A con ocho muñecos: 13.8
+disparos por segundo, de los que **5.7 pasan cerca** —cuatro de cada diez—, así
+que sin tope un frame malo pagaría ocho rayos de golpe, 0.24 ms, todo el
+presupuesto, por un sonido. Con `raysPerFrame: 2` lo que se pierde al tocar el
+tope es **un silbido, no una bala**: si tres balas te pasan cerca en el mismo
+frame se oyen dos, y la información llega igual.
+
+Coste medido de las tres señales juntas, sobre el trozo de frame que lleva el
+combate: **p50 sin cambio, p99 +0.1 ms** (un tic del reloj del navegador, que es
+la resolución) y nunca más de dos rayos de más por frame, por construcción.
+
+Es una **voz propia** (`playBulletWhizz`), no el disparo con otro volumen: ruido
+por un pasa-banda que **cae** de 4.2 kHz a 1.25 kHz en 90 ms y sin nada por
+debajo de 900 Hz. El disparo lleva cuerpo grave y esto no lleva ninguno: la caída
+de tono es lo que se lee como «ha pasado de largo» y no como «ha sonado ahí».
+
+### 40.4 El fogonazo, y por qué era barato
+
+Un `MeshBasicMaterial` aditivo —no una luz: en esta escena no hay ninguna— con
+una geometría y un material para **todo** el pool, una malla por ranura y, por
+frame, recorrer las encendidas para apagarlas. Cero alocaciones y ningún rayo.
+Sí era barato.
+
+Dos cosas salieron de medir y no de suponer:
+
+- **En el eje del cuerpo no se ve.** Un destello centrado en el eje del muñeco se
+  dibuja **dentro** de su propia malla: de los ~340 píxeles que tocaban a 6 u se
+  veían **24**, los de las esquinas. La boca del arma va un palmo por delante del
+  pecho (`ENEMY.muzzleForwardFactor`), que es donde está la boca de un arma. La
+  bala sigue saliendo del eje: esto no cambia ni una trayectoria.
+- **Un cuadrado blanco no se lee como fogonazo.** A 0.4 u se leía como una
+  tarjeta pegada al pecho. Es una **estrella de cuatro puntas** de 0.22 u —nueve
+  vértices, el mismo coste— porque sin luces en la escena la silueta es lo único
+  que dice qué es una cosa. Misma regla que la visera del casco del suelo.
+
+Y va en **blanco**, el único color que no significa ya otra cosa: naranja las
+dianas, rojo la amenaza, ámbar el explosivo, amarillo la detección. Que coincida
+con el pop del acierto no estorba: uno sale donde disparas y el otro donde te
+disparan.
+
+### 40.5 La brújula: contorno negro y morro caído
+
+**El contorno.** Misma técnica que las aristas de la cobertura y del marcador del
+explosivo: `EdgesGeometry` sobre la propia malla y `LineSegments` encima, más un
+`polygonOffset` en las caras para que la línea gane el desempate de profundidad.
+Lo que compra, medido en contraste WCAG contra los ocho grises de `COVER`:
+
+| pieza | verde↔gris | negro↔gris |
+|---|---|---|
+| bordillo `#2B2B2B` | 6.73 | 1.48 |
+| baja `#454545` | 4.56 | 2.19 |
+| media `#6E6E6E` | 2.42 | 4.12 |
+| **alta / parapeto `#9A9A9A`** | **1.34** | **7.46** |
+| **bloque `#C8C8C8`** | **1.26** | **12.55** |
+| plataforma `#3A3A3A` | 5.41 | 1.85 |
+| rampa `#4E4E4E` | 3.96 | 2.52 |
+
+Sobre las piezas claras el verde se queda en **1.26-1.34 de contraste**, o sea
+sin filo: la cuña deja de leerse como cuña justo donde hay que asomarse. Con el
+par verde+negro, el peor caso de todo el mapa sube a **3.96**. Ninguno de los dos
+colores cubre la rampa de grises solo; juntos, sí.
+
+**Y lo que cuesta, que también está medido:** contra el fondo oscuro —que es la
+mayor parte de la pantalla— el contorno se come el anillo exterior de píxeles
+verdes. A 12 u el marcador pasa de **117 a 75 px** de verde visible y de 24×9 a
+19×7. Queda por debajo del listón de 80 px de la vuelta 37, aunque **la silueta
+sigue siendo la misma cuña**: mirado píxel a píxel a esa distancia, el perfil con
+contorno sigue siendo un triángulo limpio. Es la única cifra de esta vuelta que
+empeora, y está anotada aquí a propósito.
+
+**El morro caído.** La punta baja media altura respecto al centro de la cola
+(`noseDrop: 0.5`). Es una **segunda señal de orientación, de forma**, y convive
+con la de tono (`tailShade`) porque **no se leen en el mismo sitio**:
+
+- **De frente y de espaldas** la cuña es casi la misma silueta —8×8 px contra
+  8×10 a 12 u, un 3-7% de diferencia de forma—, y ahí lo que separa es el tono:
+  Δ de luminancia **34-62** entre ver el morro y ver la cola.
+- **De perfil** el tono no dice nada, porque se ven las dos caras a la vez, y ahí
+  lo que habla es la pendiente. Con `noseDrop: 0` el perfil era un rombo
+  simétrico; con 0.5 es un triángulo que **baja** hacia la punta.
+
+O sea: las dos señales no se solapan, se reparten los ángulos. El coste del morro
+caído es cero —los mismos cinco vértices— y lo único que añade de frente es que
+la punta asoma por debajo del rectángulo de la cola, que es un tercer indicio
+pequeño y gratis.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

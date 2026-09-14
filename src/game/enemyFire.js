@@ -45,6 +45,7 @@ import {
   WEAPONS,
 } from '../config.js'
 import { playWeaponShot } from '../audio/samples.js'
+import { playBulletWhizz } from '../audio/sfx.js'
 import { createEmitter } from '../audio/spatial.js'
 import { aimPoint, hitPlayer, zoneDamage } from './player.js'
 
@@ -56,6 +57,8 @@ const _aim = new THREE.Vector3()
 const _dir = new THREE.Vector3()
 const _u = new THREE.Vector3()
 const _v = new THREE.Vector3()
+/** Punto de máxima aproximación de una bala al oído del jugador. */
+const _near = new THREE.Vector3()
 const _up = new THREE.Vector3(0, 1, 0)
 const _fallback = new THREE.Vector3(1, 0, 0)
 
@@ -87,11 +90,16 @@ function applySpread(direction, spreadDeg) {
 export class EnemyFire {
   /**
    * @param {THREE.Scene} scene dónde cuelgan los emisores de sonido
-   * @param {(hit: {zone: string, damage: number, weaponKey: string}) => void} onHit
+   * @param {(hit: {zone: string, damage: number, weaponKey: string,
+   *   fromX: number, fromY: number, fromZ: number}) => void} onHit
+   * @param {(x: number, y: number, z: number, now: number) => void} [onShot] cada
+   *   disparo que sale, con la boca del arma. Lo pinta quien quiera —hoy el
+   *   fogonazo— y este módulo no sabe qué se hace con ello.
    */
-  constructor(scene, onHit) {
+  constructor(scene, onHit, onShot = null) {
     this.scene = scene
     this.onHit = onHit
+    this.onShot = onShot
     this.enabled = false
     this.occluders = []
     /** Estado por muñeco. El pool es fijo, así que el Map no crece sin fin. */
@@ -100,6 +108,10 @@ export class EnemyFire {
     /** Disparos que han entrado en esta sesión. Sólo para medir. */
     this.shotsFired = 0
     this.shotsHit = 0
+    /** Y cuántos han fallado pasando lo bastante cerca como para oírse. */
+    this.whizzes = 0
+    /** Rayos de silbido que quedan en este frame. Ver `ENEMY.whizz.raysPerFrame`. */
+    this._whizzBudget = ENEMY.whizz.raysPerFrame
     /** Radio con el que están dibujados los muñecos. Lo refresca `setRadius`. */
     this._radius = TARGET.radius
     /** Nivel de dificultad vigente. Lo pone el ajuste, no la constante. */
@@ -156,6 +168,7 @@ export class EnemyFire {
   begin() {
     this.shotsFired = 0
     this.shotsHit = 0
+    this.whizzes = 0
     for (const state of this._states.values()) this._resetState(state)
   }
 
@@ -175,7 +188,10 @@ export class EnemyFire {
   _stateFor(instance, now) {
     let state = this._states.get(instance)
     if (!state) {
-      state = { emitter: createEmitter(this.scene) }
+      // Dos emisores y no uno: el disparo suena en la boca del arma y el
+      // silbido, si lo hay, al lado del oído. Con uno solo, colocarlo para el
+      // segundo movería el primero mientras suena.
+      state = { emitter: createEmitter(this.scene), whizzEmitter: createEmitter(this.scene) }
       this._resetState(state)
       state.nextSightAt = now + Math.random() * ENEMY.sightCheckMs
       this._states.set(instance, state)
@@ -204,6 +220,9 @@ export class EnemyFire {
     const intervalMs = 60000 / weapon.rpm
     /** Presupuesto de rayos de este frame. Ver `ENEMY.sightChecksPerFrame`. */
     let sightBudget = ENEMY.sightChecksPerFrame
+    // El de los silbidos va aparte y se reparte igual: son dos rayos distintos
+    // con dos motivos distintos, y uno no se puede comer el presupuesto del otro.
+    this._whizzBudget = ENEMY.whizz.raysPerFrame
 
     for (let i = 0; i < instances.length; i++) {
       const instance = instances[i]
@@ -298,6 +317,20 @@ export class EnemyFire {
     // Mismo camino que el disparo del jugador: si el arma de los muñecos tiene
     // muestra grabada, suena la muestra, y si no, la síntesis.
     playWeaponShot(ENEMY.weapon, false, state.emitter, AUDIO.enemyShotVolume)
+    // Que ha salido un tiro, y de dónde. Lo pinta quien quiera —hoy el fogonazo
+    // de `muzzleFlash.js`— y aquí no se sabe qué se hace con ello.
+    //
+    // **El punto que se publica va un palmo por delante del pecho**, en la
+    // dirección del disparo, y no en el eje del cuerpo: lo que sale del eje se
+    // dibuja dentro del muñeco y lo tapa su propia malla. La bala sigue saliendo
+    // de donde salía; esto es sólo dónde se ve el destello.
+    const front = DUMMY_HEIGHT * this._radius * ENEMY.muzzleForwardFactor
+    this.onShot?.(
+      muzzle.x + _dir.x * front,
+      muzzle.y + _dir.y * front,
+      muzzle.z + _dir.z * front,
+      now,
+    )
     this.shotsFired += 1
 
     // El corte contra el cilindro decide **en qué zona** entra el disparo; lo que
@@ -315,7 +348,21 @@ export class EnemyFire {
       // fuego de varios a la vez.
       const base = zoneDamage(hit.zone)
       const damage = hit.zone === 'head' ? base : base * ENEMY.bodyDamageScale
-      this.onHit({ zone: hit.zone, damage, weaponKey: ENEMY.weapon })
+      // **Y de dónde vino.** Sin esto, recibir un disparo sólo dice que te han
+      // dado; el indicador direccional necesita el punto, y va en tres números
+      // sueltos y no en el vector, que es de módulo y se reescribe en el
+      // siguiente disparo.
+      this.onHit({
+        zone: hit.zone,
+        damage,
+        weaponKey: ENEMY.weapon,
+        fromX: muzzle.x,
+        fromY: muzzle.y,
+        fromZ: muzzle.z,
+      })
+    } else if (!hit) {
+      // Ni ha dado ni la ha parado la cobertura: puede que te haya rozado.
+      this._maybeWhizz(state, muzzle, body, distance)
     }
 
     // Cargador y ráfaga: lo que evita que un arma automática vacíe los treinta
@@ -334,8 +381,55 @@ export class EnemyFire {
     }
   }
 
+  /**
+   * **El silbido de la que ha fallado por poco.**
+   *
+   * Se mide la distancia de la trayectoria **al oído** —el centro de la banda de
+   * la cabeza, que es donde están— y no al cuerpo: lo que se modela es el
+   * chasquido al pasar, y eso se oye donde se oye. Si pasa dentro de
+   * `ENEMY.whizz.radius`, el emisor va al **punto de máxima aproximación**, que
+   * es por donde pasó de verdad: de ahí sale la dirección, que es toda la
+   * información que da este sonido.
+   *
+   * Tres cosas que lo cortan antes de sonar, y las tres son la misma idea —que
+   * esa bala no te ha pasado cerca—:
+   *
+   *  - **Por detrás no**: si el punto más próximo cae detrás de la boca del arma
+   *    (`t <= 0`), el disparo se alejaba desde el primer metro.
+   *  - **De cerca no** (`minShooterDistance`): a bocajarro el propio disparo ya
+   *    dice de dónde viene, y el punto de aproximación cae casi en la cámara.
+   *  - **Y si la para una caja, no**. Cuesta un rayo, y por eso va el último:
+   *    sólo lo pagan las que han pasado las otras dos, que son pocas. Y ese rayo
+   *    va con presupuesto por frame (`ENEMY.whizz.raysPerFrame`), como el de la
+   *    visión: pasado el tope se pierde **un silbido**, no una bala.
+   */
+  _maybeWhizz(state, muzzle, body, shooterDistance) {
+    if (shooterDistance < ENEMY.whizz.minShooterDistance) return
+    const earY = (body.torsoTop + body.top) / 2
+    const ox = body.x - muzzle.x
+    const oy = earY - muzzle.y
+    const oz = body.z - muzzle.z
+    const t = ox * _dir.x + oy * _dir.y + oz * _dir.z
+    if (t <= 0) return
+    const px = ox - _dir.x * t
+    const py = oy - _dir.y * t
+    const pz = oz - _dir.z * t
+    if (px * px + py * py + pz * pz > ENEMY.whizz.radius * ENEMY.whizz.radius) return
+    if (this._whizzBudget <= 0) return
+    this._whizzBudget -= 1
+    if (this._blocked(muzzle, _dir, t)) return
+
+    _near.copy(_dir).multiplyScalar(t).add(muzzle)
+    state.whizzEmitter.setPosition(_near.x, _near.y, _near.z)
+    playBulletWhizz(state.whizzEmitter, AUDIO.whizzVolume)
+    this.whizzes += 1
+  }
+
   dispose() {
-    for (const state of this._states.values()) state.emitter.dispose()
+    for (const state of this._states.values()) {
+      state.emitter.dispose()
+      state.whizzEmitter.dispose()
+    }
     this._states.clear()
   }
 }
