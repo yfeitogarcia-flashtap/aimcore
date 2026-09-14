@@ -55,7 +55,8 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Capa | Dónde | Qué hace |
 |---|---|---|
 | Motor | `src/game/` | Bucle rAF, input, raycast, dianas, armas, panel de acciones. **Vive fuera de React.** |
-| Escenario | `src/game/scenario.js` | Convierte los datos de `SCENARIOS` en mallas, colisionadores, oclusores y **rutas**. Y publica su sala (`scenario.room`). |
+| Escenario | `src/game/scenario.js` | Convierte los datos de `SCENARIOS` en mallas, colisionadores, oclusores y **rutas**. Y publica su sala (`scenario.room`) y su zona de aparición (`isInSpawnZone`). |
+| Línea de visión | `src/game/sight.js` | `hasLineOfSight`: el **único** raycast de «¿se ve eso desde aquí?». Lo usan la aparición y los marcadores. |
 | Sala | `src/game/scene.js` | Rejilla y paredes, reconstruibles con `setRoom`: cada escenario tiene su tamaño. |
 | Audio espacial | `src/audio/spatial.js` | Listener en la cámara y emisores posicionados. **Genérico:** no sabe del explosivo. |
 | Muestras | `src/audio/samples.js` | Disparos grabados, **con la síntesis siempre detrás**. Único camino de audio de un disparo. |
@@ -63,13 +64,14 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Puntuación | `src/game/scoring.js` | Variables normalizadas, media ponderada y estrellas. |
 | Transición | `src/game/transition.js` | **Módulo sustituible entero.** Contrato único: `run(build)` tapa la escena, llama a `build()` y destapa. Nada más del motor sabe qué forma tiene. |
 | React | `src/App.jsx`, `src/ui/` | Sólo conoce la *fase* (inicio / juego / pausa / resumen) y el resumen final. |
+| Armería | `src/ui/Armoury.jsx` | Panel de equipo (tecla B): silueta, ficha y «Equipar» por arma. Escribe en el store de ajustes, como opciones. |
 | HUD | `src/ui/Hud.jsx` | Se actualiza **imperativamente por refs** desde el bucle. Cero `setState` por frame. |
 | Cuerpo | `src/game/body.js` | **La única forma de figura humana**: la usan las dianas y el avatar. |
 | Avatar | `src/game/avatar.js` | El cuerpo del jugador, tintado con su equipo. Geometría, sin lógica. |
 | Grilla | `src/game/grid.js` | Generador de líneas. Lo usan la sala **y** la piel del avatar. |
 | Jugador | `src/game/player.js` | Vida, escudo, casco, reaparición y **dónde te han dado**. |
 | Fuego enemigo | `src/game/enemyFire.js` | Los muñecos disparando: visión, reacción, cadencia y cono. Y **publica en qué fase está cada uno**. |
-| Marcadores | `src/game/markers.js` | Brújula, iconos `?` / `!` y ficha arma+nick sobre cada muñeco. Sólo dibuja. |
+| Marcadores | `src/game/markers.js` | Brújula, iconos `?` / `!` y ficha arma+nick sobre cada muñeco. Sólo dibuja, y la brújula **sólo a quien se ve de verdad**. |
 | Fogonazo | `src/game/muzzleFlash.js` | El destello de cada disparo enemigo. Pool de estrellas aditivas; sólo dibuja. |
 | Recogibles | `src/game/pickups.js` | Cruces de vida, cargas de escudo y casco por el suelo. |
 | Música | `src/audio/music.js` | Ambiente de menús, generado. Su propio volumen. |
@@ -109,6 +111,32 @@ cambiarlo borraría los ajustes de los usuarios existentes.
 disponibles. Todo lo medido hasta ahora se mueve en 0.1–0.2 ms p99. Cualquier
 cambio que se acerque a 1 ms es una regresión aunque "se vea bien".
 
+**Hay un reloj del mundo, y es `engine.gameTime`.** Suma delta **sólo** mientras
+se juega, así que pausar es dejar de sumarle. De él cuelgan todos los tiempos del
+mundo: cadencia, recarga, aparición, cuenta atrás del explosivo, reaparición y
+carga del escudo. `performance.now()` se queda donde sigue teniendo sentido —el
+limitador de FPS, la media de frames y el movimiento, que compara contra el
+`timeStamp` del navegador—. Y las tres actualizaciones del mundo
+(`targets.update`, `_updateCombat`, `_updateObjective`) van **tras la condición de
+fase**: las dos cosas juntas, porque cada una sola dejaba un agujero —pasar delta
+cero congelaba lo que iba por delta y dejaba corriendo lo que iba por fecha, que
+es cómo los muñecos siguieron disparando en pausa hasta la vuelta 42, y parar el
+reloj sin dejar de llamar habría dejado colar el disparo que tocaba justo en el
+frame de pausar—. Si añades algo temporizado al mundo, va con `gameTime`.
+
+**Y pausar es una sola cosa**: `_suspend()`. Apaga controles y movimiento, suelta
+el gatillo y pasa a pausa, y lo llaman las dos formas de dejar de jugar sin
+terminar —soltar el ratón con Escape y abrir la armería—. Dos trozos parecidos es
+como acaba una pausa con el gatillo todavía pulsado.
+
+**Sólo se vuelve a sembrar si el tablero ha dejado de valer.** `targets.configure`
+devuelve si tuvo que rehacer las mallas, y ése es el único caso en que
+`_applySettings` llama a `beginSession`. Hasta la vuelta 42 sembraba con
+**cualquier** ajuste: tocar el silenciador en la pausa, con tres muñecos ya
+abatidos, borraba la ronda y la volvía a llenar entera —y desde la posición del
+jugador parado, o sea encima de él—. El cupo de ronda sí se recalcula siempre:
+eso no necesita rehacer nada.
+
 **El tiempo del juego no puede depender de cuándo dibuja el monitor.** Se aplica
 en dos sitios y vale para cualquier mecánica temporizada que se añada:
 
@@ -129,6 +157,26 @@ tablero de acciones (`actionPanelMetrics`, que escala con la sala y a 80 da
 exactamente los valores de siempre). Si añades algo que dependa del tamaño de la
 sala, sale de ahí: un `ROOM` suelto convierte el Plano A en un mapa con un
 anillo de suelo inalcanzable alrededor.
+
+**La zona de aparición del jugador sale del grafo por construcción, no por una
+comprobación.** Un escenario declara su `spawnZone` —**como una caja**: esquina
+mínima, ancho y fondo, la misma convención que `boxes`— y `scenario.js` descarta
+al montar cualquier punto de ruta que caiga dentro, con el radio del cuerpo de
+margen (`isInSpawnZone`, la única fuente de la exclusión). No hay dónde aparecer
+ni a dónde patrullar, y vale para **todos los modos** porque el grafo es uno. Una
+comprobación de distancia al sembrar habría sido una regla que hay que acordarse
+de aplicar en cada sitio nuevo que haga aparecer algo.
+
+Los muros son la otra mitad: tres piezas `alta` que cierran el Vestíbulo por
+detrás y por los costados y dejan el frente abierto. Medido, lo que compran: el
+punto de ruta más cercano al spawn pasa de 5.15 a 5.70 u y los que tienen línea
+de tiro al punto exacto de reaparición, de 38 de 69 a **25**, con el más cercano a
+7.1 u en vez de 5.9. Lo que cuesta: desde el Balcón ya sólo se ve **un** punto del
+Vestíbulo en vez de cuatro, así que campar ahí manda a un tercio de las
+apariciones a sitios que no se ven —el reparto pasa de dos zonas a las seis, que
+es la respuesta al campeo funcionando—. Y el tablero de acciones, que se ancla al
+spawn y se dibuja 9 u al este, queda **detrás del muro este**: sigue apagado, pero
+el día que vuelva en el Plano A hay que moverle el ancla.
 
 **Un umbral en unidades sueltas es un umbral que se rompe al reescalar.** Todo
 lo que en las auditorías era «a 10 u del spawn», «a 8 u del tablero», «a más de
@@ -375,6 +423,32 @@ que había hasta la vuelta 37.
 ese módulo ya lleva, y `markers.js` sólo lo dibuja. Deducir «está en su ventana de
 reacción» desde fuera mirando relojes sería una segunda copia de la misma máquina
 de estados, y se desincronizarían a la primera.
+
+**La brújula sale a quien se ve de verdad; los iconos, siempre.** Desde la vuelta
+42 la cuña sólo se dibuja si el muñeco está **dentro del encuadre y sin geometría
+por medio**, y el test es **el mismo** que decide dónde puede nacer un muñeco:
+`sight.js` es el único sitio del motor donde se pregunta si algo se ve, y de ahí
+llaman la aparición y los marcadores. Dos copias del mismo raycast —que es lo que
+había— es cómo un marcador acaba contradiciendo al sistema de aparición.
+
+Las dos mitades se resuelven en el orden que cuesta menos: el **encuadre** es
+aritmética (un `Frustum` por frame y una esfera por muñeco, centrada en la
+brújula y no en el cuerpo, porque es el marcador lo que se decide dibujar), y sólo
+a quien entra en él se le gasta **rayo**, con el reparto de siempre —cada
+`MARKERS.sight.recheckMs` y como mucho `raysPerFrame` por frame—. La vista se
+invierte a mano en vez de leer `camera.matrixWorldInverse`: ese campo lo escribe
+el renderer al dibujar, o sea después, y daría el encuadre del frame anterior.
+
+El rayo va **a la cabeza**, que es lo que se ve de un muñeco asomado y justo donde
+va la brújula; la aparición pregunta por el cuerpo a media altura. Por eso los dos
+veredictos pueden diferir, y sólo pueden hacerlo **en un sentido**: la cabeza se
+ve antes que el pecho. El sentido contrario significaría que el marcador ve a
+través de algo.
+
+Y los iconos `?` y `!` **no** pasan por aquí, a propósito: la brújula es
+información pasiva sobre un cuerpo que tienes delante, y los iconos son avisos de
+que te han visto o de que te disparan — un aviso que sólo llega cuando ya puedes
+ver al que dispara llega tarde.
 
 **La brújula no se billboardea; los iconos sí.** No es una inconsistencia: es que
 dicen cosas distintas. La brújula dice **hacia dónde mira el muñeco**, así que va
@@ -702,6 +776,48 @@ Tres consecuencias que **son** el sistema:
   arma que no lo admite, porque siempre llevas encima una que sí; lo que cambia
   es el aviso, que dice a cuál se aplica.
 
+**Un arma pesa, y el peso lo traduce una sola función.** Cada entrada de
+`WEAPONS` declara `weight` en kilos y `weaponSpeedFactor` dice cuánto frena: peso
+gratis hasta `MOVEMENT.load.free`, un `perKg` de pérdida por encima y un suelo en
+`minFactor`. La usan el movimiento —para ir más lento— y la armería —para decir
+cuánto—, porque dos cuentas separadas es como acabas con un panel que promete un
+10% y unas piernas que dan un 6%. Tres cosas que son el diseño:
+
+- **La pistola no cuesta velocidad.** Cae por debajo del peso gratis: la que se
+  lleva siempre no puede costar, o el coste estaría en no haber elegido. Lo paga
+  la principal, que es la decisión.
+- **Multiplica las tres marchas**, no sólo la carrera: si sólo frenase corriendo,
+  andar con el rifle sería más rápido que correr con él en cuanto el factor
+  bajase de `walkSpeed/speed`.
+- **En el aire no cambia nada.** La marcha se congela al despegar, así que
+  cambiar de arma a media trayectoria no toca el vuelo; y el techo del air-strafe
+  tampoco se escala, que el aire es técnica. Por eso las suites del modelo de
+  movimiento se miden **con la pistola equipada**: la referencia del modelo es el
+  jugador sin carga.
+
+Hoy: Pulse 1.1 kg → 6.50 u/s, Volt 2.6 → 6.14, Rift 3.6 → 5.88. **Se calibra
+jugando.**
+
+**El arma principal se equipa en la armería, no en opciones.** Elegir arma no es
+un ajuste entre la sensibilidad y el tamaño de diana: es la decisión de la
+partida. El panel (tecla **B**) enseña silueta, ficha y un botón por arma, y
+**pausa como Escape** —por el mismo camino, `_suspend()`—, porque elegir arma con
+ocho muñecos disparándote es una ruleta, no una decisión. La pistola tiene ficha
+pero no botón: se lleva siempre. Y el daño que enseña es el del **modelo de
+zonas** (100/50/34), que hoy no varía por arma: un número de daño por arma sería
+inventarse un dato que el juego no tiene. Opciones conserva la fila diciendo qué
+llevas y por dónde se cambia — quitarla del todo dejaba perdido a quien llevaba
+vueltas buscándola ahí.
+
+**Mover el valor de fábrica de una tecla no basta con cambiarlo.** La B era del
+silenciador y pasó a ser la de la armería; el silenciador se mudó a la **V**. Lo
+guardado manda sobre el valor de fábrica, así que sin más la armería se habría
+quedado **sin tecla** —la invariante es que dos acciones nunca comparten una— y
+sin ningún aviso. `LEGACY_KEYBINDS` es la hermana de `LEGACY_WEAPON_KEYS`: allí
+una clave vieja se traduce, aquí una tecla vieja se **suelta**, y sólo si coincide
+exactamente con el valor de fábrica viejo — a quien la reasignó a mano no se le
+toca nada.
+
 Y estrechar el catálogo de un ajuste **borra el valor guardado**: un
 `weapon: 'pulse'` de antes de la vuelta 39 cae a fábrica en el siguiente
 saneado, que es exactamente lo que hace el saneado con cualquier clave obsoleta.
@@ -947,7 +1063,9 @@ Puerta de 2.5 u, El Largo con tres Media escalonadas, Los Cajones de corta
 distancia, el Balcón elevado (+2.6) con **una rampa en cada extremo** y parapeto
 con dos troneras de 4 u, y un Vestíbulo con la divisoria entera al este del
 spawn —el paso central queda abierto, que es de donde sale la primera diana—.
-Veinte piezas, las mismas de siempre: lo que se recortó es el suelo entre ellas.
+Veintitrés piezas: las veinte de siempre más el **recinto de aparición** de la
+vuelta 42 —tres muros Alta que cierran el Vestíbulo por detrás y por los costados
+y dejan el frente abierto—. Lo que se recortó en la 39 fue el suelo entre ellas.
 Cruzarlo en diagonal cuesta **8.1 s** en vez de 16.8. El vocabulario de piezas y
 la rampa de grises están en `COVER`; la geometría, en `SCENARIOS`.
 
@@ -964,9 +1082,9 @@ quedan en su punto, porque un destino aleatorio las metería dentro de un muro.
 
 **Controles reasignables:** un mapa único en `KEYBINDS` con las acciones que
 funcionan hoy —movimiento, salto, agachado, caminar, disparar, recargar, cambiar
-de arma, silenciador, la contextual **E**, el escudo en la **4**, **1** y **2**
-para equipar principal y pistola y, desde la vuelta 41, **TAB** para el
-marcador— y las **reservadas sin
+de arma, el silenciador en la **V** (era la B hasta la vuelta 42), la contextual
+**E**, el escudo en la **4**, **1** y **2** para equipar principal y pistola,
+**TAB** para el marcador y **B** para la armería— y las **reservadas sin
 lógica**: 3 para el cuerpo a cuerpo, 5 para el artilugio y **G** para el
 arrojadizo. Sección **Controles** en opciones: tecla actual, reasignar
 capturando la siguiente pulsación, botón por acción y por lo general.
@@ -1003,11 +1121,11 @@ automática al llegar a 0), patrón de recoil acumulativo por disparo consecutiv
 que se resetea al soltar o tras `RECOIL_RESET_MS`, y flag de supresor por arma
 con sonido propio.
 
-| Arma | Ranura | Modo | RPM | Cargador | Recarga | Supresor |
-|---|---|---|---|---|---|---|
-| Pulse | secundaria (tecla **2**, siempre) | semi | 500 | 18 | 1200 ms | sí |
-| Rift | principal (tecla **1**) | auto | 600 | 30 | 2300 ms | sí |
-| Volt | principal (tecla **1**) | auto | 800 | 25 | 1800 ms | sí |
+| Arma | Ranura | Modo | RPM | Cargador | Recarga | Supresor | Peso | Marcha |
+|---|---|---|---|---|---|---|---|---|
+| Pulse | secundaria (tecla **2**, siempre) | semi | 500 | 18 | 1200 ms | sí | 1.1 kg | 6.50 u/s |
+| Rift | principal (tecla **1**) | auto | 600 | 30 | 2300 ms | sí | 3.6 kg | 5.88 u/s |
+| Volt | principal (tecla **1**) | auto | 800 | 25 | 1800 ms | sí | 2.6 kg | 6.14 u/s |
 
 Se llamaban Scalar-2, Axis-7 y Vertex-9 hasta la vuelta 41: el renombrado no tocó
 ni una estadística, y un ajuste guardado con el nombre viejo se traduce al nuevo
@@ -1075,7 +1193,9 @@ de movimiento no entra ahí a propósito: ya es el ajuste `patrolSpeed`.
 enemigo):
 
 1. **Brújula**, cuña verde con volumen que gira en yaw hacia donde mira el muñeco.
-   Siempre puesta: es orientación pasiva. Y discreta a propósito desde la vuelta
+   **Sólo sobre quien se ve de verdad** desde la vuelta 42 —dentro del encuadre y
+   sin cobertura por medio, con el mismo test que la aparición—; los dos iconos de
+   arriba no, que son avisos. Y discreta a propósito desde la vuelta
    39 —el 61% del ancho de la silueta del muñeco, contra el 105% que ocupaba
    antes— sin dejar de leerse a media distancia: 105 px de área a 12 u y 106 a
    20 u. Contra la cobertura del Plano A: de 10.390 pares puesto×punto con la
@@ -1136,9 +1256,16 @@ fija** (140 px de plano, la mitad que cuando se repartían el ancho entre dos): 
 selector crece en filas con cada escenario nuevo en vez de encoger los que ya
 estaban.
 
+**Armería (tecla B, o su botón en inicio y en pausa):** panel de equipo con una
+ficha por arma —silueta, modo, y una ficha desplegable con daño (el modelo de
+zonas, igual para las tres), cadencia, **peso y lo que cuesta en velocidad**,
+cargador, absorción de escudo y objetivo de precisión— y un botón **Equipar** por
+arma principal. La pistola sale con su ficha y sin botón: se lleva siempre.
+Abrirla **pausa** la sesión igual que Escape. Sin precios y sin comprar: no hay
+economía todavía.
+
 **Opciones** (accesibles antes de empezar y desde la pausa, persistidas):
-escenario, sensibilidad, tipo de diana, **arma principal** (sólo Rift y
-Volt: la pistola se lleva siempre y no se elige), **duración de Deathmatch**
+escenario, sensibilidad, tipo de diana, **duración de Deathmatch**
 (sin límite / 3 / 5 / 10 minutos), tamaño de diana, distancia de spawn, cadencia
 de aparición, dianas simultáneas, límite de FPS, supresor (sólo si el arma lo
 admite), **audio espacial**, mensajes de ayuda, **dificultad de los muñecos**,
@@ -1159,6 +1286,10 @@ el botón no pueda apuntar a un ajuste distinto del que enseña la fila.
 
 Backend, cuentas, guardado en la nube, rankings, minimapa, pasos sonoros. Si el
 encargo no lo pide explícitamente, no se añade.
+
+**Economía: tampoco.** La armería de la vuelta 42 equipa y nada más — sin precios,
+sin dinero y sin botón de comprar. Comprar depende de rondas y de una economía que
+no existen, y un `$0` en la ficha prometería una mecánica que no hay.
 
 **En diseño, aún no construido:** los Planos B (*El Patio*) y C (*La Ejecución*)
 de `docs/propuestas/01-escenario-cobertura.md`. No los construyas hasta que el

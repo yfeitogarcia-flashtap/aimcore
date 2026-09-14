@@ -3893,6 +3893,226 @@ cierra al soltarla. Tres decisiones:
 Y el marcador se cierra solo al salir de la partida y al perder el foco de la
 ventana: alt-tab es literalmente medio TAB, y el `keyup` no llega nunca.
 
+## Ronda 42 — Lo que se ve, lo que se para y lo que pesa
+
+### 42.1 La brújula respeta la visibilidad real, y los iconos no
+
+La brújula era el único marcador del mundo que estaba puesto **siempre**, y
+siempre incluía «detrás de un muro»: la cuña verde flotaba sobre la Espina y
+decía que había alguien detrás y hacia dónde miraba. Eso es un aviso de rayos X,
+y el juego no lo da por ningún otro canal — el `?` sale cuando ya te ha visto, el
+`!` cuando ya te dispara y la cuña roja cuando ya te ha dado.
+
+**El test es el que ya existía, no uno nuevo.** La visibilidad se preguntaba en
+dos sitios con dos copias del mismo raycast y dos holguras distintas
+(`targets._isPointVisible`, para decidir dónde puede nacer un muñeco, y el rayo
+de la ficha flotante en `markers.js`). Se extrajo a `src/game/sight.js`, que hoy
+es el único sitio del motor donde se pregunta si algo se ve, y desde el que
+llaman los dos. Dos copias de una fórmula es cómo acaba un marcador
+contradiciendo al sistema de aparición.
+
+Las dos mitades de «se le ve» se resuelven en el orden que cuesta menos:
+
+- **El encuadre** es aritmética, no un rayo: un `Frustum` por frame y una esfera
+  por muñeco. La esfera se centra en **la brújula** y no en el cuerpo, porque lo
+  que se decide dibujar es el marcador, que va por encima de la coronilla. Y la
+  vista se invierte a mano en vez de leer `camera.matrixWorldInverse`: ese campo
+  lo escribe el renderer al dibujar, o sea después, y usarlo daría el encuadre
+  del frame anterior.
+- **La línea de visión** sí es un rayo, y va con el reparto de siempre: cada
+  `MARKERS.sight.recheckMs` (180 ms, el mismo ciclo que la visión del enemigo) y
+  como mucho `raysPerFrame` por frame. Sólo se gasta rayo en quien está dentro
+  del encuadre, y al salir de él el reloj se queda atrás, de modo que volver a
+  entrar recomprueba en el primer frame sin una línea de código extra.
+
+**Uno por frame y no dos.** Ocho muñecos con los relojes en fase se despachan en
+ocho frames —133 ms a 60 Hz, por debajo del ciclo de 180— y esos dos rayos que no
+se lanzan se notan en el frame de combate, que ya paga los de la visión enemiga.
+Medido con ocho vivos: **0.043 ms de media por frame** para todos los marcadores
+(300 frames), y **0.01 ms** de lo que los marcadores añaden al frame de combate
+medido en bucle cerrado.
+
+**El rayo va a la cabeza, y por eso no siempre coincide con el de aparición.** La
+aparición pregunta por el cuerpo a media altura; el marcador, por la cabeza, que
+es lo que se ve de un muñeco asomado por encima de una caja —y es justo donde va
+la brújula—. Medido en doce puestos alrededor de la Espina: once veredictos
+idénticos y uno distinto, y **siempre en el mismo sentido** (la cabeza se ve
+antes que el pecho). El sentido contrario significaría que el marcador ve a
+través de algo, y eso es lo que la suite guarda.
+
+**Los iconos `?` y `!` se quedan fuera de esta regla, a propósito.** No es una
+inconsistencia: dicen cosas distintas. La brújula es información pasiva sobre un
+cuerpo que tienes delante; los iconos son avisos de que te han visto o de que te
+están disparando, y un aviso que sólo llega cuando ya puedes ver al que dispara
+llega tarde. La ficha flotante ya se condicionaba a su propio rayo, y ahora usa
+este mismo veredicto en vez del suyo: una pregunta, una respuesta.
+
+### 42.2 En pausa no avanza nada, y para eso hay un reloj del mundo
+
+**El fallo, jugando:** con Escape pulsado, un muñeco siguió disparando y mató al
+jugador desde el panel de pausa.
+
+**La causa eran dos agujeros a la vez**, y tapar sólo uno no bastaba:
+
+- Los tiempos del combate se medían con `performance.now()`, que sigue corriendo
+  con el juego parado. Pasar delta cero congelaba lo que iba por delta y dejaba
+  corriendo lo que iba por fecha.
+- Y el mundo se actualizaba en cada frame sin mirar la fase: `targets.update`,
+  `_updateCombat` y `_updateObjective` se llamaban igual en pausa.
+
+**La solución es un reloj del mundo**, `engine.gameTime`, que suma delta **sólo**
+mientras se juega y del que cuelgan todos los tiempos del mundo: cadencia,
+recarga, aparición, cuenta atrás del explosivo, reaparición y carga del escudo.
+`performance.now()` se queda donde sigue teniendo sentido —el limitador de FPS,
+la media de frames y el movimiento, que compara contra el `timeStamp` del
+navegador—. Y las tres actualizaciones del mundo van tras la misma condición de
+fase: parar el reloj sin dejar de llamar habría dejado colar el disparo que tocaba
+justo en el frame de pausar.
+
+Medido: en 2.5 s de pausa, **0 disparos enemigos, 0 de daño, 0 silbidos, 0
+apariciones** y la cuenta atrás quieta; y el reloj del mundo avanza 517 ms en
+medio segundo de juego y **0** en pausa.
+
+**Y pausar es una sola cosa.** Al salir la armería había dos formas de dejar de
+jugar sin terminar, así que lo que hacía el cambio de pointer lock —apagar
+controles y movimiento, soltar el gatillo, pasar a pausa— se extrajo a
+`_suspend()` y lo llaman las dos. Dos trozos parecidos es como acaba una pausa
+con el gatillo todavía pulsado.
+
+### 42.3 El recinto de aparición: que la geometría lo haga imposible
+
+**El fallo, jugando:** el jugador reaparece y ya hay un muñeco esperando en su
+zona. Se muere sin tocar el ratón.
+
+La tentación es una comprobación de distancia al sembrar. Se descartó por lo de
+siempre: es una regla que hay que acordarse de aplicar en cada sitio nuevo que
+haga aparecer algo. Lo que se hizo es **sacar la zona del grafo**: el escenario
+declara su `spawnZone` y `scenario.js` descarta al construir cualquier punto de
+ruta que caiga dentro, con el radio del cuerpo de margen. No hay dónde aparecer
+ni a dónde patrullar, y vale para **todos los modos** porque el grafo es uno.
+
+El rectángulo se lee **como una caja** —esquina mínima, ancho y fondo—, con la
+misma convención que `boxes`: son datos del mismo escenario y leerlos con dos
+convenciones distintas es un error que no da la cara. (Costó una vuelta de
+medidas: los tres muros salieron primero interpretando el centro.)
+
+Los muros son la otra mitad, y son tres piezas `alta` que cierran el Vestíbulo
+por detrás y por los dos costados dejando el frente abierto —que es hacia donde
+se mira y por donde se sale—. Lo que cambia, medido:
+
+| | antes | ahora |
+|---|---|---|
+| Rutas y puntos del Plano A | 14 / 69 | 14 / 69 |
+| Punto de ruta más cercano al spawn | 5.15 u | 5.70 u |
+| Puntos con línea de tiro al spawn | 38 de 69 | 25 de 69 |
+| El más cercano de ésos | 5.9 u | 7.1 u |
+| Piezas del plano | 20 | 23 |
+
+**Dos puntos del Vestíbulo hubo que mover**, porque quedaban dentro de un muro, y
+se movieron **midiendo**: `vestibulo-1-d` a (8, 18.5) —más al este, fuera del
+volumen reservado del tablero por 0.4 u— y `vestibulo-2-b` a (−5.5, 18.5), a 0.9
+u de la cara del muro oeste. La cuenta vuelve a ser 14 rutas y 69 puntos y
+`rutas.mjs` pasa entero: donde no hay conjunto limpio, no hay ruta.
+
+**Lo que sí cambia de verdad es campar el Balcón.** Desde la pasarela se veían
+cuatro puntos del Vestíbulo y ahora se ve **uno**: el recinto tapa el resto, y no
+por su altura —se probó con muros `media` y sale igual— sino porque la divisoria
+del Vestíbulo ya cerraba el pasillo este y el único hueco que quedaba era justo
+por donde ahora hay recinto. Con menos a la vista, el cupo de zona manda a los
+demás a salir donde no se les ve: las apariciones pasan de repartirse entre **dos
+zonas** a hacerlo entre **las seis**, y alrededor de un tercio salen a ciegas.
+Eso es la respuesta al campeo funcionando, no un efecto secundario — pero deja
+sin valer la frase de la vuelta 31 de que con el cupo de serie no hacía falta
+ninguna aparición a ciegas en ningún puesto del plano. Las dos aserciones de
+`zonas-test.mjs` que medían «el reparto entre las dos zonas visibles» se
+cambiaron por las que ahora miden lo que el fallo original pedía: que campar no
+te dé la ronda entera en tu zona (56% de 154 apariciones, contra un cupo que
+permite el 60%) y que la respuesta sea repartir (seis zonas).
+
+**Y una consecuencia anotada a propósito:** el tablero de acciones se ancla al
+punto de aparición y se dibuja a 9 u al este, o sea **detrás del muro este del
+recinto**. Está apagado desde la vuelta 28 y su hueco se sigue auditando, pero el
+día que vuelva en el Plano A habrá que moverle el ancla. `fixes.mjs` lo prueba
+plantándose justo fuera del recinto, que es de donde se vería.
+
+### 42.4 El resiembre masivo al tocar un ajuste
+
+**El fallo, jugando:** en pausa, con tres muñecos ya abatidos en una ronda de
+bomba, activar el silenciador desde opciones llenó el mapa de muñecos de golpe,
+algunos encima del jugador.
+
+**La causa, confirmada antes de tocar nada:** `_applySettings` llamaba a
+`targets.beginSession()` con **cualquier** ajuste. Sembrar de nuevo es lo
+correcto cuando las dianas en pantalla han dejado de existir —cambiar el tipo de
+diana o su tamaño rehace las mallas—, pero el silenciador no toca ninguna.
+Además, sembrar desde la posición del jugador parado en su zona es exactamente
+cómo salen todos juntos encima.
+
+El arreglo es que `targets.configure` **diga si tuvo que rehacer el pool**, y sólo
+en ese caso se vuelva a sembrar. El cupo de ronda sí se recalcula siempre: cambiar
+el selector de simultáneas con el explosivo puesto cambia cuántos quedan por
+salir, y eso no necesita rehacer nada. Medido: 5 vivas y 8 salidas antes del
+silenciador y 5 y 8 después; el ajuste que sí rehace el pool sigue sembrando.
+
+### 42.5 La armería, y que un arma pese
+
+**Elegir arma no es un ajuste.** Estaba como una fila más del panel de opciones,
+un desplegable entre la sensibilidad y el tamaño de diana. Es la decisión de la
+partida, y desde esta vuelta cuesta velocidad, así que tiene panel propio: tecla
+**B**, silueta de cada arma, ficha con sus números y un botón de equipar. Sin
+precios y sin botón de comprar: eso depende de rondas y de dinero, que no existen.
+
+Cuatro decisiones dentro:
+
+- **Pausa como Escape, y por el mismo camino.** Elegir arma con ocho muñecos
+  disparándote no es una decisión, es una ruleta. Se suelta el ratón y se llama
+  a `_suspend()`, sin esperar al evento de pointer lock, que es asíncrono: hasta
+  que llegase seguiría corriendo el reloj.
+- **La pistola tiene ficha pero no botón.** Se lleva siempre —es la regla de la
+  vuelta 39— y ofrecerla como principal sería ofrecer llevar dos pistolas.
+- **El daño que se enseña es el del modelo de zonas** (cabeza 100 · torso 50 ·
+  piernas 34), que hoy es el mismo para las tres armas. Poner un número de daño
+  por arma habría sido inventarse un dato que el juego no tiene.
+- **Opciones no pierde la fila, pierde el control.** Sigue diciendo qué arma
+  llevas y por dónde se cambia, con la tecla sacada del store de binds: quitarla
+  del todo dejaba perdido a quien llevaba vueltas buscándola ahí.
+
+**El peso va en kilos y el freno sale de él.** Cada arma declara `weight` y
+`weaponSpeedFactor` traduce: hay peso gratis hasta `MOVEMENT.load.free` (1.2 kg,
+por debajo de la pistola), se pierde un 4% de marcha por kilo por encima, y hay
+suelo en 0.75. Tres consecuencias que son el diseño:
+
+- **La que se lleva siempre no cuesta velocidad.** Si la pistola frenase, el
+  coste estaría en no haber elegido. Lo paga la principal, que es la decisión.
+- **Es lineal por kilo, no una tabla por arma.** Una tabla se desincroniza con el
+  peso en cuanto alguien toca un número: el arma declara una cosa y el efecto
+  sale solo. Y la misma función la usa la armería para decir cuánto frena, así
+  que el panel no puede prometer un 10% y las piernas dar un 6%.
+- **Multiplica las tres marchas**, no sólo la carrera: si sólo frenase corriendo,
+  andar con el rifle acabaría siendo más rápido que correr con él en cuanto el
+  factor bajase de `walkSpeed/speed`.
+
+Hoy: Pulse 1.1 kg → 6.50 u/s, Volt 2.6 → 6.14, Rift 3.6 → 5.88. Un 10% entre la
+pistola y el rifle, el orden de magnitud de un shooter táctico. **Se calibra
+jugando.**
+
+**En el aire no cambia nada**, y es la regla de siempre: la marcha se congela al
+despegar, así que cambiar de arma a media trayectoria no alarga ni acorta el
+vuelo (medido: 6.500 antes y después del cambio, y 5.88 al pisar el suelo). Y el
+techo del air-strafe no se toca: el aire es técnica, y hacer que el rifle también
+la castigue sería cobrar dos veces por lo mismo. Por eso las suites del modelo de
+movimiento se miden **con la pistola equipada**: la referencia del modelo es el
+jugador sin carga, y lo que hace el peso lo prueba su propia suite.
+
+**Y la B estaba ocupada.** La tenía el silenciador desde que existía, así que se
+mudó a la **V**. Eso no se puede hacer sólo cambiando el valor por defecto: la B
+del silenciador está guardada en el navegador de quien ya jugó, el saneado
+respeta lo guardado, y la invariante de que dos acciones nunca comparten tecla
+habría dejado **la armería sin tecla** sin ningún aviso. `LEGACY_KEYBINDS` es la
+hermana de `LEGACY_WEAPON_KEYS` y resuelve el mismo problema por el otro lado:
+allí una clave vieja se traduce, aquí una tecla vieja se **suelta**. Y sólo ésa: a
+quien la hubiera reasignado a mano no se le toca nada.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
@@ -3988,6 +4208,14 @@ objetivo era medir tiempos y rendimiento de verdad.
   por zona.
 - **Los colores de equipo**, por distancia CIELAB contra la paleta reservada y
   por contraste contra el fondo real del Plano A.
+- **Que en pausa no avanza nada del combate**: 2.5 s de pausa con ocho muñecos
+  vivos, contando disparos, daño, silbidos, apariciones y cuenta atrás.
+- **Que la brújula y el sistema de aparición dan el mismo veredicto**, doce
+  puestos alrededor de la Espina, y que cuando difieren es siempre en el mismo
+  sentido (la cabeza se ve antes que el pecho).
+- **El recinto de aparición**: puntos del grafo dentro de la zona, hueco andable
+  de la boca, inundación desde el spawn hasta el mapa, y cuántos puntos tienen
+  línea de tiro al punto de reaparición, antes y después.
 
 Lo que **no** está verificado automáticamente: la sensación de juego, el balance
 entre armas y la legibilidad del HUD en pantallas pequeñas. Eso sigue siendo

@@ -53,7 +53,7 @@
  * clavada en el centro a la altura de pie, que es la línea base de puntería.
  */
 
-import { COVER, LANDING, MOVEMENT, ROOM } from '../config.js'
+import { COVER, LANDING, MOVEMENT, ROOM, weaponSpeedFactor } from '../config.js'
 import { defaultKeybinds, keysOf } from '../keybinds.js'
 
 const DEG_TO_RAD = Math.PI / 180
@@ -116,7 +116,9 @@ export class MovementController {
      * estrafea girando bien (ver `_updateAirStrafe`), siempre por debajo de
      * `MOVEMENT.airStrafeMaxSpeed`.
      */
-    this._airSpeed = MOVEMENT.speed
+/** Lo que frena el arma equipada. Ver `setWeaponWeight`. */
+    this.loadFactor = 1
+    this._airSpeed = this.topSpeed
     /**
      * Velocidad horizontal en el aire del **modelo vectorial**, en componentes
      * sueltas para no alocar. Nace al despegar, la mueve `_updateAirAccel` y la
@@ -160,7 +162,7 @@ export class MovementController {
      */
     this._jumpPressedAt = -Infinity
     this._landedAt = -Infinity
-    this._landingSpeed = MOVEMENT.speed
+    this._landingSpeed = this.topSpeed
     /** ¿El vuelo en curso salió de un encadenado? Sólo informativo. */
     this.chainedJump = false
 
@@ -276,7 +278,38 @@ export class MovementController {
     let speed = MOVEMENT.speed
     if (this.keys.walk && MOVEMENT.walkSpeed < speed) speed = MOVEMENT.walkSpeed
     if (this.keys.crouch && MOVEMENT.crouchSpeed < speed) speed = MOVEMENT.crouchSpeed
-    return speed
+    // El peso multiplica **las tres marchas**, no sólo la carrera: si sólo
+    // frenase corriendo, andar con el rifle sería más rápido que correr con él
+    // en cuanto el factor bajase de walkSpeed/speed.
+    return speed * this.loadFactor
+  }
+
+  /**
+   * **La carrera con lo que llevas encima.** Es el techo de la marcha de a pie y
+   * de lo que se siembra al despegar, y sale de un solo sitio para que cambiar
+   * de arma no deje un `MOVEMENT.speed` suelto por detrás.
+   */
+  get topSpeed() {
+    return MOVEMENT.speed * this.loadFactor
+  }
+
+  /**
+   * **Lo que pesa el arma equipada**, en kilos. El motor la llama cada vez que
+   * cambia el arma vigente —cambiar de ranura, cambiar la principal en
+   * opciones, equipar desde la armería—, nunca por frame.
+   *
+   * El factor sale de `weaponSpeedFactor`, que es también el que usa la armería
+   * para decir cuánto frena: una sola cuenta para lo que se siente y para lo que
+   * se enseña.
+   *
+   * **En el aire no cambia nada**, y es la regla de siempre: la marcha se
+   * congela al despegar, así que cambiar de arma a media trayectoria no alarga
+   * ni acorta el vuelo. Y el techo del air-strafe (`airStrafeMaxSpeed`) tampoco
+   * se toca: el aire es técnica, y hacer que el rifle también la castigue sería
+   * cobrar dos veces por lo mismo.
+   */
+  setWeaponWeight(weightKg) {
+    this.loadFactor = weaponSpeedFactor(weightKg)
   }
 
   /**
@@ -355,11 +388,11 @@ export class MovementController {
     this._launchVelocity = 0
     this._jumpPressedAt = -Infinity
     this._landedAt = -Infinity
-    this._landingSpeed = MOVEMENT.speed
+    this._landingSpeed = this.topSpeed
     this.chainedJump = false
     this._stillJumps = 0
     this._flightMaxSpeed = 0
-    this._airSpeed = MOVEMENT.speed
+    this._airSpeed = this.topSpeed
     this._airVelX = 0
     this._airVelZ = 0
     this._landingVelX = 0
@@ -464,8 +497,8 @@ export class MovementController {
     this._airTime = 0
     this._launchY = this.feetY
     this._launchVelocity = 0
-    this._airSpeed = MOVEMENT.speed
-    this._landingSpeed = MOVEMENT.speed
+    this._airSpeed = this.topSpeed
+    this._landingSpeed = this.topSpeed
     this._airVelX = 0
     this._airVelZ = 0
     this._landingVelX = 0

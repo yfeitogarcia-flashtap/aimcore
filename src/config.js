@@ -418,6 +418,10 @@ export const HELP = {
  *   lo que decide es el dato, no cuántas armas hay hoy.
  * - `rpm`: disparos por minuto. Fija el intervalo mínimo entre disparos, y en
  *   las semiautomáticas actúa además de tope por si se hace clic muy rápido.
+ * - `weight`: **lo que pesa, en kilos**, y de ahí sale cuánto frena al que la
+ *   lleva (`weaponSpeedFactor`). Va en kilos y no en un número abstracto de 0 a
+ *   1 por dos motivos: se puede enseñar tal cual en la armería, y al añadir un
+ *   lanzacohetes se sabe qué escribir sin tener que recalibrar la escala entera.
  * - `recoil`: patrón de retroceso, un `[pitch, yaw]` en **grados** por cada
  *   disparo consecutivo de la ráfaga. Son incrementos, no posiciones: el motor
  *   los va sumando. Pitch positivo sube, yaw positivo desvía a la izquierda.
@@ -460,6 +464,12 @@ export const WEAPONS = {
      * cubre torso y piernas; la cabeza no, y por eso esto no la toca.
      */
     shieldAbsorb: 0.5,
+    /**
+     * **Peso, en kilos.** Una pistola: por debajo de `MOVEMENT.load.free`, así
+     * que no frena nada. Que la que se lleva siempre no cueste velocidad es
+     * deliberado — el coste lo paga la principal que elijas, que es la decisión.
+     */
+    weight: 1.1,
     // Arquetipo por defecto: se dispara exactamente como antes de que hubiera
     // armas. Sin patrón, no hay empuje de cámara en absoluto.
     recoil: [],
@@ -486,6 +496,12 @@ export const WEAPONS = {
      * cubre torso y piernas; la cabeza no, y por eso esto no la toca.
      */
     shieldAbsorb: 0.45,
+    /**
+     * **Peso, en kilos.** La más pesada del arsenal: es el rifle, y lo que se
+     * paga por su cargador de 30 y su alcance es ir un 10% más lento que quien
+     * sólo lleva la pistola.
+     */
+    weight: 3.6,
     // Subida vertical marcada durante los primeros ocho disparos —el pico está
     // en el cuarto— y a partir de ahí la vertical se apaga y el arma deriva
     // hacia la izquierda. Techo vertical ≈ 7.2°, deriva ≈ 2.6° a la izquierda.
@@ -526,6 +542,8 @@ export const WEAPONS = {
      * cubre torso y piernas; la cabeza no, y por eso esto no la toca.
      */
     shieldAbsorb: 0.35,
+    /** **Peso, en kilos.** Un subfusil: entre la pistola y el rifle. */
+    weight: 2.6,
     // Patada más inmediata que la del Rift —el primer disparo ya empuja más—
     // pero con la mitad de techo vertical (≈ 3.9°). El bamboleo lateral
     // alterna lado a lado y suma más recorrido que la vertical (≈ 4.4°), sin
@@ -589,6 +607,25 @@ export const SECONDARY_WEAPON = Object.keys(WEAPONS).find(
 )
 
 /**
+ * **Cuánto frena un arma por lo que pesa**, en tanto por uno sobre la marcha.
+ *
+ * Es la **única** fuente del efecto: lo usan el movimiento, para ir más lento, y
+ * la armería, para decir cuánto. Dos cuentas separadas —una que frena y otra que
+ * lo enseña— es como acabas con un panel que promete un 10% y unas piernas que
+ * dan un 6%.
+ *
+ * La regla vive en `MOVEMENT.load`; aquí sólo se aplica.
+ *
+ * @param {number} weightKg lo que pesa el arma equipada
+ * @returns {number} factor entre `MOVEMENT.load.minFactor` y 1
+ */
+export function weaponSpeedFactor(weightKg) {
+  const load = MOVEMENT.load
+  const over = Math.max(0, (Number.isFinite(weightKg) ? weightKg : 0) - load.free)
+  return Math.max(load.minFactor, 1 - over * load.perKg)
+}
+
+/**
  * Variante con movimiento del jugador.
  *
  * `enabled` es el único interruptor: con `false` el prototipo se comporta
@@ -636,7 +673,17 @@ export const KEYBINDS = {
   shoot: { label: 'Disparar', default: 'Mouse0', pointer: true, group: 'Combate' },
   reload: { label: 'Recargar', default: 'KeyR', group: 'Combate' },
   cycleWeapon: { label: 'Cambiar de arma', default: 'KeyQ', group: 'Combate' },
-  suppressor: { label: 'Silenciador', default: 'KeyB', group: 'Combate' },
+  /**
+   * **El silenciador se mudó a la V en la vuelta 42.** Tenía la B desde que
+   * existía, y la B es la de la armería —la pidió el encargo y es la inicial del
+   * panel—. El cambio no se puede hacer sólo aquí: la B del silenciador está
+   * guardada en el navegador de quien ya jugó, y el saneado, que respeta lo
+   * guardado, se la dejaría puesta y **dejaría la armería sin tecla** (la
+   * invariante es que dos acciones nunca comparten tecla, y la que llega segunda
+   * se queda sin asignar). Por eso está en `LEGACY_KEYBINDS`: es la misma idea
+   * que `LEGACY_WEAPON_KEYS`, una tabla de lo que se movió.
+   */
+  suppressor: { label: 'Silenciador', default: 'KeyV', group: 'Combate' },
   /**
    * **La acción contextual.** Dentro del radio de algo con lo que se puede
    * interactuar —hoy sólo el explosivo— desactiva, y **nunca hace otra cosa ahí
@@ -669,6 +716,14 @@ export const KEYBINDS = {
    */
   scoreboard: { label: 'Marcador', default: 'Tab', group: 'Interfaz' },
 
+  /**
+   * **La armería.** Abre el panel de equipo y, jugando, **pausa**: elegir arma
+   * con ocho muñecos disparándote no es una decisión, es una ruleta. Es el mismo
+   * camino que Escape —se suelta el ratón—, así que no hay una segunda idea de
+   * «pausa» en el motor.
+   */
+  armoury: { label: 'Armería', default: 'KeyB', group: 'Interfaz' },
+
   avatarDebug: { label: 'Vista del avatar', default: 'F3', group: 'Depuración' },
 }
 
@@ -678,6 +733,23 @@ export const KEYBINDS = {
  * queda el navegador y capturarlas sólo sirve para romperle la recarga a alguien.
  */
 export const FORBIDDEN_KEYS = ['Escape', 'F5', 'F11', 'F12', 'Tab']
+
+/**
+ * **Binds cuyo valor de fábrica se movió**, y con qué tecla estaban antes.
+ *
+ * Es la hermana de `LEGACY_WEAPON_KEYS` y resuelve el mismo problema por el otro
+ * lado: allí una clave vieja se traduce a la nueva; aquí una tecla vieja se
+ * **suelta**, para que la acción coja su valor de fábrica nuevo y la tecla quede
+ * libre para quien la haya heredado.
+ *
+ * Sin esto, quien jugó antes de la vuelta 42 abriría el juego con el silenciador
+ * todavía en la B —lo guardado manda— y la armería sin tecla, sin ningún aviso.
+ * Y sólo se suelta **esa** tecla: a quien se la hubiera reasignado a mano no se
+ * le toca nada.
+ */
+export const LEGACY_KEYBINDS = {
+  suppressor: 'KeyB',
+}
 
 export const MOVEMENT = {
   enabled: true,
@@ -692,6 +764,35 @@ export const MOVEMENT = {
   walkSpeed: 4.2,
   /** Velocidad horizontal mientras se mantiene agachado. */
   crouchSpeed: 2.6,
+
+  /**
+   * **Lo que pesa lo que llevas encima** (vuelta 42).
+   *
+   * Un arma tiene `weight` en kilos y de ahí sale un factor que multiplica la
+   * marcha —las tres: correr, andar y agachado—, así que elegir arma deja de ser
+   * sólo elegir cadencia y cargador. Tres decisiones dentro:
+   *
+   * - **Hay peso gratis.** Hasta `free` no frena nada, y la pistola cae por
+   *   debajo: la que se lleva siempre no puede costar velocidad, o el coste
+   *   estaría en no haber elegido. Lo paga la principal, que es la decisión.
+   * - **Es lineal por kilo**, no una tabla por arma. Una tabla se desincroniza
+   *   con el peso en cuanto alguien toca un número; así el arma declara **una**
+   *   cosa —lo que pesa— y el efecto sale solo.
+   * - **Y tiene suelo** (`minFactor`). El lanzacohetes del futuro tiene que
+   *   poder pesar de verdad sin que llevarlo sea no moverse.
+   *
+   * Los números son de partida y **se calibran jugando**: hoy la Rift (3.6 kg)
+   * deja la carrera en 5.86 u/s contra los 6.5 de la pistola, o sea un 10% —el
+   * orden de magnitud de un rifle en un shooter táctico—.
+   */
+  load: {
+    /** Kilos que no frenan. Una pistola pesa menos que esto. */
+    free: 1.2,
+    /** Cuánta marcha se pierde por kilo por encima de `free`, en tanto por uno. */
+    perKg: 0.04,
+    /** Suelo: por debajo de esto no baja por mucho que pese. */
+    minFactor: 0.75,
+  },
 
   /** Altura de los ojos de pie. También es la altura en el modo estático. */
   standHeight: 1.7,
@@ -1461,6 +1562,21 @@ export const SCENARIOS = {
       // entra a 43°, ya en el borde del encuadre.
       { x: 2.5, z: 10, w: 6, d: 1.3, kind: 'alta' },
 
+      // --- **El recinto de aparición.** Tres muros Alta que cierran la zona
+      // del spawn por detrás y por los dos costados, dejando abierto el frente
+      // —que es hacia donde se mira y por donde se sale—. No es decoración:
+      // reaparecer dentro de una zona donde ya había un muñeco esperando era
+      // morirse otra vez sin tocar el ratón.
+      //
+      // Lo que garantiza que ahí no haya nadie **no** es una comprobación de
+      // distancia que haya que acordarse de aplicar: es que `spawnZone` saca del
+      // grafo de rutas cualquier punto de dentro (ver `scenario.js`), así que no
+      // hay dónde aparecer ni a dónde patrullar. Los muros son la otra mitad:
+      // cortan la línea de tiro desde los lados y por detrás.
+      { x: -4.6, z: 18.8, w: 9.2, d: 1.2, kind: 'alta' },
+      { x: 3.4, z: 10.4, w: 1.2, d: 8.4, kind: 'alta' },
+      { x: -4.6, z: 10.4, w: 1.2, d: 8.4, kind: 'alta' },
+
       // --- El Largo: tres Media escalonadas a un lado y otro del carril. La
       // del fondo se queda a x -15.5 y no más al oeste: por x -19..-16 sube la
       // rampa nueva del Balcón y una Media ahí la tapaba a media altura.
@@ -1513,6 +1629,22 @@ export const SCENARIOS = {
       { x: 16, z: -12, w: 3, d: 6, fromZ: -6, toZ: -12, top: 'plataforma' },
       { x: -19, z: -12, w: 3, d: 6, fromZ: -6, toZ: -12, top: 'plataforma' },
     ],
+
+    /**
+     * **La zona de aparición del jugador**, y lo que la hace zona: de aquí sale
+     * la exclusión del grafo de rutas. `scenario.js` descarta **cualquier**
+     * punto de ruta que caiga dentro, con el radio del muñeco de margen, así que
+     * no hay forma de que uno aparezca —ni patrulle— donde reaparece el jugador.
+     *
+     * Va en los datos del escenario y no en una constante global porque cada
+     * plano tiene la suya: un escenario futuro declara la suya y hereda la regla
+     * sin tocar ni una línea de código.
+     *
+     * Se lee **como una caja** —esquina mínima, ancho y fondo—, con la misma
+     * convención que `boxes`: son datos del mismo escenario y leerlos con dos
+     * convenciones distintas es un error que no da la cara.
+     */
+    spawnZone: { x: -3.4, z: 10.4, w: 6.8, d: 8.4 },
 
     /**
      * Sitios posibles del explosivo, curados igual que los anclajes. Repartidos
@@ -1733,7 +1865,7 @@ export const SCENARIOS = {
           { id: 'vestibulo-1-a', x: 6.5, z: 12.5 },
           { id: 'vestibulo-1-b', x: 7.5, z: 15.5 },
           { id: 'vestibulo-1-c', x: 5.5, z: 17.5 },
-          { id: 'vestibulo-1-d', x: 2.5, z: 18.5 },
+          { id: 'vestibulo-1-d', x: 8, z: 18.5 },
         ],
       },
       {
@@ -1742,7 +1874,7 @@ export const SCENARIOS = {
         peek: false,
         points: [
           { id: 'vestibulo-2-a', x: -5.5, z: 15.5 },
-          { id: 'vestibulo-2-b', x: -4.5, z: 18.5 },
+          { id: 'vestibulo-2-b', x: -5.5, z: 18.5 },
           { id: 'vestibulo-2-c', x: -8.5, z: 18.5 },
           { id: 'vestibulo-2-d', x: -11.5, z: 18.5 },
           { id: 'vestibulo-2-e', x: -14.5, z: 18.5 },
@@ -2200,24 +2332,12 @@ export const MARKERS = {
     holdMs: 260,
     /**
      * Medio ángulo del cono que cuenta como «la mira está encima», en grados.
-     * Se mide por ángulo y no con un raycast por frame: un rayo por muñeco y
-     * por frame es justo lo que el presupuesto no admite (misma regla que la
-     * visión del enemigo). El rayo se lanza **una vez**, al cumplirse el tiempo,
-     * para descartar que haya cobertura por medio.
+     * Se mide por ángulo y no con un raycast: un rayo por muñeco y por frame es
+     * justo lo que el presupuesto no admite (misma regla que la visión del
+     * enemigo). Lo de si hay cobertura por medio ya lo contesta `sight`, que es
+     * la misma pregunta y se hace una sola vez por muñeco.
      */
     coneDeg: 2.6,
-    /** Cada cuánto se recomprueba esa cobertura mientras la ficha está puesta. */
-    recheckMs: 400,
-    /** Y cuántos de esos rayos caben en un frame. */
-    raysPerFrame: 1,
-    /**
-     * A qué altura del muñeco se apunta, en fracciones de su altura. **A la
-     * cabeza**: por ángulo daría igual, pero el mismo punto es el destino del
-     * rayo de cobertura, y asomado por encima de una caja lo que se ve de un
-     * muñeco es la cabeza — un rayo al pecho choca contra la caja y dejaría sin
-     * ficha justo al que estás mirando.
-     */
-    aimHeight: 0.92,
     /** Por encima de los iconos, hasta **el centro** de la ficha. */
     gap: 0.20,
     /**
@@ -2238,6 +2358,59 @@ export const MARKERS = {
    */
   referenceDistance: 8,
   maxScale: 3.4,
+
+  /**
+   * **Visibilidad real de la brújula** (vuelta 42).
+   *
+   * La brújula es el único marcador del mundo que estaba puesto siempre, y
+   * puesto siempre significaba también **sobre un muro**: se veía la cuña verde
+   * flotando encima de la Espina y se sabía que había alguien detrás y hacia
+   * dónde miraba. Eso es un aviso de rayos X, y el juego no lo da por ningún
+   * otro canal — el `?` y el `!` sólo salen cuando ya te ha visto, y la cuña
+   * roja sólo cuando ya te ha dado.
+   *
+   * Ahora sale **sólo a quien se ve de verdad**, y las dos mitades de «se ve»
+   * son las que hay que cumplir a la vez: dentro del encuadre **y** sin
+   * geometría por medio. El rayo es el mismo de `sight.js` que decide dónde
+   * puede nacer un muñeco: si el sistema de aparición considera que un sitio no
+   * se ve, el marcador no puede decir lo contrario.
+   *
+   * Los iconos `?` y `!` **no** pasan por aquí, y no es un olvido: dicen cosas
+   * distintas. La brújula es información pasiva sobre un cuerpo que tienes
+   * delante; los iconos son avisos de que te han visto o de que te están
+   * disparando, y un aviso que sólo llega cuando ya puedes ver al que dispara
+   * llega tarde.
+   */
+  sight: {
+    /**
+     * A qué altura del muñeco se mira, en fracciones de su altura: **a la
+     * cabeza**. Asomado por encima de una caja, lo que se ve de un muñeco es la
+     * cabeza — un rayo al pecho choca contra la caja y borraría el marcador
+     * justo al que estás mirando. Es también el punto al que apunta el cono de
+     * la ficha: un solo sitio del muñeco que vale por «él».
+     */
+    heightFactor: 0.92,
+    /**
+     * Cada cuánto se recomprueba. **No es por frame**: es un raycast contra
+     * toda la geometría del escenario, la misma regla y el mismo número que la
+     * visión del enemigo (`ENEMY.sightCheckMs`).
+     */
+    recheckMs: 180,
+    /**
+     * Y cuántos caben en un mismo frame. Repartir sólo por tiempo no basta:
+     * ocho muñecos que aparecen juntos acaban con los ocho relojes en fase.
+     * A quien no le toca presupuesto **no se le mueve el reloj**: se queda con
+     * lo que sabía y se mira en el frame siguiente.
+     *
+     * **Uno, la mitad que la visión del enemigo** (`ENEMY.sightChecksPerFrame`),
+     * y a propósito: ocho muñecos en fase se despachan en ocho frames, o sea 133
+     * ms a 60 Hz, todavía por debajo del ciclo de 180. Esos dos rayos que no se
+     * lanzan aquí no cuestan nada visible —una brújula que tarda un frame más en
+     * encenderse no se ve— y sí se notan en el frame de combate, que ya paga los
+     * de la visión.
+     */
+    raysPerFrame: 1,
+  },
 }
 
 /**

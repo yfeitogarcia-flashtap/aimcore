@@ -227,6 +227,17 @@ export class Scenario {
       this.geometries.push(edgeGeometry)
     }
 
+    /**
+     * **La zona de aparición del jugador queda fuera del grafo.** Cualquier
+     * punto de ruta que caiga dentro se descarta al construir, con el radio del
+     * muñeco de margen: no hay dónde aparecer ni a dónde patrullar, así que la
+     * exclusión no depende de que alguien se acuerde de comprobar una distancia
+     * al sembrar. Un escenario sin `spawnZone` no pierde nada.
+     */
+    this.spawnZone = definition.spawnZone ?? null
+    /** Cuántos puntos se han quedado fuera por caer en la zona de aparición. */
+    this.excludedBySpawnZone = 0
+
     for (const definitionRoute of definition.routes ?? []) {
       const floorY = coverHeight(definitionRoute.y)
       const route = {
@@ -241,6 +252,10 @@ export class Scenario {
         liveCount: 0,
       }
       for (const point of definitionRoute.points) {
+        if (this.isInSpawnZone(point.x, point.z)) {
+          this.excludedBySpawnZone += 1
+          continue
+        }
         route.points.push({
           id: point.id,
           route,
@@ -251,9 +266,38 @@ export class Scenario {
           occupied: false,
         })
       }
+      // Una ruta que se queda con menos de dos puntos deja de ser una ruta: no
+      // hay entre qué patrullar. Se descarta entera en vez de dejar un punto
+      // suelto que se comportaría como un anclaje fijo.
+      if (route.points.length < 2) continue
       this.routes.push(route)
       for (const point of route.points) this.points.push(point)
     }
+  }
+
+  /**
+   * **¿Este punto cae en la zona de aparición del jugador?**
+   *
+   * Única fuente de verdad de la exclusión: la usa el propio constructor al
+   * montar el grafo de rutas y la usan las auditorías. Un segundo cálculo en
+   * otro sitio es cómo se desincronizan los dos.
+   *
+   * El rectángulo se declara **como las cajas** —esquina mínima más ancho y
+   * fondo—, no por centro: son datos del mismo escenario y leerlos con dos
+   * convenciones distintas es un error que no avisa. Y se engorda con el radio
+   * del cuerpo (`COVER.playerRadius`), porque un punto justo en el filo es un
+   * muñeco medio dentro.
+   */
+  isInSpawnZone(x, z) {
+    const zone = this.spawnZone
+    if (zone === null) return false
+    const margin = COVER.playerRadius
+    return (
+      x >= zone.x - margin &&
+      x <= zone.x + zone.w + margin &&
+      z >= zone.z - margin &&
+      z <= zone.z + zone.d + margin
+    )
   }
 
   /**

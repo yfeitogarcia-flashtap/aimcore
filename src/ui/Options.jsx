@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import Controls from './Controls.jsx'
+import { keyLabel, keysOf } from '../keybinds.js'
 import ScenarioThumbnail from './ScenarioThumbnail.jsx'
 import {
   ENEMY_DIFFICULTIES,
@@ -11,7 +12,6 @@ import {
   SIMULTANEOUS_TARGETS,
   TARGET_TYPES,
   DEATHMATCH_DURATIONS,
-  PRIMARY_WEAPONS,
   SECONDARY_WEAPON,
   WEAPONS,
 } from '../config.js'
@@ -299,6 +299,9 @@ function ToggleRow({ setting, value, onChange, hint }) {
 }
 
 export default function Options({ settings, binds, onChange, onReset, onClose }) {
+  // La tecla de la armería sale del store de binds, no escrita a mano: es
+  // reasignable y una «B» en duro se quedaría mintiendo al primer cambio.
+  const armouryKey = keyLabel(keysOf('armoury', binds)[0])
   return (
     <div className="panel panel--options" onMouseDown={(event) => event.stopPropagation()}>
       <h2 className="panel__title panel__title--small">Opciones</h2>
@@ -320,31 +323,21 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
         onChange={onChange}
       />
 
+      {/*
+        **El arma principal ya no se elige aquí.** Desde la vuelta 42 vive en la
+        armería, que es donde se ve su silueta y lo que cuesta llevarla. Queda la
+        fila diciendo cuál llevas y por dónde se cambia: quitarla del todo dejaba
+        perdido a quien llevaba vueltas buscándola en este panel.
+      */}
       <div className="field">
-        <FieldHead
-          setting="weapon"
-          value={settings.weapon}
-          onChange={onChange}
-          htmlFor="opt-weapon"
-        />
+        <FieldHead setting="weapon" value={settings.weapon} onChange={onChange} />
         <div className="field__control">
-          <select
-            id="opt-weapon"
-            className="field__select"
-            value={settings.weapon}
-            onChange={(event) => onChange({ weapon: event.target.value })}
-          >
-            {Object.keys(PRIMARY_WEAPONS).map((key) => (
-              <option key={key} value={key}>
-                {WEAPONS[key].label}
-              </option>
-            ))}
-          </select>
-          <span className="field__hint">{weaponHint(settings.weapon)}</span>
-          {/* La pistola no se elige: se lleva. Decirlo aquí es lo que explica
-              por qué el desplegable tiene dos armas y no tres. */}
           <span className="field__hint">
-            Con la {WEAPONS[SECONDARY_WEAPON].label} siempre encima, en la tecla 2.
+            {WEAPONS[settings.weapon].label} · {weaponHint(settings.weapon)}
+          </span>
+          <span className="field__hint">
+            Se equipa en la <strong>armería</strong> (tecla {armouryKey}), con la{' '}
+            {WEAPONS[SECONDARY_WEAPON].label} siempre encima en la tecla 2.
           </span>
         </div>
       </div>

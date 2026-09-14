@@ -22,7 +22,7 @@
  * mano.
  */
 
-import { FORBIDDEN_KEYS, KEYBINDS } from './config.js'
+import { FORBIDDEN_KEYS, KEYBINDS, LEGACY_KEYBINDS } from './config.js'
 
 const STORAGE_KEY = 'aimcore.keybinds.v1'
 
@@ -78,7 +78,13 @@ export function sanitizeKeybinds(raw) {
 
   const source = raw && typeof raw === 'object' ? raw : {}
   for (const action of ACTIONS) {
-    const stored = source[action]
+    // **Una tecla que se mudó se suelta antes de mirarla.** Si lo guardado es
+    // exactamente el valor de fábrica viejo, se ignora: quien no tocó nunca esa
+    // tecla se lleva la nueva, y la vieja queda libre para la acción que la haya
+    // heredado. A quien la reasignó a mano no se le toca — su valor no coincide
+    // con el viejo por defecto. Ver `LEGACY_KEYBINDS` en config.js.
+    const moved = LEGACY_KEYBINDS[action]
+    const stored = source[action] === moved ? undefined : source[action]
     const fallback = KEYBINDS[action].default
     const candidate = isAssignable(stored) && !taken.has(stored) ? stored : null
     if (candidate) {

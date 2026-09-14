@@ -23,6 +23,7 @@ import { getSettings, resetSettings, subscribeSettings, updateSettings } from '.
 import Crosshair from './ui/Crosshair.jsx'
 import { VektorLogo } from './ui/Logo.jsx'
 import Hud from './ui/Hud.jsx'
+import Armoury from './ui/Armoury.jsx'
 import Options from './ui/Options.jsx'
 import Summary from './ui/Summary.jsx'
 
@@ -44,6 +45,11 @@ export default function App() {
   const [summary, setSummary] = useState(null)
   const [engineError, setEngineError] = useState(null)
   const [optionsOpen, setOptionsOpen] = useState(false)
+  /**
+   * **La armería.** Se abre con su tecla o con su botón, y jugando pausa: el
+   * motor suelta el ratón antes de avisar, así que aquí sólo hay que enseñarla.
+   */
+  const [armouryOpen, setArmouryOpen] = useState(false)
   /** Vista del avatar: mientras está abierta, los paneles se apartan. */
   const [avatarDebug, setAvatarDebug] = useState(false)
   /**
@@ -96,6 +102,10 @@ export default function App() {
         },
         onHelp: (text, durationMs) => hudRef.current?.showHelp(text, durationMs),
         onOpenOptions: () => setOptionsOpen(true),
+        // La tecla es un interruptor: abre si está cerrada y cierra si no. Al
+        // cerrarla no se vuelve a capturar el ratón —queda la pausa de siempre,
+        // con su click para continuar—, que es lo mismo que hacen las opciones.
+        onArmoury: () => setArmouryOpen((open) => !open),
         onAvatarDebug: setAvatarDebug,
         onWeapon: setEquipped,
         onFinish: setSummary,
@@ -157,6 +167,8 @@ export default function App() {
   const swallowClick = useCallback((event) => event.stopPropagation(), [])
   const openOptions = useCallback(() => setOptionsOpen(true), [])
   const closeOptions = useCallback(() => setOptionsOpen(false), [])
+  const openArmoury = useCallback(() => setArmouryOpen(true), [])
+  const closeArmoury = useCallback(() => setArmouryOpen(false), [])
 
   const showHud = phase === PHASE.RUNNING || phase === PHASE.PAUSED
 
@@ -182,11 +194,24 @@ export default function App() {
     />
   )
 
+  const armouryPanel = (
+    <Armoury settings={settings} onChange={updateSettings} onClose={closeArmoury} />
+  )
+
   const optionsButton = (
     <button type="button" className="button" onMouseDown={swallowClick} onClick={openOptions}>
       Opciones
     </button>
   )
+
+  const armouryButton = (
+    <button type="button" className="button" onMouseDown={swallowClick} onClick={openArmoury}>
+      Armería
+    </button>
+  )
+
+  /** Con cualquier panel abierto el overlay deja de capturar el ratón. */
+  const panelOpen = optionsOpen || armouryOpen
 
   return (
     <div className="app">
@@ -216,8 +241,10 @@ export default function App() {
       {!engineError && !avatarDebug && phase === PHASE.IDLE && (
         // Con las opciones abiertas el overlay deja de capturar el ratón: sería
         // desconcertante que tocar un slider arrancara la partida.
-        <div className="overlay" onMouseDown={optionsOpen ? undefined : lock}>
-          {optionsOpen ? (
+        <div className="overlay" onMouseDown={panelOpen ? undefined : lock}>
+          {armouryOpen ? (
+            armouryPanel
+          ) : optionsOpen ? (
             optionsPanel
           ) : (
             <div className="panel">
@@ -242,7 +269,7 @@ export default function App() {
                   WASD o flechas para moverte · SHIFT camina · C agacha · SPACE salta y encadena
                 </p>
               )}
-              <p className="panel__hint">R recarga · Escape pausa.</p>
+              <p className="panel__hint">R recarga · B armería · Escape pausa.</p>
               <div className="panel__actions">
                 <button
                   type="button"
@@ -266,6 +293,7 @@ export default function App() {
                 >
                   {deathmatchLabel}
                 </button>
+                {armouryButton}
                 {optionsButton}
               </div>
             </div>
@@ -274,8 +302,10 @@ export default function App() {
       )}
 
       {!avatarDebug && phase === PHASE.PAUSED && (
-        <div className="overlay" onMouseDown={optionsOpen ? undefined : lock}>
-          {optionsOpen ? (
+        <div className="overlay" onMouseDown={panelOpen ? undefined : lock}>
+          {armouryOpen ? (
+            armouryPanel
+          ) : optionsOpen ? (
             optionsPanel
           ) : (
             <div className="panel">
@@ -291,6 +321,7 @@ export default function App() {
                 >
                   Reanudar
                 </button>
+                {armouryButton}
                 {optionsButton}
                 <button
                   type="button"

@@ -25,6 +25,7 @@
 
 import * as THREE from 'three'
 import { bodySection } from './body.js'
+import { hasLineOfSight } from './sight.js'
 import {
   COLORS,
   COVER,
@@ -181,7 +182,6 @@ export class TargetManager {
     this.points = []
     this.routes = []
     this._occluders = []
-    this._visibilityRay = new THREE.Raycaster()
     /** Orden barajado de anclajes. Preasignado: barajar no aloca. */
     this._pointOrder = new Int32Array(0)
     /** Sello de la elección en curso, para no repetir raycasts. Ver `_pickPoint`. */
@@ -209,6 +209,12 @@ export class TargetManager {
    * Aplica los ajustes. Sólo reconstruye las mallas si cambió algo que afecta
    * a la geometría; el resto de valores se leen en caliente.
    */
+  /**
+   * Aplica los ajustes a las dianas.
+   *
+   * @returns {boolean} si hubo que reconstruir el pool, o sea si el tablero que
+   *   hubiera en pantalla ha dejado de ser válido
+   */
   configure(settings) {
     this.distance = settings.spawnDistance
     this.spawnIntervalMs = settings.spawnIntervalMs
@@ -228,6 +234,12 @@ export class TargetManager {
     this.cosConeHalfAngle = Math.cos(this.coneHalfAngle)
 
     if (geometryChanged) this._buildPool()
+    // **Quién tiene que volver a sembrar, y quién no.** Sólo un cambio de
+    // geometría deja el tablero inválido: las mallas viejas ya no existen. El
+    // resto de ajustes —cadencia, simultáneas, velocidad de patrulla, y sobre
+    // todo los que no son ni de dianas, como el silenciador— se aplican en
+    // caliente y **no** pueden costar una ronda entera.
+    return geometryChanged
   }
 
   /**
@@ -747,24 +759,13 @@ export class TargetManager {
    * toda la geometría y no cabe en el presupuesto de un frame.
    */
   _isPointVisible(camera, point) {
-    if (this._occluders.length === 0) return true
-
     _anchorProbe.copy(point.position)
     _anchorProbe.y +=
       this.anchoredToFloor ? this.type.halfHeight * this.radius : COVER.targetStandY
-
-    _direction.subVectors(_anchorProbe, camera.position)
-    const distance = _direction.length()
-    if (distance <= 1e-4) return true
-    _direction.multiplyScalar(1 / distance)
-
-    this._visibilityRay.set(camera.position, _direction)
-    this._visibilityRay.near = 0
-    // Un pelo por delante de la diana: si no, la propia cobertura pegada a ella
-    // contaría como obstáculo.
-    this._visibilityRay.far = distance - 0.15
-    const hits = this._visibilityRay.intersectObjects(this._occluders, false)
-    return hits.length === 0
+    // El rayo vive en `sight.js`, que es el único sitio del motor donde se
+    // pregunta si algo se ve: los marcadores hacen esta misma pregunta sobre el
+    // muñeco ya vivo y tienen que contestarla igual.
+    return hasLineOfSight(camera.position, _anchorProbe, this._occluders)
   }
 
   /**

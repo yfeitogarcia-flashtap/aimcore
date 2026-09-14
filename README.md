@@ -30,10 +30,18 @@ Abre la URL que imprime Vite, haz click en el canvas y a disparar.
 - **1** saca el arma principal y **2** la pistola, que se lleva siempre. **Q**
   alterna entre las dos.
 - **TAB** (mantenida): marcador de la sesión — bajas, muertes, precisión y KD.
-- **B** conmuta el silenciador, **E** es la acción contextual y **4** aplica una
+- **B**: abre la **armería** — el panel donde se elige y se equipa el arma
+  principal. Jugando, **pausa** igual que Escape.
+- **V** conmuta el silenciador, **E** es la acción contextual y **4** aplica una
   carga de escudo. Todo esto se reasigna — ver *Controles reasignables*.
 - **Escape**: suelta el ratón y **pausa** el cronómetro. En la pantalla de pausa
   hay un botón **Reanudar**, y también vale un click en cualquier sitio.
+
+> **En pausa no avanza nada.** Ni el cronómetro, ni la cuenta atrás del
+> explosivo, ni la recarga, ni la carga del escudo, ni la reaparición — y desde la
+> vuelta 42, tampoco los muñecos: ni disparan, ni se mueven, ni aparecen. Hasta
+> entonces seguían disparando con el juego parado y podían matarte desde el panel
+> de pausa.
 
 Sólo con la variante de movimiento activa (`MOVEMENT.enabled`):
 
@@ -83,7 +91,7 @@ captura la siguiente pulsación. Cada acción tiene su botón **por defecto**.
 | Movimiento | adelante, atrás, izquierda, derecha, saltar, agacharse, caminar |
 | Combate | disparar, recargar, cambiar de arma, silenciador, **usar / artilugio** |
 | Equipo | **arma principal (1)**, **pistola (2)**, cuerpo a cuerpo (3), escudo (4), artilugio (5), arrojadizo (G) |
-| Interfaz | **marcador (TAB)** |
+| Interfaz | **marcador (TAB)**, **armería (B)** |
 | Depuración | vista del avatar (F3) |
 
 De las de **Equipo**, la **1 y la 2 equipan** cada una su ranura, la **4 aplica
@@ -108,6 +116,10 @@ Cuatro reglas que el sistema no se salta:
 - **Escape no se reasigna**: es la pausa. El panel lo dice.
 - Lo guardado se **sanea** al cargar: un bind corrupto, desconocido o repetido
   cae a su valor de fábrica.
+- Y si una tecla **cambia de dueño** entre versiones, la vieja se suelta sola. En
+  la vuelta 42 el silenciador se mudó de la **B** a la **V** para dejarle la B a
+  la armería: si nunca tocaste esa tecla, te llevas las dos nuevas sin hacer nada.
+  Si la habías reasignado a mano, se respeta lo tuyo.
 
 Las **flechas** y el **Shift derecho** siguen funcionando como alternativas
 fijas: no son binds y no se pueden perder.
@@ -290,7 +302,11 @@ mucho menos suelo entre pieza y pieza. Cruzarlo en diagonal son ~8 s a marcha de
 carrera en vez de ~17.
 
 Apareces en el **Vestíbulo**, con una divisoria a la derecha que te obliga a
-elegir salida y el paso central abierto. A la izquierda, **El Largo**: un carril
+elegir salida y el paso central abierto. Tu zona de aparición está **amurallada**
+—tres muros altos por detrás y por los costados, abierta sólo hacia el mapa— y no
+es decoración: **ningún muñeco puede aparecer ni patrullar ahí dentro**, porque la
+zona queda fuera del mapa de rutas por el que se mueven. Reaparecer dentro de una
+zona donde ya te esperaba uno era morirse otra vez sin tocar el ratón. A la izquierda, **El Largo**: un carril
 de unas 25 unidades de visión limpia, roto por tres bloques Media escalonados que
 se cruzan a base de asomadas cortas. En el centro, **La Espina**, un muro que
 parte el mapa de norte a sur con un único hueco de 2.5 u —**La Puerta**—, el
@@ -427,8 +443,12 @@ De abajo arriba:
 
 1. **La brújula**: una cuña verde con volumen flotando sobre la cabeza, que gira
    para apuntar hacia donde mira el muñeco. **No se gira hacia ti**: si lo
-   hiciera apuntaría siempre al jugador y no diría nada. Está siempre que se vea
-   el muñeco — es orientación, no un aviso. Su cola va más oscura que el resto, y
+   hiciera apuntaría siempre al jugador y no diría nada. **Sale sólo sobre un
+   muñeco que ves de verdad**: dentro de la pantalla y sin cobertura por medio, y
+   con el mismo test de visión que decide dónde puede aparecer uno. Flotando
+   sobre un muro te decía dónde hay alguien a quien no puedes ni ver ni disparar,
+   que es un aviso de rayos X que el juego no da por ningún otro sitio. Su cola
+   va más oscura que el resto, y
    eso es lo que distingue a uno que te encara de uno de espaldas: sin luces en
    la escena, de frente y de espaldas la silueta sería la misma. **Y la punta
    cae**, que es la misma información por el otro canal: de perfil, donde el
@@ -443,6 +463,9 @@ De abajo arriba:
    ventana de reacción, y es exactamente el hueco que tienes para cubrirte— o
    **un `!` rojo** mientras te dispara, uno por muñeco, así que se cuentan las
    amenazas de un vistazo. Se apagan al perder el contacto y al caer el muñeco.
+   **Éstos sí salen aunque el muñeco esté tapado**, al contrario que la brújula:
+   son avisos, y un aviso que sólo llega cuando ya ves al que dispara llega
+   tarde.
 3. **La ficha**: silueta del arma arriba y nick debajo. **No sale por estar a la
    vista**: sale tras mantener la mira encima un instante. Una ficha por cada
    muñeco visible sería una pantalla de rótulos; apuntar es lo que dice a cuál
@@ -664,7 +687,7 @@ vieja.
 | Sensibilidad | slider y campo numérico sobre el mismo valor |
 | Escenario | Sala vacía · Largo y Puerta, con su plano y su ficha |
 | Tipo de diana | Clásica · Cono · Hitbox completo |
-| Arma principal | Rift · Volt — la Pulse no está: se lleva siempre |
+| Arma principal | dice cuál llevas; **se equipa en la armería** (tecla B), no aquí |
 | Tamaño de diana | escala la figura entera sin deformar sus proporciones |
 | Distancia de aparición | distancia base del cono respecto al jugador |
 | Cadencia | milisegundos entre apariciones. Menos es más difícil |
@@ -688,20 +711,54 @@ Axis-7 y Vertex-9** hasta la vuelta 41: el renombrado no tocó ni una estadísti
 y si tenías una elegida, sigue elegida — el ajuste guardado con el nombre viejo
 se traduce al nuevo en vez de caer al valor de fábrica.
 
-| arma | ranura | modo | RPM | cargador | recarga | silenciador | carácter del retroceso |
-| --- | --- | --- | --- | --- | --- | --- | --- |
-| **Pulse** | pistola (**2**) | semi | 500 | 18 | 1.2 s | sí | ninguno — se dispara como antes de que hubiera armas |
-| **Rift** | principal (**1**) | auto | 600 | 30 | 2.3 s | sí | rifle: subida vertical marcada los primeros ocho disparos, luego deriva a la izquierda |
-| **Volt** | principal (**1**) | auto | 800 | 25 | 1.8 s | sí | SMG: patada más inmediata pero la mitad de techo vertical, y más bamboleo lateral que vertical |
+| arma | ranura | modo | RPM | cargador | recarga | silenciador | peso | marcha | carácter del retroceso |
+| --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
+| **Pulse** | pistola (**2**) | semi | 500 | 18 | 1.2 s | sí | 1.1 kg | 6.50 u/s | ninguno — se dispara como antes de que hubiera armas |
+| **Rift** | principal (**1**) | auto | 600 | 30 | 2.3 s | sí | 3.6 kg | 5.88 u/s | rifle: subida vertical marcada los primeros ocho disparos, luego deriva a la izquierda |
+| **Volt** | principal (**1**) | auto | 800 | 25 | 1.8 s | sí | 2.6 kg | 6.14 u/s | SMG: patada más inmediata pero la mitad de techo vertical, y más bamboleo lateral que vertical |
+
+### El peso: lo que cuesta llevar el arma
+
+Desde la vuelta 42 un arma **pesa**, y el peso frena. Hay peso gratis —hasta 1.2
+kg no cuesta nada, y la pistola cae por debajo— y por encima se pierde un 4% de
+marcha por kilo, con un suelo del 75%. Con el rifle vas un 10% más lento que
+quien sólo lleva pistola.
+
+Tres cosas del peso que conviene saber:
+
+- **Frena las tres marchas** —correr, andar y agachado— en la misma proporción.
+- **En el aire no cambia nada.** La marcha se congela al despegar, así que
+  cambiar de arma a media trayectoria no alarga ni acorta el vuelo. Y el techo
+  del air-strafe es el mismo con cualquier arma: el aire es técnica.
+- **La pistola no cuesta velocidad**, a propósito: la que se lleva siempre no
+  puede cobrarte por llevarla. Lo paga la principal, que es la que eliges.
+
+Los números son de partida y se calibran jugando.
+
+### La armería (tecla B)
+
+El arma principal se elige en la **armería**, no en el panel de opciones: una
+ficha por arma con su silueta, su modo y un desglose desplegable —daño, cadencia,
+peso y lo que cuesta en velocidad, cargador, absorción de escudo y objetivo de
+precisión— y un botón **Equipar**. Se abre con **B** o con su botón en la pantalla
+de inicio y en la pausa, y jugando **pausa la sesión** igual que Escape: elegir
+arma con ocho muñecos disparándote no es una decisión.
+
+El **daño** que enseña es el del modelo de zonas —cabeza 100, torso 50, piernas
+34—, que hoy es el mismo para las tres armas: lo que cambia el resultado es dónde
+aciertes.
+
+No hay precios ni botón de comprar. Comprar depende de rondas y de una economía
+que todavía no existen.
 
 ### Dos ranuras: la principal se elige, la pistola se lleva
 
-Se sale siempre con **dos armas**: la principal, que se elige en opciones y sale
-con la tecla **1**, y la **Pulse**, que va siempre encima y sale con la **2**.
-**Q** alterna entre las dos. Por eso la Pulse **no está en el desplegable de
-arma principal**: ya la llevas, y ofrecerla también ahí sería ofrecer llevar dos
-pistolas. La ranura la declara cada arma (`WEAPONS[x].slot`), así que no hay una
-segunda lista que se pueda quedar vieja.
+Se sale siempre con **dos armas**: la principal, que se equipa en la armería y
+sale con la tecla **1**, y la **Pulse**, que va siempre encima y sale con la
+**2**. **Q** alterna entre las dos. Por eso la Pulse **no tiene botón de
+equipar**: ya la llevas, y ofrecerla también como principal sería ofrecer llevar
+dos pistolas. La ranura la declara cada arma (`WEAPONS[x].slot`), así que no hay
+una segunda lista que se pueda quedar vieja.
 
 **Cada arma lleva su propio cargador y su propia recarga**, y la que dejas atrás
 se congela tal cual estaba. Una recarga a medias **no avanza en segundo plano**:
@@ -710,7 +767,7 @@ de arma no es una forma de recargar gratis.
 
 El Rift es la principal por defecto. Si tenías guardada la Pulse como arma
 —se podía elegir hasta la vuelta 39—, el ajuste vuelve al valor de fábrica: la
-pistola dejó de ser una opción del desplegable porque pasó a estar siempre.
+pistola dejó de ser una opción porque pasó a estar siempre.
 
 **Modos.** `semi` dispara una vez por click. `auto` dispara en continuo mientras
 se mantenga pulsado, al intervalo que marcan las RPM. Las RPM acotan los dos

@@ -9,12 +9,19 @@
  *
  * **Tres capas, de abajo arriba, y cada una con su regla:**
  *
- *  1. **La brújula** (verde, volumen 3D, *siempre*). Dice hacia dónde mira el
- *     muñeco, y por eso **no se billboardea**: gira sólo en yaw. Un marcador que
- *     se girase hacia la cámara apuntaría siempre al jugador y no diría nada.
- *     Es volumen y no un triángulo plano porque un triángulo plano a la altura
- *     de los ojos —que es la altura normal— se ve de canto y ocupa cero píxeles
- *     (medido, `docs/decisions.md` §37.4).
+ *  1. **La brújula** (verde, volumen 3D, *a quien se ve de verdad*). Dice hacia
+ *     dónde mira el muñeco, y por eso **no se billboardea**: gira sólo en yaw.
+ *     Un marcador que se girase hacia la cámara apuntaría siempre al jugador y
+ *     no diría nada. Es volumen y no un triángulo plano porque un triángulo
+ *     plano a la altura de los ojos —que es la altura normal— se ve de canto y
+ *     ocupa cero píxeles (medido, `docs/decisions.md` §37.4).
+ *
+ *     **Y desde la vuelta 42 respeta la visibilidad real**: dentro del encuadre
+ *     **y** sin cobertura por medio. Flotando sobre un muro decía dónde está
+ *     alguien a quien no se puede ni ver ni disparar, que es información que el
+ *     juego no da por ningún otro canal — un aviso de rayos X gratis. El test
+ *     es **el mismo** que decide si un muñeco puede nacer donde le veas
+ *     (`sight.js`), no una aproximación nueva.
  *  2. **Los iconos `?` y `!`** (billboard, *situacionales*). `?` mientras el
  *     muñeco te ha visto y aún no dispara, `!` mientras te dispara. Se
  *     billboardean porque lo suyo es leerse, no orientar.
@@ -39,6 +46,7 @@
 import * as THREE from 'three'
 import { CSS3DSprite } from 'three/examples/jsm/renderers/CSS3DRenderer.js'
 import { COLORS, ENEMY, MARKERS, TARGET_TYPES, WEAPONS } from '../config.js'
+import { hasLineOfSight } from './sight.js'
 import { WEAPON_PATHS } from '../ui/weaponPaths.js'
 
 /** Altura del muñeco en unidades de su radio, igual que en `enemyFire.js`. */
@@ -52,8 +60,13 @@ const DEG_TO_RAD = Math.PI / 180
 // Vectores de módulo: el bucle no aloca.
 const _toTarget = new THREE.Vector3()
 const _forward = new THREE.Vector3()
-const _origin = new THREE.Vector3()
-const _dir = new THREE.Vector3()
+/** El punto del muñeco que representa «a él»: la cabeza. Ver `MARKERS.sight`. */
+const _head = new THREE.Vector3()
+/** Encuadre del frame. `setFromProjectionMatrix` escribe en sitio: no aloca. */
+const _projection = new THREE.Matrix4()
+const _view = new THREE.Matrix4()
+const _frustum = new THREE.Frustum()
+const _sphere = new THREE.Sphere()
 
 /**
  * **La brújula.** Una cuña: rectángulo en la cola y punta en el morro, con el
@@ -195,7 +208,6 @@ export class DummyMarkers {
     this.slots = []
     this._geometries = []
     this.occluders = []
-    this._ray = new THREE.Raycaster()
 
     this._compassMaterial = new THREE.MeshBasicMaterial({
       color: new THREE.Color(COLORS.action),
@@ -256,7 +268,7 @@ export class DummyMarkers {
     if (!this.enabled) this._hideAll()
   }
 
-  /** La geometría del escenario, para el único rayo que lanza esto. */
+  /** La geometría del escenario, para los rayos de visibilidad. */
   setOccluders(occluders) {
     this.occluders = occluders || []
   }
@@ -292,6 +304,8 @@ export class DummyMarkers {
      */
     this.bodyTop = height
     this.compassOffset = MARKERS.compass.gap * height
+    /** Radio de la esfera con la que se prueba el encuadre: la propia cuña. */
+    this.compassReach = MARKERS.compass.length * height * 0.5
     this.iconOffset =
       this.compassOffset + MARKERS.compass.height * height + MARKERS.icon.gap * height + iconSize / 2
     this.plateOffset = this.iconOffset + iconSize / 2 + MARKERS.nameplate.gap * height
@@ -332,9 +346,14 @@ export class DummyMarkers {
         /** Cuánto lleva la mira encima, y hasta cuándo sigue puesta la ficha. */
         dwellMs: 0,
         plateUntil: 0,
-        /** Lo que se comprobó de cobertura, y cuándo toca volver a mirarlo. */
-        clear: false,
-        nextCheckAt: 0,
+        /**
+         * **Lo último que se supo de si se le ve**, y cuándo toca volver a
+         * mirarlo. Arranca en `false`: mientras no haya rayo que lo confirme, la
+         * brújula no sale. Al revés —fiarse hasta que se demuestre lo contrario—
+         * es justo el fallo que se está arreglando.
+         */
+        sightClear: false,
+        nextSightAt: 0,
         /** Lo último que se escribió en el DOM, para no tocarlo por frame. */
         shownNick: null,
         shownWeapon: null,
@@ -354,7 +373,17 @@ export class DummyMarkers {
   update(now, deltaMs, instances, camera, phaseOf) {
     if (!this.enabled || this.slots.length === 0) return
     camera.getWorldDirection(_forward)
-    let rayBudget = MARKERS.nameplate.raysPerFrame
+    // El encuadre se calcula una vez por frame y se pregunta por muñeco: es
+    // aritmética, no un rayo, así que aquí no hay presupuesto que repartir.
+    //
+    // La vista se invierte aquí y no se toma de `camera.matrixWorldInverse`: ese
+    // campo lo escribe el renderer al dibujar, o sea **después** de esto, y
+    // usarlo daría el encuadre del frame anterior. Con el ratón en movimiento,
+    // un frame de retraso en el borde de la pantalla se ve.
+    _view.copy(camera.matrixWorld).invert()
+    _projection.multiplyMatrices(camera.projectionMatrix, _view)
+    _frustum.setFromProjectionMatrix(_projection)
+    let rayBudget = MARKERS.sight.raysPerFrame
 
     for (let i = 0; i < instances.length && i < this.slots.length; i++) {
       const instance = instances[i]
@@ -364,6 +393,10 @@ export class DummyMarkers {
         slot.plate.visible = false
         slot.dwellMs = 0
         slot.plateUntil = 0
+        // Un muñeco nuevo en esta ranura empieza sin verse y se comprueba en el
+        // primer frame que esté a la vista, no 180 ms después.
+        slot.sightClear = false
+        slot.nextSightAt = 0
         continue
       }
       const position = instance.group.position
@@ -383,6 +416,22 @@ export class DummyMarkers {
       slot.alert.position.y = anchor + this.iconOffset
       slot.threat.position.y = anchor + this.iconOffset
 
+      // **¿Se le ve de verdad?** Las dos mitades de la pregunta, en el orden
+      // que cuesta menos: primero el encuadre, que es aritmética, y sólo a
+      // quien entra en él se le gasta un rayo.
+      _head.copy(position)
+      _head.y += this.bodyTop * MARKERS.sight.heightFactor
+      const framed = this._isFramed(position, scale)
+      if (framed && now >= slot.nextSightAt && rayBudget > 0) {
+        rayBudget -= 1
+        slot.nextSightAt = now + MARKERS.sight.recheckMs
+        slot.sightClear = hasLineOfSight(camera.position, _head, this.occluders)
+      }
+      // Fuera del encuadre no se gasta rayo, así que `nextSightAt` se queda
+      // atrás y volver a entrar recomprueba en el primer frame.
+      const seen = framed && slot.sightClear
+      slot.needle.visible = seen
+
       const phase = phaseOf(instance, now)
       slot.alert.visible = phase === 'alert'
       slot.threat.visible = phase === 'firing'
@@ -392,7 +441,7 @@ export class DummyMarkers {
         slot.threat.quaternion.copy(camera.quaternion)
       }
 
-      rayBudget = this._updateNameplate(now, deltaMs, instance, slot, camera, distance, scale, rayBudget)
+      this._updateNameplate(now, deltaMs, instance, slot, camera, seen, scale)
     }
     for (let i = instances.length; i < this.slots.length; i++) {
       this.slots[i].group.visible = false
@@ -410,40 +459,34 @@ export class DummyMarkers {
    * tiempo, para descartar que haya cobertura por medio, y se repite cada
    * `recheckMs` mientras la ficha siga puesta.
    */
-  _updateNameplate(now, deltaMs, instance, slot, camera, distance, scale, rayBudget) {
+  _updateNameplate(now, deltaMs, instance, slot, camera, seen, scale) {
     const plate = slot.plate
     // El día que haya equipos, a un compañero se le ve la ficha siempre: no hay
     // que apuntar a alguien para saber quién es si juega contigo.
     const friendly = instance.friendly === true
 
-    _toTarget.copy(instance.group.position)
-    // **A la cabeza, no al centro del cuerpo.** Por ángulo daría igual, pero este
-    // mismo vector es el que se usa para el rayo de cobertura, y ahí no da igual:
-    // asomado por encima de una caja, lo que se ve de un muñeco es la cabeza, y
-    // un rayo al pecho choca contra la caja y dejaría sin ficha justo al que
-    // estás mirando.
-    _toTarget.y += this.bodyTop * MARKERS.nameplate.aimHeight
-    _toTarget.sub(camera.position)
+    // **A la cabeza, no al centro del cuerpo.** `_head` es el mismo punto que
+    // acaba de decidir si se le ve: por ángulo daría igual, pero asomado por
+    // encima de una caja lo que se ve de un muñeco es la cabeza, y un rayo al
+    // pecho choca contra la caja y dejaría sin ficha justo al que estás mirando.
+    _toTarget.copy(_head).sub(camera.position)
     const length = _toTarget.length()
     const aiming = length > 1e-3 && _toTarget.dot(_forward) / length >= this._cosCone
 
     if (aiming && deltaMs > 0) slot.dwellMs += deltaMs
     else if (!aiming) slot.dwellMs = 0
 
-    if (friendly || (aiming && slot.dwellMs >= MARKERS.nameplate.dwellMs)) {
-      // Un solo rayo, y sólo cuando toca: al cumplirse el tiempo y cada
-      // `recheckMs`. Sin presupuesto, se queda con lo que sabía.
-      if (!friendly && now >= slot.nextCheckAt && rayBudget > 0) {
-        rayBudget -= 1
-        slot.nextCheckAt = now + MARKERS.nameplate.recheckMs
-        slot.clear = !this._blocked(camera.position, _toTarget, length)
-      }
-      if (friendly || slot.clear) slot.plateUntil = now + MARKERS.nameplate.holdMs
+    // La ficha ya no lanza su propio rayo: usa el mismo veredicto que la
+    // brújula. Es la misma pregunta —«¿le veo?»— y hacérsela dos veces por
+    // muñeco costaba el doble de rayos para dos respuestas que podían no
+    // coincidir.
+    if ((friendly || seen) && (friendly || (aiming && slot.dwellMs >= MARKERS.nameplate.dwellMs))) {
+      slot.plateUntil = now + MARKERS.nameplate.holdMs
     }
 
     const show = friendly || now < slot.plateUntil
     plate.visible = show
-    if (!show) return rayBudget
+    if (!show) return
 
     // La ficha va **sin escalar con la distancia**: es DOM, y el CSS3DSprite ya
     // la mantiene de frente. Lo que sí sigue es la misma corrección de tamaño
@@ -467,20 +510,25 @@ export class DummyMarkers {
       slot.dom.root.title = WEAPONS[weaponKey]?.label ?? ''
       slot.shownWeapon = weaponKey
     }
-    return rayBudget
   }
 
-  /** ¿Hay geometría del escenario entre la cámara y la ficha? */
-  _blocked(origin, direction, distance) {
-    if (this.occluders.length === 0) return false
-    _origin.copy(origin)
-    _dir.copy(direction).normalize()
-    this._ray.set(_origin, _dir)
-    this._ray.near = 0
-    this._ray.far = distance - 0.2
-    const hit = this._ray.intersectObjects(this.occluders, false)
-    this._ray.far = Infinity
-    return hit.length > 0
+  /**
+   * **¿Cae la brújula dentro del encuadre?**
+   *
+   * Se pregunta por la brújula y no por el muñeco a propósito: es el marcador
+   * lo que se está decidiendo dibujar, y va por encima de la coronilla. Se
+   * prueba como esfera —del tamaño de la propia cuña, ya escalada— y no como
+   * punto, para que un muñeco al filo de la pantalla no pierda el marcador
+   * mientras todavía se le ve la mitad.
+   */
+  _isFramed(position, scale) {
+    _sphere.center.set(
+      position.x,
+      position.y + this.bodyTop + this.compassOffset * scale,
+      position.z,
+    )
+    _sphere.radius = this.compassReach * scale
+    return _frustum.intersectsSphere(_sphere)
   }
 
   _hideAll() {

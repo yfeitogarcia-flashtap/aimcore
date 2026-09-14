@@ -1566,3 +1566,126 @@ body {
   border-radius: 50%;
   opacity: 0;
 }
+
+/* ---------------------------------------------------------------------------
+   Armería (vuelta 42)
+
+   Una rejilla de fichas, una por arma: silueta, nombre y lo que cuesta. Usa las
+   mismas piezas que el resto de paneles —`.panel`, `.button`, la silueta del
+   HUD— porque es el mismo juego: una armería con tipografía propia parecería
+   pegada de otro sitio.
+--------------------------------------------------------------------------- */
+.panel--armoury {
+  gap: 16px;
+  align-items: stretch;
+  /* Ancho fijo y no «lo que ocupe»: la rejilla es de columna mínima, y con el
+     ancho a merced del contenido las tres fichas se partían en dos filas aunque
+     cupieran de sobra. */
+  width: min(780px, calc(100vw - 48px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  text-align: left;
+}
+
+.panel--armoury .panel__title,
+.panel--armoury .panel__actions {
+  align-self: center;
+}
+
+/* Columna fija, como el selector de escenario: añadir un arma añade una fila,
+   no encoge las que ya estaban. */
+.armoury__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 12px;
+}
+
+.armoury__card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 12px;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+/* La equipada se marca con el verde de acción, que es el color de «esto es lo
+   que pasa al pulsar» en todo el juego. */
+.armoury__card--equipped {
+  border-color: var(--action-color);
+}
+
+.armoury__art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 62px;
+}
+
+.armoury__name {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+}
+
+.armoury__character {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  text-align: center;
+}
+
+.armoury__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
+.armoury__fixed {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--text-soft);
+  align-self: center;
+  padding: 6px 0;
+}
+
+.armoury__stats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 100%;
+  padding-top: 8px;
+  border-top: 1px solid var(--panel-border);
+}
+
+.armoury__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.armoury__stat-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.armoury__stat-value {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--text-soft);
+}
+
+/* La silueta de la armería es la misma del HUD, un poco más grande: aquí es el
+   retrato del arma y no un dato al lado de la munición. */
+.armoury__art .weapon__svg {
+  width: 168px;
+  height: 73px;
+}

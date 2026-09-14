@@ -237,6 +237,20 @@ export class Engine {
     this.mode = 'timed'
     this._pendingMode = 'timed'
     /**
+     * **El reloj del mundo.** Milisegundos de *juego*: avanza con el delta del
+     * frame **sólo mientras se juega**, así que en pausa no se mueve. De él
+     * cuelgan todos los tiempos del combate —cadencia y recarga del arma,
+     * visión, reacción y ráfagas de los muñecos, apariciones, pops— para que
+     * pausar congele el mundo entero y no sólo las partes que se acordaron de
+     * usar el delta.
+     *
+     * El de fuera (`performance.now()`) se queda donde tiene que estar: el
+     * limitador de FPS, la media de frames y el movimiento, que compara contra
+     * el `timeStamp` de los eventos del navegador y **tiene** que ir en el mismo
+     * origen de tiempos que ellos.
+     */
+    this.gameTime = 0
+    /**
      * Sesión sin cronómetro: no termina sola, la cierra el jugador. Se deriva
      * del modo y su duración, y sigue significando **sólo** eso, que es lo que
      * leen el HUD y el resumen.
@@ -556,16 +570,24 @@ export class Engine {
     this.enemyFire.setRadius(settings.targetRadius)
     this.enemyFire.setDifficulty(settings.enemyDifficulty)
     const hadSession = this.targets.sessionActive
-    this.targets.configure(settings)
+    // **Volver a sembrar sólo si el tablero ha dejado de valer.** `configure`
+    // dice si hubo que rehacer las mallas, que es el único caso en que las
+    // dianas en pantalla ya no existen. Hasta la vuelta 42 se sembraba con
+    // **cualquier** ajuste: tocar el silenciador en la pausa, con tres muñecos
+    // ya abatidos, borraba la ronda y la volvía a llenar entera —y con el
+    // jugador parado en su zona, encima de él—.
+    const rebuilt = this.targets.configure(settings)
     this._syncMarkers(settings)
+    // El cupo de ronda sí se recalcula siempre: cambiar el selector de
+    // simultáneas con el explosivo puesto cambia cuántos quedan por salir, y
+    // eso no necesita rehacer nada.
+    if (hadSession) {
+      this.targets.setRoundBudget(this.objectiveRunning ? this.targets.maxAlive : 0)
+    }
     // Con un cambio de escenario en marcha la siembra la hace `_buildScenario`,
     // ya con el mundo nuevo montado: sembrar aquí usaría los anclajes viejos.
-    if (hadSession && !this.transition.active) {
-      // Volver a sembrar es volver a empezar la ronda, así que el cupo se
-      // recalcula: cambiar el selector de simultáneas en la pausa, con el
-      // explosivo puesto, cambia cuántos muñecos quedan por salir.
-      this.targets.setRoundBudget(this.objectiveRunning ? this.targets.maxAlive : 0)
-      this.targets.beginSession(this.camera, performance.now())
+    if (hadSession && rebuilt && !this.transition.active) {
+      this.targets.beginSession(this.camera, this.gameTime)
     }
   }
 
@@ -612,7 +634,7 @@ export class Engine {
     // con el cupo de ronda recalculado como en cualquier otra resiembra.
     if (hadSession) {
       this.targets.setRoundBudget(this.objectiveRunning ? this.targets.maxAlive : 0)
-      this.targets.beginSession(this.camera, performance.now())
+      this.targets.beginSession(this.camera, this.gameTime)
     }
   }
 
@@ -631,7 +653,10 @@ export class Engine {
   _equipSlot(slot) {
     const key = this.slots[slot]
     if (!key || key === this.weaponKey) return
-    const now = performance.now()
+    // Del reloj del mundo, como el resto de los tiempos del arma: lo que se
+    // guarda de una recarga a medias es lo que le faltaba, y eso no puede
+    // medirse en un reloj que sigue corriendo con el juego parado.
+    const now = this.gameTime
     this._stowed[this.weaponKey] = {
       ammo: this.ammo,
       // Lo que le faltaba, no cuándo acababa: guardada así, la recarga se
@@ -685,6 +710,10 @@ export class Engine {
     // El silenciador sólo cuenta si el arma **vigente** lo admite: la pistola lo
     // lleva y el Rift no, así que esto cambia al cambiar de ranura.
     this.suppressorEnabled = settings.suppressor && this.weapon.supportsSuppressor
+    // **Y lo que pesa se nota al andar.** Va aquí y no en `_equipSlot` porque
+    // éste es el único sitio por el que pasan los tres caminos que cambian el
+    // arma vigente: la tecla, el ajuste de principal y la armería.
+    this.movement.setWeaponWeight(this.weapon.weight)
     this.actionPanel.update({
       weaponLabel: this.weapon.label,
       suppressorSupported: this.weapon.supportsSuppressor,
@@ -809,7 +838,7 @@ export class Engine {
     this.pickups.begin()
     // La primera diana nace en la posición ya reseteada del jugador.
     this.camera.updateMatrixWorld()
-    const now = performance.now()
+    const now = this.gameTime
     // **Con explosivo armado no hay reaparición**: el selector de simultáneas
     // pasa a decir cuántos muñecos hay *en toda la ronda*, no cuántos a la vez.
     // Es lo que convierte la ronda en una ronda —se acaban— en vez de en una
@@ -887,7 +916,7 @@ export class Engine {
     if (this.phase !== PHASE.RUNNING) return
 
     this._triggerHeld = true
-    const now = performance.now()
+    const now = this.gameTime
 
     // Darle a un botón es accionarlo, no disparar: no cuenta como acierto ni
     // como fallo, no gasta munición y no mueve la cámara. Pero sólo gana si es
@@ -1123,6 +1152,22 @@ export class Engine {
     if (this._isBind('scoreboard', event)) this._scoreboardHeld = false
   }
 
+  /**
+   * Abre o cierra la armería. **Pausa como Escape**: se suelta el ratón y el
+   * cambio de fase lo hace `_onPointerLockChange`, que es el único sitio del
+   * motor que sabe pasar a pausa. Duplicar ahí una segunda forma de pausar es
+   * como acaban dos estados que no coinciden.
+   */
+  _toggleArmoury() {
+    if (this.isLocked) document.exitPointerLock()
+    // Y se pausa aquí mismo, sin esperar al evento de pointer lock: el cambio de
+    // captura es asíncrono y hasta que llega seguiría corriendo el reloj —y con
+    // él los muñecos—. Es el mismo `_suspend` que usa Escape, no una segunda
+    // pausa.
+    this._suspend()
+    this.callbacks.onArmoury?.()
+  }
+
   _onKeyDown(event) {
     // La vista del avatar es de depuración: se abre esté como esté la partida,
     // que para eso existe — inspeccionar el modelo sin montar un multijugador.
@@ -1135,6 +1180,15 @@ export class Engine {
     // de `repeat` porque el navegador repite TAB mientras está pulsada y cada
     // repetición hay que cancelarla también: sin `preventDefault` en todas, el
     // foco se pasea por la página por debajo del juego.
+    // **La armería se abre esté como esté la partida.** Jugando pausa —por el
+    // mismo camino que Escape, soltando el ratón— y en el menú o en la pausa
+    // sólo abre, que ahí no hay nada que parar. Va antes del filtro de fase por
+    // eso mismo.
+    if (this._isBind('armoury', event) && !event.repeat) {
+      event.preventDefault()
+      this._toggleArmoury()
+      return
+    }
     if (this._isBind('scoreboard', event)) {
       // **Fuera de la partida, TAB es del navegador.** En la pausa y en
       // opciones es como se recorre un panel con el teclado, y quedárnosla ahí
@@ -1160,7 +1214,7 @@ export class Engine {
 
     if (this._isBind('reload', event)) {
       event.preventDefault()
-      this._startReload(performance.now())
+      this._startReload(this.gameTime)
       return
     }
 
@@ -1474,7 +1528,7 @@ export class Engine {
     playWeaponShot(this.weaponKey, this.suppressorEnabled)
     if (hit) {
       this.hits += 1
-      const { killed } = this.targets.applyHit(hit, performance.now())
+      const { killed } = this.targets.applyHit(hit, this.gameTime)
       if (killed) {
         this.kills += 1
         // Una baja perdona parte de la espera, si es que hay algo que perdonar.
@@ -1512,13 +1566,26 @@ export class Engine {
         this._setPhase(PHASE.RUNNING)
       }
     } else {
-      this.controls.enabled = false
-      this._releaseTrigger()
-      this.movement.setEnabled(false)
       // Perder la captura en plena partida pausa el reloj en lugar de
       // terminarla: salir con Escape no debería arruinar la sesión.
-      if (this.phase === PHASE.RUNNING) this._setPhase(PHASE.PAUSED)
+      this._suspend()
     }
+  }
+
+  /**
+   * **Soltar la partida sin terminarla.** Apaga controles y movimiento, suelta
+   * el gatillo y pasa a pausa si se estaba jugando.
+   *
+   * Existe como método porque hay **dos** formas de dejar de jugar sin acabar
+   * —Escape, que suelta el ratón, y abrir la armería— y las dos tienen que dejar
+   * exactamente el mismo estado. Dos trozos de código parecidos es como acaba
+   * una pausa con el gatillo todavía pulsado.
+   */
+  _suspend() {
+    this.controls.enabled = false
+    this._releaseTrigger()
+    this.movement.setEnabled(false)
+    if (this.phase === PHASE.RUNNING) this._setPhase(PHASE.PAUSED)
   }
 
   _onResize() {
@@ -1547,7 +1614,10 @@ export class Engine {
     this._sampleFps(delta)
 
     if (this.phase === PHASE.RUNNING) {
-      this._updateReload(now)
+      // El reloj del mundo avanza aquí y **sólo aquí**: pausar es dejar de
+      // sumarle, y con eso se para todo lo que cuelga de él.
+      this.gameTime += delta
+      this._updateReload(this.gameTime)
       this.elapsedMs += delta
       // Con explosivo, el reloj de la sesión es su cuenta atrás: la duración
       // fija no se aplica, o los 30 s cortarían la partida antes de los 45.
@@ -1563,13 +1633,11 @@ export class Engine {
         // Fuego automático: como mucho un disparo por frame. A 60 Hz eso son
         // 3600 RPM de techo, muy por encima de cualquier arma del roster.
         if (this._triggerHeld && !this._triggerConsumedByPanel && this.weapon.mode === 'auto') {
-          this._tryShoot(now)
+          this._tryShoot(this.gameTime)
         }
       }
     }
 
-    // En pausa el delta va a cero: las dianas se congelan con el cronómetro,
-    // pero los pops en curso siguen apagándose porque van con `now`.
     // La vista del avatar se lleva la cámara mientras esté abierta. Va después
     // del movimiento y antes de dibujar, como cualquier otra cosa que la mueva.
     if (this._avatarDebug) this._updateAvatarDebug(delta / 1000)
@@ -1578,12 +1646,19 @@ export class Engine {
     // que el movimiento ya ha resuelto este frame.
     this.avatar?.setEyeHeight(this.movement.eyeHeight)
 
-    const targetDelta = this.phase === PHASE.RUNNING ? delta / 1000 : 0
-    this.targets.update(now, targetDelta, this.camera)
-    // El combate va después de las dianas: los muñecos disparan desde donde han
-    // quedado este frame, no desde donde estaban en el anterior.
-    this._updateCombat(now, targetDelta * 1000)
-    this._updateObjective(now, targetDelta)
+    // **El mundo sólo avanza jugando**, y va con el reloj del mundo. Las dos
+    // cosas juntas, porque cada una sola dejaba un agujero: pasar delta cero
+    // congelaba lo que iba por delta y dejaba corriendo lo que iba por fecha
+    // —los muñecos siguieron disparando en pausa hasta la vuelta 42—, y parar
+    // el reloj sin dejar de llamar habría dejado colar el disparo que tocaba
+    // justo en el frame de pausar.
+    if (this.phase === PHASE.RUNNING) {
+      this.targets.update(this.gameTime, delta / 1000, this.camera)
+      // El combate va después de las dianas: los muñecos disparan desde donde
+      // han quedado este frame, no desde donde estaban en el anterior.
+      this._updateCombat(this.gameTime, delta)
+      this._updateObjective(this.gameTime, delta / 1000)
+    }
     this.actionPanel.follow(this.camera)
     this.actionPanel.syncLayout()
     this._publishStats()
@@ -1637,7 +1712,7 @@ export class Engine {
     stats.magazine = this.weapon.magazine
     stats.reloading = this.reloading
     stats.reloadProgress = this.reloading
-      ? Math.min(1, (performance.now() - this.reloadStartedAt) / this.weapon.reloadMs)
+      ? Math.min(1, (this.gameTime - this.reloadStartedAt) / this.weapon.reloadMs)
       : 0
     stats.endless = this.endless
     // El cronómetro cuenta hacia arriba en práctica libre y también con
