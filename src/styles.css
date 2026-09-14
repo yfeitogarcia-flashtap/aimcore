@@ -1593,18 +1593,29 @@ body {
 }
 
 /* Columna fija, como el selector de escenario: añadir un arma añade una fila,
-   no encoge las que ya estaban. */
+   no encoge las que ya estaban.
+
+   **Y las filas de dentro las manda la rejilla, no cada ficha** (`subgrid`).
+   Comparar tres armas es mirar la misma fila en las tres, y para eso CADENCIA
+   tiene que estar a la misma altura en las tres: con cada ficha apilando lo
+   suyo, un botón que mide ocho píxeles más que un rótulo desalineaba la columna
+   entera de números. Alinearlo a mano con un `min-height` medido funciona hoy y
+   se rompe el día que alguien cambie el relleno de `.button`; así lo hace el
+   navegador y no hay número que mantener. */
 .armoury__grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  grid-template-rows: repeat(7, auto);
   gap: 12px;
 }
 
 .armoury__card {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-row: span 7;
+  row-gap: 8px;
+  justify-items: center;
+  align-content: start;
   padding: 14px 12px;
   border: 1px solid var(--panel-border);
   background: rgba(255, 255, 255, 0.015);
@@ -1623,6 +1634,13 @@ body {
   min-height: 62px;
 }
 
+/* Nombre y tecla, en la misma línea: el arma y con qué sale. */
+.armoury__ident {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .armoury__name {
   font-family: var(--font-mono);
   font-size: 15px;
@@ -1630,12 +1648,47 @@ body {
   color: var(--text-primary);
 }
 
+/* La tecla, como una tecla: cuadrada y con borde. */
+.armoury__slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--panel-border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Fila de estado: ocupa sitio aunque esté vacía, o la ficha de al lado baila. */
+.armoury__state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 14px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.armoury__inhand {
+  color: var(--action-color);
+}
+
 .armoury__character {
   font-family: var(--font-mono);
   font-size: 11px;
+  line-height: 1.35;
   letter-spacing: 0.04em;
   color: var(--text-muted);
   text-align: center;
+  /* Alto mínimo para que la fila no se hunda cuando ninguna ficha llena las dos
+     líneas. Alinear las fichas entre sí no es cosa de aquí: eso lo hace el
+     `subgrid` de la rejilla. */
+  min-height: 30px;
 }
 
 .armoury__actions {
@@ -1645,25 +1698,50 @@ body {
   justify-content: center;
 }
 
+/* Hueco del botón: lo ocupa el botón o el rótulo de la pistola. Que las tres
+   fichas midan lo mismo aquí lo resuelve el `subgrid`. */
+.armoury__action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 34px;
+  width: 100%;
+}
+
 .armoury__fixed {
   font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.04em;
-  color: var(--text-soft);
-  align-self: center;
-  padding: 6px 0;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* Y el de los interruptores: hoy sólo está el del silenciador, y un arma que no
+   lo admita deja su hueco vacío en lugar de subir sus estadísticas. */
+.armoury__switches {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 22px;
+  width: 100%;
 }
 
 .armoury__stats {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 7px;
   width: 100%;
   padding-top: 8px;
   border-top: 1px solid var(--panel-border);
 }
 
 .armoury__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.armoury__stat-head {
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -1681,6 +1759,74 @@ body {
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--text-soft);
+}
+
+/* Barra comparativa: el tope es el máximo del arsenal, así que lo que se lee es
+   «ésta es la que más», no un porcentaje contra un número inventado. Sin color
+   de bueno/malo a propósito: que un rifle pese más no es peor, es otra cosa. */
+.armoury__bar {
+  height: 3px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.armoury__bar-fill {
+  height: 100%;
+  background: var(--text-muted);
+}
+
+/* ---------------------------------------------------------------------------
+   Casilla de estado (vuelta 43)
+
+   Para lo que es **un interruptor de un arma** y no una acción del panel: se
+   marca en verde y ocupa una línea. Deliberadamente distinta de `.button`, que
+   es lo que hace algo — con cinco botones iguales hay que leerlos todos para
+   saber cuál es el que actúa.
+--------------------------------------------------------------------------- */
+.checkline {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 0;
+  border: none;
+  background: none;
+  cursor: pointer;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.checkline__box {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 1px solid var(--text-muted);
+}
+
+.checkline__tick {
+  width: 12px;
+  height: 12px;
+  fill: none;
+  stroke: var(--action-color);
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.checkline--on {
+  color: var(--action-color);
+}
+
+.checkline--on .checkline__box {
+  border-color: var(--action-color);
+}
+
+.checkline:hover .checkline__box,
+.checkline:focus-visible .checkline__box {
+  border-color: var(--text-primary);
 }
 
 /* La silueta de la armería es la misma del HUD, un poco más grande: aquí es el

@@ -1245,9 +1245,24 @@ export const SETTINGS = {
     label: 'Límite de fotogramas',
     default: 'unlimited',
   },
+  /**
+   * **El silenciador es de cada arma, no del jugador** (vuelta 43).
+   *
+   * Hasta la 42 era un solo booleano que se aplicaba a lo que llevaras en la
+   * mano, así que ponérselo a la Rift se lo ponía también a la pistola. En
+   * cuanto la armería enseña las tres a la vez, con su interruptor en la ficha,
+   * eso deja de tener sentido: lo que se ve en el panel es el arma **como la vas
+   * a llevar**, silueta incluida.
+   *
+   * El valor sale del arsenal en vez de estar escrito a mano: añadir un arma la
+   * añade aquí sola, y el saneado acota además contra `supportsSuppressor`, que
+   * es quien decide de verdad.
+   */
   suppressor: {
     label: 'Silenciador',
-    default: false,
+    default: Object.fromEntries(Object.keys(WEAPONS).map((key) => [key, false])),
+    /** Marca para el saneado: es un mapa arma → booleano, no un interruptor. */
+    perWeapon: true,
   },
   spatialAudio: {
     label: 'Audio espacial',
@@ -1543,9 +1558,15 @@ export const SCENARIOS = {
     room: { width: 40, depth: 40, height: 10 },
     /**
      * El jugador aparece en el Vestíbulo, mirando hacia -Z, que es la dirección
-     * fija del cono de aparición. El panel de acciones se ancla a este punto.
+     * fija del cono de aparición. El panel de acciones se ancla a este punto
+     * —acotado contra la pared, que desde la vuelta 43 el spawn está a 2.5 u de
+     * ella y el tablero no cabe entero detrás—.
+     *
+     * **Pegado al fondo a propósito** (vuelta 43): el jugador sale con la pared
+     * a la espalda y su muro delante, de modo que la banda que hay que reservar
+     * sin muñecos son 4.8 u —el 12% de la sala— y no un tercio del mapa.
      */
-    spawn: { x: 0, z: 14 },
+    spawn: { x: 0, z: 17.5 },
 
     boxes: [
       // --- La Espina: parte el mapa de norte a sur. El único hueco es La
@@ -1553,29 +1574,33 @@ export const SCENARIOS = {
       { x: -8, z: -11, w: 1.2, d: 9, kind: 'alta' },
       { x: -8, z: 0.5, w: 1.2, d: 10.5, kind: 'alta' },
 
-      // --- Vestíbulo: la divisoria que obliga a elegir salida. Va entera al
-      // este del spawn y deja abierto el paso central: es lo que hace que desde
-      // el punto de aparición se vea de verdad hacia delante en lugar de tener
-      // un muro a dos metros (ver el comentario de los anclajes). Y arranca en
-      // x 2.5, no en x 1: a media sala de distancia, un muro Alta que empieza a
-      // 24° de la mirada inicial se come un tercio de la pantalla. Desde 2.5
-      // entra a 43°, ya en el borde del encuadre.
-      { x: 2.5, z: 10, w: 6, d: 1.3, kind: 'alta' },
-
-      // --- **El recinto de aparición.** Tres muros Alta que cierran la zona
-      // del spawn por detrás y por los dos costados, dejando abierto el frente
-      // —que es hacia donde se mira y por donde se sale—. No es decoración:
-      // reaparecer dentro de una zona donde ya había un muñeco esperando era
-      // morirse otra vez sin tocar el ratón.
+      // --- **El muro de aparición.** Una sola pieza, atravesada delante del
+      // punto de aparición y **más alta que cualquier jugador**, así que de
+      // detrás sólo se sale rodeándola por un extremo o por el otro.
       //
-      // Lo que garantiza que ahí no haya nadie **no** es una comprobación de
-      // distancia que haya que acordarse de aplicar: es que `spawnZone` saca del
-      // grafo de rutas cualquier punto de dentro (ver `scenario.js`), así que no
-      // hay dónde aparecer ni a dónde patrullar. Los muros son la otra mitad:
-      // cortan la línea de tiro desde los lados y por detrás.
-      { x: -4.6, z: 18.8, w: 9.2, d: 1.2, kind: 'alta' },
-      { x: 3.4, z: 10.4, w: 1.2, d: 8.4, kind: 'alta' },
-      { x: -4.6, z: 10.4, w: 1.2, d: 8.4, kind: 'alta' },
+      // Sustituye a dos cosas: al recinto de tres muros de la vuelta 42, que era
+      // una ratonera con una única boca, y a la vieja divisoria del Vestíbulo,
+      // que hacía este mismo trabajo a medias y sólo por el este. Lo que se
+      // buscaba con ella —obligar a elegir salida— lo hace esto mejor, porque
+      // las dos salidas son simétricas y las dos se pagan con el mismo tiempo.
+      //
+      // **Los tres números salen de medir**, no de elegir (`muro43.mjs`,
+      // `pantalla43.mjs`; el porqué en `docs/decisions.md` §43):
+      //
+      //  - **14 de largo.** Por debajo de 12 el jugador plantado en el spawn ya
+      //    es visible para algún punto del grafo, que es justo lo que el muro
+      //    existe para impedir. Con 14 no lo ve ninguno de los 68, asomarse
+      //    cuesta 0.34 s por el oeste y 0.90 por el este, y cruzarlo de punta a
+      //    punta 2.38 s: se puede, y se paga.
+      //  - **`media` (1.9) y no `alta` (3.6).** Con 3.6 a metro y medio de la
+      //    cara el muro ocupa **el 100% del encuadre**: se aparece mirando una
+      //    pared gris. Con 1.9 ocupa el 60% y por encima se ve el mapa, y sigue
+      //    tapando igual — una recta entre dos puntos por debajo de 1.9 que
+      //    cruce su huella está cortada, y tanto los ojos del jugador (1.7) como
+      //    los de un muñeco (1.44) están por debajo.
+      //  - **A 2.3 u del spawn.** Más cerca y no se puede uno mover detrás; más
+      //    lejos y el muro deja de tapar el punto de reaparición.
+      { x: -7, z: 15.2, w: 14, d: 1, kind: 'media' },
 
       // --- El Largo: tres Media escalonadas a un lado y otro del carril. La
       // del fondo se queda a x -15.5 y no más al oeste: por x -19..-16 sube la
@@ -1631,10 +1656,18 @@ export const SCENARIOS = {
     ],
 
     /**
-     * **La zona de aparición del jugador**, y lo que la hace zona: de aquí sale
-     * la exclusión del grafo de rutas. `scenario.js` descarta **cualquier**
+     * **La banda de aparición del jugador**, y lo que la hace banda: de aquí
+     * sale la exclusión del grafo de rutas. `scenario.js` descarta **cualquier**
      * punto de ruta que caiga dentro, con el radio del muñeco de margen, así que
      * no hay forma de que uno aparezca —ni patrulle— donde reaparece el jugador.
+     *
+     * **Cruza la sala de lado a lado**, y eso es la regla de la vuelta 43: de la
+     * línea del muro hacia atrás no aparece nadie, no sólo dentro de una bolsa
+     * alrededor del spawn. Una bolsa dejaba muñecos a los costados, que es lo
+     * que hacía imposible estar del todo tapado al reaparecer.
+     *
+     * Empieza exactamente en la cara del muro: el muro es lo que la hace creíble
+     * —lo que se ve— y la banda es lo que la hace cierta.
      *
      * Va en los datos del escenario y no en una constante global porque cada
      * plano tiene la suya: un escenario futuro declara la suya y hereda la regla
@@ -1644,7 +1677,7 @@ export const SCENARIOS = {
      * convención que `boxes`: son datos del mismo escenario y leerlos con dos
      * convenciones distintas es un error que no da la cara.
      */
-    spawnZone: { x: -3.4, z: 10.4, w: 6.8, d: 8.4 },
+    spawnZone: { x: -20, z: 15.2, w: 40, d: 4.8 },
 
     /**
      * Sitios posibles del explosivo, curados igual que los anclajes. Repartidos
@@ -1857,15 +1890,21 @@ export const SCENARIOS = {
           { id: 'puerta-1-e', x: -5.5, z: -4.5 },
         ],
       },
+      // **Las dos del Vestíbulo cambiaron de lado en la vuelta 43.** Estaban
+      // detrás del muro de aparición —donde ya no puede haber nadie— y se
+      // rebarrieron con `rutas43.mjs` sobre lo que quedó libre delante de él.
+      // Son las dos primeras que se encuentran al asomarse, una por cada
+      // extremo del muro: salir por el oeste y salir por el este llevan a sitios
+      // distintos, que es lo que hace que elegir lado signifique algo.
       {
         id: 'vestibulo-1',
         zone: 'Vestíbulo',
         peek: false,
         points: [
-          { id: 'vestibulo-1-a', x: 6.5, z: 12.5 },
-          { id: 'vestibulo-1-b', x: 7.5, z: 15.5 },
-          { id: 'vestibulo-1-c', x: 5.5, z: 17.5 },
-          { id: 'vestibulo-1-d', x: 8, z: 18.5 },
+          { id: 'vestibulo-1-a', x: 6.5, z: 14.5 },
+          { id: 'vestibulo-1-b', x: 8, z: 12 },
+          { id: 'vestibulo-1-c', x: 10.5, z: 8.5 },
+          { id: 'vestibulo-1-d', x: 13, z: 8.5 },
         ],
       },
       {
@@ -1873,11 +1912,10 @@ export const SCENARIOS = {
         zone: 'Vestíbulo',
         peek: false,
         points: [
-          { id: 'vestibulo-2-a', x: -5.5, z: 15.5 },
-          { id: 'vestibulo-2-b', x: -5.5, z: 18.5 },
-          { id: 'vestibulo-2-c', x: -8.5, z: 18.5 },
-          { id: 'vestibulo-2-d', x: -11.5, z: 18.5 },
-          { id: 'vestibulo-2-e', x: -14.5, z: 18.5 },
+          { id: 'vestibulo-2-a', x: -3.5, z: 12 },
+          { id: 'vestibulo-2-b', x: -4.5, z: 14.5 },
+          { id: 'vestibulo-2-c', x: -7, z: 13 },
+          { id: 'vestibulo-2-d', x: -11.5, z: 14.5 },
         ],
       },
     ],

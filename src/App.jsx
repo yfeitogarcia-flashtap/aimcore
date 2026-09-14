@@ -195,7 +195,12 @@ export default function App() {
   )
 
   const armouryPanel = (
-    <Armoury settings={settings} onChange={updateSettings} onClose={closeArmoury} />
+    <Armoury
+      settings={settings}
+      equipped={equipped}
+      onChange={updateSettings}
+      onClose={closeArmoury}
+    />
   )
 
   const optionsButton = (

@@ -167,16 +167,45 @@ ni a dónde patrullar, y vale para **todos los modos** porque el grafo es uno. U
 comprobación de distancia al sembrar habría sido una regla que hay que acordarse
 de aplicar en cada sitio nuevo que haga aparecer algo.
 
-Los muros son la otra mitad: tres piezas `alta` que cierran el Vestíbulo por
-detrás y por los costados y dejan el frente abierto. Medido, lo que compran: el
-punto de ruta más cercano al spawn pasa de 5.15 a 5.70 u y los que tienen línea
-de tiro al punto exacto de reaparición, de 38 de 69 a **25**, con el más cercano a
-7.1 u en vez de 5.9. Lo que cuesta: desde el Balcón ya sólo se ve **un** punto del
-Vestíbulo en vez de cuatro, así que campar ahí manda a un tercio de las
-apariciones a sitios que no se ven —el reparto pasa de dos zonas a las seis, que
-es la respuesta al campeo funcionando—. Y el tablero de acciones, que se ancla al
-spawn y se dibuja 9 u al este, queda **detrás del muro este**: sigue apagado, pero
-el día que vuelva en el Plano A hay que moverle el ancla.
+**Y es una banda que cruza la sala, no una bolsa alrededor del spawn** (vuelta
+43). La regla es «de la línea del muro hacia atrás no aparece nadie». Con una
+bolsa quedaban muñecos a los costados y no había forma de estar del todo tapado
+al reaparecer, que es justo lo que hay que poder hacer.
+
+**Un solo muro, y se sale por los dos extremos.** El recinto de tres piezas de la
+vuelta 42 era una ratonera: una única boca, y todo lo que hubiera enfrente te
+veía por ella. Ahora hay **una pieza atravesada** delante del spawn, más alta que
+cualquier jugador, y detrás de ella se está a cubierto de todo el grafo; salir es
+rodearla por un lado o por el otro, y eso convierte el spawn en un sitio donde se
+practica el asomo en vez de un pasillo. Los tres números **se midieron**
+(`muro43.mjs`, `pantalla43.mjs`; el porqué en `docs/decisions.md` §43):
+
+- **14 u de largo.** Por debajo de 12 el jugador plantado en el spawn ya es
+  visible para algún punto; con 14 no lo ve **ninguno de los 68**, asomarse
+  cuesta 0.34 s por el oeste y 0.90 por el este, y cruzarlo de punta a punta
+  2.38 s.
+- **`media` (1.9) y no `alta` (3.6).** Con 3.6 a metro y medio de la cara el muro
+  ocupa **el 100% del encuadre**: se aparece mirando una pared gris. Con 1.9
+  ocupa el 60% y por encima se ve el mapa — y tapa igual, porque una recta entre
+  dos puntos por debajo de 1.9 que cruce su huella está cortada, y tanto los ojos
+  del jugador (1.7) como los de un muñeco (1.44) están por debajo. Lo que se
+  paga: `targetRadius` por encima de **0.59** hace un muñeco tan alto que asoma;
+  el de serie es 0.45.
+- **El spawn, pegado al fondo** (z 17.5 de 20). Así la banda sin muñecos son 4.8
+  u —el 12% de la sala— en vez de un tercio del mapa.
+
+**Desde el spawn no se ve nada, y ésa es ahora la regla.** Hasta la vuelta 42 dos
+tests exigían lo contrario —que se viese algún punto de frente y a media sala,
+porque el jugador empezaba a campo abierto—. Ahora empieza tapado: lo que se
+exige es que **no le vea nadie** y que asomándose por **los dos** extremos vea
+mapa de frente y lejos. Consecuencia que no es un fallo: la primera diana de la
+sesión sale por la salida de emergencia (donde no se ve), y elegir punto cuesta
+el barrido entero —68 raycasts en el peor caso, una vez por aparición, no por
+frame—.
+
+Y el tablero de acciones, que se ancla al spawn: con el spawn a 2.5 u de la pared
+ya no cabe entero detrás, así que `actionPanelMetrics` **acota el ancla**, que es
+para lo que ese acotado existe. Sigue apagado.
 
 **Un umbral en unidades sueltas es un umbral que se rompe al reescalar.** Todo
 lo que en las auditorías era «a 10 u del spawn», «a 8 u del tablero», «a más de
@@ -293,7 +322,7 @@ raro de que un muñeco podía patrullar por sitios donde nunca nacía.
 
 Se sortea **entre los visibles**: se baraja el orden y se coge el primero que
 pase el test de visibilidad, que es un sorteo uniforme entre los visibles y de
-paso ahorra raycasts. Con 69 puntos las pasadas encadenadas repetirían el mismo
+paso ahorra raycasts. Con 68 puntos las pasadas encadenadas repetirían el mismo
 raycast varias veces, así que cada elección lleva un **sello** y ningún punto se
 mira dos veces: peor caso medido, 33 raycasts y 0.4 ms p99 por aparición.
 
@@ -303,15 +332,20 @@ horizontal** —mirar al suelo no debe dejar de considerar "delante" lo que tien
 delante—. Si no hay ninguno visible en el cono, se cae al conjunto completo:
 antes una diana a la espalda que ninguna diana.
 
-**Desde el spawn tiene que verse algo de frente y lejos.** Entre lo que se ve
-desde el punto de aparición sale la primera diana de la sesión, y con el sesgo a
-0.85 sale del subconjunto que cae en el cono frontal: si ese subconjunto está
-vacío, lo primero que ve quien prueba el mapa es una sala vacía. Lo guardan dos
-tests (`fixes.mjs` y `live.mjs`) exigiendo **al menos un punto visible dentro del
-cono y a `room.width / 4` o más**. Desde el spawn del Plano A se ven 31 de los 69
-puntos, con los más lejanos del Balcón a 30 u. Antes del reescalado la divisoria
-sellaba el cono y hubo que meter dos anclajes a la fuerza dentro, pegados al
-jugador — el porqué, en `docs/decisions.md` §23 y §24.
+**Desde el spawn no tiene que verse nada, y asomándose sí** — y hasta la vuelta
+42 era exactamente al revés. Con el jugador empezando a campo abierto había que
+garantizar que viese algo de frente y lejos, o lo primero que veía quien probaba
+el mapa era una sala vacía (el porqué de entonces, en `docs/decisions.md` §23 y
+§24). Desde la 43 empieza **detrás de su muro**, así que los dos tests que lo
+guardaban (`fixes.mjs` y `live.mjs`) exigen lo contrario: **cero puntos visibles
+desde el punto de aparición**, y **al menos uno de frente y a `room.width / 4` o
+más asomándose por cada extremo** — 20 puntos por el oeste, 23 por el este, y
+sólo 2 en común, que es lo que hace que elegir lado signifique algo.
+
+Consecuencia que no es un fallo: la primera diana de la sesión sale por la salida
+de emergencia —donde no se ve—, y elegir punto con el jugador tapado cuesta el
+barrido entero (68 raycasts en el peor caso, una vez por aparición y nunca por
+frame).
 
 **Un límite duro por encima de las preferencias: el cupo de zona.** Una zona del
 mapa no puede acumular más de `SPAWN.zoneShare` (0.5, la mitad redondeando hacia
@@ -346,7 +380,7 @@ contra el 100% de soltarlo—.
 dice un barrido (`rutas-buscar.mjs`) que exige a la vez: suelo a nivel, cuerpo de
 0.6 u libre de geometría, fuera del volumen del tablero, a más de `sala/8` del
 spawn del jugador, 2.5 u entre puntos, 10 u de diámetro máximo por ruta y áreas
-de rutas disjuntas. En el Plano A a 40×40 entran **14 rutas y 69 puntos**. Si
+de rutas disjuntas. En el Plano A a 40×40 entran **14 rutas y 68 puntos**. Si
 tocas geometría, vuelve a pasar `rutas.mjs`: donde no hay conjunto limpio, no hay
 ruta.
 
@@ -772,9 +806,14 @@ Tres consecuencias que **son** el sistema:
   la publica por callback (`onWeapon`). Es una pulsación, no un valor por frame,
   así que puede ser estado de React sin saltarse la regla de no repintar por
   frame.
-- **El silenciador es del arma vigente.** Su interruptor ya no desaparece con un
-  arma que no lo admite, porque siempre llevas encima una que sí; lo que cambia
-  es el aviso, que dice a cuál se aplica.
+- **El silenciador es de cada arma, no del jugador** (vuelta 43). `SETTINGS.suppressor`
+  es un mapa arma → booleano, no un interruptor: ponérselo a la Rift no se lo
+  pone a la pistola. La tecla conmuta el del arma **que llevas en la mano** y la
+  armería enseña los tres a la vez, cada uno en su ficha. Lo guardado hasta la 42
+  era un booleano y se traduce en vez de tirarse —un `true` se reparte entre las
+  armas que lo admiten—, que es la misma idea que `LEGACY_WEAPON_KEYS` y
+  `LEGACY_KEYBINDS`. Y el saneado acota contra `supportsSuppressor`: lo que
+  decide es el dato del arma, no lo que diga localStorage.
 
 **Un arma pesa, y el peso lo traduce una sola función.** Cada entrada de
 `WEAPONS` declara `weight` en kilos y `weaponSpeedFactor` dice cuánto frena: peso
@@ -800,14 +839,38 @@ jugando.**
 
 **El arma principal se equipa en la armería, no en opciones.** Elegir arma no es
 un ajuste entre la sensibilidad y el tamaño de diana: es la decisión de la
-partida. El panel (tecla **B**) enseña silueta, ficha y un botón por arma, y
-**pausa como Escape** —por el mismo camino, `_suspend()`—, porque elegir arma con
-ocho muñecos disparándote es una ruleta, no una decisión. La pistola tiene ficha
-pero no botón: se lleva siempre. Y el daño que enseña es el del **modelo de
-zonas** (100/50/34), que hoy no varía por arma: un número de daño por arma sería
-inventarse un dato que el juego no tiene. Opciones conserva la fila diciendo qué
-llevas y por dónde se cambia — quitarla del todo dejaba perdido a quien llevaba
-vueltas buscándola ahí.
+partida. El panel (tecla **B**) **pausa como Escape** —por el mismo camino,
+`_suspend()`—, porque elegir arma con ocho muñecos disparándote es una ruleta, no
+una decisión. La pistola tiene ficha pero no botón: se lleva siempre. Y el daño
+que enseña es el del **modelo de zonas** (100/50/34), que hoy no varía por arma:
+un número de daño por arma sería inventarse un dato que el juego no tiene.
+Opciones conserva la fila diciendo qué llevas y por dónde se cambia — quitarla
+del todo dejaba perdido a quien llevaba vueltas buscándola ahí.
+
+**Y tiene tres reglas de forma, que son lo que la hace usable** (vuelta 43). Es
+el panel que más se va a abrir, así que la forma no es decoración:
+
+1. **Un solo botón grande por ficha, y es la acción**: equipar. Lo demás que se
+   pueda tocar es pequeño y dice su estado con la forma —la casilla verde del
+   silenciador (`.checkline`), que no se parece a un botón porque no hace lo
+   mismo—. Cinco botones iguales en una ficha obligan a leerlos todos para saber
+   cuál es el que actúa.
+2. **Los números no se esconden detrás de un clic.** Antes había un botón
+   «Ficha»: comparar tres armas costaba tres clics y se comparaba de memoria.
+   Ahora están puestos y llevan **barra**, con el tope sacado del propio arsenal
+   —no de un número redondo—, que es lo que deja leer la diferencia sin restar.
+   Y sin color de bueno/malo: que un rifle pese más no es peor, es otra cosa.
+3. **Lo que ves es lo que te llevas.** Poner el silenciador cambia la silueta a
+   la variante `ghost-`, que es otra foto del arma de verdad. El interruptor no
+   dice «activado»: enseña el arma con el tubo puesto.
+
+**Y las filas de las fichas las alinea la rejilla (`subgrid`), no el contenido.**
+Comparar armas es mirar la misma fila en las tres, así que CADENCIA tiene que
+estar a la misma altura en las tres. Con cada ficha apilando lo suyo, un botón
+que mide ocho píxeles más que un rótulo desalineaba la columna entera de números.
+Cuadrarlo con un `min-height` medido funciona hoy y se rompe el día que alguien
+toque el relleno de `.button`; con `subgrid` lo hace el navegador y no hay número
+que mantener. `armeria43.mjs` lo mide en píxeles, fila a fila.
 
 **Mover el valor de fábrica de una tecla no basta con cambiarlo.** La B era del
 silenciador y pasó a ser la de la armería; el silenciador se mudó a la **V**. Lo
@@ -1053,7 +1116,7 @@ cuerpo simple de `body.js`**, el mismo que el avatar del jugador. Modo dinámico
 velocidad constante, con comprobación de separación para evitar solapes.
 Selector de dianas simultáneas x1 / x2 / x3 / x5 / x8. **Ojo:** con cobertura, el
 nivel es un *techo*, no una cantidad — el número real lo pone cuántos puntos de
-ruta se ven desde donde está el jugador. Con 69 puntos, en el Plano A se llena
+ruta se ven desde donde está el jugador. Con 68 puntos, en el Plano A se llena
 casi siempre.
 
 **Escenarios:** variante activable desde opciones, no reemplazo. *Sala vacía*
@@ -1061,18 +1124,22 @@ casi siempre.
 escenario con cobertura, en **su propia sala de 40×40**: Espina con una sola
 Puerta de 2.5 u, El Largo con tres Media escalonadas, Los Cajones de corta
 distancia, el Balcón elevado (+2.6) con **una rampa en cada extremo** y parapeto
-con dos troneras de 4 u, y un Vestíbulo con la divisoria entera al este del
-spawn —el paso central queda abierto, que es de donde sale la primera diana—.
-Veintitrés piezas: las veinte de siempre más el **recinto de aparición** de la
-vuelta 42 —tres muros Alta que cierran el Vestíbulo por detrás y por los costados
-y dejan el frente abierto—. Lo que se recortó en la 39 fue el suelo entre ellas.
+con dos troneras de 4 u, y un Vestíbulo partido en dos por el **muro de
+aparición**: detrás el jugador, tapado de todo; delante las dos rutas que se
+encuentra al asomarse, una por cada extremo.
+Veinte piezas: las mismas de siempre menos la vieja divisoria del Vestíbulo y más
+el **muro de aparición** de la vuelta 43 —una sola pieza Media de 14 u atravesada
+delante del spawn, con salida por los dos extremos—. Lo que se recortó en la 39
+fue el suelo entre ellas.
 Cruzarlo en diagonal cuesta **8.1 s** en vez de 16.8. El vocabulario de piezas y
 la rampa de grises están en `COVER`; la geometría, en `SCENARIOS`.
 
-**Catorce rutas y 69 puntos**, de 4 a 6 puntos cada una, repartidas por las seis
+**Catorce rutas y 68 puntos**, de 4 a 6 puntos cada una, repartidas por las seis
 zonas: El Balcón 4, Los Cajones 3, El Largo 2, Pasillo trasero 2, Vestíbulo 2 y
-La Puerta 1. Cualquiera de los 69 es sitio de aparición **y** destino de
-patrulla.
+La Puerta 1. Cualquiera de los 68 es sitio de aparición **y** destino de
+patrulla. Las dos del Vestíbulo cambiaron de lado en la vuelta 43 —estaban
+detrás del muro de aparición, donde ya no puede haber nadie— y se rebarrieron
+con `rutas43.mjs` sobre lo que quedó libre delante de él.
 
 Con un escenario montado: el jugador **colisiona** contra las cajas (resuelto un
 eje cada vez, con soporte de suelo y rampas), los **disparos se paran en la
@@ -1130,7 +1197,9 @@ con sonido propio.
 Se llamaban Scalar-2, Axis-7 y Vertex-9 hasta la vuelta 41: el renombrado no tocó
 ni una estadística, y un ajuste guardado con el nombre viejo se traduce al nuevo
 en vez de caer a fábrica. Cada una trae sus dos siluetas —`<arma>` y
-`ghost-<arma>`, con silenciador— y desde esta vuelta **las tres lo admiten**.
+`ghost-<arma>`, con silenciador— y **las tres lo admiten**. Desde la vuelta 43 el
+silenciador es **de cada arma**: se pone y se quita en su ficha de la armería, y
+la tecla (**V**) conmuta el de la que lleves en la mano.
 
 **Se llevan dos: la principal, que se elige en opciones, y la pistola, que va
 siempre.** La 1 saca una, la 2 la otra y **Q** alterna. Cada una lleva su propio
@@ -1257,18 +1326,22 @@ selector crece en filas con cada escenario nuevo en vez de encoger los que ya
 estaban.
 
 **Armería (tecla B, o su botón en inicio y en pausa):** panel de equipo con una
-ficha por arma —silueta, modo, y una ficha desplegable con daño (el modelo de
-zonas, igual para las tres), cadencia, **peso y lo que cuesta en velocidad**,
-cargador, absorción de escudo y objetivo de precisión— y un botón **Equipar** por
-arma principal. La pistola sale con su ficha y sin botón: se lleva siempre.
-Abrirla **pausa** la sesión igual que Escape. Sin precios y sin comprar: no hay
-economía todavía.
+ficha por arma. Cada una lleva, en este orden y **alineado con las de al lado**
+(`subgrid`): silueta —la silenciada si lleva silenciador—, nombre y **tecla con
+la que sale**, modo y carácter, marca de **en la mano**, el botón **Equipar**, la
+**casilla verde del silenciador** y las estadísticas puestas, con barra
+comparativa contra el arsenal en cadencia, cargador y peso: daño (el modelo de
+zonas, igual para las tres), cadencia, peso y lo que cuesta en velocidad,
+cargador y recarga, absorción de escudo y objetivo de precisión. La pistola sale
+con su ficha y sin botón de equipar: se lleva siempre. Se cierra con **Escape**,
+con **B** o con su botón, y abrirla **pausa** la sesión igual que Escape. Sin
+precios y sin comprar: no hay economía todavía.
 
 **Opciones** (accesibles antes de empezar y desde la pausa, persistidas):
 escenario, sensibilidad, tipo de diana, **duración de Deathmatch**
 (sin límite / 3 / 5 / 10 minutos), tamaño de diana, distancia de spawn, cadencia
-de aparición, dianas simultáneas, límite de FPS, supresor (sólo si el arma lo
-admite), **audio espacial**, mensajes de ayuda, **dificultad de los muñecos**,
+de aparición, dianas simultáneas, límite de FPS, **audio espacial**, mensajes de
+ayuda, **dificultad de los muñecos**,
 modo dinámico y **velocidad de
 patrulla** (1.5–8 u/s, por defecto 4: `TARGET.moveSpeed` pasa a ser sólo el valor
 por defecto del ajuste, y el motor lee el del store).

@@ -20,6 +20,7 @@ import {
   SETTINGS,
   SIMULTANEOUS_TARGETS,
   TARGET_TYPES,
+  WEAPONS,
 } from './config.js'
 
 const STORAGE_KEY = 'aimcore.settings.v1'
@@ -50,6 +51,13 @@ const BOOLEAN_KEYS = Object.keys(SETTINGS).filter(
   (key) => typeof SETTINGS[key].default === 'boolean',
 )
 
+/**
+ * Ajustes que son **un booleano por arma** en vez de uno para el jugador. Lo
+ * declara el propio ajuste (`perWeapon`), no se adivina por la forma del valor:
+ * un mapa y un enumerado se parecen demasiado para distinguirlos a ojo.
+ */
+const PER_WEAPON_KEYS = Object.keys(SETTINGS).filter((key) => SETTINGS[key].perWeapon)
+
 function clamp(value, min, max) {
   return value < min ? min : value > max ? max : value
 }
@@ -57,7 +65,13 @@ function clamp(value, min, max) {
 /** Ajustes por defecto, recién salidos de config.js. */
 export function defaultSettings() {
   const result = {}
-  for (const key of Object.keys(SETTINGS)) result[key] = SETTINGS[key].default
+  for (const key of Object.keys(SETTINGS)) {
+    const value = SETTINGS[key].default
+    // Los valores por defecto que son objetos se **copian**: si se entregara el
+    // de `config.js` tal cual, todos los ajustes del juego compartirían el mismo
+    // mapa y escribir en uno los cambiaría todos, incluido el de fábrica.
+    result[key] = value !== null && typeof value === 'object' ? { ...value } : value
+  }
   return result
 }
 
@@ -77,6 +91,29 @@ export function sanitizeSettings(raw) {
   }
   for (const key of BOOLEAN_KEYS) {
     if (typeof raw[key] === 'boolean') result[key] = raw[key]
+  }
+  for (const key of PER_WEAPON_KEYS) {
+    const stored = raw[key]
+    // **Lo guardado hasta la vuelta 42 era un solo booleano.** Un `true` de
+    // entonces quería decir «llevo silenciador», así que se reparte entre las
+    // armas que lo admiten en vez de tirarse: es la misma idea que
+    // `LEGACY_WEAPON_KEYS` y `LEGACY_KEYBINDS`, un valor viejo que se traduce
+    // en lugar de caer a fábrica sin explicación.
+    if (typeof stored === 'boolean') {
+      if (stored) {
+        for (const weapon of Object.keys(result[key])) {
+          result[key][weapon] = Boolean(WEAPONS[weapon]?.supportsSuppressor)
+        }
+      }
+      continue
+    }
+    if (!stored || typeof stored !== 'object') continue
+    for (const weapon of Object.keys(result[key])) {
+      if (typeof stored[weapon] !== 'boolean') continue
+      // Y un arma que no lo admite no puede tenerlo puesto por mucho que lo
+      // diga localStorage: lo que manda es el dato del arma.
+      result[key][weapon] = stored[weapon] && Boolean(WEAPONS[weapon]?.supportsSuppressor)
+    }
   }
   for (const key of Object.keys(CATALOGS)) {
     // **Los renombrados se traducen antes de comprobar el catálogo.** Un ajuste

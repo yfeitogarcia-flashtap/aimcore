@@ -709,7 +709,8 @@ export class Engine {
   _publishWeapon(settings) {
     // El silenciador sólo cuenta si el arma **vigente** lo admite: la pistola lo
     // lleva y el Rift no, así que esto cambia al cambiar de ranura.
-    this.suppressorEnabled = settings.suppressor && this.weapon.supportsSuppressor
+    this.suppressorEnabled =
+      Boolean(settings.suppressor[this.weaponKey]) && this.weapon.supportsSuppressor
     // **Y lo que pesa se nota al andar.** Va aquí y no en `_equipSlot` porque
     // éste es el único sitio por el que pasan los tres caminos que cambian el
     // arma vigente: la tecla, el ajuste de principal y la armería.
@@ -1420,9 +1421,17 @@ export class Engine {
         // sacar la otra de las dos que llevas.
         this._equipSlot(this.slot === 'primary' ? 'secondary' : 'primary')
         break
-      case 'suppressor':
-        updateSettings({ suppressor: !getSettings().suppressor })
+      // **Se conmuta el del arma que llevas**, no un interruptor del jugador:
+      // desde la vuelta 43 cada arma tiene el suyo y la armería enseña los tres.
+      // Un arma que no lo admita no se toca.
+      case 'suppressor': {
+        if (!this.weapon.supportsSuppressor) break
+        const suppressor = getSettings().suppressor
+        updateSettings({
+          suppressor: { ...suppressor, [this.weaponKey]: !suppressor[this.weaponKey] },
+        })
         break
+      }
       case 'options':
         if (this.isLocked) document.exitPointerLock()
         this.callbacks.onOpenOptions?.()

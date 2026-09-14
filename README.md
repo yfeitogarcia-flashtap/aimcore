@@ -301,12 +301,18 @@ de 40×40**, la mitad de lado que la vacía: la misma cantidad de cobertura con
 mucho menos suelo entre pieza y pieza. Cruzarlo en diagonal son ~8 s a marcha de
 carrera en vez de ~17.
 
-Apareces en el **Vestíbulo**, con una divisoria a la derecha que te obliga a
-elegir salida y el paso central abierto. Tu zona de aparición está **amurallada**
-—tres muros altos por detrás y por los costados, abierta sólo hacia el mapa— y no
-es decoración: **ningún muñeco puede aparecer ni patrullar ahí dentro**, porque la
-zona queda fuera del mapa de rutas por el que se mueven. Reaparecer dentro de una
-zona donde ya te esperaba uno era morirse otra vez sin tocar el ratón. A la izquierda, **El Largo**: un carril
+Apareces en el **Vestíbulo**, pegado al fondo del mapa y con **un muro delante**:
+una sola pieza de 14 u, más alta que tú, atravesada entre tu punto de aparición y
+el resto de la sala. Detrás de él **no te ve nadie** —ni uno de los 68 puntos por
+los que salen los muñecos— y de ahí sólo se sale rodeándolo por un extremo o por
+el otro. Asomarse cuesta un cuarto de segundo por el oeste y algo menos de un
+segundo por el este; cruzarlo de punta a punta, 2.4 s. Es tu primera cobertura y
+está puesta para que practiques el asomo con ella.
+
+Y **de la línea de ese muro hacia atrás no aparece ningún muñeco**, en ningún
+modo: esa banda queda fuera del mapa de rutas por el que se mueven, así que ahí
+ni nacen ni patrullan. Reaparecer donde ya te esperaba uno era morirse otra vez
+sin tocar el ratón. A la izquierda, **El Largo**: un carril
 de unas 25 unidades de visión limpia, roto por tres bloques Media escalonados que
 se cruzan a base de asomadas cortas. En el centro, **La Espina**, un muro que
 parte el mapa de norte a sur con un único hueco de 2.5 u —**La Puerta**—, el
@@ -321,7 +327,7 @@ sala— y con varias a los flancos, que obligan a girarse.
 
 Las dianas no salen de un puñado de sitios fijos: el mapa declara **rutas**, y
 cualquier punto de una ruta vale a la vez para que nazca una diana y para que
-camine hacia él. En Largo y Puerta son **14 rutas y 69 puntos**, repartidos por
+camine hacia él. En Largo y Puerta son **14 rutas y 68 puntos**, repartidos por
 las seis zonas. Tres detalles que se notan jugando: una diana nunca reaparece en
 el punto exacto donde la acabas de matar, mientras queden rutas libres los
 muñecos se reparten en vez de amontonarse en la misma, y **el mapa nunca se queda
@@ -687,7 +693,7 @@ vieja.
 | Sensibilidad | slider y campo numérico sobre el mismo valor |
 | Escenario | Sala vacía · Largo y Puerta, con su plano y su ficha |
 | Tipo de diana | Clásica · Cono · Hitbox completo |
-| Arma principal | dice cuál llevas; **se equipa en la armería** (tecla B), no aquí |
+| Arma principal | dice cuál llevas; **se equipa en la armería** (tecla B), no aquí. El silenciador, también |
 | Tamaño de diana | escala la figura entera sin deformar sus proporciones |
 | Distancia de aparición | distancia base del cono respecto al jugador |
 | Cadencia | milisegundos entre apariciones. Menos es más difícil |
@@ -697,7 +703,6 @@ vieja.
 | Modo dinámico | las dianas vivas se desplazan mientras están en pantalla |
 | Velocidad de patrulla | 1.5 a 8 u/s, sólo con el modo dinámico puesto |
 | Límite de fotogramas | 60 · 144 · 240 · Sin límite |
-| Silenciador | se aplica al arma que lleves en la mano; la pistola siempre lo admite |
 | Audio espacial | los sonidos del mundo suenan con dirección |
 | Mensajes de ayuda | avisos breves en el HUD, activados por defecto |
 
@@ -737,12 +742,26 @@ Los números son de partida y se calibran jugando.
 
 ### La armería (tecla B)
 
-El arma principal se elige en la **armería**, no en el panel de opciones: una
-ficha por arma con su silueta, su modo y un desglose desplegable —daño, cadencia,
-peso y lo que cuesta en velocidad, cargador, absorción de escudo y objetivo de
-precisión— y un botón **Equipar**. Se abre con **B** o con su botón en la pantalla
-de inicio y en la pausa, y jugando **pausa la sesión** igual que Escape: elegir
-arma con ocho muñecos disparándote no es una decisión.
+El arma principal se elige en la **armería**, no en el panel de opciones. Se abre
+con **B** o con su botón en la pantalla de inicio y en la pausa, se cierra con
+**Escape**, y jugando **pausa la sesión** igual que Escape: elegir arma con ocho
+muñecos disparándote no es una decisión.
+
+Cada arma tiene su ficha, y las tres fichas están **alineadas fila con fila** a
+propósito: comparar dos armas es mirar la misma línea en las dos, no recordar un
+número mientras lees el otro. En cada una:
+
+- **Su silueta** — la del arma con silenciador si lo lleva puesto, que es otra
+  foto de verdad: lo que ves es lo que te llevas.
+- **Su tecla** (1 o 2) y, si la llevas en la mano ahora mismo, una marca.
+- **Un solo botón grande**: *Equipar*. La pistola no lo tiene, porque se lleva
+  siempre.
+- **Una casilla verde para el silenciador**, pequeña y marcada cuando está
+  puesto. Es un interruptor de esa arma, no una acción del panel, y por eso no se
+  parece al botón.
+- **Sus estadísticas, puestas** —sin desplegar nada— con **barra comparativa**
+  en cadencia, cargador y peso: la barra más larga es la que más tiene **del
+  arsenal**, así que la diferencia se lee sin restar.
 
 El **daño** que enseña es el del modelo de zonas —cabeza 100, torso 50, piernas
 34—, que hoy es el mismo para las tres armas: lo que cambia el resultado es dónde
@@ -786,12 +805,17 @@ la acumula. Al completarse, el
 cargador vuelve al máximo y el patrón de retroceso al primer disparo: un
 cargador nuevo es una ráfaga nueva.
 
-**Silenciador.** Interruptor en el panel. Se aplica al arma **que lleves en la
-mano**, siempre que ella lo admita (`supportsSuppressor`). Desde la vuelta 41 lo
-admiten las tres —cada una trae su referencia `ghost-<arma>`, que es la misma
-arma fotografiada con silenciador— así que el HUD dibuja **otra silueta**, más
+**Silenciador.** Una casilla en la ficha de cada arma, dentro de la armería, y
+**es de cada arma**: ponérselo a la Rift no se lo pone a la pistola. La tecla
+**V** conmuta el del arma que lleves en la mano. Lo admiten las tres —cada una
+trae su referencia `ghost-<arma>`, que es la misma arma fotografiada con
+silenciador— así que tanto el HUD como la armería dibujan **otra silueta**, más
 larga, en vez de la misma con un tubo pegado. Cambia el sonido y la silueta, y
 nada más: ni daño, ni retroceso, ni cadencia.
+
+> Si venías de una versión anterior, donde el silenciador era un solo interruptor
+> para todo, lo que tuvieras puesto se reparte entre las armas que lo admiten en
+> vez de perderse.
 
 **Retroceso.** El patrón es un `[pitch, yaw]` en grados por cada disparo
 consecutivo de la ráfaga. Son incrementos, no posiciones: el motor los suma.

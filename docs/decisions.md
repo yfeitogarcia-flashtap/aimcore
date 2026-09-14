@@ -4113,6 +4113,174 @@ hermana de `LEGACY_WEAPON_KEYS` y resuelve el mismo problema por el otro lado:
 allí una clave vieja se traduce, aquí una tecla vieja se **suelta**. Y sólo ésa: a
 quien la hubiera reasignado a mano no se le toca nada.
 
+## Ronda 43 — Un muro en vez de una ratonera, y una armería que se lee
+
+### 43.1 El spawn: de recinto a muro
+
+**El recinto de la vuelta 42 estaba mal.** Cumplía la letra del encargo —ningún
+muñeco puede aparecer donde reaparece el jugador— y fallaba el espíritu: tres
+muros y una sola boca son una ratonera. Todo lo que hubiera enfrente te veía por
+esa boca, no había forma de estar del todo tapado, y salir era siempre por el
+mismo sitio.
+
+El encargo de esta vuelta vino con **croquis**, y el croquis cambia dos cosas de
+raíz:
+
+- **Una sola pieza, no un recinto.** Una línea atravesada delante del jugador,
+  con salida por los dos extremos. Deja de ser un sitio del que huir y pasa a ser
+  **cobertura**: la primera con la que se practica el asomo.
+- **La exclusión es media sala, no una bolsa.** «De la línea hacia atrás no
+  aparece nadie». Con una bolsa quedaban muñecos a los costados, y por eso nunca
+  se estaba 100% tapado — que era literalmente lo que impedía comprobar la
+  brújula de la vuelta 42.
+
+La bolsa y la banda son el mismo dato (`spawnZone`, una caja en las coordenadas
+del escenario) y el mismo filtro (`isInSpawnZone`): lo único que cambia es que
+ahora la caja cruza la sala de lado a lado. No hizo falta tocar código.
+
+**Los tres números del muro se midieron, ninguno se eligió.**
+
+`muro43.mjs` barre largo × distancia al spawn y mide cuatro cosas a la vez:
+cuántos puntos del grafo ven el punto exacto de reaparición, cuántas casillas de
+la banda están ciegas para todos ellos, cuánto hay que andar hacia cada extremo
+para empezar a ver el mapa, y cuánto cuesta cruzarlo entero.
+
+| largo | ve el spawn | casillas ciegas | asomo O / E | cruce |
+|---|---|---|---|---|
+| 8 u | 3 puntos | 16 | — | 1.36 s |
+| 10 u | 1 punto | 27 | — | 1.70 s |
+| **12 u** | **0** | 43 | 0.09 / 0.71 s | 2.04 s |
+| **14 u** | **0** | 64 | 0.34 / 0.90 s | 2.38 s |
+
+Por debajo de 12 el jugador plantado en el spawn ya es visible, que es justo lo
+que el muro existe para impedir. A 12 el asomo por el oeste cuesta 0.09 s —un
+paso, no un asomo—. **14** es el primero donde las dos salidas cuestan algo y
+cruzarlo sigue siendo un gesto y no un viaje. Y son 14 de 40, o sea un tercio de
+la sala: lo mismo que ocupa la línea roja del croquis.
+
+**Y el alto se midió aparte, porque la primera versión salía mal a la vista.**
+Con `alta` (3.6) todo lo anterior se cumplía y, mirando desde el spawn, **el 100%
+del encuadre era pared gris**: se aparecía sin saber hacia dónde se sale.
+`pantalla43.mjs` lo mide lanzando un rayo por celda de una rejilla del encuadre:
+
+| alto | pantalla que ocupa |
+|---|---|
+| `alta` 3.6 | 100% |
+| `media` 1.9 | **60%** |
+
+Con 1.9 se ve el mapa por encima del muro —basta para orientarse— y **tapa
+exactamente igual**: una recta entre dos puntos por debajo de 1.9 que cruce su
+huella está cortada, y tanto los ojos del jugador (1.7) como los de un muñeco
+(1.44) están por debajo. Se comprobó, no se supuso: con `media`, los puntos que
+ven el spawn siguen siendo **0 de 68** y las casillas ciegas, las mismas 64.
+
+Sigue cumpliendo lo que pedía el encargo —más alto que cualquier jugador, así que
+sólo se sale por un extremo— y no se salta: el ápice del salto son 1.2528 u y no
+hay nada pegado a él desde lo que subirse (medido: lo más alto da 1.50 contra
+1.9).
+
+**Lo que cuesta, anotado y no escondido:**
+
+- **`targetRadius` por encima de 0.59** hace un muñeco de 2.4 u, que asoma los
+  ojos por encima del muro. El de serie es 0.45 y el máximo 1.2. Es un ajuste de
+  entrenamiento, no una estatura, pero a partir de ahí el spawn deja de tapar.
+- **Las dos rutas del Vestíbulo cambiaron de lado.** Estaban detrás del muro,
+  donde ya no puede haber nadie. No se borraron ni se recolocaron a ojo: se
+  rebarrió con `rutas43.mjs` lo que quedaba libre delante, con las mismas
+  exigencias del barrido de la vuelta 39 más una nueva —no pisar ninguna ruta
+  viva—. Salieron cuatro sitios posibles y se cogieron dos, uno por cada extremo
+  del muro: **asomarse al oeste y asomarse al este llevan a sitios distintos**
+  (20 y 23 puntos a la vista, sólo 2 en común). El mapa se queda en 14 rutas y 68
+  puntos, con sus seis zonas.
+- **La primera diana de la sesión sale a ciegas.** Con el jugador tapado no hay
+  ningún punto visible, así que se usa la salida de emergencia de siempre. Y
+  elegir sitio cuesta el barrido entero: 68 raycasts en el peor caso, una vez por
+  aparición y nunca por frame.
+- **El tablero de acciones ya no cabe detrás del spawn**, que ahora está a 2.5 u
+  de la pared: `actionPanelMetrics` acota el ancla, que es para lo que ese
+  acotado existe. Sigue apagado.
+- **La divisoria del Vestíbulo se retiró.** Hacía a medias —y sólo por el este—
+  el trabajo que ahora hace el muro, y entre las dos dejaban una ranura de 0.75 u
+  por la que no se pasa. El plano vuelve a tener **veinte piezas**.
+
+**Y la regla de «desde el spawn se ve algo de frente y lejos» se dio la vuelta.**
+Era de cuando el jugador empezaba a campo abierto (§23, §24). Ahora empieza
+tapado, así que los dos tests que la guardaban exigen lo contrario: cero puntos
+visibles desde el punto de aparición, y al menos uno de frente y a `room/4` o más
+**asomándose por cada extremo**.
+
+### 43.2 La armería: la forma también se mide
+
+La armería va a ser el panel que más se abra, así que su forma no es decoración.
+Tres decisiones, y las tres salieron de mirar la primera versión:
+
+**Un solo botón grande por ficha, y es la acción.** Equipar. Todo lo demás que se
+pueda tocar es pequeño y dice su estado con la forma. Con cinco botones del mismo
+tamaño en una ficha hay que leerlos todos para saber cuál es el que hace algo, y
+eso es trabajo que el panel le pasa al jugador cada vez que lo abre.
+
+**Los números no se esconden detrás de un clic.** La primera versión tenía un
+botón «Ficha» que desplegaba las estadísticas. Comparar tres armas costaba tres
+clics y, peor, se comparaba de memoria. Ahora están puestas y llevan **barra
+comparativa**, con el tope sacado del propio arsenal y no de un número redondo:
+lo que se lee de un vistazo es «ésta es la que más carga de las que hay», y eso
+sigue siendo cierto el día que entre un arma nueva. Sin color de bueno/malo: que
+un rifle pese más no es peor, es otra cosa, y el juego no tiene por qué opinar.
+
+**Lo que ves es lo que te llevas.** Poner el silenciador cambia la silueta a la
+variante `ghost-`, que es otra foto del arma de verdad (vuelta 41). El
+interruptor no dice «activado»: enseña el arma con el tubo puesto.
+
+**Y las filas las alinea la rejilla, no el contenido.** Medido: con cada ficha
+apilando lo suyo, el botón de equipar mide 8 px más que el rótulo «Siempre
+encima» de la pistola, y esos 8 px desalineaban la columna entera de números —la
+fila CADENCIA de una ficha quedaba a la altura de otra cosa en la de al lado—.
+Comparar dos armas es mirar la misma línea en las dos, así que eso no es un
+detalle. Cuadrarlo con un `min-height` medido funciona hoy y se rompe el día que
+alguien toque el relleno de `.button`; con **`subgrid`** lo hace el navegador y no
+queda ningún número que mantener. `armeria43.mjs` lo mide en píxeles, las siete
+filas y las cinco estadísticas.
+
+**Lo que se miró y se dejó fuera**, para no volver a proponerlo:
+
+- **Precios, dinero y comprar.** Dependen de rondas y de una economía que no
+  existen, y un `$0` en la ficha prometería una mecánica que no hay.
+- **Daño por arma.** El juego no lo tiene: el daño es de la zona (100/50/34) y
+  hoy es el mismo para las tres. Un número por arma sería inventarse un dato.
+- **Sensibilidad o mira por arma.** No existen en el motor. Un panel que las
+  ofrezca miente.
+- **Preajustes de equipamiento.** Con dos ranuras y tres armas no hay nada que
+  preajustar.
+- **Tintes o skins.** No hay assets y el color está ocupado: el naranja es de las
+  dianas y el verde de la acción. Un arma teñida rompería la lectura del mapa.
+
+### 43.3 El silenciador es de cada arma
+
+Era un solo booleano que se aplicaba a lo que llevaras en la mano. En cuanto la
+armería enseña las tres armas a la vez, con su interruptor en la ficha, eso deja
+de tener sentido: ponérselo a la Rift se lo ponía también a la pistola, y la
+silueta de al lado se quedaba mintiendo.
+
+`SETTINGS.suppressor` pasa a ser un **mapa arma → booleano**, declarado con
+`perWeapon: true` en vez de adivinarse por la forma del valor —un mapa y un
+enumerado se parecen demasiado para distinguirlos a ojo—. La tecla (**V**)
+conmuta el del arma que llevas en la mano; el motor lee `suppressor[weaponKey]`.
+
+Dos cosas del saneado que no son evidentes:
+
+- **Lo guardado hasta la vuelta 42 era un booleano**, y un `true` quería decir
+  «llevo silenciador». Se reparte entre las armas que lo admiten en vez de
+  tirarse: es la misma idea que `LEGACY_WEAPON_KEYS` y `LEGACY_KEYBINDS`, un
+  valor viejo que se traduce en lugar de caer a fábrica sin explicación.
+- **Un arma que no lo admite no puede tenerlo puesto** por mucho que lo diga
+  localStorage. Lo que manda es `supportsSuppressor`, que es el dato del arma.
+
+Y un detalle que se descubrió al hacerlo: `defaultSettings()` entregaba el valor
+por defecto **por referencia**. Con todos los ajustes siendo números, cadenas o
+booleanos daba igual; con un objeto, todas las partidas habrían compartido el
+mismo mapa y escribir en uno los habría cambiado todos, el de fábrica incluido.
+Ahora los valores por defecto que son objetos se copian.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
@@ -4213,9 +4381,14 @@ objetivo era medir tiempos y rendimiento de verdad.
 - **Que la brújula y el sistema de aparición dan el mismo veredicto**, doce
   puestos alrededor de la Espina, y que cuando difieren es siempre en el mismo
   sentido (la cabeza se ve antes que el pecho).
-- **El recinto de aparición**: puntos del grafo dentro de la zona, hueco andable
-  de la boca, inundación desde el spawn hasta el mapa, y cuántos puntos tienen
-  línea de tiro al punto de reaparición, antes y después.
+- **El recinto de aparición** (vuelta 42, sustituido en la 43): puntos del grafo
+  dentro de la zona, hueco andable de la boca, inundación desde el spawn hasta el
+  mapa, y cuántos puntos tienen línea de tiro al punto de reaparición.
+- **El muro de aparición**: largo × distancia contra cuatro medidas a la vez
+  —puntos que ven el spawn, casillas ciegas de la banda, asomo por cada extremo y
+  tiempo de cruce—, y la fracción del encuadre que ocupa el muro, con un rayo por
+  celda de una rejilla de pantalla.
+- **La alineación de las fichas de la armería**, fila a fila y en píxeles.
 
 Lo que **no** está verificado automáticamente: la sensación de juego, el balance
 entre armas y la legibilidad del HUD en pantallas pequeñas. Eso sigue siendo

@@ -339,32 +339,14 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
             Se equipa en la <strong>armería</strong> (tecla {armouryKey}), con la{' '}
             {WEAPONS[SECONDARY_WEAPON].label} siempre encima en la tecla 2.
           </span>
+          {/* El silenciador dejó de ser un interruptor del jugador en la vuelta
+              43: hay uno por arma y viven en su ficha de la armería, donde
+              además se ve la silueta que te vas a llevar. */}
+          <span className="field__hint">
+            El <strong>silenciador</strong> también: uno por arma, en su ficha.
+          </span>
         </div>
       </div>
-
-      {/*
-        **El interruptor se queda siempre.** Desde la vuelta 41 lo admiten las
-        tres —cada una trae su `ghost-<arma>`—, así que el aviso de «ésta no lo
-        admite» ya no sale nunca; el `if` se queda porque lo decide el dato
-        (`supportsSuppressor`) y no la lista de armas de hoy. El ajuste se aplica
-        al arma **que lleves en la mano**, no a la elegida en el desplegable.
-      */}
-      <ToggleRow
-        setting="suppressor"
-        value={settings.suppressor}
-        onChange={onChange}
-        hint={
-          settings.suppressor
-            ? `Disparo más apagado. No cambia daño, retroceso ni cadencia.${
-                WEAPONS[settings.weapon].supportsSuppressor
-                  ? ''
-                  : ` ${WEAPONS[settings.weapon].label} no lo admite: sólo se aplica a la ${
-                      WEAPONS[SECONDARY_WEAPON].label
-                    }.`
-              }`
-            : 'Sonido de disparo normal.'
-        }
-      />
 
       <SliderRow
         id="opt-radius"
