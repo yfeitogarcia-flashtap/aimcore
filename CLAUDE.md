@@ -285,8 +285,24 @@ dentro se pagan enteros. El mundo arranca al entrar el primero y para al salir e
 navegador—: volver de un parón largo apuntando al instante exacto serían cientos
 de pasos de golpe y una ráfaga de fotos a los dos clientes.
 
+**La marca de teletransporte viaja en la foto, y no se interpola por encima de
+ella** (vuelta 50). `poseEpoch` es el único campo del estado que no dice *dónde*
+está el jugador sino *cómo* llegó, y va en `snapshot()` porque **el que dibuja no
+puede deducirla**: una comprobación de distancia en el cliente confundiría un
+teletransporte con un jugador rápido, que es la misma razón por la que la época
+existe desde la 44 en vez de mirar cuánto se ha movido la cámara.
+
+`poseDelRival()` no mezcla dos estados con épocas distintas: se queda en el lado
+viejo hasta que el reloj de las fotos cruza al nuevo, y así el salto cae en su
+instante exacto y en un frame. Sin esto, una reaparición se dibujaba como un
+barrido de 14 u a 400 u/s —contra los 6.5 de carrera— pasando por posiciones en
+las que el rival nunca estuvo. **La vista del propio jugador no necesitaba
+arreglo** y conviene no tocarla: la reaparición llega por `_reconciliar`, que
+corre entre frames, así que el paso siguiente ya lee el spawn y no hay dos poses
+entre las que interpolar.
+
 **El estado serializable del movimiento vive en `movement.js`**
-(`snapshot()`/`restore()`, 24 campos). Va junto a los campos y no en el módulo de
+(`snapshot()`/`restore()`, 25 campos). Va junto a los campos y no en el módulo de
 red por la razón de siempre: una lista de nombres escrita en otro sitio se
 desincroniza el día que alguien añada estado. Si añades algo al movimiento que
 sobreviva a un frame, añádelo también ahí.
@@ -1426,7 +1442,9 @@ apagados detrás de **F3**.
 De la primera prueba real entre dos casas (vuelta 49) salieron dos arreglos:
 **volver de otra pestaña ya no da un avance rápido** —el reloj del cliente se
 re-ancla en vez de recuperar el tiempo perdido— y **cada jugador lleva el color
-de su equipo**, azul o magenta según la ranura que le dé el servidor.
+de su equipo**, azul o magenta según la ranura que le dé el servidor. De la
+segunda (vuelta 50), uno más: **reaparecer se dibuja como un teletransporte** y
+no como un viaje en línea recta desde donde te mataron.
 
 Medido: error de reconciliación **cero** hasta 300 ms de RTT; correcciones sólo
 con pérdida de paquetes; **100% de acuerdo** entre lo que ve el tirador y lo que

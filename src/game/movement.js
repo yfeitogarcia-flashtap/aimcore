@@ -432,6 +432,15 @@ export class MovementController {
     out.dipElapsedMs = this._dipElapsedMs
     // El yaw del paso anterior: el air-strafe escalar cobra por la diferencia.
     out.lastYaw = this._lastYaw
+    /**
+     * **Y la marca de teletransporte** (vuelta 50). Es el único campo que no
+     * describe *dónde* está el jugador sino *cómo* llegó, y viaja por la misma
+     * razón que existe: quien dibuja tiene que saber que entre estos dos estados
+     * no hay camino. Sin ella, una reaparición se dibujaba como un barrido en
+     * línea recta desde el punto de muerte hasta el spawn — el rival pasaba por
+     * posiciones en las que nunca estuvo.
+     */
+    out.poseEpoch = this.poseEpoch
     return out
   }
 
@@ -466,6 +475,10 @@ export class MovementController {
     this._dipFrom = state.dipFrom
     this._dipElapsedMs = state.dipElapsedMs
     this._lastYaw = state.lastYaw
+    // La época la manda el servidor, que es quien sabe si ha habido
+    // teletransporte. Un estado antiguo sin el campo deja la de aquí como
+    // estaba, que es lo que valía antes de que viajara.
+    if (Number.isFinite(state.poseEpoch)) this.poseEpoch = state.poseEpoch
     p.y = this.feetY + this.eyeHeight - this.landingDip
   }
 

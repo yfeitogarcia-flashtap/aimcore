@@ -5050,6 +5050,90 @@ segundo tras volver**, que es donde vive el fenómeno — más allá, este conte
 vuelve a frenar la pestaña y lo que se mide es un tirón nuevo, con un solo
 re-anclaje y a 1.5 s del regreso.
 
+## Ronda 50 — Reaparecer es un teletransporte, no un viaje
+
+De la segunda prueba real entre dos PCs (RTT 35-42 ms): al morir lejos del punto
+de aparición, el cuerpo se veía **recorrer** la distancia hasta el spawn.
+
+### Lo que pasaba, confirmado en los tres sitios
+
+`poseEpoch` existe desde la vuelta 44 justo para esto: sube en cada `reset()`
+—el único sitio donde la posición salta sin recorrer el camino— y quien dibuja
+la mira para no pintar el salto como un barrido. El servidor la sube al
+reaparecer, porque `_reaparecer` llama a `movimiento.reset()`. Lo que faltaba
+era el resto del camino:
+
+1. **`snapshot()` no la incluía.** Veinticuatro campos, y la época no era
+   ninguno: la marca nunca salía del servidor.
+2. **`restore()` tampoco la tocaba**, así que la comprobación del bucle
+   (`epoca !== movimiento.poseEpoch`) no podía dispararse nunca en una
+   reaparición.
+3. **`poseDelRival()` mezclaba `a` y `b` sin mirar nada más.** Con la muerte y la
+   reaparición a los dos lados de la pareja de fotos, `mezcla()` pintaba
+   literalmente la recta entre el punto de muerte y el spawn.
+
+O sea: un camino de código distinto que nunca quedó conectado a la señal que ya
+existía, exactamente como se sospechaba.
+
+### Lo que sí estaba bien, y conviene no tocarlo
+
+**La vista del propio jugador ya era instantánea.** Medido, muriendo parado y
+muriendo en movimiento: el salto de 14-15 u se dibuja en **un solo frame**. Y
+tiene su razón: la reaparición llega por `_reconciliar`, que corre en el mensaje
+del WebSocket, o sea **entre** frames; cuando el bucle da el paso siguiente,
+`previa.copy(camara.position)` ya lee el spawn. No hay dos poses entre las que
+interpolar, así que no hay nada que arreglar ahí.
+
+Lo que se ve del propio cuerpo al reaparecer no era un barrido: era el del rival
+en la otra pantalla.
+
+### El arreglo
+
+`poseEpoch` viaja en la foto —es el único campo del estado que no dice *dónde*
+está el jugador sino *cómo* llegó— y `restore()` la acepta del servidor, que es
+quien sabe si ha habido teletransporte. Y `poseDelRival()` **no interpola entre
+dos estados con épocas distintas**.
+
+Se queda en `a`, el lado viejo, y no salta ya a `b`: así el teletransporte cae en
+**su instante exacto**. El cuerpo se queda donde murió hasta que el reloj de las
+fotos cruza a `b.n`, y ahí la pareja pasa a ser la siguiente y aparece en el
+spawn. Ni antes ni después, y en un frame.
+
+**Y la marca viaja porque el que dibuja no puede deducirla.** Una comprobación de
+distancia en el cliente —«si se ha movido mucho, es un salto»— confundiría un
+teletransporte con un jugador rápido, y es la misma razón por la que `poseEpoch`
+existe desde la 44 en vez de mirar cuánto se ha movido la cámara.
+
+Medido con latencia de 20 ms y jitter de 8, con el antes y el después sobre **los
+mismos paquetes**:
+
+| Fórmula | Frames del salto | Distancia | Frames dibujados por el camino |
+|---|---|---|---|
+| Antes (mezcla lineal) | 2 | 14.52 u | 1 |
+| Hoy (mira la época) | **1** | 14.52 u | **0** |
+
+Sin arreglo, el cuerpo pasaba por x 10.338 —una posición en la que nunca estuvo—
+a unos 400 u/s, contra los 6.5 u/s de carrera.
+
+### Lo que costó, y otra vez es de método
+
+- **Dos navegadores, no dos pestañas.** En el mismo navegador la de atrás se
+  frena a ~1 fps, y el barrido dura dos frames: la primera traza del observador
+  salió con un frame de **1.066 ms**, dentro del cual cabía el barrido entero sin
+  verse. Con dos procesos de navegador las dos van a 60 fps.
+- **Y no se pueden comparar los relojes de dos páginas.** `performance.now()` es
+  relativo al origen de cada una, así que alinear las dos trazas por hora no
+  significa nada: el salto se busca en la traza del observador **por lo que es**,
+  el mayor desplazamiento entre dos frames.
+- **Matando a alguien de pie en su propio spawn no se mide nada.** La primera
+  tanda salió con el jugador muriendo encima del punto de aparición: reaparecer
+  no movía nada y las dos fórmulas daban lo mismo. Es la trampa de la vuelta 46
+  otra vez, y por eso el banco comprueba antes que hay un salto que ver.
+- **Y el antes y el después salen de los mismos paquetes.** El banco reproduce la
+  fórmula vieja sobre el mismo búfer que usa la de verdad, en vez de comparar dos
+  tandas distintas: así no hay dos redes que comparar, y la suite puede cazar la
+  regresión —con la fórmula vieja sigue dibujando el cuerpo por el camino—.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
@@ -5178,6 +5262,11 @@ objetivo era medir tiempos y rendimiento de verdad.
 - **Que la migración a Cloudflare no cambió nada**: los bancos de las vueltas 45
   y 46, sin tocar una aserción, pasados contra el Durable Object corriendo en
   `wrangler dev --local`.
+- **Que reaparecer es un teletransporte y no un viaje** (`reaparecer50.mjs`): con
+  dos navegadores a 60 fps, que la marca de teletransporte viaja en la foto y
+  cambia al reaparecer, y que el salto se dibuja en un frame sin pasar por
+  ninguna posición intermedia — con la fórmula vieja calculada sobre los mismos
+  paquetes, para que la suite pueda fallar si se revierte.
 - **Que volver de otra pestaña no da un avance rápido** (`fondo49.mjs`): con el
   estímulo real —el `requestAnimationFrame` parado y el socket vivo—, la
   velocidad aparente del jugador y la que ve el rival, en unidades de mapa por

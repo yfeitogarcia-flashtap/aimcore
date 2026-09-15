@@ -1197,6 +1197,13 @@ vienen apagados, porque no son para jugar sino para medir.
 Cada jugador lleva **el color de su equipo** —azul o magenta— según la ranura que
 le dé el servidor, que es la misma de la que sale su punto de salida.
 
+**Y reaparecer es un teletransporte.** Al morir lejos del punto de aparición, el
+rival te veía **recorrer** la distancia hasta el spawn: la interpolación mezclaba
+las dos fotos que rodean el salto y te pintaba en sitios donde nunca estuviste.
+Ahora la marca de teletransporte viaja en la foto y no se interpola por encima de
+ella — medido, el salto pasa de dibujarse en dos frames (con una posición
+intermedia inventada) a uno solo.
+
 **Y se puede cambiar de pestaña sin romper nada.** Si el navegador frena la
 pestaña, el reloj del cliente **se re-ancla al volver** en vez de recuperar el
 tiempo perdido corriendo: no hay nada que recuperar, porque sin bucle no se

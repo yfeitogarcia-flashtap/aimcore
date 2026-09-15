@@ -450,7 +450,29 @@ export class ClienteRed {
       }
     }
     const tramo = b.n - a.n
-    const alfa = tramo > 0 ? Math.min(1, Math.max(0, (objetivo - a.n) / tramo)) : 0
+    /**
+     * **Entre dos estados con épocas distintas no se interpola** (vuelta 50).
+     * `poseEpoch` sube en cada `reset()` del movimiento, que es el único sitio
+     * donde la posición salta sin recorrer el camino — hoy, la reaparición.
+     * Mezclar por encima de un salto dibuja al rival **pasando por sitios en los
+     * que nunca estuvo**: medido, el cuerpo recorría los 14.4 u que hay del
+     * punto de muerte al spawn en dos frames, a 400 u/s, contra los 6.5 de
+     * carrera.
+     *
+     * Se queda en `a` —el lado viejo— en vez de saltar ya a `b`, y eso es lo que
+     * pone el teletransporte **en su instante exacto**: el cuerpo se queda donde
+     * murió hasta que el reloj de las fotos cruza a `b.n`, y ahí la pareja pasa a
+     * ser la siguiente y aparece en el spawn. Un frame, ni antes ni después.
+     *
+     * La marca viaja en la foto porque **el que dibuja no puede deducirla**: una
+     * comprobación de distancia aquí confundiría un teletransporte con un
+     * jugador rápido, y es la misma razón por la que `poseEpoch` existe en vez de
+     * mirar cuánto se ha movido la cámara (ver `docs/decisions.md` §44 y §50).
+     */
+    const teletransporte = a.s.poseEpoch !== b.s.poseEpoch
+    const alfa = teletransporte || tramo <= 0
+      ? 0
+      : Math.min(1, Math.max(0, (objetivo - a.n) / tramo))
     const mezcla = (u, v) => u + (v - u) * alfa
     return {
       x: mezcla(a.s.x, b.s.x),
