@@ -76,7 +76,9 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Recogibles | `src/game/pickups.js` | Cruces de vida, cargas de escudo y casco por el suelo. |
 | Música | `src/audio/music.js` | Ambiente de menús, generado. Su propio volumen. |
 | Config | `src/config.js` | Todo el tuning, sin excepción. |
-| Red (prototipo) | `net/` | Servidor `ws` local, cliente con predicción y reconciliación, y la página de dos pestañas. **Fuera de `src/` y fuera del build.** |
+| Red (prototipo) | `net/` | Servidor `ws` local, cliente con predicción y reconciliación, disparo con compensación de retraso, y la página de dos pestañas. **Fuera de `src/` y fuera del build.** |
+| Transporte | `net/transporte.js` | `send` / `onMessage` / `close`, y nada más. La red simulada es un transporte que envuelve a otro. |
+| Disparo en red | `net/disparo.js` | `hitPlayer` + `hasLineOfSight` en el orden que cuesta menos. **Lo llaman los dos extremos.** |
 | Ajustes | `src/settings.js` | Store + persistencia en localStorage + saneado. |
 | Teclas | `src/keybinds.js` | Store de binds: mismo patrón que los ajustes, almacén aparte. |
 
@@ -197,6 +199,46 @@ Y una cuarta que es aritmética y no se ve: **hay que adelantarse el RTT entero,
 no la mitad.** La foto que dice en qué paso va el servidor ya salió hace un viaje
 de ida, y la entrada que mandes ahora tardará otro. Con la mitad, el servidor se
 queda sin entrada en un tercio de los pasos.
+
+**El transporte son tres funciones: `send`, `onMessage`, `close`** (vuelta 46).
+El netcode no sabe qué hay debajo, y por eso la red simulada —latencia, jitter,
+pérdida— **es un transporte que envuelve a otro** (`conRedSimulada`) y no un
+puñado de `setTimeout` dentro del cliente: son propiedades del cable. Ninguna de
+las tres dice si está abierto, a propósito: lo que se manda antes de la apertura
+se tira y la entrada siguiente sale 16 ms después, y que hay partida lo dice el
+primer mensaje que llega —que es del protocolo, no del cable—.
+
+**Un disparo se juzga contra lo que el tirador tenía en pantalla, y ese instante
+no se estima: lo dice el disparo.** El cliente dibuja al rival interpolando entre
+dos fotos, así que sabe en qué paso del servidor lo tiene puesto, y manda ese
+número. La primera versión lo derivaba del ping (`RTT + interpolación`) y salía
+**hasta el doble**, porque el RTT se cuenta dos veces sin verse: la foto que el
+cliente reconoce ya es vieja de un viaje, y su entrada espera en la cola del
+servidor justo lo que el cliente se adelanta, que es otro RTT. Medido: con 25 ms
+de ida el rebobinado ya se comía el tope de 200 ms.
+
+Lo que sí es del servidor es **el tope** (`NET.maxRewindMs`, 200 ms). El número
+lo manda el cliente, así que el tope es lo que acota a quien mienta, y es también
+lo que acota la asimetría que sufre el que recibe: «me han matado detrás de la
+pared» no puede pasar de ahí.
+
+**Y el disparo lo resuelven los dos extremos con el mismo código**
+(`net/disparo.js`): el servidor contra el cuerpo rebobinado, el cliente contra el
+que está dibujando. Comparar los dos veredictos es la medida de si la
+compensación funciona, y esa medida sólo significa algo si el código es uno —dos
+copias de la fórmula y una discrepancia ya no diría nada de la red—. Por debajo
+no hay nada nuevo: `hitPlayer` y `hasLineOfSight`, en el orden que cuesta menos
+—primero el corte, que es aritmética; el rayo **sólo si entra**—, que es el
+reparto de `engine._isBlockedByCover`.
+
+**Una proporción necesita que se vea su denominador.** En la vuelta 46 la tabla
+del disparo salió cinco veces seguidas «100% de acuerdo», y cinco veces estaba
+vacía: el tirador no había salido del spawn y su propio muro le tapaba todos los
+disparos, así que las dos columnas coincidían **en el fallo**. Lo que lo delató
+no fue afinar nada, fue añadir la columna de impactos (`tú / servidor / sin
+rebobinar`): con `0/0/0` delante, un 100% se lee al instante como lo que es. Si
+una suite nueva mide un porcentaje, que enseñe de cuántos — y que compruebe su
+propia premisa antes de medir.
 
 **El estado serializable del movimiento vive en `movement.js`**
 (`snapshot()`/`restore()`, 24 campos). Va junto a los campos y no en el módulo de
@@ -1215,15 +1257,19 @@ suites, o la regresión que leas no será la del código que has escrito.
 
 ## 5. Estado actual (resumen)
 
-**Hay un 1v1 local, de prototipo** (vuelta 45): `npm run net` levanta un servidor
-`ws` en el 5199 y `net/prueba.html` abierta en dos pestañas enseña a dos personas
-moviéndose por el Plano A, con predicción local y reconciliación contra el
-servidor. Sólo movimiento —ni disparos, ni compensación de retraso, ni
-despliegue—. El servidor **no tiene código de juego**: importa `movement.js` y
-`scenario.js` tal cual con un objeto plano donde iría la cámara. Medido: error de
-reconciliación **cero** hasta 300 ms de RTT, correcciones sólo con pérdida de
-paquetes (0.33 u al 25%), 0.6 µs por entrada reejecutada y ↓59 KB/s en JSON sin
-recortar nada.
+**Hay un 1v1 local, de prototipo** (vueltas 45 y 46): `npm run net` levanta un
+servidor `ws` en el 5199 y `net/prueba.html` abierta en dos pestañas enseña a dos
+personas moviéndose y **disparándose** por el Plano A, con predicción local,
+reconciliación y compensación de retraso. El servidor **no tiene código de
+juego**: importa `movement.js`, `scenario.js`, `hitPlayer` y `hasLineOfSight` tal
+cual, con un objeto plano donde iría la cámara. Sin desplegar nada, sin cuentas y
+sin escudo ni casco —el daño es sólo vida, con el modelo de zonas de siempre—.
+
+Medido: error de reconciliación **cero** hasta 300 ms de RTT; correcciones sólo
+con pérdida de paquetes; **100% de acuerdo** entre lo que ve el tirador y lo que
+decide el servidor mientras el rebobinado cabe bajo el tope de 200 ms, contra un
+**20%** resolviendo sin rebobinar cuando el rival se ha apartado de verdad;
+4.3 µs por disparo y 3.8 KB de historial por jugador.
 
 **El mundo va a 60 Hz fijos** (`SIM.hz`) desde la vuelta 44, dibuje el monitor lo
 que dibuje: el frame acumula tiempo real y gasta pasos con arrastre del resto, y

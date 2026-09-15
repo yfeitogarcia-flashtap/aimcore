@@ -19,6 +19,7 @@ import { MovementController } from '../src/game/movement.js'
 import { Avatar } from '../src/game/avatar.js'
 import { LookControls } from '../src/game/lookControls.js'
 import { ClienteRed } from './cliente.js'
+import { conRedSimulada, transporteWebSocket } from './transporte.js'
 
 const lienzo = document.getElementById('lienzo')
 const aviso = document.getElementById('aviso')
@@ -61,10 +62,21 @@ for (const zona of Object.keys(fantasma.zones)) {
 }
 scene.add(fantasma.group)
 
+/**
+ * **El enlace.** Latencia, jitter y pérdida son propiedades del cable, así que
+ * viven en el transporte y no en el netcode: el cliente no sabe que existen.
+ * Los mandos del panel escriben en este objeto y el cambio entra en el paquete
+ * siguiente.
+ */
+const enlace = { latenciaMs: 0, jitterMs: 0, perdida: 0 }
 const cliente = new ClienteRed({
   camara,
   movimiento,
-  url: `ws://${location.hostname}:${NET.port}`,
+  oclusores: escenario.occluders,
+  transporte: conRedSimulada(
+    transporteWebSocket(`ws://${location.hostname}:${NET.port}`),
+    enlace,
+  ),
 })
 cliente.onBienvenida = (m) => {
   $('quien').textContent = `${m.id} · ${m.escenario}`
@@ -98,7 +110,19 @@ addEventListener('blur', () => {
   for (const k of Object.keys(cliente.teclas)) cliente.teclas[k] = false
 })
 
-lienzo.addEventListener('click', () => lienzo.requestPointerLock())
+lienzo.addEventListener('click', () => {
+  if (document.pointerLockElement !== lienzo) lienzo.requestPointerLock()
+})
+/**
+ * **El disparo sale del evento**, con su instante real y con el rumbo que tenía
+ * la mira en ese momento — no el del paso, que se muestreó al empezarlo y el
+ * ratón se mueve entre medias.
+ */
+addEventListener('mousedown', (e) => {
+  if (document.pointerLockElement !== lienzo || e.button !== 0) return
+  const ts = Number.isFinite(e.timeStamp) && e.timeStamp > 0 ? e.timeStamp : performance.now()
+  cliente.disparar(ts, camara.rotation.y, camara.rotation.x)
+})
 document.addEventListener('pointerlockchange', () => {
   const capturado = document.pointerLockElement === lienzo
   aviso.hidden = capturado
@@ -109,12 +133,12 @@ document.addEventListener('pointerlockchange', () => {
 
 for (const [id, campo] of [['lat', 'latenciaMs'], ['jit', 'jitterMs']]) {
   $(id).addEventListener('input', (e) => {
-    cliente[campo] = +e.target.value
+    enlace[campo] = +e.target.value
     $(id + 'V').textContent = e.target.value
   })
 }
 $('per').addEventListener('input', (e) => {
-  cliente.perdida = +e.target.value / 100
+  enlace.perdida = +e.target.value / 100
   $('perV').textContent = e.target.value
 })
 $('gho').addEventListener('change', (e) => { fantasma.group.visible = e.target.checked })
@@ -228,8 +252,22 @@ function pintarPanel() {
   $('error').innerHTML = `<span class="${err > NET.visibleCorrection ? 'mal' : 'bien'}">${err.toExponential(2)} u</span>`
   $('errorMax').textContent = `${m.errorMax.toExponential(2)} u`
   $('correcciones').textContent = `${m.correcciones} de ${m.fotos} fotos`
-  $('perdidos').textContent = `${m.perdidos} de ${m.enviados}`
+  // La pérdida la cuenta el transporte, que es de quien es el cable.
+  $('perdidos').textContent = `↑${enlace.tirados ?? 0} ↓${enlace.tiradosEntrada ?? 0} de ${m.enviados}`
   $('hambre').textContent = `${m.hambre}`
+  $('vida').innerHTML = cliente.vida > 0
+    ? `<span class="${cliente.vida < 45 ? 'mal' : 'bien'}">${cliente.vida}</span>`
+    : '<span class="mal">ABATIDO</span>'
+  if (m.disparos > 0) {
+    const pct = (100 * m.acuerdos / m.disparos).toFixed(0)
+    $('disparos').innerHTML =
+      `${m.disparos} · <span class="${m.acuerdos === m.disparos ? 'bien' : 'mal'}">${pct}%</span>` +
+      (m.fantasmas || m.sorpresas ? ` (${m.fantasmas}✗ ${m.sorpresas}✚)` : '')
+    $('sinreb').textContent = `${(100 * m.acuerdosSinRebobinar / m.disparos).toFixed(0)}% de acuerdo`
+    if (m.ultimoDisparo) $('ultimo').textContent =
+      `${m.ultimoDisparo.yo} / ${m.ultimoDisparo.servidor}` + (m.ultimoDisparo.dano ? ` (−${m.ultimoDisparo.dano})` : '')
+    $('rebobinado').textContent = `${m.rebobinadoMs.toFixed(0)} ms · ${m.retrocesoMax.toFixed(2)} u`
+  }
   $('caudal').textContent =
     `${(m.bytesSalida / ventana / 1024).toFixed(2)} / ${(m.bytesEntrada / ventana / 1024).toFixed(2)} KB/s`
   m.bytesSalida = 0
@@ -244,4 +282,4 @@ function pintarPanel() {
 requestAnimationFrame(bucle)
 
 // Para las sondas de medida: todo lo que hace falta, en un solo sitio.
-window.vektorNet = { cliente, movimiento, camara, escenario, get paso() { return paso }, costes }
+window.vektorNet = { cliente, movimiento, camara, escenario, enlace, rival, get paso() { return paso }, costes }

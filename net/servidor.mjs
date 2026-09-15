@@ -24,8 +24,9 @@ import { WebSocketServer } from 'ws'
 import { NET, SIM, SIM_STEP_MS } from '../src/config.js'
 import { MovementController } from '../src/game/movement.js'
 import { Scenario } from '../src/game/scenario.js'
-import { crearPose } from './pose.js'
-import { MSG, desempaquetarTeclas, instanteDePaso, instanteDeSalto } from './protocolo.js'
+import { crearPose, cuerpoDeJugador } from './pose.js'
+import { direccionDeMira, resolverDisparo } from './disparo.js'
+import { MSG, desempaquetarTeclas, instanteDePaso, instanteEnPaso } from './protocolo.js'
 
 const ESCENARIO = process.env.VEKTOR_ESCENARIO || 'largoYPuerta'
 /**
@@ -33,6 +34,8 @@ const ESCENARIO = process.env.VEKTOR_ESCENARIO || 'largoYPuerta'
  * tocar `config.js`. El valor de casa es `NET.jitterBufferTicks`.
  */
 const COLCHON = Number(process.env.VEKTOR_BUFFER) || NET.jitterBufferTicks
+/** Sólo con esto encendido se atiende la colocación de pruebas (ver `MSG.COLOCAR`). */
+const DEPURAR = !!process.env.VEKTOR_DEBUG
 const escenario = new Scenario(new THREE.Scene(), ESCENARIO)
 
 /** Dos sitios de salida separados, para no aparecer uno dentro del otro. */
@@ -73,6 +76,64 @@ function crearJugador(socket) {
     bytesEntrada: 0,
     bytesSalida: 0,
     estado: {},
+
+    /**
+     * **El historial de cuerpos**, para rebobinar. Un anillo de
+     * `NET.historyTicks` posiciones: por cada paso, los siete números que
+     * devuelve `playerBody()` más el propio paso. Con 60 pasos son un segundo,
+     * tres veces el rebobinado máximo.
+     */
+    historial: new Array(NET.historyTicks).fill(null),
+    vida: 100,
+    /** Paso en que vuelve a estar vivo, o 0. */
+    reaparecerEn: 0,
+    /** Veredictos pendientes de mandarle. */
+    disparos: [],
+    bajas: 0,
+    muertes: 0,
+  }
+}
+
+/** Guarda dónde estaba este jugador al acabar el paso `n`. */
+function anotarCuerpo(jugador, n) {
+  const p = jugador.pose.position
+  const cuerpo = cuerpoDeJugador(p.x, p.z, jugador.movimiento.feetY, jugador.movimiento.eyeHeight)
+  cuerpo.n = n
+  jugador.historial[n % NET.historyTicks] = cuerpo
+}
+
+/**
+ * **El cuerpo del rival en un instante del pasado**, interpolado entre los dos
+ * pasos que lo rodean. `objetivo` va en pasos fraccionarios.
+ *
+ * Devuelve null si ese instante se salió del anillo — un cliente con un
+ * rebobinado mayor que el historial no puede compensarse, y eso es correcto:
+ * el tope de `NET.maxRewindMs` está justo para que no pase.
+ */
+function cuerpoRebobinado(jugador, objetivo) {
+  const suelo = Math.floor(objetivo)
+  const techo = Math.ceil(objetivo)
+  const a = jugador.historial[((suelo % NET.historyTicks) + NET.historyTicks) % NET.historyTicks]
+  const b = jugador.historial[((techo % NET.historyTicks) + NET.historyTicks) % NET.historyTicks]
+  // **Comprobar que la ranura es de esta vuelta del anillo.** Un índice siempre
+  // devuelve algo; si el paso pedido se salió del historial, lo que devuelve es
+  // una posición de hace un segundo, y eso no se distingue de un rebobinado
+  // bueno mirando sólo el resultado. Mejor null y que el llamante caiga al
+  // presente.
+  if (!a || !b || a.n !== suelo || b.n !== techo) return null
+  if (b.n < a.n) return a
+  const tramo = b.n - a.n
+  const alfa = tramo > 0 ? (objetivo - a.n) / tramo : 0
+  if (!(alfa >= 0 && alfa <= 1)) return a
+  const mezcla = (u, v) => u + (v - u) * alfa
+  return {
+    x: mezcla(a.x, b.x),
+    z: mezcla(a.z, b.z),
+    feetY: mezcla(a.feetY, b.feetY),
+    radius: a.radius,
+    legsTop: mezcla(a.legsTop, b.legsTop),
+    torsoTop: mezcla(a.torsoTop, b.torsoTop),
+    top: mezcla(a.top, b.top),
   }
 }
 
@@ -81,9 +142,116 @@ function ejecutar(jugador, entrada) {
   const m = jugador.movimiento
   desempaquetarTeclas(entrada.k, m.keys)
   jugador.pose.rotation.y = entrada.yaw
-  if (entrada.jt >= 0) m.pressJump(instanteDeSalto(entrada.n, entrada.jt))
+  if (entrada.jt >= 0) m.pressJump(instanteEnPaso(entrada.n, entrada.jt))
   m.update(SIM_STEP_MS / 1000, instanteDePaso(entrada.n))
   jugador.ack = entrada.n
+  if (entrada.d) resolverTiro(jugador, entrada)
+}
+
+/**
+ * **El disparo, juzgado contra lo que el tirador tenía en pantalla.**
+ *
+ * El instante a rebobinar **no se estima: lo dice el disparo**. El cliente
+ * dibuja al rival interpolando entre dos fotos, sabe exactamente en qué paso
+ * del servidor lo tiene puesto, y manda ese número (`tv`). El servidor sólo
+ * tiene que acotarlo.
+ *
+ * La primera versión lo estimaba desde el ping —`RTT + interpolación` hacia
+ * atrás— y salía **de más**, hasta el doble: el RTT se contaba dos veces sin
+ * verse. Una porque la foto que el cliente reconoce salió hace un viaje de
+ * ida; otra porque su entrada, al llegar, espera en la cola del servidor
+ * justo lo que el cliente se adelanta, que es **otro RTT entero** (vuelta 45).
+ * El síntoma: con 25 ms de ida el rebobinado ya se comía el tope de 200 ms, y
+ * el rival salía rebobinado 3.8 u —más de medio segundo— con el ping a cero.
+ * Medirlo en vez de estimarlo no es una optimización: es la diferencia entre
+ * compensar el retraso y compensar el doble del retraso.
+ *
+ * Lo que sigue siendo del servidor es **el tope** (`NET.maxRewindMs`). `tv` lo
+ * manda el cliente, así que un cliente que mintiera pediría rebobinar más; el
+ * tope es lo que acota el daño, y es también lo que acota la asimetría que
+ * sufre el que recibe —«me han matado detrás de la pared» no puede pasar de
+ * ahí—. El día que haya partidas públicas, además del tope habrá que
+ * contrastar `tv` con lo que el servidor sabe del ping de ese cliente.
+ */
+function resolverTiro(tirador, entrada) {
+  const d = entrada.d
+  const rival = [...jugadores.values()].find((j) => j !== tirador)
+  const salida = { seq: d.seq, impacto: false, zona: null, dano: 0, tapado: false,
+                   sinRebobinar: false, retroceso: 0, lateral: 0, rebobinadoMs: 0,
+                   pedidoMs: 0, topado: false }
+  if (!rival || !tirador.vida) {
+    anotarVeredicto(tirador, salida)
+    return
+  }
+
+  // El historial llega hasta `paso − 1`: este paso todavía no se ha anotado.
+  const masViejo = paso - 1 - NET.maxRewindMs / SIM_STEP_MS
+  const pedido = Number.isFinite(d.tv) ? d.tv : paso - 1
+  const objetivo = Math.min(paso - 1, Math.max(masViejo, pedido))
+  salida.rebobinadoMs = +((paso - 1 - objetivo) * SIM_STEP_MS).toFixed(1)
+  // Lo que **pedía** el tirador, antes del tope. La diferencia entre los dos
+  // números es lo que el tope le está negando, y es donde empieza a desacordar.
+  salida.pedidoMs = +((paso - 1 - pedido) * SIM_STEP_MS).toFixed(1)
+  salida.topado = salida.pedidoMs > salida.rebobinadoMs + 0.01
+
+  const ahora = cuerpoRebobinado(rival, paso - 1)
+  const cuerpo = cuerpoRebobinado(rival, objetivo) ?? ahora
+  const p = tirador.pose.position
+  const origen = { x: p.x, y: p.y, z: p.z }
+
+  const veredicto = resolverDisparo(origen, d.yaw, d.pitch, cuerpo, escenario.occluders)
+  // **El control**: el mismo disparo sin rebobinar nada. No decide nada, se
+  // manda para poder medir qué compra la compensación.
+  const sin = resolverDisparo(origen, d.yaw, d.pitch, ahora, escenario.occluders)
+
+  salida.impacto = veredicto.impacto
+  salida.zona = veredicto.zona
+  salida.dano = veredicto.dano
+  salida.tapado = veredicto.tapado
+  salida.sinRebobinar = sin.impacto
+  // Lo que se había movido el rival desde el instante rebobinado: es, en
+  // unidades, la asimetría que paga el que recibe.
+  //
+  // Y se manda además **la componente lateral**, que es la que decide si el
+  // disparo entra o no: moverse hacia el tirador o alejarse de él no te saca de
+  // la línea de tiro, y contar ese trozo diluye la medida. Se proyecta sobre la
+  // perpendicular horizontal a la dirección del disparo.
+  if (cuerpo && ahora) {
+    const dx = ahora.x - cuerpo.x
+    const dz = ahora.z - cuerpo.z
+    salida.retroceso = +Math.hypot(dx, dz).toFixed(3)
+    const dir = direccionDeMira(d.yaw, d.pitch)
+    const plano = Math.hypot(dir.x, dir.z) || 1
+    // Perpendicular en el plano: (−dz, dx) del propio rumbo, normalizada.
+    salida.lateral = +Math.abs((dx * -dir.z + dz * dir.x) / plano).toFixed(3)
+  }
+
+  if (veredicto.impacto) aplicarDano(rival, veredicto.dano, tirador)
+  anotarVeredicto(tirador, salida)
+}
+
+/** Un veredicto vive unas cuantas fotos, para que perder una no lo pierda. */
+function anotarVeredicto(jugador, dato) {
+  jugador.disparos.push({ dato, ttl: NET.verdictRepeats })
+}
+
+/** Vida, y nada más: ni escudo, ni casco, ni reaparición escalada. */
+function aplicarDano(victima, dano, tirador) {
+  if (victima.vida <= 0) return
+  victima.vida = Math.max(0, victima.vida - dano)
+  if (victima.vida > 0) return
+  victima.muertes += 1
+  tirador.bajas += 1
+  victima.reaparecerEn = paso + Math.round(NET.respawnMs / SIM_STEP_MS)
+}
+
+function reaparecer(jugador) {
+  const salida = SALIDAS[[...jugadores.keys()].indexOf(jugador.id) % SALIDAS.length]
+  jugador.movimiento.reset()
+  jugador.pose.position.x = salida.x
+  jugador.pose.position.z = salida.z
+  jugador.vida = 100
+  jugador.reaparecerEn = 0
 }
 
 let paso = 0
@@ -108,14 +276,33 @@ function tick() {
     for (let i = 0; i < cuantas; i++) ejecutar(jugador, jugador.cola.shift())
   }
 
+  // **Y dónde ha quedado cada uno.** Se anota siempre, incluso para quien no
+  // avanzó por falta de entrada: no moverse también es una posición, y el
+  // rebobinado tiene que encontrar algo en cada paso del anillo.
+  for (const jugador of jugadores.values()) {
+    if (jugador.reaparecerEn > 0 && paso >= jugador.reaparecerEn) reaparecer(jugador)
+    anotarCuerpo(jugador, paso)
+  }
+
   if (paso % NET.snapshotEvery !== 0) return
   const foto = { t: MSG.FOTO, n: paso, p: {} }
   for (const jugador of jugadores.values()) {
     foto.p[jugador.id] = {
       ack: jugador.ack,
       hambre: jugador.hambre,
+      vida: jugador.vida,
+      bajas: jugador.bajas,
+      muertes: jugador.muertes,
       yaw: jugador.pose.rotation.y,
       s: jugador.movimiento.snapshot(jugador.estado),
+    }
+    // Los veredictos de disparo se repiten unas cuantas fotos: si se mandaran
+    // una sola vez, perder esa foto perdería el veredicto para siempre. El
+    // cliente los descarta por número, así que repetirlos no cuesta nada.
+    if (jugador.disparos.length > 0) {
+      foto.p[jugador.id].disparos = jugador.disparos.map((d) => d.dato)
+      for (const d of jugador.disparos) d.ttl -= 1
+      jugador.disparos = jugador.disparos.filter((d) => d.ttl > 0)
     }
   }
   const texto = JSON.stringify(foto)
@@ -169,6 +356,15 @@ wss.on('connection', (socket) => {
     try {
       mensaje = JSON.parse(datos)
     } catch {
+      return
+    }
+    if (mensaje.t === MSG.COLOCAR && DEPURAR) {
+      jugador.movimiento.reset()
+      jugador.pose.position.x = mensaje.x
+      jugador.pose.position.z = mensaje.z
+      jugador.vida = 100
+      jugador.reaparecerEn = 0
+      jugador.historial.fill(null)
       return
     }
     if (mensaje.t !== MSG.ENTRADA) return

@@ -12,6 +12,15 @@
    validado**, salvo la compensación de retraso, que no toca hasta que haya
    disparos.
 
+3. **Transporte aislado y disparo con compensación de retraso** (vuelta 46, §46).
+   `send`/`onMessage`/`close` y nada más, con la red simulada como un transporte
+   que envuelve a otro; y el disparo resuelto contra el rival rebobinado al
+   instante que el tirador tenía en pantalla, con `hitPlayer` y `hasLineOfSight`
+   tal cual y un tope de 200 ms. Medido: **100% de acuerdo** entre lo que ve el
+   tirador y lo que decide el servidor mientras el rebobinado cabe bajo el tope,
+   contra un **20%** resolviendo sin rebobinar; 4.3 µs por disparo. **El punto 4
+   queda validado entero.**
+
 Siguiente: Cloudflare Durable Objects (punto 2) y partida por código (punto 5).
 Sigue sin haber nada desplegado ni una sola cuenta.
 
@@ -123,16 +132,18 @@ esa forma y no cambia nada del fichero.
 - **El requisito es el paso fijo**, y es la razón de que la vuelta 44 vaya antes
   que el netcode: reejecutar sólo converge si los dos lados dan los mismos pasos.
   Hecho y medido (`docs/decisions.md` §44).
-- **Compensación de retraso.** El servidor guarda por tick los siete números de
-  `playerBody()` —3.3 KB por segundo con dos jugadores— y, al llegar un disparo,
-  rebobina al instante que el tirador tenía en pantalla y llama a `hitPlayer` y
-  `hasLineOfSight`, las mismas dos funciones que ya existen. **21 µs por
-  disparo.** Y ya hay medido cuánto hay que rebobinar: en la vuelta 45, al rival
-  se le dibuja **3 pasos (50 ms)** por detrás de la última foto, o **~151 ms**
-  contando medio viaje con 228 ms de RTT.
+- **Compensación de retraso.** Construida en la vuelta 46: el servidor guarda por
+  paso los siete números de `playerBody()` —3.8 KB por jugador para un segundo—
+  y, al llegar un disparo, rebobina y llama a `hitPlayer` y `hasLineOfSight`, las
+  mismas dos funciones que ya existían. **4.3 µs por disparo**, no los 21 que
+  estimé aquí. Y cuánto rebobinar **no se estima desde el ping**: lo dice el
+  propio disparo, porque el cliente sabe entre qué dos fotos está dibujando al
+  rival. Estimarlo contaba el RTT dos veces (§46).
 - **La asimetría se acota, no se arregla:** rebobinado máximo de 200 ms, como en
-  Source. Y ojo con el muro de la vuelta 43, que es justo la geometría donde la
-  ventaja del que asoma se nota más.
+  Source, y ya está puesto. Tiene precio y está medido: a 300 ms de RTT el
+  tirador pide 390 ms de rebobinado, se le dan 200 y el acuerdo baja al 50%. Y
+  ojo con el muro de la vuelta 43, que es justo la geometría donde la ventaja del
+  que asoma se nota más.
 
 ---
 

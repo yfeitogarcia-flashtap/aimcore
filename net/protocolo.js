@@ -42,18 +42,49 @@ export function instanteDePaso(n) {
 }
 
 /**
- * El instante exacto de una pulsación de salto sellada en el paso `n` con
- * fracción `jt`. El paso cubre `[fin − SIM_STEP_MS, fin]`, así que una fracción
- * de 0 es el principio del paso y una de 1 su final.
+ * El instante exacto de un evento sellado dentro del paso `n` con fracción
+ * `f` (0..1). El paso cubre `[fin − SIM_STEP_MS, fin]`, así que una fracción de
+ * 0 es el principio del paso y una de 1 su final.
+ *
+ * Lo usan las dos cosas que ocurren **entre** pasos y cuyo instante importa: la
+ * pulsación de saltar (la ventana de encadenado mide 130 ms, redondear al paso
+ * costaría 16.7) y el clic de disparo (el rebobinado se mide desde él).
  */
-export function instanteDeSalto(n, jt) {
-  return instanteDePaso(n) - SIM_STEP_MS + jt * SIM_STEP_MS
+export function instanteEnPaso(n, f) {
+  return instanteDePaso(n) - SIM_STEP_MS + f * SIM_STEP_MS
 }
 
+/**
+ * **Un disparo, tal como viaja.** Va dentro de la entrada del paso en que se
+ * hizo el clic, no en un mensaje aparte: así llega por el mismo camino, en el
+ * mismo orden y con el mismo sello de paso que el resto de la intención del
+ * jugador.
+ *
+ * Lleva **su propio rumbo**, y eso no es redundante con el `yaw` de la entrada:
+ * el de la entrada se muestrea al empezar el paso y el ratón se mueve entre
+ * medias, así que un disparo resuelto con el yaw del paso saldría desviado lo
+ * que el jugador haya girado en esos milisegundos. Y lleva `pitch`, que el
+ * movimiento no usa para nada pero una bala sí.
+ *
+ * @typedef {{ f: number, yaw: number, pitch: number, seq: number }} Disparo
+ */
+
 /** Tipos de mensaje. Uno por letra: esto se lee mucho en el inspector. */
+
 export const MSG = {
   BIENVENIDA: 'b',
   ENTRADA: 'e',
   FOTO: 'f',
   ADIOS: 'x',
+  /**
+   * **Colocar a un jugador donde diga, para medir.** El servidor **sólo** lo
+   * atiende con `VEKTOR_DEBUG=1`, y por eso no es una vía para hacer trampas:
+   * apagado, el mensaje se tira sin mirarlo.
+   *
+   * Existe porque un banco que lleva a los dos jugadores a su puesto a base de
+   * pulsar teclas depende de que sepan rodear una caja, y no saben: se atascan,
+   * la tanda se mide sin línea de tiro y las dos columnas coinciden en el fallo
+   * sin medir nada. Eso pasó tres veces antes de poner esto.
+   */
+  COLOCAR: 'c',
 }

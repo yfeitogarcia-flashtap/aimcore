@@ -1202,10 +1202,20 @@ corre en Node sin navegador, sin three y sin cambiar una línea.
 | Coste de reejecutar una entrada | **0.6-0.9 µs** (0.2 ms dan para 220-340) |
 | Al rival se le ve | 3 pasos (50 ms) tras la última foto |
 | Caudal en JSON, sin comprimir | ↑3.5 KB/s · ↓59-81 KB/s |
-| Suelo de la tubería sin red de por medio | 59 ms |
+| Suelo de la tubería sin red de por medio | 40-60 ms |
+| **Disparo**: acuerdo tirador ↔ servidor, con el rebobinado bajo el tope | **100%** |
+| Lo mismo resolviendo sin rebobinar, con el rival apartado de verdad | 20% |
+| Coste de resolver un disparo (corte + rayo) | 4.3 µs p50 · 9.0 µs p99 |
+| Historial para rebobinar | 3.8 KB por jugador (1 s) |
 
 La latencia **no** mete error de predicción: lo único que crece es la cola a
-reejecutar. Donde sí aparece la corrección es con pérdida de paquetes, que es lo correcto.
+reejecutar. Y con el disparo pasa lo mismo mientras el rebobinado quepa bajo el
+tope: de 0 a 160 ms de RTT, el servidor da por bueno **exactamente** lo que vio el
+tirador. Pasado el tope sí se nota —a 300 ms de RTT pide 390 ms de rebobinado y
+se le dan 200, y el acuerdo baja al 50%—, y eso es la decisión, no un fallo.
+
+Donde sí aparece la corrección del movimiento es con pérdida de paquetes, que es
+lo correcto.
 El peor caso no es andar —ahí no pasa de un tercio de unidad— sino **perder la
 pulsación de saltar**: el servidor no despega, tú sí, y hasta la foto siguiente
 divergís lo que dura un vuelo (578 ms, unas 3.8 u a marcha de carrera).
@@ -1305,6 +1315,8 @@ src/
 net/                    prototipo de 1v1 local — fuera de src/ y fuera del build
 ├── servidor.mjs        servidor ws autoritativo (npm run net)
 ├── cliente.js          predicción y reconciliación
+├── transporte.js       send / onMessage / close, y la red simulada
+├── disparo.js          hitPlayer + hasLineOfSight, para los dos extremos
 ├── protocolo.js        lo que viaja por el cable, y en qué reloj
 ├── pose.js             el objeto plano que hace de cámara en el servidor
 └── prueba.html/.js     la página que se abre en dos pestañas

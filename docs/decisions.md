@@ -4567,6 +4567,139 @@ de dos pasos.
   también lo serían. Aunque no lo fueran, no se acumula: cada foto vuelve a
   anclar.
 
+## Ronda 46 — El transporte detrás de tres funciones, y el disparo con rebobinado
+
+Tercer paso de `docs/propuestas/02-multijugador-1v1.md`. Sigue todo en local.
+
+### El transporte, aislado
+
+`send`, `onMessage`, `close`. El netcode ya no sabe si debajo hay un WebSocket,
+un canal de datos o un Durable Object. Se aísla **antes** de que haga falta
+porque el día que haga falta será el día del cambio, y entonces ya no se sabe
+qué parte del netcode se apoyaba en un detalle del socket.
+
+El aislamiento se pagó solo: **la red simulada se fue con él**. Latencia, jitter
+y pérdida son propiedades del enlace, no del juego, y hasta la 45 vivían dentro
+del cliente a base de `setTimeout`. Ahora son un transporte que envuelve a otro
+(`conRedSimulada`), y de paso la pérdida pasó a ser **de los dos sentidos**, que
+es lo que hace un cable de verdad: tirar una entrada deja al servidor sin ese
+paso; tirar una foto sólo retrasa la corrección siguiente, porque una foto es
+estado absoluto y no un incremento.
+
+La interfaz son **tres** funciones y ninguna dice si está abierto. Lo que se
+manda antes de la apertura se tira y no pasa nada —el cliente manda una entrada
+por paso, la siguiente sale 16 ms después—, y quien necesite saber que hay
+partida lo sabe por el primer mensaje que llega, que es la bienvenida. Eso es
+información del protocolo, no del cable.
+
+### El disparo: qué se reutiliza
+
+Nada nuevo por debajo. `hitPlayer` es el corte analítico contra el cilindro por
+zonas que el juego ya usa cuando te disparan los muñecos, y `hasLineOfSight` es
+el único raycast de «¿se ve eso desde aquí?» del motor. `net/disparo.js` sólo
+los llama en el orden que cuesta menos: primero el corte, que es aritmética, y
+**sólo si entra** el rayo contra la cobertura. Es el reparto de
+`engine._isBlockedByCover`.
+
+Y lo llaman **los dos extremos**: el servidor contra el cuerpo rebobinado, el
+cliente contra el cuerpo tal como lo está dibujando. Comparar los dos veredictos
+es la medida de si la compensación funciona, y esa medida sólo significa algo si
+el código es el mismo — dos copias de la fórmula y una discrepancia ya no diría
+nada de la red.
+
+### Cuánto rebobinar: medirlo, no estimarlo
+
+La primera versión lo estimaba desde el ping: `RTT + interpolación` hacia atrás.
+Salía **de más, hasta el doble**, porque el RTT se contaba dos veces sin verse:
+
+1. La foto que el cliente reconoce salió de aquí hace **un viaje de ida**.
+2. Su entrada, al llegar, espera en la cola del servidor justo lo que el cliente
+   se adelanta, que es **otro RTT entero** (ver §45).
+
+El síntoma, medido: con 25 ms de ida el rebobinado ya se comía el tope de 200 ms,
+y con el ping a cero el rival salía rebobinado 3.8 u —más de medio segundo—.
+
+Lo que se hace ahora es no estimarlo. **El cliente dibuja al rival interpolando
+entre dos fotos, así que sabe exactamente en qué paso del servidor lo tiene
+puesto**, y manda ese número con el disparo (`tv`). El servidor sólo lo acota.
+Con eso, a ping cero el rebobinado sale en **50 ms clavados**, que es
+`interpDelayTicks` — exactamente lo que tiene que ser.
+
+Lo que sigue siendo del servidor es **el tope**. `tv` lo manda el cliente, así
+que un cliente que mintiera pediría rebobinar más; `NET.maxRewindMs` (200 ms, el
+valor de referencia de Source) es lo que acota el daño, y es también lo que
+acota la asimetría que sufre el que recibe: «me han matado detrás de la pared»
+no puede pasar de ahí. El día que haya partidas públicas habrá además que
+contrastar `tv` con lo que el servidor sabe del ping de ese cliente.
+
+### Lo que sale medido
+
+Tirador y blanco a 20 u, con el blanco moviéndose **de través** (`tiro46.mjs`):
+
+| ida | disparos | impactos tú/servidor/sin rebobinar | acuerdo | sin rebobinar | pedía | concede |
+|---|---|---|---|---|---|---|
+| 0 ms | 16 | 14 / 14 / 7 | **100%** | 56% | 65 ms | 63 ms |
+| 25 ms | 16 | 16 / 16 / 8 | **100%** | 50% | 114 ms | 115 ms |
+| 50 ms | 16 | 15 / 15 / 6 | **100%** | 44% | 173 ms | 163 ms |
+| 80 ms | 16 | 13 / 13 / 2 | **100%** | 31% | 229 ms | **200 ms** |
+| 150 ms | 16 | 10 / 2 / 2 | 50% | 38% | 390 ms | **200 ms** |
+
+Y condicionando a los disparos en que el rival se había apartado de verdad —más
+de un radio de cuerpo **en lateral**, que es el único desplazamiento que decide
+si entra—: **90% de acuerdo con rebobinado contra 20% sin él**.
+
+Tres lecturas:
+
+- **Mientras el rebobinado cabe bajo el tope, el servidor ve exactamente lo que
+  viste tú.** Cien por cien, de 0 a 100 ms de RTT.
+- **Sin rebobinar, con ping se pierde la mitad de los impactos** y a 160 ms de
+  RTT las tres cuartas partes. Eso es lo que compra la compensación.
+- **El tope tiene precio y se ve**: a 300 ms de RTT el tirador pide 390 ms y se
+  le dan 200, y el acuerdo baja al 50%. Es la decisión, no un fallo.
+
+**Coste**: el corte analítico no llega a medirse (por debajo de la resolución del
+reloj del navegador); corte + rayo contra los 7 oclusores del Plano A, **4.3 µs
+p50 y 9.0 µs p99**; un disparo que ni roza el cuerpo sale por el corte y tampoco
+se mide. El historial son **3.8 KB por jugador** (60 pasos × 8 números = 1 s),
+tres veces el rebobinado máximo.
+
+**La cobertura sigue parando balas**: con una pieza de 10.5 u de largo y 3.6 de
+alto entre los dos, el mismo disparo entra sin mapa y sale «tapado» con él.
+
+**Y el impacto quita vida**, con el modelo de zonas de siempre (100/50/34) y sin
+una segunda tabla. Sólo vida: ni escudo, ni casco, ni reaparición escalada —eso
+es `PlayerStatus` y no está enchufado todavía.
+
+### El banco costó más que el código, y por qué importa
+
+Cinco veces seguidas la tabla salió «100% de acuerdo, 100% sin rebobinar», que
+es el aspecto que tiene una medida perfecta y era, cada vez, una medida vacía:
+
+1. **El tirador no había salido del spawn**, así que su propio muro le tapaba los
+   treinta disparos. Coincidir en el fallo no mide nada.
+2. **El blanco se movía a lo largo de la línea de tiro.** Acercarse no te saca
+   del haz: el control salía plano por construcción.
+3. **El blanco se quedaba pegado a una caja** a media tanda y el resto se medía
+   contra un blanco quieto.
+4. **El vaivén se descentraba** con cada reaparición y el blanco acababa a 9 u de
+   su puesto.
+5. **Y el propio teletransporte de colocación** lo hacía temblar en el sitio,
+   porque el salto de 30 u contaba como «haber andado».
+
+Lo que lo arregló no fue afinar números sino **poner la columna que delata**: los
+impactos del tirador, `tú / servidor / sin rebobinar`. Con `0/0/0` a la vista, un
+100% de acuerdo se lee al instante como lo que es. Es la regla de la vuelta 34
+otra vez —una suite sin aserciones es un informe— con una vuelta de tuerca: una
+aserción sobre una proporción necesita además la aserción de que el denominador
+es de verdad. Y el banco acabó **comprobando su propia premisa** antes de medir
+nada: seis disparos de prueba, y si no entran, se dice.
+
+De ahí salieron dos cosas que sí son del código y no del banco: `poseEpoch` —que
+existía desde la 44 para no interpolar un teletransporte— resultó ser también la
+señal buena para «esto no es haber andado», y el mensaje de colocación del
+servidor (`MSG.COLOCAR`) queda **apagado salvo con `VEKTOR_DEBUG=1`**, porque
+una colocación libre es exactamente la vía de trampa que no se deja abierta.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
@@ -4683,6 +4816,10 @@ objetivo era medir tiempos y rendimiento de verdad.
   con que se ve al rival, coste de predecir y reejecutar, caudal y pasos sin
   entrada, con dos pestañas de verdad contra el servidor (`red45.mjs`,
   `colchon45.mjs`).
+- **El disparo con compensación de retraso**: acuerdo entre el veredicto del
+  tirador y el del servidor contra latencia, con el control de resolverlo sin
+  rebobinar, el tope actuando, la cobertura parando balas y el coste por disparo
+  (`tiro46.mjs`).
 
 Lo que **no** está verificado automáticamente: la sensación de juego, el balance
 entre armas y la legibilidad del HUD en pantallas pequeñas. Eso sigue siendo

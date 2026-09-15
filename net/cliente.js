@@ -19,7 +19,9 @@
  * `protocolo.js`.
  */
 import { NET, SIM_STEP_MS } from '../src/config.js'
-import { MSG, desempaquetarTeclas, empaquetarTeclas, instanteDePaso, instanteDeSalto } from './protocolo.js'
+import { resolverDisparo } from './disparo.js'
+import { cuerpoDeJugador } from './pose.js'
+import { MSG, desempaquetarTeclas, empaquetarTeclas, instanteDePaso, instanteEnPaso } from './protocolo.js'
 
 export class ClienteRed {
   /**
@@ -28,10 +30,17 @@ export class ClienteRed {
    *   guarda la posición, así que predecir es moverla.
    * @param {import('../src/game/movement.js').MovementController} opciones.movimiento
    */
-  constructor({ camara, movimiento, url }) {
+  constructor({ camara, movimiento, transporte, oclusores = [] }) {
     this.camara = camara
     this.movimiento = movimiento
-    this.url = url
+    /** El cable, detrás de `send` / `onMessage` / `close` y nada más. */
+    this.transporte = transporte
+    /**
+     * La geometría del escenario. El veredicto propio comprueba la cobertura
+     * igual que el del servidor: si no, «disparé a través de la Espina» contaría
+     * como desacuerdo de la red y sería del banco de pruebas.
+     */
+    this.oclusores = oclusores
 
     this.id = null
     this.conectado = false
@@ -43,16 +52,18 @@ export class ClienteRed {
     this.teclas = { forward: false, back: false, left: false, right: false, jump: false, crouch: false, walk: false }
     /** Instante real de la última pulsación de saltar sin repartir, o null. */
     this._saltoTs = null
+    /** El clic de disparo pendiente de repartir: instante real y adónde apuntaba. */
+    this._disparo = null
+    /** Disparos mandados y todavía sin veredicto del servidor, por número. */
+    this.disparosEnVuelo = new Map()
+    this._seqDisparo = 0
+    /** Vida que dice el servidor. Con cero, abatido. */
+    this.vida = 100
 
     /** Fotos del rival, para dibujarlo en el pasado. */
     this.rival = { id: null, buffer: [], pose: null }
     /** La última pose autoritativa del jugador local, para el fantasma. */
     this.autoritativo = null
-
-    /** **Red simulada.** Retardo de ida en ms, jitter y pérdida, por pestaña. */
-    this.latenciaMs = 0
-    this.jitterMs = 0
-    this.perdida = 0
 
     /** Lo que se mide. */
     this.medidas = {
@@ -73,32 +84,41 @@ export class ClienteRed {
       perdidos: 0,
       ack: -1,
       pasoServidor: 0,
+      /** Disparos, y cuántas veces el servidor vio lo mismo que tú. */
+      disparos: 0,
+      acuerdos: 0,
+      /** Impactos que **tú** viste y el servidor no, y al revés. */
+      fantasmas: 0,
+      sorpresas: 0,
+      /** Y lo mismo resuelto sin rebobinar, que es el control. */
+      acuerdosSinRebobinar: 0,
+      /** Cuánto se había movido el rival desde el instante rebobinado. */
+      retrocesoMax: 0,
+      rebobinadoMs: 0,
+      /** Daño que el servidor te ha dado por bueno, sumado. */
+      danoTotal: 0,
+      /**
+       * **Un renglón por disparo**, para poder condicionar las medias. El
+       * agregado solo engaña: si el blanco está casi parado cuando le disparas,
+       * rebobinar o no da igual y el control sale plano sin que eso diga nada.
+       * Acotado, que esto vive en el bucle.
+       */
+      detalle: [],
     }
     this._historialEnvio = new Map()
   }
 
   conectar() {
-    this.socket = new WebSocket(this.url)
-    this.socket.addEventListener('open', () => {
-      this.conectado = true
-    })
-    this.socket.addEventListener('message', (evento) => {
-      this.medidas.bytesEntrada += evento.data.length
-      this.medidas.totalEntrada += evento.data.length
-      // La bajada también se retrasa: si sólo se retrasara la subida, la mitad
-      // del viaje sería gratis y el RTT medido no significaría nada.
-      this._tras(() => this._recibir(JSON.parse(evento.data)))
-    })
-    this.socket.addEventListener('close', () => {
-      this.conectado = false
+    this.transporte.onMessage((datos) => {
+      this.medidas.bytesEntrada += datos.length
+      this.medidas.totalEntrada += datos.length
+      this._recibir(JSON.parse(datos))
     })
   }
 
-  /** Retardo de un sentido, con jitter. */
-  _tras(fn) {
-    const espera = this.latenciaMs + (this.jitterMs > 0 ? (Math.random() - 0.5) * 2 * this.jitterMs : 0)
-    if (espera <= 0) fn()
-    else setTimeout(fn, Math.max(0, espera))
+  cerrar() {
+    this.transporte.close()
+    this.conectado = false
   }
 
   /**
@@ -120,13 +140,26 @@ export class ClienteRed {
     // costaría 16.7 ms de precisión en la ventana de encadenado, que mide 130.
     // Si la pulsación cayó antes de que empezara este paso —el evento llegó
     // mientras corría el anterior— se acota a 0, que es lo más cerca que se
-    // puede poner.
+    // puede poner. Lo mismo vale para el clic de disparo, justo debajo.
+    const fraccion = (ts) => Math.min(0.999, Math.max(0, (ts - inicioDePasoMs) / SIM_STEP_MS))
+
     let jt = -1
     if (this._saltoTs !== null) {
-      const fraccion = (this._saltoTs - inicioDePasoMs) / SIM_STEP_MS
-      jt = Math.min(0.999, Math.max(0, fraccion))
+      jt = fraccion(this._saltoTs)
       this._saltoTs = null
     }
+
+    let d = null
+    if (this._disparo !== null) {
+      d = {
+        f: fraccion(this._disparo.ts),
+        yaw: this._disparo.yaw,
+        pitch: this._disparo.pitch,
+        seq: ++this._seqDisparo,
+      }
+      this._disparo = null
+    }
+
     const entrada = {
       t: MSG.ENTRADA,
       n: paso,
@@ -134,8 +167,34 @@ export class ClienteRed {
       yaw: this.camara.rotation.y,
       jt,
     }
+    if (d) entrada.d = d
 
     this._aplicar(entrada)
+
+    // **El veredicto propio**, contra el rival tal como lo estabas viendo. Es la
+    // mitad que hace medible la compensación: sin él sólo se sabría lo que
+    // decidió el servidor, no si coincide con lo que viste.
+    //
+    // Va **después** de aplicar la entrada, que es donde lo hace el servidor
+    // (`ejecutar` mueve y luego resuelve). Sacarlo antes dejaba al tirador un
+    // paso por detrás de donde el servidor lo pone —16.7 ms, hasta 0.11 u— y
+    // eso son desacuerdos que no serían de la red sino de resolver en sitios
+    // distintos del paso.
+    if (d) {
+      const local = this._resolverLocal(d)
+      // **El instante que estabas viendo, en pasos del servidor.** Viaja con el
+      // disparo, así que el servidor rebobina **al sitio exacto** en vez de
+      // estimarlo desde el ping. Es el mismo número con el que se ha resuelto
+      // el veredicto de aquí, así que los dos extremos miran al mismo sitio.
+      d.tv = local.enPaso
+      this.disparosEnVuelo.set(d.seq, { mio: local.veredicto, en: performance.now() })
+      // Un disparo cuyo veredicto no llegó nunca —se perdieron las ocho fotos
+      // que lo repetían— se suelta en vez de quedarse ocupando sitio.
+      if (this.disparosEnVuelo.size > 32) {
+        const viejo = performance.now() - 3000
+        for (const [seq, v] of this.disparosEnVuelo) if (v.en < viejo) this.disparosEnVuelo.delete(seq)
+      }
+    }
 
     this.pendientes.push(entrada)
     if (this.pendientes.length > NET.maxPendingInputs) this.pendientes.shift()
@@ -144,18 +203,72 @@ export class ClienteRed {
     if (!this.conectado) return
     const texto = JSON.stringify(entrada)
     this.medidas.enviados += 1
-    // La pérdida se simula **al enviar**: el paquete no llega, el servidor
-    // ejecuta el paso siguiente sin él y ahí aparece la corrección de verdad.
-    if (this.perdida > 0 && Math.random() < this.perdida) {
-      this.medidas.perdidos += 1
-      return
-    }
     this._historialEnvio.set(paso, performance.now())
     this.medidas.bytesSalida += texto.length
     this.medidas.totalSalida += texto.length
-    this._tras(() => {
-      if (this.socket.readyState === 1) this.socket.send(texto)
+    // La pérdida y el retardo son del enlace, no de aquí: los pone el
+    // transporte (`conRedSimulada`). Este método no sabe que existen.
+    this.transporte.send(texto)
+  }
+
+  /**
+   * **Anota un disparo**, con el instante real del clic y adónde apuntaba la
+   * mira en ese instante. El rumbo va aparte del de la entrada a propósito: el
+   * de la entrada se muestrea al empezar el paso y el ratón se mueve entre
+   * medias.
+   */
+  disparar(ahoraMs, yaw, pitch) {
+    this._disparo = { ts: ahoraMs, yaw, pitch }
+  }
+
+  /**
+   * **Lo que el tirador veía.** Resuelve el disparo contra la pose con la que
+   * el rival está dibujado ahora mismo —en el pasado, interpolado—, que es
+   * literalmente lo que hay en pantalla. El servidor hará lo mismo rebobinando;
+   * comparar los dos veredictos es la medida de si la compensación funciona.
+   */
+  _resolverLocal(d) {
+    const pose = this.poseDelRival()
+    if (!pose) return { veredicto: { impacto: false, zona: null, distancia: 0, dano: 0, tapado: false }, enPaso: null }
+    const cuerpo = cuerpoDeJugador(pose.x, pose.z, pose.feetY, pose.eyeHeight)
+    return {
+      veredicto: resolverDisparo(this.camara.position, d.yaw, d.pitch, cuerpo, this.oclusores),
+      enPaso: pose.enPaso,
+    }
+  }
+
+  /** Apunta el veredicto del servidor contra el que se había sacado aquí. */
+  _compararDisparo(resultado) {
+    const mio = this.disparosEnVuelo.get(resultado.seq)
+    if (!mio) return
+    this.disparosEnVuelo.delete(resultado.seq)
+    const m = this.medidas
+    m.disparos += 1
+    if (mio.mio.impacto === resultado.impacto) m.acuerdos += 1
+    // **Fantasma**: viste el impacto y el servidor no. **Sorpresa**: al revés.
+    else if (mio.mio.impacto) m.fantasmas += 1
+    else m.sorpresas += 1
+    if (mio.mio.impacto === resultado.sinRebobinar) m.acuerdosSinRebobinar += 1
+    m.danoTotal += resultado.dano
+    if (resultado.retroceso > m.retrocesoMax) m.retrocesoMax = resultado.retroceso
+    m.rebobinadoMs = resultado.rebobinadoMs
+    m.detalle.push({
+      yo: mio.mio.impacto,
+      con: resultado.impacto,
+      sin: resultado.sinRebobinar,
+      retroceso: resultado.retroceso,
+      lateral: resultado.lateral ?? 0,
+      dano: resultado.dano,
+      pedidoMs: resultado.pedidoMs ?? 0,
+      topado: !!resultado.topado,
+      rebobinadoMs: resultado.rebobinadoMs,
     })
+    if (m.detalle.length > 400) m.detalle.shift()
+    m.ultimoDisparo = {
+      yo: mio.mio.impacto ? mio.mio.zona : (mio.mio.tapado ? 'tapado' : 'fallo'),
+      servidor: resultado.impacto ? resultado.zona : (resultado.tapado ? 'tapado' : 'fallo'),
+      dano: resultado.dano,
+    }
   }
 
   /** La misma llamada que hace el servidor, con la misma entrada. */
@@ -163,12 +276,13 @@ export class ClienteRed {
     const m = this.movimiento
     desempaquetarTeclas(entrada.k, m.keys)
     this.camara.rotation.y = entrada.yaw
-    if (entrada.jt >= 0) m.pressJump(instanteDeSalto(entrada.n, entrada.jt))
+    if (entrada.jt >= 0) m.pressJump(instanteEnPaso(entrada.n, entrada.jt))
     m.update(SIM_STEP_MS / 1000, instanteDePaso(entrada.n))
   }
 
   _recibir(mensaje) {
     if (mensaje.t === MSG.BIENVENIDA) {
+      this.conectado = true
       this.id = mensaje.id
       this.paso = mensaje.n + NET.leadTicks
       this.camara.position.x = mensaje.salida.x
@@ -194,6 +308,11 @@ export class ClienteRed {
     const mio = foto.p[this.id]
     if (!mio) return
     this.medidas.ack = mio.ack
+    this.vida = mio.vida
+    this.bajas = mio.bajas
+    this.muertes = mio.muertes
+    // Los veredictos de los disparos que estaban en vuelo.
+    if (mio.disparos) for (const resultado of mio.disparos) this._compararDisparo(resultado)
     this.medidas.hambre = mio.hambre
     // Dónde dice el servidor que estás **antes** de reejecutar nada: es lo que
     // dibuja el fantasma, y por tanto lo que hace visible la reconciliación.
@@ -297,6 +416,13 @@ export class ClienteRed {
       yaw: a.yaw + normalizar(b.yaw - a.yaw) * alfa,
       /** Cuánto pasado se está viendo, contra el paso que el servidor va por. */
       retraso: this.medidas.pasoServidor - objetivo,
+      /**
+       * **En qué paso del servidor está dibujado.** Es fraccionario y es el
+       * dato que viaja con un disparo: le ahorra al servidor tener que
+       * estimar el rebobinado a partir del ping, que es donde se colaba el
+       * doble conteo (ver `docs/decisions.md` §46).
+       */
+      enPaso: objetivo,
     }
   }
 }

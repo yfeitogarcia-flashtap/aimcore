@@ -2890,4 +2890,33 @@ export const NET = {
   interpDelayTicks: 3,
   /** Una corrección por debajo de esto no se cuenta como visible, en unidades. */
   visibleCorrection: 0.01,
+
+  /**
+   * **Cuánto rebobina el servidor, como mucho** (vuelta 46). Un disparo se
+   * juzga contra lo que el tirador tenía en pantalla, y eso son `RTT +
+   * interpolación` hacia atrás. Sin tope, un cliente con 800 ms de ping —o que
+   * miente sobre su ping— dispararía a donde estabas hace casi un segundo.
+   *
+   * 200 ms es el valor de referencia de Source, y es el que acota la asimetría
+   * que sufre el que recibe: «me han matado detrás de la pared» nunca puede
+   * pasar de este número. El día que haya partidas públicas, además del tope
+   * hará falta que el RTT lo mida el servidor —y ya lo hace: sale de qué foto
+   * dice el cliente haber recibido, no de un número que mande.
+   */
+  maxRewindMs: 200,
+  /**
+   * Pasos de historial de cuerpos que guarda el servidor por jugador. Tiene que
+   * cubrir el rebobinado máximo con margen: 60 pasos son un segundo.
+   */
+  historyTicks: 60,
+  /** Alcance de un disparo, en unidades. Más allá no se comprueba nada. */
+  shotRange: 60,
+  /** Con la vida a cero, cuánto tarda en volver. Sin escalado todavía. */
+  respawnMs: 2000,
+  /**
+   * En cuántas fotos seguidas se repite el veredicto de un disparo. Mandarlo
+   * una sola vez significa que perder esa foto pierde el veredicto para
+   * siempre; el cliente los descarta por número, así que repetir no cuesta.
+   */
+  verdictRepeats: 8,
 }
