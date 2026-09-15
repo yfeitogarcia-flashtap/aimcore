@@ -109,8 +109,16 @@ export class Partida {
        */
       historial: new Array(NET.historyTicks).fill(null),
       vida: 100,
-      /** Paso en que vuelve a estar vivo, o 0. */
-      reaparecerEn: 0,
+      /**
+       * **El paso de ENTRADA en que vuelve a estar vivo**, o 0 si lo está
+       * (vuelta 52). Va en el reloj de las entradas de ese jugador y no en el
+       * del servidor, y eso es lo que hace que el cliente pueda predecir su
+       * propia muerte: `n · SIM_STEP_MS` es el instante del mundo en los dos
+       * extremos (ver `protocolo.js`), mientras que el paso del servidor es un
+       * contador que el cliente no comparte. Con el reloj del servidor, «estoy
+       * muerto» daría distinto a cada lado y la reconciliación no cerraría.
+       */
+      vivoEn: 0,
       /** Veredictos pendientes de mandarle. */
       disparos: [],
       bajas: 0,
@@ -152,7 +160,7 @@ export class Partida {
       jugador.pose.position.x = mensaje.x
       jugador.pose.position.z = mensaje.z
       jugador.vida = 100
-      jugador.reaparecerEn = 0
+      jugador.vivoEn = 0
       jugador.historial.fill(null)
       return
     }
@@ -191,7 +199,10 @@ export class Partida {
     // avanzó por falta de entrada: no moverse también es una posición, y el
     // rebobinado tiene que encontrar algo en cada paso del anillo.
     for (const jugador of this.jugadores.values()) {
-      if (jugador.reaparecerEn > 0 && this.paso >= jugador.reaparecerEn) this._reaparecer(jugador)
+      // La reaparición ya **no** vive aquí: ocurre al ejecutar la primera
+      // entrada del jugador que caiga en `vivoEn` o más allá (ver `_ejecutar`).
+      // Contarla por pasos del servidor la ponía en un reloj que el cliente no
+      // tiene, y entonces no podía predecirla.
       this._anotarCuerpo(jugador, this.paso)
     }
 
@@ -202,6 +213,7 @@ export class Partida {
         ack: jugador.ack,
         hambre: jugador.hambre,
         vida: jugador.vida,
+        vivoEn: jugador.vivoEn,
         bajas: jugador.bajas,
         muertes: jugador.muertes,
         yaw: jugador.pose.rotation.y,
@@ -284,6 +296,20 @@ export class Partida {
   /** Ejecuta una entrada. Es **la misma llamada** que hace el cliente. */
   _ejecutar(jugador, entrada) {
     const m = jugador.movimiento
+    if (jugador.vivoEn > 0) {
+      if (entrada.n < jugador.vivoEn) {
+        // **Un muerto no se mueve.** La entrada se consume igual —el `ack`
+        // avanza, o el cliente creería que se han perdido— pero no toca el
+        // mundo. Hasta la vuelta 52 esto no existía y un abatido seguía paseando
+        // durante los dos segundos de la reaparición, a la vista del rival.
+        jugador.ack = entrada.n
+        return
+      }
+      // Y la primera entrada que llega ya con derecho a vivir es la que
+      // reaparece. Es una entrada concreta, con su número, así que el cliente
+      // puede hacer exactamente lo mismo y no hay corrección que pagar.
+      this._reaparecer(jugador)
+    }
     desempaquetarTeclas(entrada.k, m.keys)
     jugador.pose.rotation.y = entrada.yaw
     if (entrada.jt >= 0) m.pressJump(instanteEnPaso(entrada.n, entrada.jt))
@@ -305,7 +331,7 @@ export class Partida {
     const d = entrada.d
     const rival = [...this.jugadores.values()].find((j) => j !== tirador)
     const salida = {
-      seq: d.seq, impacto: false, zona: null, dano: 0, tapado: false,
+      seq: d.seq, impacto: false, zona: null, dano: 0, tapado: false, baja: false,
       sinRebobinar: false, retroceso: 0, lateral: 0, rebobinadoMs: 0,
       pedidoMs: 0, topado: false,
     }
@@ -352,7 +378,7 @@ export class Partida {
       salida.lateral = +Math.abs((dx * -dir.z + dz * dir.x) / plano).toFixed(3)
     }
 
-    if (veredicto.impacto) this._aplicarDano(rival, veredicto.dano, tirador)
+    if (veredicto.impacto) salida.baja = this._aplicarDano(rival, veredicto.dano, tirador)
     this._anotarVeredicto(tirador, salida)
   }
 
@@ -361,14 +387,22 @@ export class Partida {
     jugador.disparos.push({ dato, ttl: NET.verdictRepeats })
   }
 
-  /** Vida, y nada más: ni escudo, ni casco, ni reaparición escalada. */
+  /**
+   * Vida, y nada más: ni escudo, ni casco, ni reaparición escalada.
+   * Devuelve si el disparo ha sido **baja**, que es lo que el tirador necesita
+   * saber al instante.
+   */
   _aplicarDano(victima, dano, tirador) {
-    if (victima.vida <= 0) return
+    if (victima.vida <= 0) return false
     victima.vida = Math.max(0, victima.vida - dano)
-    if (victima.vida > 0) return
+    if (victima.vida > 0) return false
     victima.muertes += 1
     tirador.bajas += 1
-    victima.reaparecerEn = this.paso + Math.round(NET.respawnMs / SIM_STEP_MS)
+    // **En el reloj de la víctima**, que es el único que ella y su cliente
+    // comparten: dentro de tantas entradas suyas vuelve. Como produce una por
+    // paso, son los `respawnMs` de siempre.
+    victima.vivoEn = victima.ack + Math.round(NET.respawnMs / SIM_STEP_MS)
+    return true
   }
 
   _reaparecer(jugador) {
@@ -379,6 +413,6 @@ export class Partida {
     jugador.pose.position.x = salida.x
     jugador.pose.position.z = salida.z
     jugador.vida = 100
-    jugador.reaparecerEn = 0
+    jugador.vivoEn = 0
   }
 }

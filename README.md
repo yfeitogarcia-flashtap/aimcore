@@ -1197,6 +1197,12 @@ vienen apagados, porque no son para jugar sino para medir.
 Cada jugador lleva **el color de su equipo** —azul o magenta— según la ranura que
 le dé el servidor, que es la misma de la que sale su punto de salida.
 
+**Un abatido está abatido de verdad.** No se mueve mientras espera a reaparecer
+—el servidor no le deja— y su cuerpo **desaparece** en vez de quedarse en pie
+donde cayó. Y la baja se confirma al instante: la mira cambia de forma y suena
+distinta a un acierto normal, porque una baja cierra un intercambio y hay que
+poder saberlo sin mirar. El contador de bajas espera al HUD completo.
+
 **Y cuando la partida deja de estar, se dice.** Hay tres formas de quedarse
 fuera —te echan de una partida llena, se corta el cable o dejan de llegar fotos—
 y las tres se veían igual: el juego quedándose quieto sin explicación. Ahora sale

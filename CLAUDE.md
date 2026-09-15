@@ -1290,6 +1290,36 @@ mapa de controles tiene que ser el definitivo desde el principio: si se añaden
 cuando existan las mecánicas, alguien ya habrá puesto ahí su bind favorito. El
 panel las marca «sin efecto todavía».
 
+**La muerte va en el reloj de las entradas, no en el del servidor** (vuelta 52).
+`vivoEn` es el número de **entrada** de la víctima a partir del cual vuelve a
+estar viva, y los dos extremos aplican el mismo predicado a los mismos números.
+Con el paso del servidor —que el cliente no comparte, porque va por delante lo
+que tarde el viaje— «estoy muerto» daría distinto a cada lado por construcción, y
+cada foto traería una corrección. Es la regla del protocolo de la vuelta 45
+(«el reloj de la red es el número de paso») aplicada a una mecánica nueva: si
+añades algo que dure varios pasos —un aturdimiento, una recarga autoritativa—, va
+en ese reloj.
+
+De ahí sale lo demás: **la reaparición ocurre al ejecutar la primera entrada que
+alcanza `vivoEn`**, que es una entrada concreta, así que el cliente la predice
+igual que el servidor. Medido: 0 correcciones y 0 u de error prediciéndola,
+contra 15.46 u sin predecirla — que es la distancia del punto de muerte al spawn,
+o sea una corrección del tamaño del mapa en cada muerte.
+
+Y **un abatido no se mueve** (0.00 u con la tecla de andar pulsada) ni se dibuja:
+`poseDelRival()` publica `vivo`, del lado viejo de la interpolación como todo lo
+demás cuando hay salto. Consecuencia deliberada: quien deja de mandar entradas
+estando muerto **no reaparece** hasta que vuelve, porque la reaparición cuelga de
+sus propias entradas.
+
+**Una baja se distingue de un impacto por forma y por voz, no por intensidad.**
+La marca son los mismos trazos más largos con el centro en anillo —sin color
+nuevo, que en esta paleta todos los tonos significan ya algo y el rojo es «te
+disparan **a ti**»— y dura 420 ms contra 140, porque una baja cierra un
+intercambio y se mira. El sonido (`playKill`) **baja** de tono y lleva un grave
+que el acierto no tiene: el acierto sube y dice «has conectado». Misma regla que
+el silbido de la vuelta 40 — una voz propia, no la de al lado con otro volumen.
+
 **Al reloj del servidor sólo se le hace caso si está fresco** (vuelta 51). El
 enganche frena al cliente cuando va por delante restándole un paso por frame:
 contra un reloj que avanza se apaga solo, contra uno **parado** es una trampa sin
@@ -1470,6 +1500,10 @@ no llegaba al canvas y no había mira. En pantalla, jugando, hay **mira, vida y 
 cartel de abatido con su cuenta**, y nada más — ni munición, ni armas, ni
 puntuación, que son de la Opción B. Los números de red y el fantasma están
 apagados detrás de **F3**.
+
+Desde la vuelta 52 el **abatido es autoritativo**: un muerto no se mueve, su
+cuerpo no se dibuja y la baja se confirma al instante con marca y sonido propios.
+El contador permanente de bajas espera al HUD completo.
 
 De la primera prueba real entre dos casas (vuelta 49) salieron dos arreglos:
 **volver de otra pestaña ya no da un avance rápido** —el reloj del cliente se

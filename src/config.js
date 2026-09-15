@@ -2600,6 +2600,8 @@ export const AUDIO = {
   masterVolume: 0.45,
   shotVolume: 0.9,
   hitVolume: 0.8,
+  /** La baja: por encima del acierto, porque cierra un intercambio. */
+  killVolume: 0.9,
   /** Disparo enemigo: el mismo perfil que el del jugador, un punto más bajo. */
   enemyShotVolume: 0.62,
   /**
@@ -2930,6 +2932,12 @@ export const NET = {
    * juego de un solo jugador no existe.
    */
   hitMarkerMs: 140,
+  /**
+   * Y cuánto dura la de **baja** (vuelta 52). Más larga que la de impacto a
+   * propósito: una baja es el final de algo y se mira; un impacto es
+   * información de camino y no puede quedarse encima del disparo siguiente.
+   */
+  killMarkerMs: 420,
   /**
    * **Cuánto atraso se recupera corriendo, y a partir de dónde se re-ancla el
    * reloj** (vuelta 49).

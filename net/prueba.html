@@ -38,6 +38,16 @@
   #mira.dado i:nth-child(3) { transform: rotate(45deg) translateX(-3px); }
   #mira.dado i:nth-child(4) { transform: rotate(45deg) translateX(3px); }
   #mira.dado i { background: #FFF; }
+  /* **La baja**: los mismos trazos, más largos y abiertos, y el punto del centro
+     se convierte en anillo. Se distingue por **forma**, no por color: en esta
+     paleta todos los tonos significan ya algo, y el rojo es «te están
+     disparando a ti». Misma regla que la visera del casco. */
+  #mira.mato i:nth-child(1) { transform: rotate(45deg) translateY(-7px) scaleY(1.7); }
+  #mira.mato i:nth-child(2) { transform: rotate(45deg) translateY(7px) scaleY(1.7); }
+  #mira.mato i:nth-child(3) { transform: rotate(45deg) translateX(-7px) scaleX(1.7); }
+  #mira.mato i:nth-child(4) { transform: rotate(45deg) translateX(7px) scaleX(1.7); }
+  #mira.mato i:nth-child(5) { width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px;
+    background: transparent; border: 1.5px solid #FFF; border-radius: 50%; }
 
   /* **El aviso de que la partida ya no está.** Va arriba y centrado, por encima
      de todo: es lo único que explica por qué el juego no responde, y hasta la

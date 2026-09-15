@@ -5236,6 +5236,104 @@ desaparecía, porque las fotos seguían reseteando el contador de silencio. El
 servidor nunca para su reloj mientras sigue mandando: el estímulo bueno es
 **cortar la red de verdad** (`context.setOffline`), y entonces sale 61.
 
+## Ronda 52 — Abatido de verdad, y una baja que se nota
+
+Primera de las tres vueltas hacia el juego completo en red. Tres cosas, y la
+primera tiene un truco que decide las otras dos.
+
+### La muerte va en el reloj de las entradas, no en el del servidor
+
+`Partida._ejecutar` movía al jugador **sin mirar la vida**: un abatido seguía
+paseando los dos segundos de la reaparición, a la vista del rival. Arreglarlo
+parece una línea —«si está muerto, no muevas»— y no lo es, porque el cliente
+**también** tiene que aplicar esa regla al reejecutar sus entradas sin confirmar.
+Si los dos lados no coinciden en qué pasos estuvo muerto, cada foto trae una
+corrección.
+
+Y ahí está la trampa: `reaparecerEn` se contaba en **pasos del servidor**, que es
+un contador que el cliente no comparte —va por delante lo que tarde el viaje—.
+Con ese reloj, «estoy muerto» da distinto a cada lado por construcción.
+
+Lo que sí comparten es **el número de entrada**: el protocolo dice desde la
+vuelta 45 que cada entrada viaja sellada con su paso `n` y que los dos extremos
+la ejecutan con `now = n · SIM_STEP_MS`. Así que la muerte pasa a ese reloj:
+`vivoEn = ack de la víctima + respawnMs/paso`, y los dos lados aplican el mismo
+predicado a los mismos números. La reaparición deja de ocurrir en `tick()` y
+ocurre **al ejecutar la primera entrada que alcanza `vivoEn`**, que es una
+entrada concreta y por tanto predecible.
+
+Medido, con 20 ms de latencia y 8 de jitter: un abatido con la tecla de andar
+pulsada se mueve **0.00 u** en 0.9 s, contra los ~5.9 que andaría.
+
+### Y por eso la reaparición se puede predecir
+
+Como es una entrada concreta y el sitio de salida no cambia —es el de la ranura,
+que llega en la bienvenida—, el cliente hace exactamente lo mismo que el
+servidor. Medido:
+
+| | Correcciones | Error máximo |
+|---|---|---|
+| Prediciendo la reaparición | **0** | **0 u** |
+| Sin predecirla | 1 | **15.46 u** |
+
+Los 15.46 u son la distancia del punto de muerte al spawn: sin predecir, cada
+muerte se paga con una corrección del tamaño del mapa. Y el aterrizaje cae a
+**0.11 u** del sitio de salida, con un salto de 15.89.
+
+### Un cadáver no se dibuja
+
+`vida` ya viajaba en la foto, pero `poseDelRival()` no la exponía y el cuerpo se
+quedaba **en pie donde cayó** durante toda la reaparición: no había forma de
+saber si le habías matado o seguía ahí quieto. Ahora el rival muerto no se
+dibuja — medido, 0 de 59 frames con el cuerpo en pantalla.
+
+El dato viaja del lado viejo de la interpolación, como todo lo demás cuando hay
+salto (vuelta 50): así el cuerpo desaparece en el mismo instante en que le
+correspondía desaparecer, no un paso antes.
+
+### La baja se confirma al instante, y se distingue del impacto
+
+El veredicto por disparo ya existía desde la 46 y el gancho `onVeredicto` desde
+la 48: faltaba **un booleano**. `_aplicarDano` ya sabía cuándo la víctima llegaba
+a cero; ahora lo devuelve y viaja con el veredicto.
+
+Y se distingue **por forma y por voz**, no por intensidad:
+
+- **La marca**: los mismos cuatro trazos, más largos y abiertos, y el punto del
+  centro convertido en anillo. No hay color nuevo porque en esta paleta todos los
+  tonos significan ya algo —y el rojo es «te están disparando **a ti**»—. Es la
+  regla de la visera del casco y la del fogonazo de cuatro puntas.
+- **El sonido** (`playKill`): el acierto es un chirrido **que sube**, brillante y
+  corto, y significa «has conectado». La baja significa lo contrario —eso se ha
+  acabado— así que **baja de tono** y lleva un grave debajo que el acierto no
+  tiene. Es la regla del silbido de la vuelta 40: una voz propia, no la de al
+  lado con otro volumen. Si sonaran parecidas, en medio de una ráfaga no habría
+  forma de saber si el rival ha caído o sólo le has rozado.
+- **Y dura más**: 420 ms contra 140. Una baja cierra un intercambio y se mira; un
+  impacto es información de camino y no puede quedarse encima del disparo
+  siguiente.
+
+El contador permanente de bajas se queda fuera a propósito: `bajas` y `muertes`
+ya viajan en la foto, y su sitio es el HUD completo, que es de otra vuelta.
+
+**La página del duelo estrena audio.** No tenía ninguno; el contexto se arranca
+en el mismo clic que captura el ratón, que es el único gesto seguro que hay.
+
+### Lo que costó, y es todo del banco
+
+- **Matar de un tiro a la cabeza no prueba que la baja se distinga del impacto.**
+  La primera tanda salió con un solo veredicto, que era baja: con eso, «uno viene
+  marcado como baja» se cumple igual si se marcan todos. Se dispara a las
+  piernas, que son 34 de daño, y entonces hay tres impactos y una sola baja.
+- **Y medir dónde está el jugador dos segundos después de reaparecer mide otra
+  cosa.** Seguía con la tecla de andar puesta, así que estaba a 10 u del spawn y
+  el banco daba el arreglo por malo. El salto se busca por lo que es —el mayor
+  desplazamiento entre dos frames— igual que en la vuelta 50.
+- **Un abatido que deja de mandar entradas no reaparece**, porque la reaparición
+  cuelga de sus propias entradas. Es consecuencia deliberada del reloj elegido:
+  quien se va a otra pestaña estando muerto vuelve al mundo cuando vuelve a la
+  pestaña. Anotado aquí porque parece un fallo y no lo es.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
@@ -5364,6 +5462,12 @@ objetivo era medir tiempos y rendimiento de verdad.
 - **Que la migración a Cloudflare no cambió nada**: los bancos de las vueltas 45
   y 46, sin tocar una aserción, pasados contra el Durable Object corriendo en
   `wrangler dev --local`.
+- **Que un abatido no se mueve y su cuerpo no se dibuja** (`abatido52.mjs`): con
+  dos navegadores a 60 fps y latencia inyectada, que el muerto con la tecla de
+  andar pulsada se queda en 0.00 u, que el rival no lo dibuja en ninguno de los
+  frames en que está caído, que de tres impactos exactamente uno viene marcado
+  como baja, que el salto de reaparición le deja a 0.11 u de su salida, y que
+  apagando **sólo** la predicción de la reaparición el error pasa de 0 a 15.46 u.
 - **Que el cliente no se congela ni se queda callado** (`aviso51.mjs`): con un
   corte de red de verdad, que el mundo local sigue a 61 pasos/s en vez de caer a
   cero, que quitar la puerta de frescura lo hunde a 20 —o sea que es eso lo que

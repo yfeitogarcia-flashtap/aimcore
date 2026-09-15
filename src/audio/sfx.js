@@ -303,6 +303,50 @@ export function playHit() {
 }
 
 /**
+ * **Baja: dos notas que bajan, con cuerpo** (vuelta 52).
+ *
+ * No es el acierto más fuerte, y eso no es capricho: el acierto es un chirrido
+ * **que sube**, brillante y corto, y significa «has conectado». Una baja
+ * significa lo contrario —eso se ha acabado— así que **baja de tono** y lleva un
+ * grave debajo que el acierto no tiene. Es la misma regla del silbido de la
+ * vuelta 40: una voz propia, no la de al lado con otro volumen. Si sonaran
+ * parecidas, en medio de una ráfaga no habría forma de saber si el rival ha
+ * caído o sólo le has rozado.
+ */
+export function playKill() {
+  if (!ctx || !master) return
+  const t = ctx.currentTime
+  const level = AUDIO.killVolume
+
+  // (tipo, frecuencia inicial, final, ganancia, retardo, duración)
+  const voces = [
+    ['sine', 1320, 990, 0.30, 0.000, 0.16],
+    ['sine', 990, 660, 0.26, 0.085, 0.24],
+    // El cuerpo grave, que es lo que la separa del acierto de un vistazo.
+    ['triangle', 220, 150, 0.22, 0.085, 0.30],
+  ]
+
+  for (const [tipo, desde, hasta, ganancia, retardo, dur] of voces) {
+    const inicio = t + retardo
+    const osc = ctx.createOscillator()
+    osc.type = tipo
+    osc.frequency.setValueAtTime(desde, inicio)
+    osc.frequency.exponentialRampToValueAtTime(hasta, inicio + dur * 0.8)
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, inicio)
+    g.gain.exponentialRampToValueAtTime(ganancia * level, inicio + 0.006)
+    g.gain.exponentialRampToValueAtTime(0.0001, inicio + dur)
+    osc.connect(g).connect(master)
+    osc.start(inicio)
+    osc.stop(inicio + dur + 0.02)
+    osc.onended = () => {
+      osc.disconnect()
+      g.disconnect()
+    }
+  }
+}
+
+/**
  * Aterrizaje: un golpe sordo al tocar el suelo tras una caída.
  *
  * El perfil vive en `LANDING.sound` y está elegido para **no parecerse al

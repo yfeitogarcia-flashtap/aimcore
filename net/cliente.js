@@ -79,6 +79,10 @@ export class ClienteRed {
     this._seqDisparo = 0
     /** Vida que dice el servidor. Con cero, abatido. */
     this.vida = 100
+    /** El paso de entrada en que se vuelve a estar vivo, o 0. Lo dice el servidor. */
+    this.vivoEn = 0
+    /** El sitio de salida de tu ranura, para poder predecir la reaparición. */
+    this.salida = null
 
     /** Fotos del rival, para dibujarlo en el pasado. */
     this.rival = { id: null, buffer: [], pose: null }
@@ -332,13 +336,43 @@ export class ClienteRed {
     this.onVeredicto?.(resultado)
   }
 
-  /** La misma llamada que hace el servidor, con la misma entrada. */
+  /**
+   * La misma llamada que hace el servidor, con la misma entrada — y desde la
+   * vuelta 52, **con la misma regla de abatido**.
+   *
+   * `vivoEn` viene del servidor y va en el reloj de las entradas, así que aquí
+   * se puede aplicar palabra por palabra lo que allí se aplica: por debajo de
+   * ese número no se mueve nada, y la primera entrada que lo alcanza reaparece.
+   * Ésa es toda la razón de que la muerte viaje en ese reloj y no en el del
+   * servidor: si no, «estoy muerto» daría distinto a cada lado y cada foto
+   * traería una corrección.
+   */
   _aplicar(entrada) {
     const m = this.movimiento
+    if (this.vivoEn > 0) {
+      if (entrada.n < this.vivoEn) return
+      this._reaparecerAqui()
+    }
     desempaquetarTeclas(entrada.k, m.keys)
     this.camara.rotation.y = entrada.yaw
     if (entrada.jt >= 0) m.pressJump(instanteEnPaso(entrada.n, entrada.jt))
     m.update(SIM_STEP_MS / 1000, instanteDePaso(entrada.n))
+  }
+
+  /**
+   * **La reaparición, predicha.** Es exactamente lo que hace el servidor: volver
+   * al sitio de salida que se dio en la bienvenida —el de la ranura, que no
+   * cambia— y marcar el teletransporte. Se puede predecir porque no tiene nada
+   * de aleatorio, y predecirla evita una corrección del tamaño del mapa en cada
+   * muerte.
+   */
+  _reaparecerAqui() {
+    this.vivoEn = 0
+    this.movimiento.reset()
+    if (this.salida) {
+      this.camara.position.x = this.salida.x
+      this.camara.position.z = this.salida.z
+    }
   }
 
   _recibir(mensaje) {
@@ -350,6 +384,9 @@ export class ClienteRed {
       this.conectado = true
       this.id = mensaje.id
       this.paso = mensaje.n + NET.leadTicks
+      // El sitio de salida de su ranura. Se guarda porque la reaparición vuelve
+      // aquí, y predecirla necesita saberlo.
+      this.salida = { x: mensaje.salida.x, z: mensaje.salida.z }
       this.camara.position.x = mensaje.salida.x
       this.camara.position.z = mensaje.salida.z
       this.onBienvenida?.(mensaje)
@@ -368,7 +405,12 @@ export class ClienteRed {
     for (const id of Object.keys(foto.p)) {
       if (id === this.id) continue
       this.rival.id = id
-      this.rival.buffer.push({ n: foto.n, recibidoEn: performance.now(), yaw: foto.p[id].yaw, s: foto.p[id].s })
+      // `vivo` viaja con la foto porque **un cadáver no se dibuja**: hasta la
+      // vuelta 52 el cuerpo del rival se quedaba en pie donde cayó.
+      this.rival.buffer.push({
+        n: foto.n, recibidoEn: performance.now(),
+        yaw: foto.p[id].yaw, s: foto.p[id].s, vivo: foto.p[id].vida > 0,
+      })
       while (this.rival.buffer.length > 30) this.rival.buffer.shift()
     }
 
@@ -376,6 +418,7 @@ export class ClienteRed {
     if (!mio) return
     this.medidas.ack = mio.ack
     this.vida = mio.vida
+    this.vivoEn = mio.vivoEn ?? 0
     this.bajas = mio.bajas
     this.muertes = mio.muertes
     // Los veredictos de los disparos que estaban en vuelo.
@@ -535,6 +578,8 @@ export class ClienteRed {
       // El rumbo se mezcla por el camino corto, o cruzar ±π daría una vuelta
       // entera de peonza.
       yaw: a.yaw + normalizar(b.yaw - a.yaw) * alfa,
+      /** ¿Está vivo? Del lado viejo, como todo lo demás cuando hay salto. */
+      vivo: a.vivo !== false,
       /** Cuánto pasado se está viendo, contra el paso que el servidor va por. */
       retraso: this.medidas.pasoServidor - objetivo,
       /**

@@ -26,6 +26,7 @@ import { MovementController } from '../src/game/movement.js'
 import { Avatar } from '../src/game/avatar.js'
 import { LookControls } from '../src/game/lookControls.js'
 import { hasLineOfSight } from '../src/game/sight.js'
+import { initAudio, playHit, playKill } from '../src/audio/sfx.js'
 import { cuerpoDeJugador } from './pose.js'
 import { resolverDisparo } from './disparo.js'
 import { ClienteRed } from './cliente.js'
@@ -136,9 +137,16 @@ cliente.onBienvenida = (m) => {
 let apagarMarca = 0
 cliente.onVeredicto = (v) => {
   if (!v.impacto) return
+  // **Baja y acierto se distinguen por forma y por voz**, no por intensidad. La
+  // baja cierra un intercambio y hay que poder saberlo sin mirar: por eso dura
+  // más y suena a otra cosa (ver `playKill`).
   mira.classList.add('dado')
+  mira.classList.toggle('mato', !!v.baja)
   clearTimeout(apagarMarca)
-  apagarMarca = setTimeout(() => mira.classList.remove('dado'), NET.hitMarkerMs)
+  apagarMarca = setTimeout(() => mira.classList.remove('dado', 'mato'),
+                           v.baja ? NET.killMarkerMs : NET.hitMarkerMs)
+  if (v.baja) playKill()
+  else playHit()
 }
 /**
  * **Lo que ve el jugador cuando la partida deja de estar.** Dos estados, y la
@@ -255,6 +263,9 @@ addEventListener('blur', () => {
 addEventListener('click', (e) => {
   if (document.pointerLockElement === lienzo) return
   if (e.target.closest('.control')) return
+  // El contexto de audio **no arranca sin un gesto**, y éste es el único que hay
+  // seguro: el clic con el que se entra a jugar. Es idempotente.
+  initAudio()
   // Chrome rechaza la captura si se pide justo después de soltarla con Escape.
   // No es un error del que haya que enterarse: se vuelve a hacer clic.
   Promise.resolve(lienzo.requestPointerLock()).catch(() => {})
@@ -397,7 +408,10 @@ function bucle(ahora) {
 
   // El rival, en el pasado y entre dos fotos.
   const pose = cliente.poseDelRival()
-  if (pose) {
+  // **Un cadáver no se dibuja.** Hasta la vuelta 52 el cuerpo del rival se
+  // quedaba en pie donde cayó durante los dos segundos de su reaparición, así
+  // que no había forma de saber si le habías matado o seguía ahí quieto.
+  if (pose && pose.vivo) {
     rival.group.visible = true
     rival.group.position.set(pose.x, pose.feetY, pose.z)
     rival.group.rotation.y = pose.yaw
