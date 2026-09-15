@@ -1154,20 +1154,52 @@ Pedir el mismo límite que el refresco de la pantalla lleva una tolerancia: sin
 ella, un tick de 4.166 ms no llegaría por los pelos a un objetivo de 4.167 y el
 ritmo se quedaría a la mitad.
 
-## Multijugador 1v1 (prototipo local)
+## Multijugador 1v1 (prototipo)
 
-Hay un primer 1v1 entre dos personas, **en local y sin nube**. Sólo movimiento:
-ni disparos, ni compensación de retraso, ni cuentas, ni despliegue.
+Hay un 1v1 entre dos personas, con movimiento **y disparo**, y desde la vuelta 47
+se puede jugar con alguien que esté en su casa. Sigue sin haber cuentas, ni
+matchmaking, ni rankings, ni nada guardado: la partida muere con la sala.
+
+**En local**, para desarrollar:
 
 ```
 npm run dev     # el juego, como siempre
 npm run net     # el servidor de partida, en ws://localhost:5199
 ```
 
-Y se abre `http://localhost:5173/net/prueba.html` **en dos pestañas**. Clic en
-cada una para capturar el ratón; WASD, espacio, C y Shift como en el juego. Cada
-pestaña ve a la otra como un cuerpo del color del equipo contrario, moviéndose
-por el Plano A.
+Y se abre `http://localhost:5173/net/prueba.html` **en dos pestañas**.
+
+**En Cloudflare**, para jugar con alguien de fuera. Se prueba entero sin cuenta y
+sin internet, porque `wrangler` corre el Durable Object de verdad en tu máquina:
+
+```
+npm run worker    # el Worker y la sala, en http://localhost:8787
+```
+
+Y se abre `http://localhost:8787/duelo` en dos pestañas. Ojo: el Worker sirve los
+ficheros de `dist/`, no los de `src/`, así que `npm run worker` **construye
+antes** — un cambio en el juego no se ve hasta volver a lanzarlo.
+
+Para publicarlo, `npm run deploy` — los pasos completos, incluido qué plan
+hace falta (**el gratuito**), están en
+[`docs/despliegue-cloudflare.md`](docs/despliegue-cloudflare.md).
+
+Clic en cada pestaña para capturar el ratón; WASD, espacio, C y Shift como en el
+juego, y clic izquierdo para disparar. Cada pestaña ve a la otra como un cuerpo
+del color del equipo contrario, moviéndose por el Plano A.
+
+### La partida va por código
+
+Quien abre la página **ya ha creado una partida**: no hay botón de crear. Arriba
+a la izquierda salen un código de seis caracteres y el enlace, y quien abra ese
+enlace entra en la misma sala. En Cloudflare el código **es** la dirección del
+Durable Object (`idFromName`), así que no hay lista de partidas, ni registro de
+salas, ni nada que limpiar cuando una acaba.
+
+El alfabeto del código no tiene parejas que se confundan al dictarlo —ni O/0, ni
+I/L/1, ni S/5, ni B/8— y lo que se teclea mal se traduce en vez de rechazarse:
+`mo-xtuv` entra en la sala `MQXTUV`. Son **dos jugadores por sala**; a un tercero
+se le dice que está llena.
 
 El panel de la izquierda enseña en vivo lo que hay que mirar, y los mandos de
 abajo permiten **estropear la red a propósito**: latencia de ida, jitter y
@@ -1187,9 +1219,16 @@ porcentaje de paquetes perdidos, por pestaña.
 - **Al rival se le dibuja en el pasado**, entre dos fotos ya recibidas.
   Extrapolar al futuro es inventarse dónde está.
 
-El servidor **no tiene código de juego**: importa `movement.js` y `scenario.js`
-tal cual y les pone un objeto plano donde iría la cámara. La física del juego
-corre en Node sin navegador, sin three y sin cambiar una línea.
+La partida **no tiene código de juego**: `net/partida.js` importa `movement.js`,
+`scenario.js`, `hitPlayer` y `hasLineOfSight` tal cual y les pone un objeto plano
+donde iría la cámara. La física del juego corre fuera del navegador sin cambiar
+una línea.
+
+Y **no sabe nada de red**: un jugador entra con una función `enviar(texto)` y ya
+está. Eso es lo que permite que la corran dos huéspedes distintos —`ws` en Node
+(`net/servidor.mjs`, 78 líneas) y un Durable Object en Cloudflare
+(`worker/sala.js`)— sin que ninguna regla del juego viva en dos sitios. Los dos
+bancos de medida se pasan contra los dos, sin cambiar una aserción.
 
 ### Lo que sale medido
 
@@ -1312,14 +1351,23 @@ src/
 │   └── targets.js      dianas: tipos, zonas, vida y apariciones
 └── ui/                 Hud, Crosshair, Options, Summary
 
-net/                    prototipo de 1v1 local — fuera de src/ y fuera del build
-├── servidor.mjs        servidor ws autoritativo (npm run net)
+net/                    prototipo de 1v1 — fuera de src/
+├── partida.js          TODO lo que decide el servidor, sin saber de red
+├── servidor.mjs        huésped de sobremesa: ws, reloj e informe (npm run net)
 ├── cliente.js          predicción y reconciliación
 ├── transporte.js       send / onMessage / close, y la red simulada
 ├── disparo.js          hitPlayer + hasLineOfSight, para los dos extremos
 ├── protocolo.js        lo que viaja por el cable, y en qué reloj
+├── codigo.js           el código de sala: lo usan el cliente y el Worker
+├── sala-cliente.js     de qué sala y a qué servidor, sacado de la dirección
 ├── pose.js             el objeto plano que hace de cámara en el servidor
-└── prueba.html/.js     la página que se abre en dos pestañas
+└── prueba.html/.js     la página del duelo (ésta sí entra en el build)
+
+worker/                 el despliegue en Cloudflare
+├── index.js            el portero: /sala/<código> al Durable Object
+└── sala.js             huésped de la nube: el Durable Object
+
+wrangler.jsonc          qué se publica y cómo (plan gratuito: new_sqlite_classes)
 ```
 
 ### Por qué React no toca el bucle de render
@@ -1436,10 +1484,13 @@ memoria y se pierden al recargar.
 Fuera de alcance también, por decisión explícita: minimapa, pasos sonoros.
 Cuentas, ranking y matchmaking van aparte.
 
-El **multijugador** dejó de estar fuera de alcance en la vuelta 45, pero sólo
-hasta donde llega el prototipo de arriba: un servidor local para dos pestañas y
-nada más. El plan completo, con costes y riesgos, está en
-[`docs/propuestas/02-multijugador-1v1.md`](docs/propuestas/02-multijugador-1v1.md).
+El **multijugador** dejó de estar fuera de alcance en la vuelta 45, y la nube en
+la 47, pero sólo hasta donde llega el prototipo de arriba: una sala por código,
+dos jugadores, movimiento y disparo. Sin cuentas, sin matchmaking, sin rankings y
+sin nada guardado. El plan completo, con costes y riesgos, está en
+[`docs/propuestas/02-multijugador-1v1.md`](docs/propuestas/02-multijugador-1v1.md);
+los pasos para publicarlo, en
+[`docs/despliegue-cloudflare.md`](docs/despliegue-cloudflare.md).
 
 ## Documentación interna
 
@@ -1449,3 +1500,6 @@ nada más. El plan completo, con costes y riesgos, está en
 - [`docs/decisions.md`](docs/decisions.md) — historial completo de decisiones de
   diseño, su razonamiento y las alternativas descartadas. Para consulta puntual
   cuando haga falta saber por qué algo está como está.
+- [`docs/despliegue-cloudflare.md`](docs/despliegue-cloudflare.md) — cómo poner
+  el 1v1 en internet, paso a paso y sin dar nada por sabido: cuenta, plan, token
+  con el permiso mínimo y cómo hacerlo llegar sin pegarlo en un chat.

@@ -1,0 +1,31 @@
+// **El despliegue de Vektor en Cloudflare** (vuelta 47).
+//
+// Un solo Worker sirve las dos cosas: los ficheros del juego (`dist/`, lo que
+// deja `npm run build`) y las salas de 1v1 (un Durable Object por código).
+//
+// `new_sqlite_classes` y no `new_classes`: el respaldo SQLite es el único que
+// entra en el **plan gratuito** de Workers. Aquí no se guarda nada en disco —una
+// partida vive en memoria y muere con la sala—, así que el respaldo da igual
+// para el juego y decide sólo lo que hay que pagar.
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "vektor",
+  "main": "worker/index.js",
+  "compatibility_date": "2026-09-01",
+  // `movement.js`, `scenario.js` y `three` son ESM puro y no tocan Node, pero
+  // el bundler resuelve mejor el árbol de `three` con esto puesto.
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    // La página del duelo y la del juego son ficheros de verdad; lo que no
+    // existe (`/duelo/ABC123`) lo resuelve el Worker, no el servidor de assets.
+    "not_found_handling": "none",
+    "run_worker_first": ["/sala/*", "/duelo/*"]
+  },
+  "durable_objects": {
+    "bindings": [{ "name": "SALAS", "class_name": "Sala" }]
+  },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["Sala"] }],
+  "observability": { "enabled": true }
+}

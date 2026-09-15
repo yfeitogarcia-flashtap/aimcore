@@ -8,3 +8,7 @@ dist-ssr
 .env.*
 !.env.example
 *.log
+
+# El estado local de wrangler (el Durable Object simulado, cachés). Se rehace
+# solo con `wrangler dev` y no es del proyecto.
+.wrangler

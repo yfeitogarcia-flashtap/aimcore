@@ -4700,6 +4700,151 @@ señal buena para «esto no es haber andado», y el mensaje de colocación del
 servidor (`MSG.COLOCAR`) queda **apagado salvo con `VEKTOR_DEBUG=1`**, porque
 una colocación libre es exactamente la vía de trampa que no se deja abierta.
 
+## Ronda 47 — A la nube: un Durable Object por código de partida
+
+Cuarto paso de `docs/propuestas/02-multijugador-1v1.md`, y el primero que sale
+de esta máquina. **No se tocó nada de la lógica ya validada**: movimiento,
+disparo y rebobinado son los mismos ficheros de la 46, y los mismos bancos
+—`red45.mjs` y `tiro46.mjs`— se pasan ahora contra los dos huéspedes sin cambiar
+una aserción. Ésa es la prueba de que esta vuelta es de despliegue.
+
+### La partida sale del servidor, porque ahora hay dos servidores
+
+Hasta la 46 `net/servidor.mjs` **era** la partida: `ws`, el reloj y todas las
+reglas en un fichero. Al llegar Cloudflare hacían falta dos huéspedes —Node en
+local, un Durable Object en la nube— y copiar las reglas en los dos habría sido
+la primera vez en este repositorio que una regla del juego vive en dos sitios.
+Es la convención de siempre («una sola fuente de verdad para lógica
+compartida»), aplicada al servidor.
+
+Así que la partida se fue a `net/partida.js` y **no sabe nada de red**: un
+jugador entra con una función `enviar(texto)` y se acabó. Quién la implementa
+—un socket de `ws`, uno de Cloudflare— no se sabe desde ahí. Es la misma idea
+que el transporte del cliente de la vuelta 46, aplicada al otro extremo, y el
+resultado se ve en el tamaño: `net/servidor.mjs` pasó de **403 líneas a 78**, y
+lo que queda es puerto, reloj e informe.
+
+El reparto quedó así, y es el que hay que respetar al añadir cosas: **el huésped
+pone el reloj y el cable; la partida pone el mundo.**
+
+### Por qué un Durable Object y no un Worker
+
+Un Worker no tiene dónde poner un mundo: cada petición puede caer en una máquina
+distinta y no hay estado entre ellas. Un Durable Object es lo contrario por
+definición —un único objeto, en un único sitio, con memoria— y `idFromName()` es
+la pieza que faltaba: **el código de la partida es la dirección del objeto**.
+
+De ahí sale que no haya *matchmaking* ni registro de salas, y eso no es una
+carencia del prototipo: es que no hace falta ninguna de las dos cosas. Nadie
+lleva una lista de partidas, nadie crea una sala y nadie la borra. La sala existe
+mientras haya alguien dentro.
+
+### El código de sala se elige para dictarlo, no para mirarlo
+
+`net/codigo.js`, y vive fuera del cliente y fuera del Worker **porque lo tocan
+los dos**: el cliente lo genera y lo mete en la dirección, el Worker lo saca de
+la ruta y se lo da a `idFromName`. Si cada lado normalizara a su manera,
+escribirlo en minúsculas llevaría a una sala distinta que escribirlo en
+mayúsculas, y dos amigos se quedarían **cada uno solo en su sala**, sin un solo
+error en pantalla.
+
+El alfabeto no tiene parejas que se confundan al dictar: fuera la O y el 0, la I,
+la L y el 1, la S y el 5, la B y el 8. Quedan 27 símbolos y seis posiciones, 387
+millones de combinaciones — de sobra para partidas privadas, y no pretende ser un
+secreto: es un identificador.
+
+Y **lo que se teclea mal se traduce en vez de rechazarse**. Un código se dicta
+por voz y quien escribe pone lo que oye: un cero donde se dijo «o», una ele donde
+se dijo «i». Esos símbolos están fuera del alfabeto justamente porque se
+confunden, así que cada uno se manda al que sí existe. La alternativa —«código no
+válido»— castiga a quien lo dictó bien.
+
+### Un solo origen: el Worker sirve el juego y las salas
+
+Se evaluó desplegar el cliente en Cloudflare Pages y el servidor aparte, que es
+lo que decía la propuesta. Se hizo en un solo Worker con los ficheros del juego
+como assets, y por una razón concreta: **el cliente saca la dirección del
+WebSocket de la página en la que está**. Con dos orígenes hay una URL de servidor
+que configurar, que recordar y que cambiar el día que el despliegue se mueva; con
+uno, `wss://<el mismo host>/sala/<código>` y no hay nada que configurar. La
+página y el mundo viajan juntos o no viajan.
+
+Consecuencia: Vite empaqueta **dos** páginas desde esta vuelta (`index.html` y
+`net/prueba.html`). La regla de «Vite sólo empaqueta index.html» se quedó sin
+sentido en cuanto el duelo pasó de ser una herramienta para mirar dos pestañas en
+local a ser **lo que se le manda a un amigo**. Lo que no cambia es que las PNG de
+`Reference/` siguen sin entrar en el build.
+
+### El reloj para cuando la sala se queda vacía
+
+En Node daba igual: el proceso es tuyo. En Cloudflare el tiempo de ejecución se
+paga, y una sala que sigue dando 60 pasos por segundo sin nadie dentro se paga
+entera. El mundo arranca al entrar el primero y se para al salir el último.
+
+Medido (`sala47.mjs` [6]): tras 5,4 s con la sala vacía el mundo avanzó **14
+pasos** en vez de los 323 que habría dado el reloj —los 14 son la reconexión—, y
+el número de paso **se conserva** entre visitas, que es lo que hace que volver a
+entrar no sea empezar otra partida.
+
+Y el atraso se acota: volver de un parón largo con el «apuntar al instante
+exacto» de Node serían cientos de pasos de golpe —un pico de CPU y una ráfaga de
+fotos a los dos clientes—. El tope es `SIM.maxFrameDeltaMs`, **el mismo número**
+con el que el motor acota el frame largo del navegador desde la vuelta 44.
+
+### Lo que costó: `replaceState` se lleva la consulta por delante
+
+El fallo de la vuelta, y lo cazó el banco.
+
+La página deja el código puesto en la barra de direcciones con `replaceState`,
+para que copiar la barra valga como enlace. Lo que escribía ahí era **el enlace
+que se le manda a un amigo**, que es limpio a propósito: sólo la sala. Y limpio
+quiere decir **sin la consulta que la página traía**, que en el banco era
+`?worker=1` — o sea, la diferencia entre hablar con el Worker y hablar con el
+servidor de sobremesa.
+
+Como los dos existen y los dos contestan, el resultado no fue un error: fue dos
+pestañas con el mismo código, cada una conectada a un servidor distinto, y
+ninguna viendo a la otra. **Silencioso, y con toda la pinta de un fallo de
+`idFromName`.**
+
+Lo delató un número que no podía estar ahí: uno entraba como `p3` y el otro como
+`p6`, y en una sala recién creada el contador no va por seis. Eso no salía de
+mirar la pantalla; salía de que la suite imprime el id.
+
+La regla que queda: **la dirección de la barra y el enlace que se manda no son lo
+mismo**, y son dos funciones (`direccionDeLaBarra`, `enlaceDeSala`). Reescribir
+la barra nunca puede perder estado del que la página depende.
+
+### Lo que se movió del banco, y por qué está bien
+
+Los bancos elegían los puestos y resolvían disparos importando módulos del
+proyecto con `import('/src/game/sight.js')`. Esa ruta existe con Vite en
+desarrollo y **no existe en lo desplegado**, donde todo está empaquetado, así que
+el mismo banco no se podía pasar contra los dos huéspedes — que es justo lo que
+hay que poder hacer para probar que la migración no cambió nada.
+
+La solución fue el asa de depuración que la página ya tenía (`window.vektorNet`),
+que ahora lleva además `verDesde`, `cuerpoDe`, `resolver` y `NET`. No es una
+puerta nueva en el juego: `net/prueba.html` **es** el banco, no una pantalla del
+juego, y el asa ya estaba ahí desde la 45.
+
+`MSG.COLOCAR` sigue cerrado igual que en la 46: en el Durable Object depende de
+una variable de entorno (`VEKTOR_DEBUG`) que en el despliegue no está puesta, así
+que el mensaje se tira sin mirarlo.
+
+### Lo que no se hizo
+
+- **Nada de cuentas, nicks ni persistencia.** Eres `p1` o `p2` y la partida muere
+  con la sala.
+- **Nada de hibernación de WebSockets.** La API de hibernación de Cloudflare
+  sirve para conexiones que están calladas la mayor parte del tiempo; aquí llegan
+  60 mensajes por segundo y por jugador. Poner un reloj de 60 Hz **impide**
+  hibernar por definición, así que no hay nada que ganar.
+- **Nada de recortar la foto.** Sigue yendo entera y en JSON. Es la primera
+  optimización obvia —y en la nube tiene además precio, porque los mensajes que
+  entran se cuentan— pero esta vuelta era de despliegue y cambiar el protocolo
+  habría invalidado los bancos con los que se estaba comprobando la migración.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
@@ -4820,6 +4965,14 @@ objetivo era medir tiempos y rendimiento de verdad.
   tirador y el del servidor contra latencia, con el control de resolverlo sin
   rebobinar, el tope actuando, la cobertura parando balas y el coste por disparo
   (`tiro46.mjs`).
+- **La partida por código**: que el mismo código lleva a la misma sala y dos
+  distintos a dos Durable Objects que no se tocan (con una tercera pestaña de
+  premisa, para que «no ve a nadie» no lo cumpla una conexión que no abrió), que
+  un código mal tecleado llega igual, que un tercero no entra en un 1v1 y que una
+  sala vacía deja de gastar reloj (`sala47.mjs`).
+- **Que la migración a Cloudflare no cambió nada**: los bancos de las vueltas 45
+  y 46, sin tocar una aserción, pasados contra el Durable Object corriendo en
+  `wrangler dev --local`.
 
 Lo que **no** está verificado automáticamente: la sensación de juego, el balance
 entre armas y la legibilidad del HUD en pantallas pequeñas. Eso sigue siendo

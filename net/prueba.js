@@ -1,10 +1,17 @@
 /**
- * **El banco del 1v1 local** (vuelta 45). Dos pestañas contra `net/servidor.mjs`.
+ * **La página del duelo 1v1** (vuelta 45; desde la 47 también en la nube).
  *
- * No es una pantalla del juego y no entra en el build: Vite sólo empaqueta
- * `index.html`. Aquí sólo hay lo justo para ver moverse a dos personas —la sala
- * y el escenario de verdad, un cuerpo por jugador, ratón y teclado— más el
- * panel de medidas, que es el motivo de la vuelta.
+ * No es una pantalla del juego —no hay menú, ni armería, ni dianas, ni
+ * puntuación— y por eso sigue siendo una página aparte y no una fase de
+ * `App.jsx`. Aquí sólo hay lo justo para ver moverse y dispararse a dos personas
+ * —la sala y el escenario de verdad, un cuerpo por jugador, ratón y teclado— más
+ * el panel de medidas, que era el motivo de la vuelta 45 y se queda porque es
+ * donde se ve la red.
+ *
+ * Desde la vuelta 47 **sí entra en el build**: dejó de ser una herramienta para
+ * mirar dos pestañas en local y pasó a ser lo que se le manda a un amigo. Habla
+ * con `net/servidor.mjs` en local y con el Durable Object en Cloudflare, y no
+ * sabe cuál de los dos hay al otro lado (ver `sala-cliente.js`).
  *
  * El bucle es el del motor: **paso fijo de 60 Hz con arrastre del resto**, y la
  * cámara se dibuja interpolada entre los dos últimos pasos. No se reutiliza
@@ -18,8 +25,13 @@ import { Scenario } from '../src/game/scenario.js'
 import { MovementController } from '../src/game/movement.js'
 import { Avatar } from '../src/game/avatar.js'
 import { LookControls } from '../src/game/lookControls.js'
+import { hasLineOfSight } from '../src/game/sight.js'
+import { cuerpoDeJugador } from './pose.js'
+import { resolverDisparo } from './disparo.js'
 import { ClienteRed } from './cliente.js'
 import { conRedSimulada, transporteWebSocket } from './transporte.js'
+import { normalizarCodigo } from './codigo.js'
+import { codigoDeLaDireccion, direccionDeLaBarra, enlaceDeSala, urlDeSala } from './sala-cliente.js'
 
 const lienzo = document.getElementById('lienzo')
 const aviso = document.getElementById('aviso')
@@ -69,20 +81,55 @@ scene.add(fantasma.group)
  * siguiente.
  */
 const enlace = { latenciaMs: 0, jitterMs: 0, perdida: 0 }
+
+/**
+ * **El código de la partida.** Sale de la dirección si la trae y si no se
+ * inventa uno, así que abrir la página ya es haber creado una partida: no hay
+ * botón de «crear». Y se deja puesto en la barra de direcciones con
+ * `replaceState` —sin recargar— para que copiarla de ahí valga como enlace.
+ */
+const codigo = codigoDeLaDireccion()
+history.replaceState(null, '', direccionDeLaBarra(codigo))
+$('codigo').textContent = codigo
+$('enlace').value = enlaceDeSala(codigo)
+
 const cliente = new ClienteRed({
   camara,
   movimiento,
   oclusores: escenario.occluders,
-  transporte: conRedSimulada(
-    transporteWebSocket(`ws://${location.hostname}:${NET.port}`),
-    enlace,
-  ),
+  transporte: conRedSimulada(transporteWebSocket(urlDeSala(codigo)), enlace),
 })
 cliente.onBienvenida = (m) => {
   $('quien').textContent = `${m.id} · ${m.escenario}`
-  document.title = `Vektor 1v1 · ${m.id}`
+  document.title = `Vektor · ${codigo} · ${m.id}`
 }
 cliente.conectar()
+
+// Entrar en otra sala es **recargar en su dirección**, no reconectar por
+// dentro: un mundo nuevo es un escenario, un movimiento y un historial nuevos, y
+// rehacerlos a mano en caliente es la forma de dejarse la mitad.
+$('entrar').addEventListener('click', () => {
+  const otro = normalizarCodigo($('otro').value)
+  if (!otro) {
+    $('otro').style.borderColor = '#E4462B'
+    return
+  }
+  // Y aquí también la dirección de la barra, no el enlace limpio: entrar en
+  // otra sala no puede perder con qué servidor se estaba hablando.
+  location.href = direccionDeLaBarra(otro)
+  location.reload()
+})
+$('copiar').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText($('enlace').value)
+    $('copiar').textContent = 'copiado'
+    setTimeout(() => { $('copiar').textContent = 'copiar' }, 1200)
+  } catch {
+    // El portapapeles necesita permiso y contexto seguro. Si no lo hay, el
+    // enlace está escrito ahí al lado para seleccionarlo a mano.
+    $('enlace').select()
+  }
+})
 
 // ---------------------------------------------------------------- entrada
 const MAPA = {
@@ -91,9 +138,15 @@ const MAPA = {
 }
 // Cuándo empezó el paso que se está dando, para repartir la pulsación de salto.
 let inicioDePaso = performance.now()
+/**
+ * Escribir un código de sala es escribir letras, y tres de ellas —W, A, S, D—
+ * son andar. Mientras el foco está en un campo de texto el teclado es del
+ * campo, no del juego. Hace falta desde que el panel tiene dónde teclear.
+ */
+const escribiendo = () => document.activeElement?.tagName === 'INPUT'
 addEventListener('keydown', (e) => {
   const accion = MAPA[e.code]
-  if (!accion || e.repeat) return
+  if (!accion || e.repeat || escribiendo()) return
   e.preventDefault()
   cliente.teclas[accion] = true
   // El salto se sella con el instante real del evento, no con el del paso que
@@ -104,7 +157,7 @@ addEventListener('keydown', (e) => {
 })
 addEventListener('keyup', (e) => {
   const accion = MAPA[e.code]
-  if (accion) cliente.teclas[accion] = false
+  if (accion && !escribiendo()) cliente.teclas[accion] = false
 })
 addEventListener('blur', () => {
   for (const k of Object.keys(cliente.teclas)) cliente.teclas[k] = false
@@ -282,4 +335,23 @@ function pintarPanel() {
 requestAnimationFrame(bucle)
 
 // Para las sondas de medida: todo lo que hace falta, en un solo sitio.
-window.vektorNet = { cliente, movimiento, camara, escenario, enlace, rival, get paso() { return paso }, costes }
+/**
+ * **El asa de depuración de la página.** Esto no es una pantalla del juego: es
+ * el banco, y los bancos de medida entran por aquí.
+ *
+ * `verDesde`, `cuerpoDe` y `resolver` son `hasLineOfSight`, `cuerpoDeJugador` y
+ * `resolverDisparo` tal cual, y están por una razón concreta: los
+ * bancos eligen los puestos desde los datos del escenario, y para eso
+ * preguntaban por el módulo con un `import()` a `/src/game/sight.js` — que
+ * existe con Vite en desarrollo y **no** existe en lo que se despliega, donde
+ * todo está empaquetado. Sin esto, el mismo banco no se puede pasar contra los
+ * dos huéspedes, que es justo lo que hay que poder hacer.
+ */
+window.vektorNet = {
+  cliente, movimiento, camara, escenario, enlace, rival, costes,
+  get paso() { return paso },
+  verDesde: hasLineOfSight,
+  cuerpoDe: cuerpoDeJugador,
+  resolver: resolverDisparo,
+  NET,
+}

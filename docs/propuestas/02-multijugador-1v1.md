@@ -21,8 +21,15 @@
    contra un **20%** resolviendo sin rebobinar; 4.3 µs por disparo. **El punto 4
    queda validado entero.**
 
-Siguiente: Cloudflare Durable Objects (punto 2) y partida por código (punto 5).
-Sigue sin haber nada desplegado ni una sola cuenta.
+4. **A la nube: un Durable Object por código de partida** (vuelta 47, §47). La
+   partida sale de `net/servidor.mjs` a `net/partida.js` —un fichero sin nada de
+   red— y la corren dos huéspedes: Node en local y un Durable Object en
+   Cloudflare, con el mismo Worker sirviendo el juego y las salas. **El punto 2
+   y el punto 5 quedan construidos**, y el 3 confirmado: los bancos de las
+   vueltas 45 y 46 pasan contra el Durable Object **sin cambiar una aserción**.
+
+Queda desplegarlo de verdad, que necesita una cuenta de Cloudflare y es el único
+paso que no se puede dar desde aquí: `docs/despliegue-cloudflare.md`.
 
 Partida privada entre amigos por código o enlace. Sin cuentas, sin ranking y sin
 matchmaking público: eso viene después y se monta encima, no en lugar de esto.
@@ -86,12 +93,26 @@ Un Durable Object es un objeto con estado, hilo único y dirección propia, y la
 dirección sale de un nombre: `idFromName("ABC123")`. **El código de partida ES el
 servidor** — no hay lobby que programar, ni registro de salas, ni base de datos.
 
-- **Coste:** plan Workers Paid **$5/mes** con 1 M de peticiones y 400.000 GB-s
-  incluidos. Los mensajes WebSocket entrantes se facturan 20:1, así que una
-  partida de 10 min a 60 Hz son 3.600 peticiones y 77 GB-s: **≈275 partidas al
-  mes incluidas**, y cada una de más cuesta $0.0006. Para dos amigos, $5 planos.
+- **Coste: cero para empezar, y esto es una corrección de la vuelta 44.** Aquí
+  se escribió que hacían falta los $5/mes del plan Workers Paid. **No:** los
+  Durable Objects **con respaldo SQLite** entran en el plan gratuito, y ése es
+  el que usa Vektor (`new_sqlite_classes` en `wrangler.jsonc`). Los del respaldo
+  antiguo sí son de pago, y de ahí venía el error.
+  Lo gratuito da **100.000 peticiones al día**, y como los mensajes entrantes se
+  facturan 20:1 y dos jugadores mandan 120 por segundo, salen 6 peticiones por
+  segundo de partida: **≈4,6 horas de 1v1 al día**. El otro límite —13.000 GB-s,
+  unas 29 horas de sala encendida— no es el que se agota primero.
+  El plan Paid ($5/mes) sube a 1 M de peticiones al mes, unas **46 horas**, y a
+  partir de ahí son $0.15 por millón de peticiones y $12.50 por millón de GB-s:
+  **menos de $1 por cada 100 horas de más**. O sea que el salto real son los $5
+  de entrada.
 - **Día a día:** `npx wrangler deploy`. Sin servidor que reiniciar, sin Node que
-  actualizar, sin certificados. El cliente estático va en Cloudflare Pages.
+  actualizar, sin certificados.
+- **Un solo origen, no Pages aparte** (decidido en la vuelta 47). El mismo Worker
+  sirve los ficheros del juego y las salas, porque el cliente saca la dirección
+  del WebSocket de la página en la que está: con dos orígenes hay una URL de
+  servidor que configurar y que cambiar el día que el despliegue se mueva; con
+  uno no hay nada que configurar.
 
 **Alternativas evaluadas.** Fly.io (~$5-10/mes, soporta UDP, pero mantienes tú el
 proceso) y Render/Railway ($5-7/mes, mismo perfil de mantenimiento). Descartadas
@@ -149,9 +170,15 @@ esa forma y no cambia nada del fichero.
 
 ## 5. Alcance del primer paso
 
-Código de seis caracteres = nombre del Durable Object. Enlace `#ABC123`. Nick en
-memoria. Deathmatch 1v1 en el Plano A. Sin dummies, sin bomba y sin estrellas.
-El marcador de TAB ya está construido con una rejilla que admite la segunda fila.
+Código de seis caracteres = nombre del Durable Object. **Construido en la vuelta
+47**, con dos ajustes sobre lo que decía aquí: el enlace es `/duelo/ABC123` y no
+`#ABC123` —una ruta se dicta por teléfono y una almohadilla no—, y el alfabeto
+del código descarta las parejas que se confunden al dictarlo (ni O/0, ni I/L/1,
+ni S/5, ni B/8), traduciéndolas en vez de rechazar el código.
+
+Nick en memoria (`p1`/`p2`). Deathmatch 1v1 en el Plano A. Sin dummies, sin bomba
+y sin estrellas. El marcador de TAB ya está construido con una rejilla que admite
+la segunda fila, pero el duelo todavía es una página aparte y no lo usa.
 
 ## Riesgos
 

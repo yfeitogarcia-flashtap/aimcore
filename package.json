@@ -12,7 +12,9 @@
     "trace:icons": "node scripts/trace-icons.mjs",
     "trace:logo": "node scripts/trace-logo.mjs",
     "audio:weapons": "node scripts/import-weapon-audio.mjs",
-    "net": "node net/servidor.mjs"
+    "net": "node net/servidor.mjs",
+    "worker": "npm run build && wrangler dev --local --port 8787",
+    "deploy": "npm run build && wrangler deploy"
   },
   "dependencies": {
     "react": "^18.3.1",
@@ -24,6 +26,7 @@
     "jimp": "^0.14.0",
     "potrace": "^2.1.8",
     "vite": "^6.0.11",
+    "wrangler": "^4.131.2",
     "ws": "^8.21.3"
   }
 }

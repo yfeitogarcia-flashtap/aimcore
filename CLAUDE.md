@@ -76,7 +76,12 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Recogibles | `src/game/pickups.js` | Cruces de vida, cargas de escudo y casco por el suelo. |
 | Música | `src/audio/music.js` | Ambiente de menús, generado. Su propio volumen. |
 | Config | `src/config.js` | Todo el tuning, sin excepción. |
-| Red (prototipo) | `net/` | Servidor `ws` local, cliente con predicción y reconciliación, disparo con compensación de retraso, y la página de dos pestañas. **Fuera de `src/` y fuera del build.** |
+| Partida (servidor) | `net/partida.js` | **Todo lo que decide el servidor**, sin saber por dónde viaja: entradas, pasos, disparo, rebobinado y fotos. Un jugador entra con una función `enviar(texto)` y nada más. **No hay red en este fichero.** |
+| Huésped local | `net/servidor.mjs` | Node + `ws`. Puerto, reloj e informe. 78 líneas. |
+| Huésped en la nube | `worker/sala.js` | El Durable Object. Lo mismo, con las piezas de Cloudflare. |
+| Portero | `worker/index.js` | `/sala/<código>` → `idFromName(código)`; todo lo demás, los ficheros del juego. |
+| Código de sala | `net/codigo.js` | Alfabeto, normalización y forma de la ruta. **Lo usan el cliente y el Worker.** |
+| Red (cliente) | `net/cliente.js`, `net/transporte.js` | Predicción, reconciliación, interpolación del rival y disparo. El transporte, detrás de tres funciones. |
 | Transporte | `net/transporte.js` | `send` / `onMessage` / `close`, y nada más. La red simulada es un transporte que envuelve a otro. |
 | Disparo en red | `net/disparo.js` | `hitPlayer` + `hasLineOfSight` en el orden que cuesta menos. **Lo llaman los dos extremos.** |
 | Ajustes | `src/settings.js` | Store + persistencia en localStorage + saneado. |
@@ -175,10 +180,12 @@ que **son** el mecanismo:
   medio mapa. La marca vive donde ocurre el salto, no en una comprobación de
   distancia en quien dibuja.
 
-**La red vive en `net/`, y no entra en el juego** (vuelta 45). Es un prototipo:
-un servidor `ws` local (`npm run net`) y una página de dos pestañas
-(`net/prueba.html`) para ver funcionar la predicción. Vite sólo empaqueta
-`index.html`, así que nada de esto llega a `dist/` — compruébalo si tocas la
+**La red vive en `net/`, y no entra en el juego** (vuelta 45). El duelo es una
+página aparte (`net/prueba.html`), no una fase de `App.jsx`: no tiene menú, ni
+armería, ni dianas, ni puntuación. Desde la vuelta 47 **Vite empaqueta las dos
+páginas** —el juego y el duelo—, porque el duelo dejó de ser una herramienta para
+mirar dos pestañas en local y pasó a ser lo que se le manda a un amigo. Lo que
+sigue sin entrar en `dist/` son las PNG de `Reference/`: compruébalo si tocas la
 configuración del build. Tres reglas que **son** el diseño, y las tres nacieron
 de un fallo concreto (`docs/decisions.md` §45):
 
@@ -239,6 +246,43 @@ no fue afinar nada, fue añadir la columna de impactos (`tú / servidor / sin
 rebobinar`): con `0/0/0` delante, un 100% se lee al instante como lo que es. Si
 una suite nueva mide un porcentaje, que enseñe de cuántos — y que compruebe su
 propia premisa antes de medir.
+
+**El huésped pone el reloj y el cable; la partida pone el mundo** (vuelta 47).
+Desde que hay dos huéspedes —Node en local y un Durable Object en Cloudflare— las
+reglas viven en `net/partida.js` y ninguno de los dos las conoce: un jugador entra
+con una función `enviar(texto)` y quién la implementa no se sabe desde ahí. Es la
+convención de siempre («una sola fuente de verdad para lógica compartida»)
+aplicada al servidor, y es la misma idea que el transporte del cliente, aplicada
+al otro extremo. Si añades una regla de juego al servidor, va en `partida.js`; si
+añades algo del reloj o del socket, va en el huésped.
+
+**El código de la partida es la dirección del Durable Object.**
+`env.SALAS.idFromName(código)` es determinista, así que dos personas que teclean
+el mismo código acaban en el mismo mundo **sin que nadie lleve una lista de
+partidas**: no hay registro de salas, no hay matchmaking y no hay nada que
+limpiar cuando una partida acaba. Tres consecuencias:
+
+- **La normalización del código vive en `net/codigo.js`, y la usan los dos
+  extremos.** Si el cliente y el Worker normalizaran cada uno a su manera,
+  teclear el código en minúsculas llevaría a una sala distinta que teclearlo en
+  mayúsculas — y el síntoma sería dos amigos solos en dos salas, sin un error en
+  ninguna pantalla.
+- **El alfabeto no tiene parejas que se confundan al dictar** (ni O/0, ni I/L/1,
+  ni S/5, ni B/8), y lo que se teclea mal **se traduce en vez de rechazarse**: un
+  código se dicta por voz, y «código no válido» castiga a quien lo dictó bien.
+- **La dirección de la barra y el enlace que se manda no son lo mismo.**
+  `enlaceDeSala` es el limpio, el que se copia; `direccionDeLaBarra` conserva la
+  consulta de la página. Escribir el limpio en la barra con `replaceState` se
+  llevó por delante `?worker=1` y dejó a las dos pestañas hablando con servidores
+  distintos, sin un solo error (`docs/decisions.md` §47).
+
+**Una sala vacía no gasta reloj.** En Node daba igual, el proceso es tuyo; en
+Cloudflare el tiempo de ejecución se paga, y 60 pasos por segundo con nadie
+dentro se pagan enteros. El mundo arranca al entrar el primero y para al salir el
+último, y el número de paso se conserva entre visitas. Y el atraso se acota con
+`SIM.maxFrameDeltaMs` —**el mismo número** que acota el frame largo del
+navegador—: volver de un parón largo apuntando al instante exacto serían cientos
+de pasos de golpe y una ráfaga de fotos a los dos clientes.
 
 **El estado serializable del movimiento vive en `movement.js`**
 (`snapshot()`/`restore()`, 24 campos). Va junto a los campos y no en el módulo de
@@ -1246,6 +1290,13 @@ que parecía roto y no lo estaba.
 **Si un resultado te parece extraño, reinicia el servidor de desarrollo antes de
 creerte el diagnóstico.** No depures un falso negativo durante media hora.
 
+**Y el Worker sirve `dist/`, no `src/`.** `npm run worker` construye antes por
+eso mismo: con `wrangler dev` levantado, cambiar un fichero del juego **no se ve**
+—wrangler recarga el Worker cuando tocas `worker/`, pero los ficheros del juego
+son los que había en `dist/` cuando arrancó—. Es la misma clase de falso negativo
+que el de arriba, por otra puerta: vuelve a lanzarlo antes de creerte el
+diagnóstico.
+
 Y no es sólo «una función que no hace nada»: en la vuelta 45 pasó **dos veces**
 con la batería de pruebas entera. Los síntomas fueron suites que salían con
 `0 pass` —la página ni cargaba— y aserciones devolviendo `undefined` donde había
@@ -1257,19 +1308,38 @@ suites, o la regresión que leas no será la del código que has escrito.
 
 ## 5. Estado actual (resumen)
 
-**Hay un 1v1 local, de prototipo** (vueltas 45 y 46): `npm run net` levanta un
-servidor `ws` en el 5199 y `net/prueba.html` abierta en dos pestañas enseña a dos
-personas moviéndose y **disparándose** por el Plano A, con predicción local,
-reconciliación y compensación de retraso. El servidor **no tiene código de
-juego**: importa `movement.js`, `scenario.js`, `hitPlayer` y `hasLineOfSight` tal
-cual, con un objeto plano donde iría la cámara. Sin desplegar nada, sin cuentas y
-sin escudo ni casco —el daño es sólo vida, con el modelo de zonas de siempre—.
+**Hay un 1v1 de prototipo, y desde la vuelta 47 se puede jugar con alguien que
+esté en su casa** (vueltas 45-47). Dos jugadores se mueven y **se disparan** por
+el Plano A con predicción local, reconciliación y compensación de retraso. Sin
+cuentas, sin escudo ni casco —el daño es sólo vida, con el modelo de zonas de
+siempre— y con la partida muriendo con la sala.
+
+La partida entera es `net/partida.js` y **no tiene código de juego**: importa
+`movement.js`, `scenario.js`, `hitPlayer` y `hasLineOfSight` tal cual, con un
+objeto plano donde iría la cámara. La corren **dos huéspedes**, que sólo ponen
+reloj y cable:
+
+- **En local**, `npm run net` levanta el servidor `ws` en el 5199 y dos pestañas
+  en `net/prueba.html` bastan.
+- **En Cloudflare**, un **Durable Object por código de partida**
+  (`worker/sala.js`), con el mismo Worker sirviendo el juego y las salas. Se
+  prueba sin cuenta y sin internet con `npx wrangler dev --local`, que corre el
+  Durable Object de verdad en esta máquina. El despliegue paso a paso está en
+  `docs/despliegue-cloudflare.md`; los Durable Objects **entran en el plan
+  gratuito** con respaldo SQLite (`new_sqlite_classes`), que da unas 4,6 horas de
+  1v1 al día.
+
+**Partida por código:** quien abre la página crea una —seis caracteres de un
+alfabeto que no se confunde al dictarlo— y pasa el enlace. Quien lo abre entra en
+la misma. Es `idFromName(código)`: no hay lista de partidas ni matchmaking.
 
 Medido: error de reconciliación **cero** hasta 300 ms de RTT; correcciones sólo
 con pérdida de paquetes; **100% de acuerdo** entre lo que ve el tirador y lo que
 decide el servidor mientras el rebobinado cabe bajo el tope de 200 ms, contra un
 **20%** resolviendo sin rebobinar cuando el rival se ha apartado de verdad;
-4.3 µs por disparo y 3.8 KB de historial por jugador.
+4.3 µs por disparo y 3.8 KB de historial por jugador. Y los mismos bancos, sin
+tocar una aserción, salen verdes contra el Durable Object: la migración de la 47
+no cambió nada.
 
 **El mundo va a 60 Hz fijos** (`SIM.hz`) desde la vuelta 44, dibuje el monitor lo
 que dibuje: el frame acumula tiempo real y gasta pasos con arrastre del resto, y
@@ -1540,11 +1610,12 @@ el botón no pueda apuntar a un ajuste distinto del que enseña la fila.
 Cuentas, guardado en la nube, rankings, minimapa, pasos sonoros. Si el encargo no
 lo pide explícitamente, no se añade.
 
-**El backend dejó de estarlo en la vuelta 45**, pero sólo hasta donde llega el
-prototipo: hay un servidor `ws` **local** en `net/` para el 1v1 entre dos
-pestañas, y nada más. Ni nube, ni despliegue, ni cuentas, ni matchmaking, ni
-persistencia. El plan y lo que cuesta cada paso están en
-`docs/propuestas/02-multijugador-1v1.md`.
+**El backend dejó de estarlo en la vuelta 45 y la nube en la 47**, pero sólo
+hasta donde llega el prototipo: un Durable Object por código de partida, y nada
+más. **Ni cuentas, ni matchmaking, ni persistencia, ni rankings** — la partida
+muere con la sala y eres `p1` o `p2`. El plan y lo que cuesta cada paso están en
+`docs/propuestas/02-multijugador-1v1.md`; el despliegue, en
+`docs/despliegue-cloudflare.md`.
 
 **Economía: tampoco.** La armería de la vuelta 42 equipa y nada más — sin precios,
 sin dinero y sin botón de comprar. Comprar depende de rondas y de una economía que

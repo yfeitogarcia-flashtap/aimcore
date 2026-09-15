@@ -1,5 +1,5 @@
 <meta charset="utf-8" />
-<title>Vektor · 1v1 local</title>
+<title>Vektor · Duelo 1v1</title>
 <link rel="icon" href="/favicon.svg" />
 <style>
   :root { color-scheme: dark; }
@@ -7,7 +7,8 @@
   html, body { margin: 0; height: 100%; background: #0A0A0A; color: #E8E8E8;
     font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; overflow: hidden; }
   canvas { display: block; width: 100%; height: 100%; }
-  #panel { position: fixed; top: 12px; left: 12px; width: 352px; padding: 12px 14px;
+  /* Por encima del aviso: el código y el enlace se copian **antes** de entrar. */
+  #panel { position: fixed; top: 12px; left: 12px; width: 352px; padding: 12px 14px; z-index: 2;
     background: rgba(10,10,10,.82); border: 1px solid #2A2A2A; border-radius: 6px; }
   #panel h1 { margin: 0 0 8px; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: #E4462B; }
   .fila { display: flex; justify-content: space-between; gap: 10px; white-space: nowrap; }
@@ -21,10 +22,21 @@
   #aviso[hidden] { display: none !important; }
   kbd { border: 1px solid #333; border-bottom-width: 2px; border-radius: 3px; padding: 1px 5px; color: #FFF; }
   .bien { color: #2FCB82; } .mal { color: #E4462B; }
+  #codigo { font-size: 20px; letter-spacing: .22em; color: #FFF; }
+  .sala { display: flex; gap: 6px; align-items: center; margin: 5px 0; }
+  .sala input { flex: 1; min-width: 0; background: #141414; color: #E8E8E8; border: 1px solid #333;
+    border-radius: 3px; padding: 4px 6px; font: inherit; }
+  .sala button { background: #2FCB82; color: #08130D; border: 0; border-radius: 3px;
+    padding: 5px 9px; font: inherit; font-weight: 700; cursor: pointer; }
+  #otro { text-transform: uppercase; letter-spacing: .12em; }
 </style>
 <canvas id="lienzo"></canvas>
 <div id="panel">
-  <h1>Vektor · 1v1 local</h1>
+  <h1>Vektor · Duelo 1v1</h1>
+  <div class="fila"><span class="apagado">código de partida</span><span id="codigo">—</span></div>
+  <div class="sala"><input id="enlace" readonly /><button id="copiar">copiar</button></div>
+  <div class="sala"><input id="otro" placeholder="entrar en otro código" maxlength="9" /><button id="entrar">ir</button></div>
+  <hr />
   <div class="fila"><span class="apagado">yo / rival</span><span id="quien">—</span></div>
   <div class="fila"><span class="apagado">paso · servidor · ack</span><span id="pasos">—</span></div>
   <div class="fila"><span class="apagado">RTT medido</span><span id="rtt">—</span></div>
@@ -52,7 +64,8 @@
   <label>fantasma <input id="gho" type="checkbox" checked /></label>
 </div>
 <div id="aviso"><div>
-  <p><b>Abre esta página en dos pestañas</b> y haz clic en cada una.</p>
+  <p><b>Pásale el enlace del panel a la otra persona</b> y haz clic aquí.</p>
+  <p class="apagado">o abre esta misma página en dos pestañas para probar solo</p>
   <p class="apagado"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> mover ·
      <kbd>Espacio</kbd> saltar · <kbd>C</kbd> agachar · <kbd>Shift</kbd> andar · <kbd>Esc</kbd> soltar</p>
   <p class="apagado"><kbd>clic izquierdo</kbd> disparar — el servidor lo juzga contra lo que tenías en pantalla</p>
