@@ -63,10 +63,11 @@ export class ClienteRed {
      */
     this.onDesconectado = null
     /**
-     * Cambios en la pausa: `{ pausada, por, mia, pide, pideMia, libres,
-     * rivalLibres, denegada }`. **No se avisa de la cuenta atrás**, que cambia
-     * sesenta veces por segundo: quien la pinte la lee con `restaPausaMs()` en
-     * su bucle, que es lo que ya hace para todo lo demás que va por frame.
+     * Cambios en la pausa o en la votación: `{ pausa, votacion }`, los dos
+     * objetos de abajo. **No se avisa de las cuentas atrás**, que cambian
+     * sesenta veces por segundo: quien las pinte las lee con `restaPausaMs()` y
+     * `restaVotacionMs()` en su bucle, que es lo que ya hace para todo lo demás
+     * que va por frame.
      */
     this.onPausa = null
     /** El último motivo, para quien lo quiera pintar sin esperar al aviso. */
@@ -96,14 +97,17 @@ export class ClienteRed {
      * la foto sería exactamente el fallo que esta vuelta arregla — un menú
      * abierto con el mundo corriendo por detrás.
      */
-    this.pausa = { pausada: false, por: null, mia: false, pide: null, pideMia: false,
-                   libres: PAUSE.free, rivalLibres: PAUSE.free,
-                   /** `'no'` o `'silencio'` mientras haya una negativa sin leer. */
-                   denegada: null }
-    /** Negativas ya contadas, para no repetir el aviso en cada foto. */
-    this._negadas = null
-    /** Instante local en que caducará la pausa, o null. Ver `restaPausaMs`. */
+    this.pausa = { pausada: false, por: null, mia: false,
+                   libres: PAUSE.free, rivalLibres: PAUSE.free }
+    /**
+     * **La votación, que no para el mundo** (vuelta 55). `mia` es la de uno
+     * mismo —a quien la pide no se le pregunta nada— y `votado` dice si ya se
+     * contestó, que es lo que retira el cartel.
+     */
+    this.votacion = { activa: false, por: null, mia: false, votado: false }
+    /** Instante local en que caducan. Ver `restaPausaMs` / `restaVotacionMs`. */
     this._pausaHasta = null
+    this._votacionHasta = null
 
     /** Fotos del rival, para dibujarlo en el pasado. */
     this.rival = { id: null, buffer: [], pose: null }
@@ -204,8 +208,9 @@ export class ClienteRed {
    * puede parar el mundo de los dos.
    */
   pedirPausa() { this._decir('pedir') }
+  pedirVotacion() { this._decir('votar') }
   reanudar() { this._decir('reanudar') }
-  responder(acepta) { this._decir(acepta ? 'si' : 'no') }
+  votar(acepta) { this._decir(acepta ? 'si' : 'no') }
 
   /**
    * **Lo que le queda a la pausa**, en milisegundos, o null si no hay ninguna.
@@ -221,11 +226,10 @@ export class ClienteRed {
     return Math.max(0, this._pausaHasta - ahora)
   }
 
-  /** El aviso de negativa ya se ha visto: se apaga. */
-  olvidarDenegada() {
-    if (this.pausa.denegada === null) return
-    this.pausa.denegada = null
-    this.onPausa?.(this.pausa)
+  /** Lo mismo para la ventana de la votación. */
+  restaVotacionMs(ahora = performance.now()) {
+    if (this._votacionHasta === null) return null
+    return Math.max(0, this._votacionHasta - ahora)
   }
 
   _decir(q) {
@@ -463,42 +467,35 @@ export class ClienteRed {
    */
   _leerPausa(foto) {
     const p = this.pausa
-    const antes = `${p.pausada}${p.por}${p.pide}${p.libres}${p.rivalLibres}${p.denegada}`
+    const v = this.votacion
+    const antes = `${p.pausada}${p.por}${p.libres}${p.rivalLibres}${v.activa}${v.por}${v.votado}`
     const estaba = p.pausada
     p.pausada = !!foto.pa
     p.por = foto.pa?.por ?? null
     p.mia = p.por !== null && p.por === this.id
-    /**
-     * **Una votación pendiente es una pausa a la que le falta el permiso**
-     * (vuelta 54), así que llega dentro de `pa` y no en un campo aparte: el
-     * mundo ya está parado mientras se contesta. `pide` se conserva porque es lo
-     * que mira quien pinta el cartel de «¿aceptas?».
-     */
-    p.pide = foto.pa?.pend ? p.por : null
-    p.pideMia = p.pide !== null && p.pide === this.id
     this._pausaHasta = foto.pa ? performance.now() + foto.pa.resta : null
+
+    v.activa = !!foto.vo
+    v.por = foto.vo?.por ?? null
+    v.mia = v.por !== null && v.por === this.id
+    this._votacionHasta = foto.vo ? performance.now() + foto.vo.resta : null
+
     for (const id of Object.keys(foto.p)) {
-      const mio = foto.p[id]
-      if (mio.libres !== undefined) {
-        if (id === this.id) p.libres = mio.libres
-        else p.rivalLibres = mio.libres
+      const suyo = foto.p[id]
+      if (suyo.libres === undefined) continue
+      if (id === this.id) {
+        p.libres = suyo.libres
+        // **Si ya has votado, el cartel se retira**, y lo dice el servidor. Un
+        // «ya he pulsado» local se quedaría puesto contra una votación que el
+        // servidor no llegó a registrar —el mensaje puede perderse—, que es la
+        // misma clase de mentira que un «estoy en pausa» local.
+        v.votado = v.activa && !!suyo.vv
+      } else {
+        p.rivalLibres = suyo.libres
       }
-      if (id !== this.id) continue
-      /**
-       * **Y si tu votación se quedó en nada, enterarte.** Viaja como contador y
-       * no como aviso de una foto porque un aviso se pierde con su foto; aquí
-       * basta con haber visto **alguna** posterior. La primera lectura sólo
-       * toma nota: un cliente que entra a media partida no tiene una negativa
-       * que enseñar, tiene un marcador con el que comparar.
-       */
-      const negadas = mio.neg ?? 0
-      if (this._negadas !== null && negadas > this._negadas) p.denegada = mio.negm ?? 'no'
-      this._negadas = negadas
     }
+
     if (p.pausada && !estaba) {
-      // Una pausa nueva borra el aviso de la anterior: lo que enseña el cartel
-      // es lo que está pasando ahora, no lo que pasó la vez pasada.
-      p.denegada = null
       /**
        * **Al entrar en pausa se olvida qué se mandó y cuándo.** El RTT sale de
        * restar, al llegar la confirmación de una entrada, el instante en que se
@@ -509,10 +506,15 @@ export class ClienteRed {
        * recuperando a un tercio de velocidad. Sin historial no hay resta que
        * hacer: el RTT se queda con el último bueno hasta que haya un viaje de
        * verdad que medir.
+       *
+       * **Una votación no necesita esto** (vuelta 55): el mundo no se para, así
+       * que no hay entrada que se quede en el aire midiendo nada.
        */
       this._historialEnvio.clear()
     }
-    if (`${p.pausada}${p.por}${p.pide}${p.libres}${p.rivalLibres}${p.denegada}` !== antes) this.onPausa?.(p)
+    if (`${p.pausada}${p.por}${p.libres}${p.rivalLibres}${v.activa}${v.por}${v.votado}` !== antes) {
+      this.onPausa?.(p)
+    }
   }
 
   _reconciliar(foto) {

@@ -1199,19 +1199,29 @@ le dé el servidor, que es la misma de la que sale su punto de salida.
 
 **Escape pausa la partida, y la pausa es de verdad.** Para el mundo de **los
 dos** —ninguno ve moverse nada, ni lo suyo ni lo del rival— porque la decide el
-servidor y no la pantalla. Tienes **tres pausas libres** por partida; a partir de
-la cuarta hay que pedírselo al rival, que acepta con **Intro** o rechaza con
-**N**. Abajo a la izquierda pone cuántas os quedan a cada uno. Volver a pinchar
-levanta la tuya.
+servidor y no la pantalla. Tienes **tres pausas libres** por partida. Abajo a la
+izquierda pone cuántas os quedan a cada uno. Volver a pinchar levanta la tuya.
 
 **Y toda pausa tiene su reloj, que se ve en el propio cartel.** Una libre dura
-como mucho **dos minutos** y una concedida por el rival, **uno**; al acabarse la
-cuenta se reanuda sola. La votada dura menos a propósito: el que dice que sí está
-pagando un rato parado que no ha elegido.
+como mucho **dos minutos** y una votada, **uno**; al acabarse la cuenta se
+reanuda sola. La votada dura menos a propósito: el que dice que sí está pagando
+un rato parado que no ha elegido.
 
-**Mientras se vota, la partida ya está parada** — no sólo si te la conceden. Si
-el rival la rechaza (o no contesta en 12 s), sale un aviso que lo dice con todas
-las letras y se vuelve a jugar pinchando, como al cerrar cualquier menú.
+**Gastadas las tres, se pide por votación — y votar no para la partida.** Escape
+abre el menú de siempre y ahí hay un botón, **«Solicitar pausa por votación»**.
+Al pulsarlo se manda la solicitud y el menú se cierra: vuelves a jugar en el
+acto, sin esperar en ninguna parte.
+
+Al rival le entra un cartel por el borde derecho con **Aceptar** y **Declinar**,
+y quince segundos para decidir — **jugando**, porque mientras se vota no se
+congela nadie. Jugando se contesta con **Intro** o **N** (con el ratón capturado
+un botón no se puede pinchar); con el ratón suelto, con los botones. Si acepta,
+arranca la pausa de un minuto. Si declina —o deja pasar el tiempo sin que salga—
+la partida sigue como si no se hubiera pedido, sin ningún aviso que cerrar.
+
+> Si el rival **no contesta**, su voto se suma a la opción que más apoyo tenga.
+> En un 1v1 eso es el «sí» de quien la pidió, así que ignorar el cartel deja pasar
+> la pausa: para que no salga hay que **declinarla**.
 
 **Un abatido está abatido de verdad.** No se mueve mientras espera a reaparecer
 —el servidor no le deja— y su cuerpo **desaparece** en vez de quedarse en pie

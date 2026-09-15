@@ -88,6 +88,25 @@ export const COLORS = {
    * aviso del color de aquello sobre lo que se dibuja no es un aviso.
    */
   threat: '#FF2D1F',
+  /**
+   * **Pizarra: el «no, gracias»** (vuelta 55). Es el segundo botón del cartel de
+   * votación, y el encargo pedía que no fuese rojo — el rojo es «te están
+   * disparando», y declinar una pausa no es una amenaza.
+   *
+   * No es un gris por pereza: **no queda un tono libre**. Medido en CIELAB, que
+   * es donde una diferencia de color se parece a lo que ve un ojo, el violeta
+   * que parecía el hueco obvio de la paleta (`#8B5CF6`) se queda a **ΔE 24.8**
+   * del azul de equipo — la mitad de los 51 que separan a los dos equipos entre
+   * sí y muy lejos de los 79 con que se eligieron contra los reservados. El
+   * naranja, el rojo, el verde, el ámbar, el amarillo, el azul y el magenta ya
+   * significan algo cada uno, así que lo único que queda sin dueño es el eje que
+   * nadie ha pedido: el neutro. Éste mide **ΔE 68** contra el más cercano de
+   * todos ellos, y a L* 56 admite texto oscuro encima.
+   *
+   * Y dice lo que tiene que decir: aceptar es la acción —verde— y declinar es
+   * seguir jugando, que es no hacer nada.
+   */
+  decline: '#7C8899',
 }
 
 /** Sesión cronometrada. */
@@ -3015,12 +3034,17 @@ export const PAUSE = {
    */
   free: 3,
   /**
-   * Cuánto se espera una respuesta antes de darla por negada. Sin esto, pedir
-   * una pausa a alguien que se ha ido a por hielo deja al que la pide mirando
-   * un cartel para siempre. Negar por silencio es lo correcto: la partida sigue,
-   * que es lo que pasa si no contestan.
+   * **Cuánto dura el cartel de la votación** (vuelta 55). Pasado ese tiempo la
+   * votación se resuelve con lo que haya: quien no ha contestado se suma a la
+   * opción que más apoyo tenga.
+   *
+   * Se llamaba `answerMs` y era «cuánto se espera antes de darla por negada»
+   * hasta la 54. Ya no hay negativa por silencio, porque ya no hay nadie
+   * esperando: quien la pide vuelve a jugar en el acto y el mundo no se para
+   * mientras se decide. 15 s es lo que tarda en leerse un cartel sin dejar de
+   * jugar, y poco para que se quede de adorno en pantalla.
    */
-  answerMs: 12000,
+  voteWindowSeconds: 15,
   /**
    * **Cuánto puede durar una pausa libre** (vuelta 54). Al agotarse se reanuda
    * sola, y la cuenta se ve en el propio cartel.

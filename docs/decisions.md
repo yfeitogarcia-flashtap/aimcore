@@ -5541,6 +5541,142 @@ es el falso negativo del §4 de `CLAUDE.md` por otra puerta—. Que los valores 
 fábrica son los que llegan a la pantalla lo comprueba `pausa54.mjs`, que lee la
 cuenta recién puesta: 119.5 s de 120 y 59.5 de 60.
 
+## Ronda 55 — La votación deja de congelar a nadie
+
+La 54 cerró el agujero de la 53 **metiendo la votación dentro de la pausa**: el
+mundo se paraba desde el instante en que se pedía. Funcionaba, y el precio era
+que dos personas se quedaban con el mundo parado mientras una se decidía. Esta
+vuelta ataca el mismo agujero por el otro lado, y lo sustituye entero: **no hay
+nadie esperando.**
+
+Es un cambio de diseño, no un añadido. Lo de la 54 no se conserva.
+
+### La forma nueva, y por qué cierra el agujero igual
+
+1. **Escape sin libres abre el menú de siempre** y nada más. No pausa, no pide
+   nada, no le llega un cartel a nadie. En el menú hay un botón: «Solicitar
+   pausa por votación».
+2. **Pulsarlo manda la solicitud y cierra el menú**, devolviendo el ratón. Quien
+   la pide vuelve a jugar en el acto.
+3. **Al rival le entra un cartel** por el borde derecho, con la votación y dos
+   botones, y **sigue jugando** mientras decide.
+4. **Si sale**, arranca la pausa votada de la 54 tal cual: su tope de 60 s y su
+   cuenta atrás, sin tocar nada.
+5. **Si no sale**, no pasa nada. Y **no hay aviso de «denegada» que cerrar**,
+   porque no hubo nadie a quien devolverle un mundo que nunca se paró.
+
+El agujero de la 53 era que alguien se quedaba mirando un cartel, indefenso,
+mientras el otro jugaba. La 54 lo cerró parando el mundo de los dos; la 55 lo
+cierra quitando el cartel de en medio. Las dos son válidas y sólo una de las dos
+deja jugar.
+
+### Lo que se mide, y contra qué
+
+`pausa55.mjs`, 44 aserciones, con dos navegadores y haciendo lo que hace una
+persona: clic en el botón del menú, teclas y botones del cartel.
+
+| | vuelta 54 | vuelta 55 |
+|---|---|---|
+| lo que anda **quien la pide** con la votación abierta (1.2 s) | 0.00 u | **7.80 u** |
+| lo que anda **quien tiene que votar** | 0.00 u | **7.91 u** |
+| entradas que manda el rival | 0 | ~78 |
+| carteles que cerrar tras una negativa | 1 | **0** |
+
+La referencia de esas dos columnas es la misma medida sin votación de por medio
+—7.91 u en 1.2 s—, que es el denominador sin el cual un número de marcha no dice
+nada (regla de la vuelta 46).
+
+### Pedir y votar son dos verbos, no uno con un `if`
+
+Hasta la 54 había un solo mensaje y el servidor decidía qué era mirando las
+libres que le quedaran a quien lo mandaba. Eso ya no vale: la cuenta de libres le
+llega al cliente **en la foto**, o sea con un viaje de retraso, así que un
+cliente con la cuenta vieja podía abrirle al rival un cartel de votación que su
+jugador no había pedido. Un mensaje dice lo que se quiere, no lo que se supone.
+
+De ahí sale también que **soltar el ratón sólo pida pausa si quedan libres**: sin
+ninguna, Escape es un menú y nada más. Abrirle al rival una votación por el gesto
+de soltar el ratón sería pedirle permiso sin querer.
+
+### Quien no contesta se suma al que va ganando
+
+Es la regla que pidió el encargo y está pensada para el día que haya más de un
+rival: con cuatro personas, tres a favor y una callada, esa callada no puede
+valer lo mismo que un «no» explícito. Quien la pide vota que sí sin decir nada
+—pedirla es quererla—, y al agotarse la ventana los votos que faltan se suman a
+la opción que más apoyo tenga. Un empate no aprueba: «la que más apoyo tenga» no
+existe cuando hay tantos a un lado como al otro.
+
+**Consecuencia que conviene tener delante: en 1v1 el silencio aprueba.** El único
+voto emitido antes del final de la ventana es el sí implícito del solicitante, así
+que el que va ganando es el sí. Es exactamente lo contrario de la vuelta 53 —donde
+el silencio era una negativa— y el motivo de aquello ya no existe: entonces el que
+pedía la pausa se quedaba tirado esperando, y el silencio le castigaba a él; ahora
+está jugando, y el que ignora el cartel es quien decide dejarlo pasar. Está medido
+en `pausa55.mjs` [7], y si algún día se quiere al revés es una comparación de una
+línea en `_resolverVotacion`.
+
+### El botón que no se puede pinchar
+
+El encargo pide dos botones, y el banco encontró a la primera que **con el ratón
+capturado no se pueden usar**: el clic va al elemento bloqueado por el
+`pointerlock`, que es el lienzo. La primera hipótesis —que algo los tapara— la
+tumbó el propio banco: `elementFromPoint` encuentra el botón en esas
+coordenadas y aun así el clic no vota.
+
+Así que cada botón lleva **su tecla escrita al lado** (Intro / N), y eso no es
+una redundancia: son las dos situaciones reales. Con el ratón capturado se
+contesta con la tecla; con el ratón suelto —el rival puede abrir su menú, que
+durante una votación **no pausa nada**— se pincha el botón. Las dos están
+medidas, y la que no se puede hacer también.
+
+Es la regla de la vuelta 53 —«a quien le llega la petición está jugando, y
+soltar el ratón para pinchar sería pausarle la partida»— conservada en su
+sustancia, con el botón añadido para quien no está en esa situación.
+
+### Declinar necesitaba un color, y no quedaba ninguno
+
+El encargo pedía un color propio que no fuese el rojo, que ya dice «te están
+disparando». El hueco obvio de la paleta parecía el violeta, y **medido en
+CIELAB no lo es**: `#8B5CF6` se queda a **ΔE 24.8** del azul de equipo, la mitad
+de los 51 que separan a los dos equipos entre sí y muy lejos de los 79 con que se
+eligieron contra los reservados. El naranja, el rojo, el verde, el ámbar, el
+amarillo, el azul y el magenta tienen dueño.
+
+Lo único sin dueño es el eje que nadie ha pedido: el neutro. `COLORS.decline`
+(`#7C8899`) mide **ΔE 68** contra el más cercano de todos ellos y a L\* 56 admite
+texto oscuro. Y dice lo que tiene que decir — aceptar es la acción y va en verde;
+declinar es seguir jugando, que es no hacer nada.
+
+### Dos detalles de forma que son mecanismo
+
+- **El cartel entra deslizándose, y se mide deslizándose.** Uno que aparece de
+  golpe en el borde de la pantalla se confunde con un fogonazo. El banco no mira
+  si tiene una clase: le quita la clase, lo deja asentar fuera, se la devuelve y
+  muestrea el borde izquierdo a mitad de camino — 760 (fuera) → 626 (a mitad) →
+  472 (puesto), en una pantalla de 760.
+- **Una pausa tuya te suelta el ratón.** Con las libres el orden era el
+  contrario —Escape suelta y luego llega la pausa—, pero una votada llega
+  jugando, y quedarse capturado en un mundo parado es no tener con qué
+  reanudarlo. Al que votó que sí no se le toca: no ha pedido nada, y devolverle
+  al menú sería castigarle por haber dicho que sí.
+
+### Y dos aserciones que guardaban el diseño viejo
+
+`pausa54.mjs` [2b] exigía «el mundo está parado para los dos mientras se vota» y
+pasaba. Era verdad y era el diseño que esta vuelta sustituye. Se queda **del
+revés** —«el mundo NO se para mientras se vota»— porque invertida es la que
+guarda lo nuevo; tirarla habría dejado la vuelta sin nadie vigilando su propia
+regla. Lo mismo con el bloque del silencio como negativa, que se ha ido a
+`pausa55.mjs` [7] con el signo cambiado.
+
+Y un error del banco que costó dos diagnósticos falsos: medir un recorrido de
+trece segundos en una sala de 40 u. B llevaba toda la suite andando hacia el
+mismo lado, llegó a la pared y el desplazamiento de punta a punta dio **0.00 u**
+con la tecla pulsada — que es exactamente lo que habría dado el fallo que se
+estaba buscando. Lo delató comprobar la premisa aparte: en un banco limpio, el
+mismo jugador se movía 9.86 u. Ventanas cortas y el rumbo como parámetro.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

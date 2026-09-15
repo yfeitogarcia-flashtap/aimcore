@@ -77,6 +77,36 @@
   #pausa button { margin: 7px 4px 0; background: #2FCB82; color: #08130D; border: 0;
     border-radius: 3px; padding: 6px 14px; font: inherit; font-weight: 700; cursor: pointer; }
 
+  /* **El cartel de la votación** (vuelta 55). Entra deslizándose desde el borde
+     derecho: uno que aparece de golpe en el borde se confunde con un fogonazo.
+     Va centrado en vertical, lejos de la mira, del bloque de vida (abajo a la
+     izquierda) y del panel de F3 (arriba a la derecha).
+
+     Sale mientras se juega, así que **no** está bajo `body.jugando`: es para el
+     que tiene el ratón capturado tanto como para el que no. Y `pointer-events`
+     sólo en los botones — con el ratón suelto, el resto del cartel no puede
+     robarle el clic al lienzo, que es lo que captura. */
+  #votacion { position: fixed; right: 0; top: 50%; z-index: 5; width: 288px;
+    transform: translate(100%, -50%); transition: transform .28s cubic-bezier(.2,.8,.2,1);
+    padding: 13px 16px; background: rgba(10,10,10,.94); border: 1px solid #2A2A2A;
+    border-right: 0; border-radius: 6px 0 0 6px; color: #FFF; letter-spacing: .06em;
+    pointer-events: none; }
+  #votacion.puesto { transform: translate(0, -50%); }
+  #votacion b { letter-spacing: .16em; }
+  #votacion em { margin-left: 8px; font-style: normal; color: #FFF; font-weight: 700;
+    letter-spacing: .1em; font-variant-numeric: tabular-nums; }
+  #votacion small { display: block; margin-top: 5px; font-weight: 400; color: #9A9A9A;
+    letter-spacing: .04em; line-height: 1.45; }
+  #votacion .acciones { display: flex; gap: 7px; margin-top: 11px; }
+  #votacion button { flex: 1; border: 0; border-radius: 3px; padding: 7px 8px; font: inherit;
+    font-weight: 700; cursor: pointer; pointer-events: auto;
+    background: #2FCB82; color: #08130D; }
+  /* Declinar no es rojo —el rojo dice «te están disparando»— ni reutiliza
+     ningún otro tono de la paleta: ver `COLORS.decline` y su medida en CIELAB. */
+  #votacion button.declinar { background: #7C8899; color: #0B1015; }
+  #votacion kbd { margin-left: 5px; background: rgba(10,10,10,.22); border: 0;
+    padding: 1px 4px; font-size: 10px; opacity: .8; }
+
   #vital { position: fixed; left: 18px; bottom: 16px; }
   /* Sobre la pared clara del mapa, el gris apagado del panel no se lee: esto va
      en pantalla y tiene que verse. Un punto por debajo del blanco de la vida,
@@ -127,10 +157,17 @@
   .fila span:last-child { color: #FFF; font-variant-numeric: tabular-nums; }
   #panel label { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 4px 0; }
   #panel input[type=range] { width: 150px; accent-color: #2FCB82; }
+
+  #pedirVoto { background: #1A1A1A; color: #E8E8E8; border: 1px solid #3A3A3A;
+    border-radius: 3px; padding: 8px 16px; font: inherit; letter-spacing: .06em;
+    cursor: pointer; }
+  #pedirVoto:hover { border-color: #2FCB82; color: #FFF; }
+  #pedirVoto[hidden] { display: none !important; }
 </style>
 <canvas id="lienzo"></canvas>
 <div id="aviso-red" hidden></div>
 <div id="pausa" hidden></div>
+<div id="votacion"></div>
 
 <div id="mira"><i></i><i></i><i></i><i></i><i></i></div>
 <div id="vital"><div id="vitalN">100</div><div id="vitalB"><i style="width:100%"></i></div>
@@ -154,6 +191,9 @@
   <p class="apagado"><kbd>clic izquierdo</kbd> disparar · <kbd>F3</kbd> números de red</p>
   <p class="apagado"><kbd>Esc</kbd> pausa la partida para los dos —
      te quedan <b id="libresMenu">3</b> sin pedir permiso</p>
+  <!-- Es un `.control`: se pincha con el ratón suelto y su clic no cuenta como
+       el clic que captura. Sale sólo sin pausas libres; lo decide `pintarPausa`. -->
+  <p><button id="pedirVoto" class="control" hidden>Solicitar pausa por votación</button></p>
 </div></div>
 
 <div id="panel" class="control" hidden>

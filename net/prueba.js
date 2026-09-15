@@ -39,6 +39,7 @@ const aviso = document.getElementById('aviso')
 const panel = document.getElementById('panel')
 const avisoRed = document.getElementById('aviso-red')
 const panelPausa = document.getElementById('pausa')
+const panelVoto = document.getElementById('votacion')
 const mira = document.getElementById('mira')
 const $ = (id) => document.getElementById(id)
 
@@ -193,11 +194,11 @@ function reloj(ms) {
 }
 
 /**
- * **Lo que se ve de la pausa.** Cinco estados y ninguno se inventa aquí: todos
+ * **Lo que se ve de la pausa.** Tres estados y ninguno se inventa aquí: todos
  * vienen de la foto. Lo único que decide esta página es cómo se cuentan.
  *
  * El cartel se **reconstruye sólo cuando cambia el estado** (lo avisa
- * `onPausa`); la cuenta atrás, que cambia por frame, la escribe `pintarResta`
+ * `onPausa`); la cuenta atrás, que cambia por frame, la escribe `pintarRestas`
  * en su propio nodo. Rehacer el `innerHTML` sesenta veces por segundo se
  * llevaría por delante el botón de reanudar en mitad de un clic.
  */
@@ -205,50 +206,28 @@ function pintarPausa() {
   const p = cliente.pausa
   $('libres').textContent = `pausas ${p.libres} · rival ${p.rivalLibres}`
   $('libresMenu').textContent = p.libres
-  const cuenta = '<em id="pausaResta">&nbsp;</em>'
-  if (p.pideMia) {
-    // El mundo **ya está parado** mientras se contesta, y el cartel lo dice:
-    // hasta la vuelta 54 no lo estaba y el que pedía la pausa se quedaba
-    // mirando esto con el ratón suelto mientras el rival seguía jugando.
-    panelPausa.hidden = false
-    panelPausa.innerHTML = `<b>ESPERANDO AL RIVAL</b>${cuenta}` +
-      '<small>te has quedado sin pausas libres, así que decide él · ' +
-      'la partida está parada mientras tanto</small>'
-    medirCartel()
-    return
-  }
-  if (p.pide) {
-    panelPausa.hidden = false
-    panelPausa.innerHTML = `<b>EL RIVAL PIDE PAUSA</b>${cuenta}` +
-      '<small>ya ha gastado sus pausas libres · <kbd>Intro</kbd> aceptar · <kbd>N</kbd> rechazar</small>'
-    medirCartel()
-    return
-  }
+  // **El botón de votación sólo existe cuando es la única salida** (vuelta 55):
+  // con libres que gastar, pedirle permiso al rival sería pedir por pedir.
+  $('pedirVoto').hidden = p.libres > 0 || p.pausada || cliente.votacion.activa
   if (p.pausada) {
     panelPausa.hidden = false
-    panelPausa.innerHTML = `<b>PARTIDA EN PAUSA</b>${cuenta}` +
+    panelPausa.innerHTML = '<b>PARTIDA EN PAUSA</b><em id="pausaResta">&nbsp;</em>' +
       (p.mia
         ? '<small>la has pedido tú · al acabarse la cuenta se reanuda sola</small>' +
           '<button id="reanudar">reanudar</button>'
         : '<small>la ha pedido el rival · al acabarse la cuenta se reanuda sola</small>')
     if (p.mia) $('reanudar').addEventListener('click', () => cliente.reanudar())
-    medirCartel()
-    return
+    // **Una pausa tuya te suelta el ratón** (vuelta 55). Con las libres el orden
+    // era el contrario —Escape suelta y luego llega la pausa—, pero una votada
+    // llega jugando, y quedarse capturado en un mundo parado es no tener con qué
+    // reanudarlo. Al rival no se le toca: él no ha pedido nada, y devolverle al
+    // menú sería castigarle por haber dicho que sí.
+    if (p.mia && document.pointerLockElement === lienzo) document.exitPointerLock()
+  } else {
+    panelPausa.hidden = true
   }
-  if (p.denegada) {
-    // **Una negativa se lee, no se sufre.** El mundo ya vuelve a correr, así que
-    // esto no puede ser un cartel más de pausa: es un aviso que se quita al
-    // volver a pinchar, como cualquier menú.
-    panelPausa.hidden = false
-    panelPausa.innerHTML = '<b>VOTACIÓN DENEGADA</b>' +
-      `<small>${p.denegada === 'silencio'
-        ? 'tu rival no ha contestado a tiempo'
-        : 'tu rival ha rechazado la pausa'} · haz clic para seguir jugando</small>`
-    medirCartel()
-    return
-  }
-  panelPausa.hidden = true
   medirCartel()
+  pintarVotacion()
 }
 /** El menú se centra bajo el cartel: ver `--pausaAlto` en la hoja de estilos. */
 function medirCartel() {
@@ -257,25 +236,84 @@ function medirCartel() {
 }
 cliente.onPausa = pintarPausa
 
-/** La cuenta atrás del cartel, que va por frame y no por foto. */
-function pintarResta(ahora) {
-  const nodo = document.getElementById('pausaResta')
-  if (!nodo) return
-  const resta = cliente.restaPausaMs(ahora)
-  nodo.textContent = resta === null ? '' : reloj(resta)
+/**
+ * **El cartel de la votación, que entra desde el borde derecho** (vuelta 55).
+ *
+ * Sale sólo a quien tiene que votar —al que la pidió no se le pregunta nada, y
+ * ya se ha ido a jugar— y **no para el mundo**: se contesta jugando. De ahí sus
+ * dos formas de contestar, que no son una redundancia sino las dos situaciones
+ * reales: con el ratón capturado un botón no se puede pinchar —el clic va al
+ * `pointerlock`—, así que **Intro** y **N** son el camino de quien está jugando;
+ * los botones son para quien tenga el ratón suelto. Cada botón lleva su tecla
+ * escrita, que es lo que evita tener que contar esto en ninguna parte.
+ *
+ * La entrada es una transición de `transform`, no un `hidden` que se quita: un
+ * cartel que aparece de golpe en el borde de la pantalla se confunde con un
+ * fogonazo, y uno que entra deslizándose se lee como algo que llega.
+ */
+function pintarVotacion() {
+  const v = cliente.votacion
+  const visible = v.activa && !v.mia && !v.votado
+  if (!visible) {
+    // Se retira deslizándose por donde vino; `hidden` iría después, pero no
+    // hace falta: fuera de pantalla no recibe clics porque no tiene sitio.
+    panelVoto.classList.remove('puesto')
+    return
+  }
+  if (!panelVoto.dataset.montado) {
+    panelVoto.innerHTML =
+      '<b>VOTACIÓN DE PAUSA</b><em id="votoResta">&nbsp;</em>' +
+      '<small>tu rival se ha quedado sin pausas libres y pide una · ' +
+      'la partida sigue mientras decides</small>' +
+      '<div class="acciones">' +
+      '<button id="votoSi">Aceptar <kbd>Intro</kbd></button>' +
+      '<button id="votoNo" class="declinar">Declinar <kbd>N</kbd></button>' +
+      '</div>'
+    $('votoSi').addEventListener('click', () => cliente.votar(true))
+    $('votoNo').addEventListener('click', () => cliente.votar(false))
+    panelVoto.dataset.montado = '1'
+  }
+  // El deslizamiento necesita un frame con el cartel ya colocado fuera: si se
+  // pone la clase en el mismo turno en que nace el nodo, el navegador no tiene
+  // dos estados entre los que animar y aparece de golpe.
+  requestAnimationFrame(() => panelVoto.classList.add('puesto'))
+}
+
+/** Las dos cuentas atrás, que van por frame y no por foto. */
+function pintarRestas(ahora) {
+  const dePausa = document.getElementById('pausaResta')
+  if (dePausa) {
+    const resta = cliente.restaPausaMs(ahora)
+    dePausa.textContent = resta === null ? '' : reloj(resta)
+  }
+  const deVoto = document.getElementById('votoResta')
+  if (deVoto && panelVoto.classList.contains('puesto')) {
+    const resta = cliente.restaVotacionMs(ahora)
+    deVoto.textContent = resta === null ? '' : reloj(resta)
+  }
 }
 
 /**
- * **Aceptar o rechazar se hace con teclas, no con el ratón**: a quien le llega
- * la petición está jugando, con el ratón capturado, y soltarlo para pinchar un
- * botón sería pausarle la partida para preguntarle si quiere pausarla. Ni Intro
- * ni N son teclas de movimiento.
+ * **Y se puede contestar con teclas**, que es lo que necesita quien está
+ * jugando: soltar el ratón para pinchar un botón abre el menú encima de la
+ * partida, y la partida está corriendo. Ni Intro ni N son teclas de movimiento.
  */
 addEventListener('keydown', (e) => {
-  const p = cliente.pausa
-  if (!p.pide || p.pideMia || escribiendo()) return
-  if (e.code === 'Enter' || e.code === 'NumpadEnter') { e.preventDefault(); cliente.responder(true) }
-  else if (e.code === 'KeyN') { e.preventDefault(); cliente.responder(false) }
+  const v = cliente.votacion
+  if (!v.activa || v.mia || v.votado || escribiendo()) return
+  if (e.code === 'Enter' || e.code === 'NumpadEnter') { e.preventDefault(); cliente.votar(true) }
+  else if (e.code === 'KeyN') { e.preventDefault(); cliente.votar(false) }
+})
+
+/**
+ * **Pedir la votación devuelve a jugar en el acto.** Es el punto entero de la
+ * vuelta 55: se manda la solicitud, se cierra el menú y se recupera el ratón.
+ * Quien la pide no espera en ninguna parte — si sale, se entera porque el mundo
+ * se para; si no sale, no pasa nada y no hay ningún aviso que cerrar.
+ */
+$('pedirVoto').addEventListener('click', () => {
+  cliente.pedirVotacion()
+  lienzo.requestPointerLock()
 })
 
 cliente.conectar()
@@ -395,7 +433,10 @@ document.addEventListener('pointerlockchange', () => {
   // seguía corriendo por detrás: con WASD se andaba con el menú puesto. No se
   // pide si ya hay pausa o petición, ni cuando el ratón se ha soltado porque la
   // partida se ha caído.
-  if (!capturado && !redCaida && !cliente.pausa.pausada && !cliente.pausa.pide) {
+  // **Y sólo si quedan libres** (vuelta 55). Sin ninguna, Escape abre el menú de
+  // siempre y ahí está el botón de pedir votación: abrirle al rival un cartel
+  // por el gesto de soltar el ratón sería pedirle permiso sin querer.
+  if (!capturado && !redCaida && !cliente.pausa.pausada && cliente.pausa.libres > 0) {
     cliente.pedirPausa()
   }
   // **Y volver a pinchar la levanta**, si era tuya. Escape pausa, clic reanuda:
@@ -403,10 +444,6 @@ document.addEventListener('pointerlockchange', () => {
   // justo el estado confuso que esta vuelta viene a quitar. La del rival no se
   // toca — sólo la levanta quien la puso.
   if (capturado && cliente.pausa.mia) cliente.reanudar()
-  // **Y volver a pinchar es haber leído el aviso.** Una negativa se queda en
-  // pantalla hasta entonces: el mundo ya corre, así que lo que la cierra es el
-  // gesto de volver al juego, igual que cualquier otro menú.
-  if (capturado) cliente.olvidarDenegada()
   if (!capturado) {
     // **Y soltar el ratón suelta las teclas**, igual que perder el foco. No es
     // una pausa local fingida —la pausa la decide el servidor y tarda un viaje
@@ -470,7 +507,7 @@ function bucle(ahora) {
     ultimoFrame = ahora
     renderer.render(scene, camara)
     pintarVitales()
-    pintarResta(ahora)
+    pintarRestas(ahora)
     pintarRed(ahora)
     pintarPanel()
     return
@@ -578,6 +615,9 @@ function bucle(ahora) {
   if (interpolando) camara.position.copy(actual)
 
   pintarVitales()
+  // La cuenta de la votación corre **con el mundo en marcha**, así que se pinta
+  // aquí y no sólo en la rama de pausa: es justo la diferencia entre las dos.
+  pintarRestas(ahora)
   pintarRed(ahora)
   pintarPanel()
 }

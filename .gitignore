@@ -12,3 +12,7 @@ dist-ssr
 # El estado local de wrangler (el Durable Object simulado, cachés). Se rehace
 # solo con `wrangler dev` y no es del proyecto.
 .wrangler
+
+# Capturas que algunos bancos escriben en la raíz (r45-A.png y compañía). Son
+# material de medida, no del proyecto: viven en el scratchpad de la sesión.
+/r??-*.png

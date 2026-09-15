@@ -1312,8 +1312,7 @@ De ahí, tres cosas que hay que respetar al tocar esto:
   parado.
 
 **Tres pausas libres por jugador y partida** (`PAUSE.free`); de la cuarta en
-adelante decide el rival, y el silencio cuenta como negativa (`PAUSE.answerMs`).
-Sólo la levanta quien la puso —si no, pedirla no serviría—, e irse levanta la
+adelante decide el rival, votando. Sólo la levanta quien la puso —si no, pedirla no serviría—, e irse levanta la
 propia, o el otro se queda en un mundo parado para siempre. Se contesta con
 **teclas** (Intro / N) y no con un botón: a quien le llega la petición está
 jugando con el ratón capturado, y soltarlo para pinchar sería pausarle la partida
@@ -1322,25 +1321,55 @@ para preguntarle si quiere pausarla.
 Y dos gestos que **no** son pausa local y sí hacen falta: **soltar el ratón suelta
 las teclas** (como perder el foco: quien abre el menú no está pulsando nada) y
 **volver a pinchar levanta tu propia pausa** —Escape pausa, clic reanuda—, o se
-recupera el ratón con el mundo todavía congelado.
+recupera el ratón con el mundo todavía congelado. Se contesta a una votación con
+**teclas** (Intro / N) y también con los botones del cartel: ver abajo por qué las
+dos cosas y no una.
 
-**Esperar la votación es ya una pausa, y por eso no hay dos objetos** (vuelta
-54). Hasta la 53, `pausa` y `peticion` eran estados distintos y el mundo sólo
-miraba el primero: pedir la cuarta abría el cartel de «esperando al rival» y
-**dejaba al rival jugando** —y matando— contra alguien con el menú abierto y el
-ratón suelto. Ahora una petición es la misma pausa con la marca `pendiente`, así
-que `pausada` es verdad desde que se pide y `tick()`, el bucle del cliente y el
-re-anclaje de los dos huéspedes no hubo que tocarlos: el estado dejó de
-mentirles. Medido: 0.00 u andados y 0 entradas mandadas por el rival durante la
-votación, contra 8.02 u jugando.
+**La votación no es una pausa, y por eso no congela a nadie** (vuelta 55). La 54
+la metió dentro de la pausa para cerrar el agujero de la 53 —quien la pedía se
+quedaba con el ratón suelto mientras el rival seguía jugando, y matando— y el
+precio era el mundo parado de los dos mientras alguien se decidía. La 55 ataca el
+mismo agujero por el otro lado y **sustituye aquello entero**: no hay nadie
+esperando. Escape sin libres abre el menú de siempre con un botón, pulsarlo manda
+la solicitud y **cierra el menú**, al rival le entra un cartel por el borde
+derecho y los dos siguen jugando. Si sale, arranca la pausa votada de la 54 tal
+cual; si no sale, no pasa nada — y no hay aviso de «denegada» que cerrar, porque
+nadie llegó a congelarse. Medido: 7.80 y 7.91 u andados con la votación abierta,
+contra los 0.00 de la 54 y los 7.91 de referencia jugando.
 
-**Y una negativa se dice.** Con el mundo ya parado desde que se pide, que el
-cartel desaparezca sin más sería devolver a alguien al juego sin avisar. El aviso
-viaja como **contador** de votaciones caídas y no como campo de una sola foto —un
-aviso se pierde con su foto y entonces no se entera nunca—, con el motivo (`no` o
-`silencio`) porque las dos cosas no son la misma. La primera lectura sólo toma
-nota: quien entra a media partida tiene un marcador con el que comparar, no una
-negativa que enseñar.
+**Pedir y votar son dos verbos, no uno con un `if`.** Hasta la 54 había un solo
+mensaje y el servidor decidía qué era mirando las libres que quedaran. La cuenta
+de libres le llega al cliente **en la foto**, o sea con un viaje de retraso, así
+que un cliente con la cuenta vieja podía abrirle al rival un cartel que su jugador
+no había pedido. Un mensaje dice lo que se quiere, no lo que se supone. De ahí
+también que **soltar el ratón sólo pida pausa si quedan libres**: sin ninguna,
+Escape es un menú y nada más.
+
+**Quien no contesta se suma al que va ganando.** Quien la pide vota que sí sin
+decir nada —pedirla es quererla— y al agotarse `PAUSE.voteWindowSeconds` los votos
+que faltan van a la opción con más apoyo; un empate no aprueba. Es la regla que
+generaliza a más de un rival: con tres a favor y uno callado, ese callado no puede
+valer lo mismo que un «no». **Consecuencia: en 1v1 el silencio aprueba**, que es
+lo contrario de la 53 — y el motivo de aquello ya no existe, porque entonces el
+que pedía se quedaba tirado esperando y ahora está jugando.
+
+**Y el botón del cartel no se puede pinchar jugando.** Con el ratón capturado el
+clic va al elemento del `pointerlock`, que es el lienzo: medido, y la primera
+hipótesis —que algo lo tapara— la tumbó el propio banco, porque
+`elementFromPoint` sí encuentra el botón ahí. Por eso cada botón lleva **su tecla
+escrita al lado** (Intro / N), que no es una redundancia sino las dos situaciones
+reales: capturado se contesta con la tecla, suelto se pincha. Y soltar el ratón
+durante una votación **no pausa** aunque queden libres —dos cuentas atrás a la vez
+no se sabrían leer—, así que abrir el menú para contestar con el ratón no le para
+el mundo a nadie.
+
+**Declinar tiene color propio porque no quedaba ninguno libre.** El hueco obvio
+parecía el violeta y medido en CIELAB no lo es: `#8B5CF6` se queda a **ΔE 24.8**
+del azul de equipo, contra los 51 que separan a los dos equipos y los 79 con que
+se eligieron. Naranja, rojo, verde, ámbar, amarillo, azul y magenta tienen dueño,
+así que lo único sin dueño es el eje que nadie ha pedido: el neutro.
+`COLORS.decline` mide ΔE 68 contra el más cercano. Aceptar va en verde porque es
+la acción; declinar es seguir jugando, que es no hacer nada.
 
 **Toda pausa tiene tope, y su reloj es el de pared** (vuelta 54). Una libre dura
 `PAUSE.freeMaxSeconds` (120 s) y una votada `PAUSE.votedMaxSeconds` (60), y al
@@ -1348,9 +1377,17 @@ agotarse se reanuda sola; la votada dura la mitad porque el que dice que sí pag
 un rato parado que no ha elegido. Va contra la convención de «los relojes que
 pueden esperar van por delta» **a propósito y por la misma razón que la
 sostiene**: es el reloj *de la pausa*, y con el del mundo —que está parado— la
-cuenta no bajaría nunca. Lo que viaja en la foto es **cuánto queda**, no hasta
-cuándo: los relojes de las dos pantallas y el del servidor no coinciden, así que
-el número lo calcula el servidor y el cliente lo ancla al suyo al recibirlo.
+cuenta no bajaría nunca. La ventana de la votación va por el mismo reloj, aunque
+ahí el mundo sí corra: las dos son cuentas de la conversación, no del juego. Lo
+que viaja en la foto es **cuánto queda**, no hasta cuándo: los relojes de las dos
+pantallas y el del servidor no coinciden, así que el número lo calcula el
+servidor y el cliente lo ancla al suyo al recibirlo.
+
+**Y una pausa tuya te suelta el ratón** (vuelta 55). Con las libres el orden era
+el contrario —Escape suelta y luego llega la pausa—, pero una votada llega
+jugando, y quedarse capturado en un mundo parado es no tener con qué reanudarlo.
+Al que votó que sí no se le toca: no ha pedido nada, y devolverle al menú sería
+castigarle por haber dicho que sí.
 
 Y el cartel se reconstruye **al cambiar de estado**; la cuenta, por frame y en su
 propio nodo. Rehacer el `innerHTML` sesenta veces por segundo se lleva por
@@ -1358,9 +1395,10 @@ delante el botón de reanudar en mitad de un clic — es la regla del HUD (cero
 repintado por frame) en una página sin React.
 
 **El tuning de las pausas vive en `PAUSE`, no en `NET`.** Eran dos números y son
-cuatro: la mitad de lo que se toca al calibrarlas en un sitio y la otra mitad en
-otro es cómo se cambia uno y se olvida el que le hacía pareja. Quién puede pausar
-y cuánto dura, en `PAUSE`; cómo viajan los bytes, en `NET`.
+cuatro (`free`, `voteWindowSeconds`, `freeMaxSeconds`, `votedMaxSeconds`): la
+mitad de lo que se toca al calibrarlas en un sitio y la otra mitad en otro es cómo
+se cambia uno y se olvida el que le hacía pareja. Quién puede pausar y cuánto
+dura, en `PAUSE`; cómo viajan los bytes, en `NET`.
 
 **La muerte va en el reloj de las entradas, no en el del servidor** (vuelta 52).
 `vivoEn` es el número de **entrada** de la víctima a partir del cual vuelve a
@@ -1576,9 +1614,14 @@ apagados detrás de **F3**.
 Desde la vuelta 53 **Escape pausa la partida de los dos**, con tres pausas libres
 por jugador y permiso del rival a partir de la cuarta. Y desde la 54 **con
 reloj**: dos minutos una libre, uno una votada, con la cuenta atrás en el cartel
-y reanudación automática al agotarse. Pedirla **para el mundo ya**, no sólo al
-concederse —mientras se votaba, el rival seguía jugando contra alguien con el
-menú puesto—, y una negativa sale con su aviso en vez de desaparecer sin más.
+y reanudación automática al agotarse.
+
+Desde la 55 **la votación no congela a nadie**: sin libres, Escape abre el menú
+de siempre con un botón de «Solicitar pausa por votación», pulsarlo manda la
+solicitud y cierra el menú, y al rival le entra un cartel por el borde derecho
+—Aceptar en verde, Declinar en pizarra— con 15 s para contestar. Los dos siguen
+jugando mientras tanto. Si sale, arranca la pausa votada de la 54; si no, no pasa
+nada y no hay ningún aviso que cerrar.
 
 Desde la vuelta 52 el **abatido es autoritativo**: un muerto no se mueve, su
 cuerpo no se dibuja y la baja se confirma al instante con marca y sonido propios.
