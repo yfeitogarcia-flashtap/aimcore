@@ -1201,8 +1201,17 @@ le dé el servidor, que es la misma de la que sale su punto de salida.
 dos** —ninguno ve moverse nada, ni lo suyo ni lo del rival— porque la decide el
 servidor y no la pantalla. Tienes **tres pausas libres** por partida; a partir de
 la cuarta hay que pedírselo al rival, que acepta con **Intro** o rechaza con
-**N**, y si dice que no la partida sigue sin más. Abajo a la izquierda pone
-cuántas os quedan a cada uno. Volver a pinchar levanta la tuya.
+**N**. Abajo a la izquierda pone cuántas os quedan a cada uno. Volver a pinchar
+levanta la tuya.
+
+**Y toda pausa tiene su reloj, que se ve en el propio cartel.** Una libre dura
+como mucho **dos minutos** y una concedida por el rival, **uno**; al acabarse la
+cuenta se reanuda sola. La votada dura menos a propósito: el que dice que sí está
+pagando un rato parado que no ha elegido.
+
+**Mientras se vota, la partida ya está parada** — no sólo si te la conceden. Si
+el rival la rechaza (o no contesta en 12 s), sale un aviso que lo dice con todas
+las letras y se vuelve a jugar pinchando, como al cerrar cualquier menú.
 
 **Un abatido está abatido de verdad.** No se mueve mientras espera a reaparecer
 —el servidor no le deja— y su cuerpo **desaparece** en vez de quedarse en pie

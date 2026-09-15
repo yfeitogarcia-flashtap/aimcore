@@ -186,37 +186,84 @@ cliente.onDesconectado = (d) => {
   if (document.pointerLockElement === lienzo) document.exitPointerLock()
   pintarRed(performance.now())
 }
+/** `mm:ss` de unos milisegundos, redondeando hacia arriba: 0 es 0, no 0.4. */
+function reloj(ms) {
+  const s = Math.ceil(ms / 1000)
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`
+}
+
 /**
- * **Lo que se ve de la pausa.** Cuatro estados y ninguno se inventa aquí: todos
+ * **Lo que se ve de la pausa.** Cinco estados y ninguno se inventa aquí: todos
  * vienen de la foto. Lo único que decide esta página es cómo se cuentan.
+ *
+ * El cartel se **reconstruye sólo cuando cambia el estado** (lo avisa
+ * `onPausa`); la cuenta atrás, que cambia por frame, la escribe `pintarResta`
+ * en su propio nodo. Rehacer el `innerHTML` sesenta veces por segundo se
+ * llevaría por delante el botón de reanudar en mitad de un clic.
  */
 function pintarPausa() {
   const p = cliente.pausa
   $('libres').textContent = `pausas ${p.libres} · rival ${p.rivalLibres}`
   $('libresMenu').textContent = p.libres
+  const cuenta = '<em id="pausaResta">&nbsp;</em>'
+  if (p.pideMia) {
+    // El mundo **ya está parado** mientras se contesta, y el cartel lo dice:
+    // hasta la vuelta 54 no lo estaba y el que pedía la pausa se quedaba
+    // mirando esto con el ratón suelto mientras el rival seguía jugando.
+    panelPausa.hidden = false
+    panelPausa.innerHTML = `<b>ESPERANDO AL RIVAL</b>${cuenta}` +
+      '<small>te has quedado sin pausas libres, así que decide él · ' +
+      'la partida está parada mientras tanto</small>'
+    medirCartel()
+    return
+  }
+  if (p.pide) {
+    panelPausa.hidden = false
+    panelPausa.innerHTML = `<b>EL RIVAL PIDE PAUSA</b>${cuenta}` +
+      '<small>ya ha gastado sus pausas libres · <kbd>Intro</kbd> aceptar · <kbd>N</kbd> rechazar</small>'
+    medirCartel()
+    return
+  }
   if (p.pausada) {
     panelPausa.hidden = false
-    panelPausa.innerHTML = p.mia
-      ? '<b>PARTIDA EN PAUSA</b><small>la has pedido tú</small><button id="reanudar">reanudar</button>'
-      : '<b>PARTIDA EN PAUSA</b><small>la ha pedido el rival</small>'
+    panelPausa.innerHTML = `<b>PARTIDA EN PAUSA</b>${cuenta}` +
+      (p.mia
+        ? '<small>la has pedido tú · al acabarse la cuenta se reanuda sola</small>' +
+          '<button id="reanudar">reanudar</button>'
+        : '<small>la ha pedido el rival · al acabarse la cuenta se reanuda sola</small>')
     if (p.mia) $('reanudar').addEventListener('click', () => cliente.reanudar())
+    medirCartel()
     return
   }
-  if (p.pide && !p.pideMia) {
+  if (p.denegada) {
+    // **Una negativa se lee, no se sufre.** El mundo ya vuelve a correr, así que
+    // esto no puede ser un cartel más de pausa: es un aviso que se quita al
+    // volver a pinchar, como cualquier menú.
     panelPausa.hidden = false
-    panelPausa.innerHTML = '<b>EL RIVAL PIDE PAUSA</b>' +
-      '<small>ya ha gastado sus pausas libres · <kbd>Intro</kbd> aceptar · <kbd>N</kbd> rechazar</small>'
-    return
-  }
-  if (p.pideMia) {
-    panelPausa.hidden = false
-    panelPausa.innerHTML = '<b>ESPERANDO AL RIVAL</b>' +
-      '<small>te has quedado sin pausas libres, así que decide él</small>'
+    panelPausa.innerHTML = '<b>VOTACIÓN DENEGADA</b>' +
+      `<small>${p.denegada === 'silencio'
+        ? 'tu rival no ha contestado a tiempo'
+        : 'tu rival ha rechazado la pausa'} · haz clic para seguir jugando</small>`
+    medirCartel()
     return
   }
   panelPausa.hidden = true
+  medirCartel()
+}
+/** El menú se centra bajo el cartel: ver `--pausaAlto` en la hoja de estilos. */
+function medirCartel() {
+  document.body.style.setProperty('--pausaAlto',
+    panelPausa.hidden ? '0px' : `${panelPausa.offsetHeight}px`)
 }
 cliente.onPausa = pintarPausa
+
+/** La cuenta atrás del cartel, que va por frame y no por foto. */
+function pintarResta(ahora) {
+  const nodo = document.getElementById('pausaResta')
+  if (!nodo) return
+  const resta = cliente.restaPausaMs(ahora)
+  nodo.textContent = resta === null ? '' : reloj(resta)
+}
 
 /**
  * **Aceptar o rechazar se hace con teclas, no con el ratón**: a quien le llega
@@ -356,6 +403,10 @@ document.addEventListener('pointerlockchange', () => {
   // justo el estado confuso que esta vuelta viene a quitar. La del rival no se
   // toca — sólo la levanta quien la puso.
   if (capturado && cliente.pausa.mia) cliente.reanudar()
+  // **Y volver a pinchar es haber leído el aviso.** Una negativa se queda en
+  // pantalla hasta entonces: el mundo ya corre, así que lo que la cierra es el
+  // gesto de volver al juego, igual que cualquier otro menú.
+  if (capturado) cliente.olvidarDenegada()
   if (!capturado) {
     // **Y soltar el ratón suelta las teclas**, igual que perder el foco. No es
     // una pausa local fingida —la pausa la decide el servidor y tarda un viaje
@@ -419,6 +470,7 @@ function bucle(ahora) {
     ultimoFrame = ahora
     renderer.render(scene, camara)
     pintarVitales()
+    pintarResta(ahora)
     pintarRed(ahora)
     pintarPanel()
     return

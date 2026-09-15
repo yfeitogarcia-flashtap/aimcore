@@ -18,7 +18,7 @@
  * El reloj de la simulación es **el número de paso**, no el de nadie: ver
  * `protocolo.js`.
  */
-import { NET, SIM_STEP_MS } from '../src/config.js'
+import { NET, PAUSE, SIM_STEP_MS } from '../src/config.js'
 import { resolverDisparo } from './disparo.js'
 import { cuerpoDeJugador } from './pose.js'
 import { MSG, desempaquetarTeclas, empaquetarTeclas, instanteDePaso, instanteEnPaso } from './protocolo.js'
@@ -62,7 +62,12 @@ export class ClienteRed {
      * que un juego colgado**: nada en pantalla y nada en la consola.
      */
     this.onDesconectado = null
-    /** Cambios en la pausa: `{ pausada, por, mia, pide, libres, rivalLibres }`. */
+    /**
+     * Cambios en la pausa: `{ pausada, por, mia, pide, pideMia, libres,
+     * rivalLibres, denegada }`. **No se avisa de la cuenta atrás**, que cambia
+     * sesenta veces por segundo: quien la pinte la lee con `restaPausaMs()` en
+     * su bucle, que es lo que ya hace para todo lo demás que va por frame.
+     */
     this.onPausa = null
     /** El último motivo, para quien lo quiera pintar sin esperar al aviso. */
     this.desconexion = null
@@ -92,7 +97,13 @@ export class ClienteRed {
      * abierto con el mundo corriendo por detrás.
      */
     this.pausa = { pausada: false, por: null, mia: false, pide: null, pideMia: false,
-                   libres: NET.pausasLibres, rivalLibres: NET.pausasLibres }
+                   libres: PAUSE.free, rivalLibres: PAUSE.free,
+                   /** `'no'` o `'silencio'` mientras haya una negativa sin leer. */
+                   denegada: null }
+    /** Negativas ya contadas, para no repetir el aviso en cada foto. */
+    this._negadas = null
+    /** Instante local en que caducará la pausa, o null. Ver `restaPausaMs`. */
+    this._pausaHasta = null
 
     /** Fotos del rival, para dibujarlo en el pasado. */
     this.rival = { id: null, buffer: [], pose: null }
@@ -195,6 +206,27 @@ export class ClienteRed {
   pedirPausa() { this._decir('pedir') }
   reanudar() { this._decir('reanudar') }
   responder(acepta) { this._decir(acepta ? 'si' : 'no') }
+
+  /**
+   * **Lo que le queda a la pausa**, en milisegundos, o null si no hay ninguna.
+   *
+   * El número lo manda el servidor en cada foto y aquí se **ancla al reloj
+   * local**: entre foto y foto la cuenta sigue bajando sola, así que un cartel
+   * que se lea por frame no da saltos ni depende de cada cuántos pasos llega la
+   * siguiente. Los dos relojes no tienen por qué coincidir —nunca lo hacen— y
+   * por eso lo que viaja es cuánto queda y no hasta cuándo.
+   */
+  restaPausaMs(ahora = performance.now()) {
+    if (this._pausaHasta === null) return null
+    return Math.max(0, this._pausaHasta - ahora)
+  }
+
+  /** El aviso de negativa ya se ha visto: se apaga. */
+  olvidarDenegada() {
+    if (this.pausa.denegada === null) return
+    this.pausa.denegada = null
+    this.onPausa?.(this.pausa)
+  }
 
   _decir(q) {
     if (!this.conectado) return
@@ -431,20 +463,42 @@ export class ClienteRed {
    */
   _leerPausa(foto) {
     const p = this.pausa
-    const antes = `${p.pausada}${p.por}${p.pide}${p.libres}${p.rivalLibres}`
+    const antes = `${p.pausada}${p.por}${p.pide}${p.libres}${p.rivalLibres}${p.denegada}`
     const estaba = p.pausada
     p.pausada = !!foto.pa
     p.por = foto.pa?.por ?? null
     p.mia = p.por !== null && p.por === this.id
-    p.pide = foto.pd?.por ?? null
+    /**
+     * **Una votación pendiente es una pausa a la que le falta el permiso**
+     * (vuelta 54), así que llega dentro de `pa` y no en un campo aparte: el
+     * mundo ya está parado mientras se contesta. `pide` se conserva porque es lo
+     * que mira quien pinta el cartel de «¿aceptas?».
+     */
+    p.pide = foto.pa?.pend ? p.por : null
     p.pideMia = p.pide !== null && p.pide === this.id
+    this._pausaHasta = foto.pa ? performance.now() + foto.pa.resta : null
     for (const id of Object.keys(foto.p)) {
-      const libres = foto.p[id].libres
-      if (libres === undefined) continue
-      if (id === this.id) p.libres = libres
-      else p.rivalLibres = libres
+      const mio = foto.p[id]
+      if (mio.libres !== undefined) {
+        if (id === this.id) p.libres = mio.libres
+        else p.rivalLibres = mio.libres
+      }
+      if (id !== this.id) continue
+      /**
+       * **Y si tu votación se quedó en nada, enterarte.** Viaja como contador y
+       * no como aviso de una foto porque un aviso se pierde con su foto; aquí
+       * basta con haber visto **alguna** posterior. La primera lectura sólo
+       * toma nota: un cliente que entra a media partida no tiene una negativa
+       * que enseñar, tiene un marcador con el que comparar.
+       */
+      const negadas = mio.neg ?? 0
+      if (this._negadas !== null && negadas > this._negadas) p.denegada = mio.negm ?? 'no'
+      this._negadas = negadas
     }
     if (p.pausada && !estaba) {
+      // Una pausa nueva borra el aviso de la anterior: lo que enseña el cartel
+      // es lo que está pasando ahora, no lo que pasó la vez pasada.
+      p.denegada = null
       /**
        * **Al entrar en pausa se olvida qué se mandó y cuándo.** El RTT sale de
        * restar, al llegar la confirmación de una entrada, el instante en que se
@@ -458,7 +512,7 @@ export class ClienteRed {
        */
       this._historialEnvio.clear()
     }
-    if (`${p.pausada}${p.por}${p.pide}${p.libres}${p.rivalLibres}` !== antes) this.onPausa?.(p)
+    if (`${p.pausada}${p.por}${p.pide}${p.libres}${p.rivalLibres}${p.denegada}` !== antes) this.onPausa?.(p)
   }
 
   _reconciliar(foto) {

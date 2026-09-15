@@ -17,7 +17,7 @@
  * Y sigue sin tener código de juego: importa `movement.js`, `scenario.js`,
  * `hitPlayer` y `hasLineOfSight` tal cual.
  */
-import { NET, SIM, SIM_STEP_MS } from '../src/config.js'
+import { NET, PAUSE, SIM, SIM_STEP_MS } from '../src/config.js'
 import { MovementController } from '../src/game/movement.js'
 import { crearPose, cuerpoDeJugador } from './pose.js'
 import { direccionDeMira, resolverDisparo } from './disparo.js'
@@ -37,14 +37,24 @@ export class Partida {
     this.paso = 0
     /**
      * **La pausa, que es del mundo y no de quien la pide** (vuelta 53). Null, o
-     * `{ por }` con el id del que la tiene puesta. Mientras está puesta, `tick`
-     * no avanza el mundo: es la misma regla del motor —«pausar es dejar de
-     * sumarle al reloj del mundo»— aplicada al servidor, y por eso el número de
-     * paso tampoco corre. El huésped se re-ancla, que el reloj de pared sí sigue.
+     * `{ por, pendiente, expiraEn }`. Mientras está puesta, `tick` no avanza el
+     * mundo: es la misma regla del motor —«pausar es dejar de sumarle al reloj
+     * del mundo»— aplicada al servidor, y por eso el número de paso tampoco
+     * corre. El huésped se re-ancla, que el reloj de pared sí sigue.
+     *
+     * **Y esperar la votación es ya una pausa** (vuelta 54). Hasta la 53 la
+     * petición era un objeto aparte y el mundo seguía corriendo mientras se
+     * contestaba: el que la pedía se quedaba mirando un cartel con el ratón
+     * suelto y el rival podía seguir jugando —y matarle— tan tranquilo. Un
+     * estado que se ve como una pausa y no lo es sólo puede acabar así, de modo
+     * que ahora `pendiente` es una pausa de verdad a la que le falta el permiso.
+     * Dos objetos que tenían que estar de acuerdo sobre quién y hasta cuándo son
+     * uno solo, que es como no pueden contradecirse.
+     *
+     * `expiraEn` es reloj de **pared** (`Date.now`), no del mundo: el reloj del
+     * mundo está parado justo mientras esta cuenta tiene que correr.
      */
     this.pausa = null
-    /** Una petición esperando respuesta del rival: `{ por, expiraEn }`. */
-    this.peticion = null
     this.jugadores = new Map()
     this._siguienteId = 0
     /** Dos sitios de salida separados, para no aparecer uno dentro del otro. */
@@ -62,7 +72,10 @@ export class Partida {
     return this.jugadores.size === 0
   }
 
-  /** ¿Está el mundo parado? Lo pregunta el huésped para no gastar pasos. */
+  /**
+   * ¿Está el mundo parado? Lo pregunta el huésped para no gastar pasos. Una
+   * votación pendiente también lo para: ver `this.pausa`.
+   */
   get pausada() {
     return this.pausa !== null
   }
@@ -139,7 +152,17 @@ export class Partida {
       bajas: 0,
       muertes: 0,
       /** Pausas que puede pedir sin permiso. No se recuperan. */
-      pausasLibres: NET.pausasLibres,
+      pausasLibres: PAUSE.free,
+      /**
+       * **Votaciones suyas que se han quedado en nada**, y por qué (vuelta 54).
+       * Es un contador y no un aviso de una sola foto: un aviso se pierde con la
+       * foto que lo llevaba y entonces el que pidió la pausa se queda sin saber
+       * nunca qué pasó. Un contador lo lee el cliente comparando con el último
+       * que vio, así que repetirlo en cada foto no cuesta nada y perder una no
+       * cuesta el aviso.
+       */
+      negadas: 0,
+      negadaMotivo: null,
     }
     this.jugadores.set(jugador.id, jugador)
 
@@ -160,13 +183,12 @@ export class Partida {
   sale(id) {
     this.jugadores.delete(id)
     // **Irse levanta lo que uno tuviera puesto.** Una pausa de alguien que ya no
-    // está deja el mundo parado para siempre, y una petición sin quien la
-    // conteste deja al otro mirando un cartel.
+    // está deja el mundo parado para siempre — y con la votación dentro de la
+    // pausa, esto cubre también la petición que se va con quien la hizo.
     if (this.pausa?.por === id) this.pausa = null
-    if (this.peticion?.por === id) this.peticion = null
-    // Y si se va el que tenía que contestar, la petición se queda sin
+    // Y si se va el que tenía que contestar, la votación se queda sin
     // interlocutor: se concede, que es lo que pasaría si dijera que sí nadie.
-    if (this.peticion && !this.llena) this._conceder()
+    if (this.pausa?.pendiente && !this.llena) this._conceder()
   }
 
   /** Un mensaje de un jugador. El huésped no lo mira: lo pasa tal cual. */
@@ -208,54 +230,87 @@ export class Partida {
    *
    * Las tres primeras de cada jugador son instantáneas: pausar es para el
    * timbre, y pedir permiso para atender el timbre no tiene sentido. De la
-   * cuarta en adelante decide el rival, que es quien paga el rato parado.
+   * cuarta en adelante decide el rival, que es quien paga el rato parado — y
+   * mientras lo decide **el mundo ya está parado**, que es lo que distingue una
+   * pausa pendiente de la ventana de vulnerabilidad que era hasta la 54.
    */
   _pausa(jugador, que) {
     if (que === 'reanudar') {
       // **Sólo levanta la pausa quien la puso.** Si la levantase el otro, pedir
-      // una pausa no serviría de nada.
+      // una pausa no serviría de nada. Con una votación pendiente esto es
+      // retirarla: quien vuelve al juego ya no la está pidiendo.
       if (this.pausa?.por === jugador.id) this.pausa = null
       return
     }
     if (que === 'si' || que === 'no') {
       // Contesta el rival, no quien la pidió.
-      if (!this.peticion || this.peticion.por === jugador.id) return
+      if (!this.pausa?.pendiente || this.pausa.por === jugador.id) return
       if (que === 'si') this._conceder()
-      else this.peticion = null
+      else this._denegar('no')
       return
     }
-    if (que !== 'pedir' || this.pausa || this.peticion) return
+    if (que !== 'pedir' || this.pausa) return
     if (jugador.pausasLibres > 0) {
       jugador.pausasLibres -= 1
-      this.pausa = { por: jugador.id }
+      this.pausa = this._conCuenta(jugador.id, PAUSE.freeMaxSeconds)
       return
     }
-    // Sin libres: decide el rival. Y si no hay rival, no hay a quién preguntar.
+    // Sin libres: decide el rival. Y si no hay rival, no hay a quién preguntar
+    // —pero la pausa sigue siendo de las que cuestan, así que dura lo que dura
+    // una votada: que no haya nadie a quien pedirle permiso no la hace libre.
     if (!this.llena) {
-      this.pausa = { por: jugador.id }
+      this.pausa = this._conCuenta(jugador.id, PAUSE.votedMaxSeconds)
       return
     }
-    this.peticion = { por: jugador.id, expiraEn: Date.now() + NET.pausaRespuestaMs }
+    this.pausa = { por: jugador.id, pendiente: true, expiraEn: Date.now() + PAUSE.answerMs }
+  }
+
+  /** Una pausa concedida, con su tope en reloj de pared. */
+  _conCuenta(por, segundos) {
+    return { por, pendiente: false, expiraEn: Date.now() + segundos * 1000 }
   }
 
   _conceder() {
-    if (!this.peticion) return
-    this.pausa = { por: this.peticion.por }
-    this.peticion = null
+    if (!this.pausa?.pendiente) return
+    this.pausa = this._conCuenta(this.pausa.por, PAUSE.votedMaxSeconds)
+  }
+
+  /**
+   * **La votación se queda en nada, y se dice.** El mundo vuelve a correr y a
+   * quien la pidió se le anota el porqué: hasta la 54 una negativa era
+   * indistinguible de un cartel que desaparece solo, y con el mundo ya parado
+   * desde que se pide, desaparecer sin más sería devolverle al juego sin avisar.
+   * @param {'no'|'silencio'} motivo
+   */
+  _denegar(motivo) {
+    const quien = this.jugadores.get(this.pausa.por)
+    if (quien) {
+      quien.negadas += 1
+      quien.negadaMotivo = motivo
+    }
+    this.pausa = null
   }
 
   /** Un paso del mundo. Lo llama el huésped a 60 Hz. */
   tick() {
+    // **Toda pausa tiene su final** (vuelta 54). Una pendiente se cae por
+    // silencio —que ya en la 53 contaba como negativa— y una concedida se
+    // reanuda sola al agotar su tope: sin tope, el único límite de un mundo
+    // parado era que el otro se dignara a volver. Y va **antes** del corte de
+    // abajo, para que el paso en que caduca sea ya un paso normal en vez de uno
+    // más de pausa.
+    if (this.pausa && Date.now() >= this.pausa.expiraEn) {
+      if (this.pausa.pendiente) this._denegar('silencio')
+      else this.pausa = null
+    }
     // **Con el mundo en pausa la foto sigue saliendo, pero nada avanza.** La
     // foto es cómo se enteran los dos de que hay pausa, así que callarse sería
     // dejarles sin la única señal; y el paso no sube porque el reloj del mundo
     // es él (misma regla que `engine.gameTime`).
     if (this.pausa) {
-      // El silencio también cuenta como negativa: ver `NET.pausaRespuestaMs`.
       this._enviarFoto()
       return
     }
-    if (this.peticion && Date.now() > this.peticion.expiraEn) this.peticion = null
     this.paso += 1
     for (const jugador of this.jugadores.values()) {
       if (!jugador.cebado) {
@@ -293,8 +348,14 @@ export class Partida {
   _enviarFoto() {
     const foto = { t: MSG.FOTO, n: this.paso, p: {} }
     // Sólo cuando hay algo que contar: en una partida normal esto no ocupa nada.
-    if (this.pausa) foto.pa = { por: this.pausa.por }
-    else if (this.peticion) foto.pd = { por: this.peticion.por }
+    // `resta` son los milisegundos que le quedan a la pausa —o a la votación—,
+    // y se calculan **aquí**: el cliente no tiene el reloj del servidor, y una
+    // cuenta atrás que cada pantalla calculase por su cuenta acabaría diciendo
+    // dos cosas distintas del mismo cartel.
+    if (this.pausa) {
+      foto.pa = { por: this.pausa.por, resta: Math.max(0, this.pausa.expiraEn - Date.now()) }
+      if (this.pausa.pendiente) foto.pa.pend = 1
+    }
     for (const jugador of this.jugadores.values()) {
       foto.p[jugador.id] = {
         ack: jugador.ack,
@@ -302,6 +363,7 @@ export class Partida {
         vida: jugador.vida,
         vivoEn: jugador.vivoEn,
         libres: jugador.pausasLibres,
+        ...(jugador.negadas > 0 ? { neg: jugador.negadas, negm: jugador.negadaMotivo } : null),
         bajas: jugador.bajas,
         muertes: jugador.muertes,
         yaw: jugador.pose.rotation.y,

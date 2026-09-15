@@ -5373,7 +5373,8 @@ Dos detalles que son del diseño:
 - **Aceptar o rechazar se hace con teclas** (Intro / N), no con un botón: a quien
   le llega la petición está jugando, con el ratón capturado, y soltarlo para
   pinchar sería pausarle la partida para preguntarle si quiere pausarla.
-- **El silencio cuenta como negativa** (`NET.pausaRespuestaMs`, 12 s). Sin eso,
+- **El silencio cuenta como negativa** (`PAUSE.answerMs`, 12 s; se llamaba
+  `NET.pausaRespuestaMs` hasta la vuelta 54). Sin eso,
   pedirle una pausa a alguien que se ha ido a por hielo deja al que la pide
   mirando un cartel para siempre.
 - **Irse levanta lo que uno tuviera puesto.** Una pausa de alguien que ya no está
@@ -5413,6 +5414,132 @@ haya un viaje de verdad que medir.
 Y en pausa **no se anota ningún disparo**: como se consume en el paso siguiente y
 en pausa no hay pasos, uno anotado ahora saldría al reanudar — una bala guardada
 durante la pausa, apuntada a donde el rival estaba parado.
+
+## Ronda 54 — Una pausa con reloj, y una votación que no deja hueco
+
+Tres cosas de la 53 que la primera partida larga dejó a la vista. Las dos
+primeras son de diseño; la tercera era un agujero.
+
+### El agujero: pedir la cuarta no paraba nada
+
+Repro confirmado por el usuario: agotadas las tres libres, pedir una pausa abría
+el cartel de «esperando al rival» **y el mundo seguía corriendo**. El que la
+pedía se quedaba con el ratón suelto, sin teclas —la 53 las suelta al soltar el
+ratón, que era lo correcto— mirando una pantalla que decía que estaba en pausa.
+El rival, que no había contestado nada todavía, podía seguir jugando con total
+normalidad. Y matarle.
+
+O sea: el estado se **veía** como una pausa, se **comportaba** como un menú, y no
+se resolvía solo. Las tres cosas a la vez.
+
+La causa está en cómo se guardaba: `pausa` y `peticion` eran **dos objetos
+distintos**, y el mundo se paraba mirando sólo el primero. Un estado repartido en
+dos sitios que tienen que estar de acuerdo sobre quién y hasta cuándo es la forma
+habitual de que no lo estén.
+
+**El arreglo es la unificación, no un `if` más.** Esperar la votación es una
+pausa a la que le falta el permiso, así que es **la misma pausa** con la marca
+`pendiente`. `pausada` —lo que miran `tick()`, el bucle del cliente y los dos
+huéspedes para re-anclar— pasa a ser verdad desde el instante en que se pide. No
+hubo que tocar ninguno de esos sitios: el estado dejó de mentirles.
+
+Medido (`pausa54.mjs` [2b]), con el rival aporreando W y disparando durante la
+votación:
+
+| | esperando la votación | jugando |
+|---|---|---|
+| lo que anda el rival en 1.3 s | **0.00 u** | 8.02 u |
+| entradas que manda | **0** | ~78 |
+| disparos que salen | **0 de 6** | 6 de 6 |
+| vida del que pidió la pausa | 100 → **100** | — |
+
+El denominador de la primera columna es la segunda: sin el paseo de 8 u al lado,
+un «0.00» no dice si el mundo está parado o si es que el banco no ha pulsado
+nada. Es la regla de la vuelta 46, la de la tabla vacía al 100%.
+
+### Y una negativa se lee, no se sufre
+
+Con el mundo ya parado desde que se pide, que la votación se caiga y el cartel
+desaparezca sin más sería devolver a alguien al juego sin avisarle. Así que la
+negativa **se dice**: «VOTACIÓN DENEGADA · tu rival ha rechazado la pausa», o
+«no ha contestado a tiempo» si se cayó por silencio, y se quita volviendo a
+pinchar, como cualquier menú. El mundo, mientras, ya corre.
+
+**El aviso viaja como contador, no como aviso.** Un campo de una sola foto se
+pierde con esa foto, y entonces el que pidió la pausa no se entera nunca de qué
+pasó. Un contador —«van 2 votaciones tuyas caídas, la última por silencio»— lo
+lee el cliente comparando con el último que vio: repetirlo en cada foto no cuesta
+nada y perder una no cuesta el aviso. Es la misma idea que los veredictos de
+disparo de la 46, resuelta con un número en vez de con un TTL.
+
+La primera lectura sólo toma nota, y eso es deliberado: quien entra a media
+partida no tiene una negativa que enseñar, tiene un marcador con el que comparar.
+
+### La pausa tiene reloj, y el reloj es el de pared
+
+Una pausa sin tope no es una pausa, es un abandono con el mundo parado: el único
+límite que había era que el otro se dignara a volver. Ahora una libre dura
+`PAUSE.freeMaxSeconds` (120 s) y una votada `PAUSE.votedMaxSeconds` (60), y al
+agotarse **se reanuda sola**. La votada dura la mitad porque el que dice que sí
+está pagando un rato parado que no ha elegido: una cosa es concederle un minuto a
+alguien y otra firmarle un cheque en blanco.
+
+**Y esta cuenta va en reloj de pared, contra la convención.** La regla del
+proyecto es que los relojes que pueden esperar van por delta y en pausa no corren
+—se cerró así el agujero de la cuenta atrás del explosivo y el de la carga del
+escudo—. Éste es exactamente el contrario, y por la misma razón que sostiene la
+regla: es *el reloj de la pausa*. Con el del mundo, que está parado, la cuenta no
+bajaría nunca y el máximo no existiría. La prueba de que es la excepción correcta
+es que los tres relojes que deciden la pausa —el tope, la ventana de respuesta y
+el re-anclaje de los dos huéspedes— son de pared, y todo lo demás sigue sin
+serlo.
+
+**La cuenta se ve, y la calcula el servidor.** Viaja en la foto como «cuánto
+queda» y no como «hasta cuándo»: los relojes de las dos pantallas y el del
+servidor no coinciden —nunca lo hacen, es la regla de la vuelta 45— y un cartel
+que cada una calculase por su cuenta acabaría diciendo dos cosas distintas del
+mismo número. El cliente lo ancla a su reloj local al recibirlo, así que entre
+foto y foto sigue bajando sola y no da saltos.
+
+Dos detalles de la pantalla:
+
+- **El cartel se reconstruye al cambiar de estado; la cuenta, por frame.**
+  Rehacer el `innerHTML` sesenta veces por segundo se lleva por delante el botón
+  de reanudar en mitad de un clic. Es la regla del HUD del juego —cero `setState`
+  por frame— aplicada a una página que no tiene React.
+- **La cuenta no va teñida.** En esta paleta el rojo ya dice «te están
+  disparando» y el ámbar «hay un explosivo»; lo que separa la cuenta del rótulo
+  es el sitio, no el color. El panel de pausa es neutro desde la 53 y sigue
+  siéndolo.
+- **Y el menú se centra debajo del cartel**, no detrás: los dos salen a la vez
+  —quien pausa suelta el ratón— y el cartel tapaba el título de la sala. El alto
+  lo escribe la propia página al cambiar de estado, porque depende de cuántas
+  líneas tenga el cartel; clavarlo a un número se rompe el día que se le añada
+  una.
+
+### El tuning se muda a `PAUSE`
+
+Eran dos números en `NET` y ahora son cuatro. Tener la mitad de lo que se toca al
+calibrar una pausa en un sitio y la otra mitad en otro es cómo se acaba cambiando
+uno y olvidando el que le hacía pareja. Lo que decide quién puede pausar y cuánto
+dura va en `PAUSE`; lo que decide cómo viajan los bytes sigue en `NET`.
+
+### Una aserción que guardaba el fallo
+
+`pausa53.mjs` [4] afirmaba «la cuarta **no** pausa por sí sola», y pasaba. Era
+verdad y era el bug: describía el hueco sin verlo. Se ha reescrito a lo que ahora
+es la regla —«el mundo se para ya mientras se vota»—, con la nota de por qué
+cambió. Una suite que se actualiza sin decir qué dejó de ser cierto es una suite
+que el día de mañana no se sabe si mide la regla o la costumbre.
+
+### Cómo se mide un tope de dos minutos
+
+No esperando dos minutos. `pausa54-tope.mjs` se pasa con `PAUSE.freeMaxSeconds` y
+`votedMaxSeconds` bajados a 6 y 3, **volviendo a construir y a relanzar el
+Worker** —sirve `dist/`, no `src/`: sin relanzarlo se mide el build anterior, que
+es el falso negativo del §4 de `CLAUDE.md` por otra puerta—. Que los valores de
+fábrica son los que llegan a la pantalla lo comprueba `pausa54.mjs`, que lee la
+cuenta recién puesta: 119.5 s de 120 y 59.5 de 60.
 
 ## 13. Bugs con enseñanza duradera
 

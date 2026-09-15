@@ -2985,6 +2985,23 @@ export const NET = {
    * Punto de partida, a calibrar jugando.
    */
   offlineMs: 1000,
+}
+
+/**
+ * **La pausa, que es una regla de juego y no del cable** (vueltas 53 y 54).
+ *
+ * Vivía dentro de `NET` mientras fueron dos números, y ahora son cuatro: tener
+ * la mitad de lo que se toca al calibrar una pausa en un sitio y la otra mitad
+ * en otro es cómo se acaba cambiando uno y olvidando el que le hacía pareja.
+ * Lo que decide quién puede pausar y cuánto dura va aquí; lo que decide cómo
+ * viajan los bytes sigue en `NET`.
+ *
+ * **Y se mide en reloj de pared, a propósito.** La convención del proyecto es
+ * que los relojes que pueden esperar van por delta y en pausa no corren; éste
+ * es exactamente el contrario, porque es *el de la pausa*: si se parase con el
+ * mundo, la cuenta atrás no bajaría nunca y el máximo no existiría.
+ */
+export const PAUSE = {
   /**
    * **Pausas libres por jugador y partida** (vuelta 53).
    *
@@ -2996,12 +3013,30 @@ export const NET = {
    *
    * No se recuperan: son por partida, y una partida dura lo que dure la sala.
    */
-  pausasLibres: 3,
+  free: 3,
   /**
    * Cuánto se espera una respuesta antes de darla por negada. Sin esto, pedir
    * una pausa a alguien que se ha ido a por hielo deja al que la pide mirando
    * un cartel para siempre. Negar por silencio es lo correcto: la partida sigue,
    * que es lo que pasa si no contestan.
    */
-  pausaRespuestaMs: 12000,
+  answerMs: 12000,
+  /**
+   * **Cuánto puede durar una pausa libre** (vuelta 54). Al agotarse se reanuda
+   * sola, y la cuenta se ve en el propio cartel.
+   *
+   * Una pausa sin tope no es una pausa, es un abandono con el mundo parado: el
+   * rival se queda mirando un cartel sin nada que pueda hacer al respecto, y el
+   * único límite que había era que el otro se dignara a volver. Dos minutos es
+   * de sobra para lo que las pausas son —el timbre, un vaso de agua— y poco
+   * para irse a hacer otra cosa. Punto de partida, a calibrar jugando.
+   */
+  freeMaxSeconds: 120,
+  /**
+   * **Y cuánto dura la votada**, la que el rival ha tenido que conceder. La
+   * mitad, porque el que dice que sí está pagando un rato parado que no ha
+   * elegido: una cosa es concederle un minuto a alguien y otra firmarle un
+   * cheque en blanco. Mismo cartel y misma cuenta atrás.
+   */
+  votedMaxSeconds: 60,
 }

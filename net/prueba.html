@@ -67,6 +67,12 @@
     border-bottom: 1px solid #2A2A2A; color: #FFF; }
   #pausa[hidden] { display: none !important; }
   #pausa b { letter-spacing: .2em; }
+  /* La cuenta atrás: cifras de ancho fijo, o el cartel entero baila cada vez que
+     un 1 se convierte en un 8. Y **sin teñir**, como el resto del panel: en esta
+     paleta el rojo ya dice «te están disparando» y el ámbar «hay un explosivo».
+     Lo que la separa del rótulo es el sitio, no el color. */
+  #pausa em { margin-left: 10px; font-style: normal; color: #FFF; font-weight: 700;
+    letter-spacing: .1em; font-variant-numeric: tabular-nums; }
   #pausa small { display: block; margin-top: 3px; font-weight: 400; color: #9A9A9A; letter-spacing: .04em; }
   #pausa button { margin: 7px 4px 0; background: #2FCB82; color: #08130D; border: 0;
     border-radius: 3px; padding: 6px 14px; font: inherit; font-weight: 700; cursor: pointer; }
@@ -92,7 +98,13 @@
   #abatido b { font-size: 34px; color: #E4462B; }
 
   /* ---------------------------------------------- la pantalla de menú */
+  /* El menú se centra **por debajo** del cartel de pausa, no detrás: los dos
+     salen a la vez —quien pausa suelta el ratón— y el cartel tapaba el título.
+     El alto lo escribe `pintarPausa` al cambiar de estado, porque depende de
+     cuántas líneas tenga el cartel, y clavarlo a un número se rompe al añadirle
+     una. */
   #aviso { position: fixed; inset: 0; display: grid; place-items: center; cursor: pointer;
+    padding-top: var(--pausaAlto, 0px); box-sizing: border-box;
     background: rgba(10,10,10,.78); text-align: center; letter-spacing: .06em; }
   #aviso[hidden] { display: none !important; }
   #sala { display: inline-block; text-align: left; margin-bottom: 18px; padding: 14px 16px;
