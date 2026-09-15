@@ -61,7 +61,15 @@ movimiento.setEnabled(true)
 const controles = new LookControls(camara)
 const equipos = Object.keys(TEAMS)
 
-/** El rival, con el cuerpo de siempre y el color del otro equipo. */
+/**
+ * **Cada jugador con el color de su equipo** (vuelta 49). Hasta aquí el rival se
+ * pintaba siempre con `equipos[1]` y el fantasma siempre con `equipos[0]`, o sea
+ * que **los dos se veían del mismo color**: cada uno era azul para sí mismo y
+ * magenta para el otro. El color de equipo existe justo para lo contrario —un
+ * rival se reconoce por el color, que se ve igual desde cualquier ángulo—, así
+ * que se tiñen al llegar la bienvenida, que es cuando se sabe qué ranura te ha
+ * tocado. Se construyen con un color cualquiera porque `setColor` los repinta.
+ */
 const rival = new Avatar(0.45, TEAMS[equipos[1]].color)
 rival.group.visible = false
 scene.add(rival.group)
@@ -107,8 +115,16 @@ const cliente = new ClienteRed({
   transporte: conRedSimulada(transporteWebSocket(urlDeSala(codigo)), enlace),
 })
 cliente.onBienvenida = (m) => {
-  $('quien').textContent = `${m.id} · ${m.escenario}`
-  $('quienDbg').textContent = `${m.id} · ${m.escenario}`
+  // **La ranura la manda el servidor**, y es la misma de la que sale su sitio de
+  // salida: deducir el color del id (`p1`, `p2`) parece equivalente y no lo es,
+  // porque el id es un contador que no para —dos jugadores pueden ser `p3` y
+  // `p5` y quedarse otra vez del mismo color—.
+  const mio = equipos[m.equipo % equipos.length]
+  const suyo = equipos[(m.equipo + 1) % equipos.length]
+  fantasma.setColor(TEAMS[mio].color)
+  rival.setColor(TEAMS[suyo].color)
+  $('quien').innerHTML = `${m.id} · <span style="color:${TEAMS[mio].color}">${TEAMS[mio].label}</span>`
+  $('quienDbg').textContent = `${m.id} · ${mio} · ${m.escenario}`
   document.title = `Vektor · ${codigo} · ${m.id}`
 }
 /**
@@ -289,7 +305,20 @@ function bucle(ahora) {
   const objetivo = cliente.pasoObjetivo()
   if (objetivo > 0) {
     const desfase = objetivo - (paso + pasos)
-    if (desfase > NET.clockDeadbandTicks) pasos += Math.min(NET.maxCatchUpTicks, desfase)
+    if (desfase > NET.resyncTicks) {
+      // **Demasiado atrás para recuperarlo corriendo: se re-ancla** (vuelta 49).
+      // Es el caso de la pestaña en segundo plano, donde el navegador para el
+      // rAF. Ni se dan los pasos perdidos ni se guarda el sobrante del
+      // acumulador: el tiempo que el bucle no corrió no produjo entradas, y el
+      // servidor dejó a ese jugador parado. Ver `cliente.reanclar`.
+      cliente.reanclar(objetivo)
+      paso = objetivo
+      pasos = 0
+      acumulador = 0
+      // Y el dibujado no interpola a través del salto, que es la regla de
+      // siempre: las dos poses se vuelven a sembrar en el paso siguiente.
+      posaLista = false
+    } else if (desfase > NET.clockDeadbandTicks) pasos += Math.min(NET.maxCatchUpTicks, desfase)
     else if (desfase < -NET.clockDeadbandTicks && pasos > 0) pasos -= 1
   }
 
@@ -409,6 +438,7 @@ function pintarPanel() {
   // La pérdida la cuenta el transporte, que es de quien es el cable.
   $('perdidos').textContent = `↑${enlace.tirados ?? 0} ↓${enlace.tiradosEntrada ?? 0} de ${m.enviados}`
   $('hambre').textContent = `${m.hambre}`
+  $('reanclajes').textContent = `${m.reanclajes}`
   $('vida').innerHTML = cliente.vida > 0
     ? `<span class="${cliente.vida < 45 ? 'mal' : 'bien'}">${cliente.vida}</span>`
     : '<span class="mal">ABATIDO</span>'
@@ -445,7 +475,7 @@ requestAnimationFrame(bucle)
  * dos huéspedes, que es justo lo que hay que poder hacer.
  */
 window.vektorNet = {
-  cliente, movimiento, camara, escenario, enlace, rival, costes,
+  cliente, movimiento, camara, escenario, enlace, rival, fantasma, costes,
   get paso() { return paso },
   verDesde: hasLineOfSight,
   cuerpoDe: cuerpoDeJugador,

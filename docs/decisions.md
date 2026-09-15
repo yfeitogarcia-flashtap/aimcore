@@ -4944,6 +4944,112 @@ aparición de la vuelta 43, haciendo exactamente su trabajo. De lado son 4.55 u 
 700 ms —los 6.5 u/s de carrera— y de espaldas 1.90 hasta la pared de la sala. La
 primera versión de la suite medía de frente y daba el movimiento por roto.
 
+## Ronda 49 — El que se va a otra pestaña, y los dos del mismo color
+
+Los dos fallos de la primera prueba real entre dos PCs, con internet de verdad
+por medio (RTT 65-72 ms).
+
+### El avance rápido al volver de otra pestaña
+
+Lo que pasa, en orden: el navegador **para el `requestAnimationFrame`** de una
+pestaña de fondo, el bucle deja de correr y el contador de pasos del cliente se
+queda donde estaba. Mientras, el WebSocket **sí sigue entregando** —eso no se
+frena—, así que `pasoObjetivo()` sigue subiendo con el reloj del servidor. Al
+volver, el enganche al reloj se encuentra cientos o miles de pasos de desfase y
+se pone a recuperarlos a `maxCatchUpTicks` pasos de más por frame. Cada uno de
+esos pasos mueve al jugador con las teclas de **ahora**, así que se ve correr.
+
+Medido con el estímulo real (banco `fondo49.mjs`, tres ausencias):
+
+| Ausencia | Se queda atrás | Su velocidad | La que ve el rival | Tiempo a >1.5× | Correcciones |
+|---|---|---|---|---|---|
+| 5 s | 295 pasos | **32.9 u/s** | 26.7 u/s | 0.40-0.63 s | 0 |
+| 20 s | 1.195 pasos | 29.6 u/s | 25.8 u/s | 0.17 s | 0 |
+| 60 s | 3.622 pasos | 32.9 u/s | 26.2 u/s | 0.47 s | 14, con 0.43 u de error |
+
+La carrera son **6.5 u/s** y el techo del air-strafe 9.5: nada del juego se
+mueve a 33. Y las correcciones de la tabla son las que se vieron en la partida
+de verdad (allí, 2.777 de 34.924 y 16 u de error máximo): aparecen cuando el
+enganche dura lo bastante como para que la cola de entradas sin confirmar se
+pase de `maxPendingInputs` y empiece a tirar las más viejas — reejecutar sin una
+entrada ya no reproduce el estado del servidor.
+
+**El arreglo: por encima de cierto atraso no se recupera, se re-ancla.**
+`NET.resyncTicks` (60 pasos, un segundo de mundo). Y no es una concesión: **no
+hay nada que recuperar.** Sin bucle no se produjo ni una entrada, y el servidor,
+que no adivina, dejó a ese jugador parado donde estaba. Correr ahora sería
+ejecutar de golpe unas entradas que nadie dio.
+
+Es además la regla que el proyecto ya tenía en los otros dos relojes y que al
+cliente le faltaba: el motor acota el frame largo con `SIM.maxFrameDeltaMs` y
+re-ancla `_simTime` (§44), y el Durable Object hace lo mismo al volver de un
+parón (§47). Tres relojes, una regla.
+
+Con el re-anclaje, las mismas tres ausencias: **6.5-6.9 u/s** —o sea, andando—,
+**cero** tiempo por encima de 1.5×, cero correcciones y cero error.
+
+### Por qué NO se cuelga de `visibilitychange`
+
+Era lo primero que había que mirar, y la respuesta salió medida: **se puede
+tener el síntoma entero sin que el evento llegue a dispararse.** Con una pestaña
+detrás de otra en el mismo navegador, el rAF baja a **4.7 fps** (14 ticks en 3 s)
+mientras `document.visibilityState` sigue diciendo `visible` y **no hay ni un
+`visibilitychange`**. Ahí, un arreglo colgado del evento no habría hecho nada.
+
+Y al revés: un cambio de pestaña de 200 ms **sí** dispara el evento y no necesita
+re-anclar nada — la banda muerta lo recupera en dos frames y re-anclar sería un
+salto de reloj gratis.
+
+Así que el evento es **una pista, no el mecanismo**. Lo que hay que mirar es el
+desfase, que es el único sitio donde el problema se manifiesta, venga de una
+pestaña de fondo, del portátil dormido, de una pausa larga del recolector o de un
+punto de ruptura abierto. Misma idea que «la marca vive donde ocurre el salto».
+
+### Los dos jugadores del mismo color
+
+El banco pintaba al rival **siempre** con `equipos[1]` y al fantasma **siempre**
+con `equipos[0]`: cada uno era azul para sí mismo y magenta para el otro, o sea
+que los dos se veían iguales. El color de equipo existe justo para lo contrario.
+
+Y arreglarlo destapó la raíz, que era del servidor: la ranura de salida se
+asignaba con `jugadores.size % 2`. Con dos que entran seguidos funciona; en
+cuanto uno se va, deja de funcionar — con `p2` dentro, el que llegase cogía otra
+vez la ranura 1, **la suya**, y los dos aparecían en el mismo sitio y del mismo
+color. Ahora se coge **la ranura libre** y se guarda en el jugador (`equipo`),
+que es de donde salen las dos cosas: dónde apareces y de qué color eres.
+
+Deducir el color del id (`p1`, `p2`) parecía equivalente y no lo es: el id es un
+contador que no para, así que dos jugadores pueden ser `p3` y `p5` —los dos
+impares— y quedarse otra vez iguales. La ranura la manda el servidor en la
+bienvenida.
+
+### Lo que costó, y es todo de método
+
+Tres medidas falsas seguidas, las tres del instrumento y no del código:
+
+- **No se puede poner una pestaña en segundo plano dentro de un banco.**
+  Chromium sin cabeza no frena de verdad la de atrás, y Playwright además
+  arranca con el frenado desactivado (`--disable-renderer-backgrounding` y dos
+  más). Con ellas puestas el fallo **no se reproduce**. Lo que sí vale es aplicar
+  el mismo estímulo: **parar el `requestAnimationFrame` y dejar todo lo demás
+  corriendo**, que es lo que hace el navegador —y lo que lo distingue de bloquear
+  el hilo, que pararía también el socket y mediría otra cosa—.
+- **Se mide en unidades de mapa por segundo, no en pasos por segundo.** Con el
+  re-anclaje el contador **salta** en un frame: la primera tabla daba «28.784
+  pasos/s» donde el jugador no se había movido ni un centímetro. Un contador que
+  salta no es un jugador que corre.
+- **Y la sonda va dentro de la página, una muestra por frame.** Medirlo desde
+  fuera con `evaluate` metía el viaje de ida y vuelta en la distancia y no en el
+  tiempo: **33 u/s donde la sonda de dentro daba 6.5**. Es la misma regla que la
+  de la vuelta 39 con los píxeles —el instrumento no puede añadir lo que se está
+  midiendo— por otra puerta.
+
+Y dos más de encuadre: cada tanda necesita **pestañas nuevas** (encadenadas, el
+jugador acaba pegado a una pared y la siguiente mide eso), y se mira **el primer
+segundo tras volver**, que es donde vive el fenómeno — más allá, este contenedor
+vuelve a frenar la pestaña y lo que se mide es un tirón nuevo, con un solo
+re-anclaje y a 1.5 s del regreso.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
@@ -5072,6 +5178,11 @@ objetivo era medir tiempos y rendimiento de verdad.
 - **Que la migración a Cloudflare no cambió nada**: los bancos de las vueltas 45
   y 46, sin tocar una aserción, pasados contra el Durable Object corriendo en
   `wrangler dev --local`.
+- **Que volver de otra pestaña no da un avance rápido** (`fondo49.mjs`): con el
+  estímulo real —el `requestAnimationFrame` parado y el socket vivo—, la
+  velocidad aparente del jugador y la que ve el rival, en unidades de mapa por
+  segundo y con sonda dentro de la página, contra tres ausencias y con el
+  re-anclaje encendido y apagado en la misma tanda.
 - **Que se puede empezar a jugar** (`jugable48.mjs`): con clics y teclas de
   verdad contra la página real —no escribiendo en `cliente.teclas` desde dentro—,
   que un clic captura el ratón, que aparecen mira y vida y no el cartel de

@@ -1266,6 +1266,52 @@ mapa de controles tiene que ser el definitivo desde el principio: si se añaden
 cuando existan las mecánicas, alguien ya habrá puesto ahí su bind favorito. El
 panel las marca «sin efecto todavía».
 
+**Hay tres relojes y los tres re-anclan: el motor, el Durable Object y el
+cliente** (vuelta 49). El del cliente era el único que no lo hacía, y de ahí
+salió el avance rápido al volver de otra pestaña. La regla es una: **por encima
+de cierto atraso no se recupera corriendo, se re-ancla** —el motor con
+`SIM.maxFrameDeltaMs`, el huésped de la nube con ese mismo número y el cliente
+con `NET.resyncTicks`—. En el cliente además no hay nada que recuperar: con el
+`requestAnimationFrame` parado no se produjo ni una entrada, y el servidor, que
+no adivina, dejó a ese jugador quieto. Medido: sin esto, 33 u/s de velocidad
+aparente contra los 6.5 de carrera, hasta 0.6 s, y correcciones en cuanto la cola
+sin confirmar se pasa de `maxPendingInputs`; con esto, 6.5-6.9 u/s y cero
+correcciones tras 60 s fuera.
+
+**Y no se cuelga de `visibilitychange`, que es una pista y no el mecanismo.**
+Medido: con una pestaña detrás de otra el rAF baja a **4.7 fps** mientras
+`visibilityState` sigue diciendo `visible` y **no se dispara el evento** — un
+arreglo colgado de ahí no habría hecho nada. Al revés, un cambio de pestaña de
+200 ms sí lo dispara y no necesita re-anclar. Lo que se mira es el desfase, que
+es donde el problema se manifiesta venga de donde venga: pestaña de fondo,
+portátil dormido, pausa del recolector o un punto de ruptura.
+
+**La ranura de un jugador es su sitio de salida y su color, y la asigna el
+servidor.** `equipo` sale de la primera ranura **libre**, no de `jugadores.size`:
+con el contador, en cuanto uno se iba el siguiente cogía la ranura del que
+quedaba y los dos aparecían en el mismo punto y del mismo color. Y no se deduce
+del id (`p1`, `p2`) porque el id es un contador que no para — dos jugadores
+pueden ser `p3` y `p5` y quedarse otra vez iguales.
+
+**Un banco no puede poner una pestaña en segundo plano, pero sí dar el mismo
+estímulo** (vuelta 49). Chromium sin cabeza no frena la de atrás y Playwright
+arranca con el frenado desactivado, así que con sus banderas de serie el fallo
+**no se reproduce**. Lo que vale es **parar el `requestAnimationFrame` y dejar
+todo lo demás corriendo** —el navegador para el dibujado y el WebSocket sigue
+entregando—, que es lo que lo distingue de bloquear el hilo, que pararía también
+el socket y mediría otra cosa. Y tres cautelas que costaron tres medidas falsas:
+
+- **En unidades de mapa por segundo, no en pasos por segundo.** Con el re-anclaje
+  el contador de pasos **salta** en un frame: la primera tabla decía «28.784
+  pasos/s» con el jugador quieto.
+- **La sonda va dentro de la página, una muestra por frame.** Medir desde fuera
+  con `evaluate` mete el viaje de ida y vuelta en la distancia y no en el tiempo:
+  33 u/s donde la sonda de dentro da 6.5. Misma regla que la del render target de
+  la vuelta 39.
+- **Y se mira la ventana del fenómeno**, no lo que venga después: pasado el
+  primer segundo, este contenedor vuelve a frenar la pestaña y lo que se mide es
+  un tirón nuevo.
+
 **Una suite que conduce el juego por dentro prueba el modelo, no el producto**
 (vuelta 48). Los bancos de red mueven al jugador escribiendo en `cliente.teclas`
 y disparan llamando a `cliente.disparar()`, y así midieron el error de
@@ -1376,6 +1422,11 @@ no llegaba al canvas y no había mira. En pantalla, jugando, hay **mira, vida y 
 cartel de abatido con su cuenta**, y nada más — ni munición, ni armas, ni
 puntuación, que son de la Opción B. Los números de red y el fantasma están
 apagados detrás de **F3**.
+
+De la primera prueba real entre dos casas (vuelta 49) salieron dos arreglos:
+**volver de otra pestaña ya no da un avance rápido** —el reloj del cliente se
+re-ancla en vez de recuperar el tiempo perdido— y **cada jugador lleva el color
+de su equipo**, azul o magenta según la ranura que le dé el servidor.
 
 Medido: error de reconciliación **cero** hasta 300 ms de RTT; correcciones sólo
 con pérdida de paquetes; **100% de acuerdo** entre lo que ve el tirador y lo que

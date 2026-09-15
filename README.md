@@ -1190,9 +1190,19 @@ otra como un cuerpo del color del equipo contrario, moviéndose por el Plano A.
 
 En pantalla, jugando, hay **mira, vida y el cartel de abatido con su cuenta de
 reaparición**, y nada más: no hay munición, ni armas, ni HUD completo, ni
-puntuación. **F3** enseña los números de red —RTT, correcciones, rebobinado— y los
-mandos para estropear la conexión a propósito; vienen apagados, porque no son
-para jugar sino para medir.
+puntuación. **F3** enseña los números de red —RTT, correcciones, rebobinado,
+re-anclajes del reloj— y los mandos para estropear la conexión a propósito;
+vienen apagados, porque no son para jugar sino para medir.
+
+Cada jugador lleva **el color de su equipo** —azul o magenta— según la ranura que
+le dé el servidor, que es la misma de la que sale su punto de salida.
+
+**Y se puede cambiar de pestaña sin romper nada.** Si el navegador frena la
+pestaña, el reloj del cliente **se re-ancla al volver** en vez de recuperar el
+tiempo perdido corriendo: no hay nada que recuperar, porque sin bucle no se
+produjo ni una entrada y el servidor te dejó parado donde estabas. Medido tras
+60 s fuera: 6.5 u/s —andando— contra los 33 u/s que salían antes, y cero
+correcciones.
 
 ### La partida va por código
 

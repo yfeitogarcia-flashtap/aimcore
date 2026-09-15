@@ -2930,4 +2930,27 @@ export const NET = {
    * juego de un solo jugador no existe.
    */
   hitMarkerMs: 140,
+  /**
+   * **Cuánto atraso se recupera corriendo, y a partir de dónde se re-ancla el
+   * reloj** (vuelta 49).
+   *
+   * El cliente se engancha al reloj del servidor con `maxCatchUpTicks` pasos de
+   * más por frame, y eso tapa bien un frame perdido. Lo que no tapa es una
+   * pestaña en segundo plano: el navegador **para el `requestAnimationFrame`**,
+   * el jugador se queda cientos o miles de pasos por detrás y al volver el
+   * enganche los gasta a 240 pasos de más por segundo — medido, 320-360 pasos/s,
+   * cinco o seis veces el tiempo real, y el rival viéndole correr a 25 u/s
+   * contra los 6.5 de carrera.
+   *
+   * Por encima de este atraso no se corre: **se re-ancla**, que es lo mismo que
+   * hace el motor con un frame largo (`SIM.maxFrameDeltaMs`) y el Durable Object
+   * con un parón. El tiempo que has estado fuera no se recupera porque no hay
+   * nada que recuperar: sin bucle no hubo entradas, y el servidor, que no
+   * adivina, te dejó parado donde estabas.
+   *
+   * 60 pasos son un segundo de mundo y **un cuarto de segundo de enganche**
+   * (60 / 240): el burst más largo que todavía se lee como un tirón y no como un
+   * rebobinado.
+   */
+  resyncTicks: 60,
 }

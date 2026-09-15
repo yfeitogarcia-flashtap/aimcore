@@ -76,6 +76,8 @@ export class ClienteRed {
     /** Lo que se mide. */
     this.medidas = {
       rtt: 0,
+      /** Veces que se ha re-anclado el reloj por volver de un parón largo. */
+      reanclajes: 0,
       pendientes: 0,
       errorUltimo: 0,
       errorMax: 0,
@@ -372,6 +374,38 @@ export class ClienteRed {
    * paso cada vez más viejo, que es latencia añadida y gratuita. Devuelve 0
    * mientras no haya llegado ninguna foto.
    */
+  /**
+   * **Volver de un parón sin recuperar el tiempo perdido** (vuelta 49).
+   *
+   * Cuando el navegador para el `requestAnimationFrame` —una pestaña en segundo
+   * plano, la máquina dormida— el contador de pasos se queda donde estaba y el
+   * enganche al reloj del servidor intenta recuperarlo corriendo, a
+   * `maxCatchUpTicks` pasos de más por frame. Medido con la pestaña parada de
+   * verdad: 320-360 pasos/s, cinco o seis veces el tiempo real, y el rival
+   * viéndole desplazarse a 25 u/s contra los 6.5 de carrera.
+   *
+   * Recuperar no tiene sentido, y no es una concesión: **no hay nada que
+   * recuperar.** Sin bucle no se produjo ni una entrada, y el servidor, que no
+   * adivina, dejó a ese jugador parado donde estaba. Correr ahora sería ejecutar
+   * de golpe unas entradas que nadie dio, con las teclas de **ahora**.
+   *
+   * Así que el reloj se re-ancla al del servidor y ya está. Es lo mismo que hace
+   * el motor cuando un frame se pasa de `SIM.maxFrameDeltaMs` y lo que hace el
+   * Durable Object al volver de un parón: el cliente era el único de los tres
+   * relojes que no lo tenía.
+   *
+   * Las entradas sin confirmar se tiran **porque ya no son reejecutables**: van
+   * selladas con pasos que quedaron atrás y el servidor nunca las va a ejecutar
+   * con esos números. Guardarlas sólo serviría para reconciliar contra un pasado
+   * que no ocurrió.
+   */
+  reanclar(paso) {
+    this.paso = paso
+    this.pendientes.length = 0
+    this.medidas.pendientes = 0
+    this.medidas.reanclajes += 1
+  }
+
   pasoObjetivo() {
     if (this.medidas.pasoServidor === 0) return 0
     // **El RTT entero, no la mitad.** Se cuenta dos veces a propósito: la foto

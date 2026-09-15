@@ -58,7 +58,16 @@ export class Partida {
    */
   entra(enviar) {
     if (this.llena) return null
-    const salida = this.salidas[this.jugadores.size % this.salidas.length]
+    // **La ranura libre, no el número de jugadores** (vuelta 49). Con
+    // `jugadores.size` bastaba para dos que entran seguidos y fallaba en cuanto
+    // uno se iba: con p2 dentro, el que llegase cogía otra vez la ranura 1 —la
+    // suya— y los dos aparecían **en el mismo sitio y del mismo color**. La
+    // ranura es la única fuente de las dos cosas, así que un error ahí sale por
+    // partida doble.
+    const ocupadas = new Set([...this.jugadores.values()].map((j) => j.equipo))
+    let equipo = 0
+    while (equipo < this.salidas.length && ocupadas.has(equipo)) equipo += 1
+    const salida = this.salidas[equipo]
     const pose = crearPose()
     const movimiento = new MovementController(pose)
     movimiento.setScenario(this.escenario)
@@ -69,6 +78,13 @@ export class Partida {
 
     const jugador = {
       id: `p${++this._siguienteId}`,
+      /**
+       * **Su ranura, que es su sitio de salida y su color.** El id no sirve para
+       * esto: es un contador que no para de subir, así que dos jugadores pueden
+       * ser perfectamente `p3` y `p5` —los dos impares— y un color deducido de
+       * ahí los pintaría iguales.
+       */
+      equipo,
       enviar,
       pose,
       movimiento,
@@ -106,6 +122,7 @@ export class Partida {
       JSON.stringify({
         t: MSG.BIENVENIDA,
         id: jugador.id,
+        equipo,
         escenario: this.escenario.key,
         hz: SIM.hz,
         n: this.paso,
@@ -355,8 +372,9 @@ export class Partida {
   }
 
   _reaparecer(jugador) {
-    const indice = [...this.jugadores.keys()].indexOf(jugador.id)
-    const salida = this.salidas[indice % this.salidas.length]
+    // Su ranura de siempre: reaparecer no te cambia de sitio ni de color. Antes
+    // salía de `indexOf` sobre el mapa, que cambia cuando alguien se va.
+    const salida = this.salidas[jugador.equipo]
     jugador.movimiento.reset()
     jugador.pose.position.x = salida.x
     jugador.pose.position.z = salida.z
