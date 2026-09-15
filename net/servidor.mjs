@@ -36,11 +36,17 @@ const partida = new Partida({ escenario, colchon: COLCHON, depurar: DEPURAR })
  * servidor consuma entradas a otro ritmo del que las produce el cliente.
  */
 const arranque = performance.now()
+let arrastre = 0
 function programar() {
-  const objetivo = arranque + (partida.paso + 1) * SIM_STEP_MS
+  const objetivo = arranque + arrastre + (partida.paso + 1) * SIM_STEP_MS
   const espera = Math.max(0, objetivo - performance.now())
   setTimeout(() => {
     partida.tick()
+    // **En pausa el reloj del mundo no avanza, y el de pared sí.** Sin
+    // re-anclar, el objetivo se quedaría fijo, la espera en cero y esto sería un
+    // bucle a máxima velocidad mientras dure la pausa. Es lo mismo que hace el
+    // huésped de la nube, por la misma razón.
+    if (partida.pausada) arrastre = performance.now() - arranque - partida.paso * SIM_STEP_MS
     programar()
   }, espera)
 }

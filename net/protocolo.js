@@ -87,4 +87,19 @@ export const MSG = {
    * sin medir nada. Eso pasó tres veces antes de poner esto.
    */
   COLOCAR: 'c',
+  /**
+   * **Pausa** (vuelta 53). Un solo tipo para las cuatro cosas que se pueden
+   * decir sobre ella, en el campo `q`: `pedir`, `reanudar`, `si` y `no`.
+   *
+   * Va como mensaje suelto y **no dentro de la entrada**, que es donde viaja
+   * todo lo demás que hace el jugador, por una razón concreta: mientras hay
+   * pausa **no se producen entradas** —el mundo no avanza— así que meter ahí el
+   * «reanudar» sería meterlo en un carril que justo entonces está parado.
+   *
+   * El estado de la pausa vuelve en la foto y no en un mensaje: los dos
+   * jugadores tienen que verlo igual y al mismo tiempo, y la foto ya va a 60 Hz
+   * con esa garantía. Un mensaje aparte sería un segundo camino que se puede
+   * perder.
+   */
+  PAUSA: 'p',
 }

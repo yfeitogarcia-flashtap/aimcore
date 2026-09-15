@@ -1290,6 +1290,40 @@ mapa de controles tiene que ser el definitivo desde el principio: si se añaden
 cuando existan las mecánicas, alguien ya habrá puesto ahí su bind favorito. El
 panel las marca «sin efecto todavía».
 
+**Pausar es parar el mundo de los dos, y sólo lo decide el servidor** (vuelta
+53). Un «estoy en pausa» local sería el mismo fallo con otro disfraz: hasta la 53
+Escape abría el menú y el mundo seguía corriendo por detrás, así que con WASD se
+andaba con el menú puesto. `Partida` lleva el estado, `tick()` no avanza nada
+mientras esté puesta —**el número de paso tampoco**, misma regla que
+`engine.gameTime`— y la foto sigue saliendo, que es cómo se enteran los dos.
+
+De ahí, tres cosas que hay que respetar al tocar esto:
+
+- **Los dos huéspedes re-anclan su reloj en pausa**, porque el de pared sigue y
+  el del mundo no. Sin eso, el de Node se vuelve un bucle a máxima velocidad y el
+  de la nube se debe medio minuto de pasos al reanudar.
+- **El historial de envíos se borra al entrar en pausa.** El RTT sale de restar
+  el instante en que se mandó una entrada, y una mandada antes de la pausa se
+  confirma después: el viaje mediría la pausa entera. Medido, tras 1,5 s de
+  pausa el RTT saltaba de 29 ms a **1.500**, `pasoObjetivo` se iba noventa pasos
+  por delante y el cliente se quedaba a 20 pasos/s el resto de la partida.
+- **En pausa no se anota ningún disparo.** Se consume en el paso siguiente, y en
+  pausa no hay pasos: sería una bala guardada, apuntada a donde el rival estaba
+  parado.
+
+**Tres pausas libres por jugador y partida** (`NET.pausasLibres`); de la cuarta en
+adelante decide el rival, y el silencio cuenta como negativa
+(`NET.pausaRespuestaMs`). Sólo la levanta quien la puso —si no, pedirla no
+serviría—, e irse levanta la propia, o el otro se queda en un mundo parado para
+siempre. Se contesta con **teclas** (Intro / N) y no con un botón: a quien le
+llega la petición está jugando con el ratón capturado, y soltarlo para pinchar
+sería pausarle la partida para preguntarle si quiere pausarla.
+
+Y dos gestos que **no** son pausa local y sí hacen falta: **soltar el ratón suelta
+las teclas** (como perder el foco: quien abre el menú no está pulsando nada) y
+**volver a pinchar levanta tu propia pausa** —Escape pausa, clic reanuda—, o se
+recupera el ratón con el mundo todavía congelado.
+
 **La muerte va en el reloj de las entradas, no en el del servidor** (vuelta 52).
 `vivoEn` es el número de **entrada** de la víctima a partir del cual vuelve a
 estar viva, y los dos extremos aplican el mismo predicado a los mismos números.
@@ -1500,6 +1534,9 @@ no llegaba al canvas y no había mira. En pantalla, jugando, hay **mira, vida y 
 cartel de abatido con su cuenta**, y nada más — ni munición, ni armas, ni
 puntuación, que son de la Opción B. Los números de red y el fantasma están
 apagados detrás de **F3**.
+
+Desde la vuelta 53 **Escape pausa la partida de los dos**, con tres pausas libres
+por jugador y permiso del rival a partir de la cuarta.
 
 Desde la vuelta 52 el **abatido es autoritativo**: un muerto no se mueve, su
 cuerpo no se dibuja y la baja se confirma al instante con marca y sonido propios.

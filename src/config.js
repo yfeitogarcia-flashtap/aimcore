@@ -2985,4 +2985,23 @@ export const NET = {
    * Punto de partida, a calibrar jugando.
    */
   offlineMs: 1000,
+  /**
+   * **Pausas libres por jugador y partida** (vuelta 53).
+   *
+   * Pausar en un 1v1 no es gratis: para el mundo de los dos, y quien la pide
+   * elige el momento. Tres sin preguntar es bastante para lo que las pausas son
+   * de verdad —el timbre, un vaso de agua— y poco para usarlas como táctica.
+   * A partir de la cuarta hay que pedírselo al rival, que es exactamente la
+   * conversación que tendrían en la misma habitación.
+   *
+   * No se recuperan: son por partida, y una partida dura lo que dure la sala.
+   */
+  pausasLibres: 3,
+  /**
+   * Cuánto se espera una respuesta antes de darla por negada. Sin esto, pedir
+   * una pausa a alguien que se ha ido a por hielo deja al que la pide mirando
+   * un cartel para siempre. Negar por silencio es lo correcto: la partida sigue,
+   * que es lo que pasa si no contestan.
+   */
+  pausaRespuestaMs: 12000,
 }

@@ -62,6 +62,8 @@ export class ClienteRed {
      * que un juego colgado**: nada en pantalla y nada en la consola.
      */
     this.onDesconectado = null
+    /** Cambios en la pausa: `{ pausada, por, mia, pide, libres, rivalLibres }`. */
+    this.onPausa = null
     /** El último motivo, para quien lo quiera pintar sin esperar al aviso. */
     this.desconexion = null
     /** Paso propio. Va por delante del servidor lo que tarde el viaje. */
@@ -83,6 +85,14 @@ export class ClienteRed {
     this.vivoEn = 0
     /** El sitio de salida de tu ranura, para poder predecir la reaparición. */
     this.salida = null
+    /**
+     * **La pausa, tal como la cuenta el servidor.** Aquí no se decide nada: el
+     * cliente pide y obedece. Tener un «estoy en pausa» local que no viniera de
+     * la foto sería exactamente el fallo que esta vuelta arregla — un menú
+     * abierto con el mundo corriendo por detrás.
+     */
+    this.pausa = { pausada: false, por: null, mia: false, pide: null, pideMia: false,
+                   libres: NET.pausasLibres, rivalLibres: NET.pausasLibres }
 
     /** Fotos del rival, para dibujarlo en el pasado. */
     this.rival = { id: null, buffer: [], pose: null }
@@ -175,6 +185,20 @@ export class ClienteRed {
   /** ¿Se puede uno fiar del reloj del servidor ahora mismo? */
   relojFresco(ahora = performance.now()) {
     return this._ultimaFotoEn !== null && ahora - this._ultimaFotoEn <= NET.clockStaleMs
+  }
+
+  /**
+   * **Pedir pausa, levantarla o contestar al rival.** Tres verbos y ninguna
+   * decisión: quién puede hacer qué lo dice el servidor, que es el único que
+   * puede parar el mundo de los dos.
+   */
+  pedirPausa() { this._decir('pedir') }
+  reanudar() { this._decir('reanudar') }
+  responder(acepta) { this._decir(acepta ? 'si' : 'no') }
+
+  _decir(q) {
+    if (!this.conectado) return
+    this.transporte.send(JSON.stringify({ t: MSG.PAUSA, q }))
   }
 
   cerrar() {
@@ -279,6 +303,11 @@ export class ClienteRed {
    * medias.
    */
   disparar(ahoraMs, yaw, pitch) {
+    // **En pausa no se anota nada.** Como el disparo se consume en el paso
+    // siguiente y en pausa no hay pasos, uno anotado ahora saldría al reanudar:
+    // una bala guardada durante la pausa, apuntada a donde el rival estaba
+    // parado. Es justo lo que la pausa no puede permitir.
+    if (this.pausa.pausada) return
     this._disparo = { ts: ahoraMs, yaw, pitch }
   }
 
@@ -395,11 +424,49 @@ export class ClienteRed {
     if (mensaje.t === MSG.FOTO) this._reconciliar(mensaje)
   }
 
+  /**
+   * El estado de la pausa sale **entero** de la foto, y se avisa sólo cuando
+   * cambia algo: quien lo pinta no tiene por qué comparar sesenta veces por
+   * segundo. Aquí no se decide nada — el cliente pide y obedece.
+   */
+  _leerPausa(foto) {
+    const p = this.pausa
+    const antes = `${p.pausada}${p.por}${p.pide}${p.libres}${p.rivalLibres}`
+    const estaba = p.pausada
+    p.pausada = !!foto.pa
+    p.por = foto.pa?.por ?? null
+    p.mia = p.por !== null && p.por === this.id
+    p.pide = foto.pd?.por ?? null
+    p.pideMia = p.pide !== null && p.pide === this.id
+    for (const id of Object.keys(foto.p)) {
+      const libres = foto.p[id].libres
+      if (libres === undefined) continue
+      if (id === this.id) p.libres = libres
+      else p.rivalLibres = libres
+    }
+    if (p.pausada && !estaba) {
+      /**
+       * **Al entrar en pausa se olvida qué se mandó y cuándo.** El RTT sale de
+       * restar, al llegar la confirmación de una entrada, el instante en que se
+       * mandó; y una entrada mandada antes de la pausa se confirma después, así
+       * que el viaje mediría **la pausa entera**. Medido: tras una pausa de
+       * segundo y medio, el RTT saltaba de 29 ms a 1.500, `pasoObjetivo` se iba
+       * noventa pasos por delante y el cliente se pasaba el resto de la partida
+       * recuperando a un tercio de velocidad. Sin historial no hay resta que
+       * hacer: el RTT se queda con el último bueno hasta que haya un viaje de
+       * verdad que medir.
+       */
+      this._historialEnvio.clear()
+    }
+    if (`${p.pausada}${p.por}${p.pide}${p.libres}${p.rivalLibres}` !== antes) this.onPausa?.(p)
+  }
+
   _reconciliar(foto) {
     this.medidas.fotos += 1
     this._ultimaFotoEn = performance.now()
     this.medidas.sinFotosMs = 0
     this.medidas.pasoServidor = foto.n
+    this._leerPausa(foto)
 
     // El rival, a su cola de interpolación.
     for (const id of Object.keys(foto.p)) {

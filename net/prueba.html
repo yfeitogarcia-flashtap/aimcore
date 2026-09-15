@@ -59,7 +59,24 @@
   #aviso-red.suave { background: #FFD23F; color: #141000; }
   #aviso-red small { display: block; font-weight: 400; letter-spacing: .04em; opacity: .8; }
 
+  /* **La pausa.** Panel neutro a propósito: en esta paleta el rojo, el amarillo,
+     el verde, el naranja y el ámbar significan ya otras cosas. Lo único teñido
+     es el botón de aceptar, que es verde porque es el color de las acciones. */
+  #pausa { position: fixed; top: 0; left: 0; right: 0; z-index: 5; padding: 12px 14px;
+    text-align: center; letter-spacing: .08em; background: rgba(10,10,10,.94);
+    border-bottom: 1px solid #2A2A2A; color: #FFF; }
+  #pausa[hidden] { display: none !important; }
+  #pausa b { letter-spacing: .2em; }
+  #pausa small { display: block; margin-top: 3px; font-weight: 400; color: #9A9A9A; letter-spacing: .04em; }
+  #pausa button { margin: 7px 4px 0; background: #2FCB82; color: #08130D; border: 0;
+    border-radius: 3px; padding: 6px 14px; font: inherit; font-weight: 700; cursor: pointer; }
+
   #vital { position: fixed; left: 18px; bottom: 16px; }
+  /* Sobre la pared clara del mapa, el gris apagado del panel no se lee: esto va
+     en pantalla y tiene que verse. Un punto por debajo del blanco de la vida,
+     que sigue siendo lo principal. */
+  #libres { margin-top: 6px; color: #B4B4B4; letter-spacing: .04em;
+    text-shadow: 0 1px 2px rgba(10,10,10,.9); }
   #vitalN { font-size: 26px; line-height: 1; color: #FFF; font-variant-numeric: tabular-nums; }
   #vitalB { width: 132px; height: 3px; margin-top: 5px; background: #242424; }
   #vitalB i { display: block; height: 100%; background: #2FCB82; transition: width .12s linear; }
@@ -101,9 +118,11 @@
 </style>
 <canvas id="lienzo"></canvas>
 <div id="aviso-red" hidden></div>
+<div id="pausa" hidden></div>
 
 <div id="mira"><i></i><i></i><i></i><i></i><i></i></div>
-<div id="vital"><div id="vitalN">100</div><div id="vitalB"><i style="width:100%"></i></div></div>
+<div id="vital"><div id="vitalN">100</div><div id="vitalB"><i style="width:100%"></i></div>
+  <div id="libres">pausas 3 · rival 3</div></div>
 <div id="abatido"><div><b>ABATIDO</b><p class="apagado" id="reaparece">&nbsp;</p></div></div>
 
 <div id="aviso"><div>
@@ -121,6 +140,8 @@
   <p class="apagado"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> mover ·
      <kbd>Espacio</kbd> saltar · <kbd>C</kbd> agachar · <kbd>Shift</kbd> andar · <kbd>Esc</kbd> soltar</p>
   <p class="apagado"><kbd>clic izquierdo</kbd> disparar · <kbd>F3</kbd> números de red</p>
+  <p class="apagado"><kbd>Esc</kbd> pausa la partida para los dos —
+     te quedan <b id="libresMenu">3</b> sin pedir permiso</p>
 </div></div>
 
 <div id="panel" class="control" hidden>

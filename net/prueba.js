@@ -38,6 +38,7 @@ const lienzo = document.getElementById('lienzo')
 const aviso = document.getElementById('aviso')
 const panel = document.getElementById('panel')
 const avisoRed = document.getElementById('aviso-red')
+const panelPausa = document.getElementById('pausa')
 const mira = document.getElementById('mira')
 const $ = (id) => document.getElementById(id)
 
@@ -185,6 +186,51 @@ cliente.onDesconectado = (d) => {
   if (document.pointerLockElement === lienzo) document.exitPointerLock()
   pintarRed(performance.now())
 }
+/**
+ * **Lo que se ve de la pausa.** Cuatro estados y ninguno se inventa aquí: todos
+ * vienen de la foto. Lo único que decide esta página es cómo se cuentan.
+ */
+function pintarPausa() {
+  const p = cliente.pausa
+  $('libres').textContent = `pausas ${p.libres} · rival ${p.rivalLibres}`
+  $('libresMenu').textContent = p.libres
+  if (p.pausada) {
+    panelPausa.hidden = false
+    panelPausa.innerHTML = p.mia
+      ? '<b>PARTIDA EN PAUSA</b><small>la has pedido tú</small><button id="reanudar">reanudar</button>'
+      : '<b>PARTIDA EN PAUSA</b><small>la ha pedido el rival</small>'
+    if (p.mia) $('reanudar').addEventListener('click', () => cliente.reanudar())
+    return
+  }
+  if (p.pide && !p.pideMia) {
+    panelPausa.hidden = false
+    panelPausa.innerHTML = '<b>EL RIVAL PIDE PAUSA</b>' +
+      '<small>ya ha gastado sus pausas libres · <kbd>Intro</kbd> aceptar · <kbd>N</kbd> rechazar</small>'
+    return
+  }
+  if (p.pideMia) {
+    panelPausa.hidden = false
+    panelPausa.innerHTML = '<b>ESPERANDO AL RIVAL</b>' +
+      '<small>te has quedado sin pausas libres, así que decide él</small>'
+    return
+  }
+  panelPausa.hidden = true
+}
+cliente.onPausa = pintarPausa
+
+/**
+ * **Aceptar o rechazar se hace con teclas, no con el ratón**: a quien le llega
+ * la petición está jugando, con el ratón capturado, y soltarlo para pinchar un
+ * botón sería pausarle la partida para preguntarle si quiere pausarla. Ni Intro
+ * ni N son teclas de movimiento.
+ */
+addEventListener('keydown', (e) => {
+  const p = cliente.pausa
+  if (!p.pide || p.pideMia || escribiendo()) return
+  if (e.code === 'Enter' || e.code === 'NumpadEnter') { e.preventDefault(); cliente.responder(true) }
+  else if (e.code === 'KeyN') { e.preventDefault(); cliente.responder(false) }
+})
+
 cliente.conectar()
 
 // Entrar en otra sala es **recargar en su dirección**, no reconectar por
@@ -229,6 +275,9 @@ const escribiendo = () => document.activeElement?.tagName === 'INPUT'
 addEventListener('keydown', (e) => {
   const accion = MAPA[e.code]
   if (!accion || e.repeat || escribiendo()) return
+  // Con el mundo parado, una tecla no es una intención: es ruido que se
+  // aplicaría entero al reanudar.
+  if (cliente.pausa.pausada) return
   e.preventDefault()
   cliente.teclas[accion] = true
   // El salto se sella con el instante real del evento, no con el del paso que
@@ -294,6 +343,27 @@ addEventListener('mousedown', (e) => {
 })
 document.addEventListener('pointerlockchange', () => {
   const capturado = document.pointerLockElement === lienzo
+  // **Soltar el ratón pide pausa**, que es lo que hace Escape desde el punto de
+  // vista del jugador. Hasta la vuelta 53 sólo se abría el menú y el mundo
+  // seguía corriendo por detrás: con WASD se andaba con el menú puesto. No se
+  // pide si ya hay pausa o petición, ni cuando el ratón se ha soltado porque la
+  // partida se ha caído.
+  if (!capturado && !redCaida && !cliente.pausa.pausada && !cliente.pausa.pide) {
+    cliente.pedirPausa()
+  }
+  // **Y volver a pinchar la levanta**, si era tuya. Escape pausa, clic reanuda:
+  // sin esto se recuperaba el ratón con el mundo todavía congelado, que es
+  // justo el estado confuso que esta vuelta viene a quitar. La del rival no se
+  // toca — sólo la levanta quien la puso.
+  if (capturado && cliente.pausa.mia) cliente.reanudar()
+  if (!capturado) {
+    // **Y soltar el ratón suelta las teclas**, igual que perder el foco. No es
+    // una pausa local fingida —la pausa la decide el servidor y tarda un viaje
+    // en llegar— sino la verdad de lo que pasa: quien abre el menú no está
+    // pulsando nada. Sin esto, entre Escape y la confirmación del servidor se
+    // andaba un viaje entero: medido, 0.22 u con 35 ms de RTT.
+    for (const k of Object.keys(cliente.teclas)) cliente.teclas[k] = false
+  }
   aviso.hidden = capturado
   // Mira, vida y «abatido» son de jugar; con el ratón suelto tapan el menú.
   document.body.classList.toggle('jugando', capturado)
@@ -340,6 +410,19 @@ function bucle(ahora) {
   requestAnimationFrame(bucle)
   const delta = Math.min(ahora - ultimoFrame, 100)
   ultimoFrame = ahora
+
+  // **En pausa el mundo no avanza, y el acumulador no guarda el rato parado**
+  // (vuelta 53). Dejarlo acumular sería soltar un minuto de pasos de golpe al
+  // reanudar. Es la misma razón por la que el motor acota el frame largo.
+  if (cliente.pausa.pausada) {
+    acumulador = 0
+    ultimoFrame = ahora
+    renderer.render(scene, camara)
+    pintarVitales()
+    pintarRed(ahora)
+    pintarPanel()
+    return
+  }
 
   const tolerancia = Math.min(1, SIM_STEP_MS * 0.1)
   acumulador += delta

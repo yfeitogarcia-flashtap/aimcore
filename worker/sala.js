@@ -134,6 +134,15 @@ export class Sala {
    * los espera nadie: el cliente reconcilia contra la foto que llegue.
    */
   _latir() {
+    // **Con el mundo en pausa el reloj de pared sigue, y el del mundo no.** Hay
+    // que re-anclar en cada latido o al reanudar se debería medio minuto de
+    // pasos de golpe. La partida sigue mandando su foto —es cómo se enteran los
+    // dos de que hay pausa— pero no avanza nada.
+    if (this.partida.pausada) {
+      this.partida.tick()
+      this.arranque = Date.now() - this.partida.paso * SIM_STEP_MS
+      return
+    }
     const debidos = Math.floor((Date.now() - this.arranque) / SIM_STEP_MS) - this.partida.paso
     if (debidos > MAX_ATRASO) {
       this.partida.tick()

@@ -1197,6 +1197,13 @@ vienen apagados, porque no son para jugar sino para medir.
 Cada jugador lleva **el color de su equipo** —azul o magenta— según la ranura que
 le dé el servidor, que es la misma de la que sale su punto de salida.
 
+**Escape pausa la partida, y la pausa es de verdad.** Para el mundo de **los
+dos** —ninguno ve moverse nada, ni lo suyo ni lo del rival— porque la decide el
+servidor y no la pantalla. Tienes **tres pausas libres** por partida; a partir de
+la cuarta hay que pedírselo al rival, que acepta con **Intro** o rechaza con
+**N**, y si dice que no la partida sigue sin más. Abajo a la izquierda pone
+cuántas os quedan a cada uno. Volver a pinchar levanta la tuya.
+
 **Un abatido está abatido de verdad.** No se mueve mientras espera a reaparecer
 —el servidor no le deja— y su cuerpo **desaparece** en vez de quedarse en pie
 donde cayó. Y la baja se confirma al instante: la mira cambia de forma y suena

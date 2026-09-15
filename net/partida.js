@@ -35,6 +35,16 @@ export class Partida {
     this.colchon = colchon
     this.depurar = depurar
     this.paso = 0
+    /**
+     * **La pausa, que es del mundo y no de quien la pide** (vuelta 53). Null, o
+     * `{ por }` con el id del que la tiene puesta. Mientras está puesta, `tick`
+     * no avanza el mundo: es la misma regla del motor —«pausar es dejar de
+     * sumarle al reloj del mundo»— aplicada al servidor, y por eso el número de
+     * paso tampoco corre. El huésped se re-ancla, que el reloj de pared sí sigue.
+     */
+    this.pausa = null
+    /** Una petición esperando respuesta del rival: `{ por, expiraEn }`. */
+    this.peticion = null
     this.jugadores = new Map()
     this._siguienteId = 0
     /** Dos sitios de salida separados, para no aparecer uno dentro del otro. */
@@ -50,6 +60,11 @@ export class Partida {
 
   get vacia() {
     return this.jugadores.size === 0
+  }
+
+  /** ¿Está el mundo parado? Lo pregunta el huésped para no gastar pasos. */
+  get pausada() {
+    return this.pausa !== null
   }
 
   /**
@@ -123,6 +138,8 @@ export class Partida {
       disparos: [],
       bajas: 0,
       muertes: 0,
+      /** Pausas que puede pedir sin permiso. No se recuperan. */
+      pausasLibres: NET.pausasLibres,
     }
     this.jugadores.set(jugador.id, jugador)
 
@@ -142,6 +159,14 @@ export class Partida {
 
   sale(id) {
     this.jugadores.delete(id)
+    // **Irse levanta lo que uno tuviera puesto.** Una pausa de alguien que ya no
+    // está deja el mundo parado para siempre, y una petición sin quien la
+    // conteste deja al otro mirando un cartel.
+    if (this.pausa?.por === id) this.pausa = null
+    if (this.peticion?.por === id) this.peticion = null
+    // Y si se va el que tenía que contestar, la petición se queda sin
+    // interlocutor: se concede, que es lo que pasaría si dijera que sí nadie.
+    if (this.peticion && !this.llena) this._conceder()
   }
 
   /** Un mensaje de un jugador. El huésped no lo mira: lo pasa tal cual. */
@@ -164,6 +189,10 @@ export class Partida {
       jugador.historial.fill(null)
       return
     }
+    if (mensaje.t === MSG.PAUSA) {
+      this._pausa(jugador, mensaje.q)
+      return
+    }
     if (mensaje.t !== MSG.ENTRADA) return
     // Una entrada de un paso que ya se ejecutó llega tarde y no sirve: volver
     // atrás sería rehacer el mundo entero, y el cliente ya no la espera.
@@ -174,8 +203,59 @@ export class Partida {
     jugador.cola.push(mensaje)
   }
 
+  /**
+   * **Lo que se puede decir sobre la pausa**, y quién puede decirlo.
+   *
+   * Las tres primeras de cada jugador son instantáneas: pausar es para el
+   * timbre, y pedir permiso para atender el timbre no tiene sentido. De la
+   * cuarta en adelante decide el rival, que es quien paga el rato parado.
+   */
+  _pausa(jugador, que) {
+    if (que === 'reanudar') {
+      // **Sólo levanta la pausa quien la puso.** Si la levantase el otro, pedir
+      // una pausa no serviría de nada.
+      if (this.pausa?.por === jugador.id) this.pausa = null
+      return
+    }
+    if (que === 'si' || que === 'no') {
+      // Contesta el rival, no quien la pidió.
+      if (!this.peticion || this.peticion.por === jugador.id) return
+      if (que === 'si') this._conceder()
+      else this.peticion = null
+      return
+    }
+    if (que !== 'pedir' || this.pausa || this.peticion) return
+    if (jugador.pausasLibres > 0) {
+      jugador.pausasLibres -= 1
+      this.pausa = { por: jugador.id }
+      return
+    }
+    // Sin libres: decide el rival. Y si no hay rival, no hay a quién preguntar.
+    if (!this.llena) {
+      this.pausa = { por: jugador.id }
+      return
+    }
+    this.peticion = { por: jugador.id, expiraEn: Date.now() + NET.pausaRespuestaMs }
+  }
+
+  _conceder() {
+    if (!this.peticion) return
+    this.pausa = { por: this.peticion.por }
+    this.peticion = null
+  }
+
   /** Un paso del mundo. Lo llama el huésped a 60 Hz. */
   tick() {
+    // **Con el mundo en pausa la foto sigue saliendo, pero nada avanza.** La
+    // foto es cómo se enteran los dos de que hay pausa, así que callarse sería
+    // dejarles sin la única señal; y el paso no sube porque el reloj del mundo
+    // es él (misma regla que `engine.gameTime`).
+    if (this.pausa) {
+      // El silencio también cuenta como negativa: ver `NET.pausaRespuestaMs`.
+      this._enviarFoto()
+      return
+    }
+    if (this.peticion && Date.now() > this.peticion.expiraEn) this.peticion = null
     this.paso += 1
     for (const jugador of this.jugadores.values()) {
       if (!jugador.cebado) {
@@ -207,13 +287,21 @@ export class Partida {
     }
 
     if (this.paso % NET.snapshotEvery !== 0) return
+    this._enviarFoto()
+  }
+
+  _enviarFoto() {
     const foto = { t: MSG.FOTO, n: this.paso, p: {} }
+    // Sólo cuando hay algo que contar: en una partida normal esto no ocupa nada.
+    if (this.pausa) foto.pa = { por: this.pausa.por }
+    else if (this.peticion) foto.pd = { por: this.peticion.por }
     for (const jugador of this.jugadores.values()) {
       foto.p[jugador.id] = {
         ack: jugador.ack,
         hambre: jugador.hambre,
         vida: jugador.vida,
         vivoEn: jugador.vivoEn,
+        libres: jugador.pausasLibres,
         bajas: jugador.bajas,
         muertes: jugador.muertes,
         yaw: jugador.pose.rotation.y,

@@ -5334,6 +5334,86 @@ en el mismo clic que captura el ratón, que es el único gesto seguro que hay.
   quien se va a otra pestaña estando muerto vuelve al mundo cuando vuelve a la
   pestaña. Anotado aquí porque parece un fallo y no lo es.
 
+## Ronda 53 — La pausa es del mundo, no del menú
+
+Al pulsar Escape se abría el menú y **el mundo seguía corriendo por detrás**: con
+WASD se andaba con el menú puesto, y el rival lo veía. El `keydown` sólo miraba
+si estabas escribiendo en un campo, no si estabas jugando.
+
+### Lo primero: qué es una pausa
+
+No es «dejar de leer teclas». Es **parar el mundo de los dos**, y eso sólo lo
+puede decidir el servidor. Un «estoy en pausa» local sería exactamente el fallo
+que se venía a arreglar, con otro disfraz: una pantalla que dice una cosa y un
+mundo que hace otra.
+
+Así que `Partida` gana un estado de pausa y `tick()` no avanza nada mientras esté
+puesta — misma regla que el motor («pausar es dejar de sumarle al reloj del
+mundo»), así que **el número de paso tampoco corre**. La foto sí sigue saliendo:
+es cómo se enteran los dos, y callarse dejaría al rival sin la única señal.
+
+Y de ahí sale una consecuencia para los dos huéspedes: **el reloj de pared sigue
+y el del mundo no**, así que hay que re-anclar. Sin eso, el de Node se convierte
+en un bucle a máxima velocidad —el objetivo se queda fijo y la espera en cero— y
+el de la nube se debería medio minuto de pasos al reanudar.
+
+### Tres libres, y luego se pregunta
+
+Pausar en un 1v1 no es gratis: para el mundo de los dos y quien la pide elige el
+momento. Tres sin preguntar es bastante para lo que las pausas son de verdad —el
+timbre, un vaso de agua— y poco para usarlas de táctica. De la cuarta en adelante
+decide el rival, que es exactamente la conversación que tendrían en la misma
+habitación. No se recuperan, y son **por jugador**: gastarlas no toca las del
+otro.
+
+Dos detalles que son del diseño:
+
+- **Sólo levanta la pausa quien la puso.** Si la levantase el otro, pedirla no
+  serviría de nada.
+- **Aceptar o rechazar se hace con teclas** (Intro / N), no con un botón: a quien
+  le llega la petición está jugando, con el ratón capturado, y soltarlo para
+  pinchar sería pausarle la partida para preguntarle si quiere pausarla.
+- **El silencio cuenta como negativa** (`NET.pausaRespuestaMs`, 12 s). Sin eso,
+  pedirle una pausa a alguien que se ha ido a por hielo deja al que la pide
+  mirando un cartel para siempre.
+- **Irse levanta lo que uno tuviera puesto.** Una pausa de alguien que ya no está
+  deja el mundo parado para siempre.
+
+### Lo que costó: la pausa envenenaba el RTT
+
+El fallo más caro de la vuelta, y no se veía en ninguna pantalla. El RTT sale de
+restar, al llegar la confirmación de una entrada, el instante en que se mandó — y
+**una entrada mandada antes de la pausa se confirma después**, así que el viaje
+medía la pausa entera.
+
+Medido: tras una pausa de segundo y medio, el RTT saltaba de **29 ms a 1.500**.
+Con eso `pasoObjetivo` se iba **noventa pasos** por delante, el enganche se ponía
+a recuperar y el cliente se quedaba a **20 pasos por segundo** —un tercio de la
+velocidad— durante el resto de la partida. Lo que se veía era «tras reanudar, el
+rival anda a cámara lenta», que no se parece en nada a su causa.
+
+El arreglo es una línea: al entrar en pausa se olvida qué se mandó y cuándo. Sin
+historial no hay resta que hacer, y el RTT se queda con el último bueno hasta que
+haya un viaje de verdad que medir.
+
+### Y dos residuos que sí se pueden quitar, y uno que no
+
+- **Soltar el ratón suelta las teclas**, igual que perder el foco. No es una
+  pausa local fingida: es la verdad de lo que pasa —quien abre el menú no está
+  pulsando nada— y quita el viaje de ida y vuelta que se andaba entre Escape y la
+  confirmación del servidor (medido: 0.22 u con 35 ms de RTT).
+- **Volver a pinchar levanta tu propia pausa.** Escape pausa, clic reanuda. Sin
+  esto se recuperaba el ratón con el mundo todavía congelado, y se disparaba al
+  vacío —en pausa no se anota ningún disparo—. **Lo cazó `jugable48`**, que hace
+  clics de verdad: la suite de la vuelta 48 encontró la regresión de la 53.
+- **Lo que queda es un paso** (0.108 u): el frame que ya estaba en vuelo cuando
+  se soltó el ratón. Eso no se quita sin fingir una pausa que el servidor todavía
+  no ha concedido.
+
+Y en pausa **no se anota ningún disparo**: como se consume en el paso siguiente y
+en pausa no hay pasos, uno anotado ahora saldría al reanudar — una bala guardada
+durante la pausa, apuntada a donde el rival estaba parado.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
@@ -5462,6 +5542,11 @@ objetivo era medir tiempos y rendimiento de verdad.
 - **Que la migración a Cloudflare no cambió nada**: los bancos de las vueltas 45
   y 46, sin tocar una aserción, pasados contra el Durable Object corriendo en
   `wrangler dev --local`.
+- **Que la pausa para el mundo de los dos** (`pausa53.mjs`): que con el menú
+  abierto ya no se anda, que el rival tampoco se mueve y no le ve moverse, que
+  reanudar devuelve el mundo a su ritmo **sin que el RTT se haya comido la
+  pausa**, que las tres libres se gastan por jugador, que la cuarta pregunta al
+  rival y se respeta su respuesta, y que irse no deja al otro en un mundo parado.
 - **Que un abatido no se mueve y su cuerpo no se dibuja** (`abatido52.mjs`): con
   dos navegadores a 60 fps y latencia inyectada, que el muerto con la tecla de
   andar pulsada se queda en 0.00 u, que el rival no lo dibuja en ninguno de los
