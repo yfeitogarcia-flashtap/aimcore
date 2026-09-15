@@ -81,6 +81,7 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Huésped en la nube | `worker/sala.js` | El Durable Object. Lo mismo, con las piezas de Cloudflare. |
 | Portero | `worker/index.js` | `/sala/<código>` → `idFromName(código)`; todo lo demás, los ficheros del juego. |
 | Código de sala | `net/codigo.js` | Alfabeto, normalización y forma de la ruta. **Lo usan el cliente y el Worker.** |
+| Duelo (pantalla) | `net/prueba.html`, `net/prueba.js` | La página del 1v1. Dos capas: lo de jugar bajo `body.jugando`, lo de no jugar en el aviso, y los números detrás de **F3**. |
 | Red (cliente) | `net/cliente.js`, `net/transporte.js` | Predicción, reconciliación, interpolación del rival y disparo. El transporte, detrás de tres funciones. |
 | Transporte | `net/transporte.js` | `send` / `onMessage` / `close`, y nada más. La red simulada es un transporte que envuelve a otro. |
 | Disparo en red | `net/disparo.js` | `hitPlayer` + `hasLineOfSight` en el orden que cuesta menos. **Lo llaman los dos extremos.** |
@@ -1265,6 +1266,43 @@ mapa de controles tiene que ser el definitivo desde el principio: si se añaden
 cuando existan las mecánicas, alguien ya habrá puesto ahí su bind favorito. El
 panel las marca «sin efecto todavía».
 
+**Una suite que conduce el juego por dentro prueba el modelo, no el producto**
+(vuelta 48). Los bancos de red mueven al jugador escribiendo en `cliente.teclas`
+y disparan llamando a `cliente.disparar()`, y así midieron el error de
+reconciliación hasta el último dígito **sobre una página que no se podía
+empezar**: el clic no llegaba nunca al canvas y no había mira. Si algo tiene que
+hacerlo una persona —un clic, una tecla, leer un número en pantalla—, hay que
+hacerlo como lo hace ella: `jugable48.mjs` usa `mouse.click` y `keyboard.down`
+contra la página real. Y dos avisos de esa vuelta:
+
+- **Salir de la captura con Escape lo resuelve el navegador, no la página**, así
+  que una tecla sintética no lo dispara. Desde un banco se sale con
+  `document.exitPointerLock()`, que llega al mismo `pointerlockchange`.
+- **De vez en cuando hay que mirar una captura.** Una aserción comprueba lo que
+  se ha pensado; el cartel de ABATIDO salía con la vida a 100 y las aserciones
+  que había —mira, vida, panel— pasaban todas.
+
+**La página del duelo tiene dos capas, y el clic distingue entre ellas**
+(vuelta 48). Lo de jugar —mira, vida, cartel de abatido— vive bajo
+`body.jugando`, o sea sólo con el ratón capturado. Lo de no jugar —código de
+partida y enlace— vive en el aviso, que es la pantalla de menú. Y los números de
+red van detrás de **F3**, apagados de fábrica, como la vista de depuración del
+juego: un jugador no tiene por qué mirar el error de reconciliación, y los mandos
+de latencia simulada al lado del código invitan a tocarlos sin saber que lo que
+hacen es empeorar tu propia conexión a propósito. **El fantasma va con ellos y
+también apagado**: es un instrumento de medida, no un ajuste.
+
+El clic que captura el ratón escucha **el documento** —el canvas no lo recibe
+nunca, porque el aviso lo tapa y los eventos suben— con una sola excepción, los
+controles (`.control`): copiar el enlace o teclear un código se hacen con el
+ratón suelto.
+
+**Ojo con dos reglas CSS de la misma especificidad**: la que apaga las capas de
+juego y la que da forma al cartel de abatido tienen un id cada una, así que gana
+la que va después. Un `display` en la regla base del cartel lo deja encendido
+para siempre. Por eso `#abatido` no declara `display` y sólo lo hace su regla con
+`.puesto`.
+
 **Una suite sin aserciones no es una prueba, es un informe.** `baja.mjs` imprimía
 «se sube en 12/12» y salía en verde pasara lo que pasara; con aserciones de
 verdad cazó a la primera una regresión de 12/12 a 0/12. Si un test no puede
@@ -1332,6 +1370,12 @@ reloj y cable:
 **Partida por código:** quien abre la página crea una —seis caracteres de un
 alfabeto que no se confunde al dictarlo— y pasa el enlace. Quien lo abre entra en
 la misma. Es `idFromName(código)`: no hay lista de partidas ni matchmaking.
+
+**Y desde la vuelta 48 se puede jugar de verdad**, que hasta entonces no: el clic
+no llegaba al canvas y no había mira. En pantalla, jugando, hay **mira, vida y el
+cartel de abatido con su cuenta**, y nada más — ni munición, ni armas, ni
+puntuación, que son de la Opción B. Los números de red y el fantasma están
+apagados detrás de **F3**.
 
 Medido: error de reconciliación **cero** hasta 300 ms de RTT; correcciones sólo
 con pérdida de paquetes; **100% de acuerdo** entre lo que ve el tirador y lo que

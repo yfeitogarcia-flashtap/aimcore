@@ -7,37 +7,104 @@
   html, body { margin: 0; height: 100%; background: #0A0A0A; color: #E8E8E8;
     font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; overflow: hidden; }
   canvas { display: block; width: 100%; height: 100%; }
-  /* Por encima del aviso: el código y el enlace se copian **antes** de entrar. */
-  #panel { position: fixed; top: 12px; left: 12px; width: 352px; padding: 12px 14px; z-index: 2;
-    background: rgba(10,10,10,.82); border: 1px solid #2A2A2A; border-radius: 6px; }
+  .apagado { color: #6A6A6A; }
+  .bien { color: #2FCB82; } .mal { color: #E4462B; }
+  kbd { border: 1px solid #333; border-bottom-width: 2px; border-radius: 3px; padding: 1px 5px; color: #FFF; }
+  hr { border: 0; border-top: 1px solid #222; margin: 9px 0; }
+
+  /* ---------------------------------------------- lo que se ve jugando
+     Tres cosas y ninguna más: dónde apuntas, cuánta vida te queda y si estás
+     abatido. Todo esto sólo existe con el ratón capturado (`body.jugando`);
+     con el ratón suelto estorba al aviso, que es la pantalla de menú. */
+  #mira, #vital, #abatido { display: none; }
+  body.jugando #mira, body.jugando #vital { display: block; }
+
+  #mira { position: fixed; left: 50%; top: 50%; width: 22px; height: 22px;
+    transform: translate(-50%, -50%); pointer-events: none; }
+  /* Cuatro trazos y un punto, en el gris de la mira del juego
+     (`COLORS.crosshair`, que lo publica el JS como variable CSS: punto único
+     de cambio, igual que en `src/ui/Crosshair.jsx`). */
+  #mira i { position: absolute; background: var(--crosshair-color, #EAEAEA); }
+  #mira i:nth-child(1) { left: 50%; top: 0; width: 1px; height: 7px; margin-left: -.5px; }
+  #mira i:nth-child(2) { left: 50%; bottom: 0; width: 1px; height: 7px; margin-left: -.5px; }
+  #mira i:nth-child(3) { top: 50%; left: 0; height: 1px; width: 7px; margin-top: -.5px; }
+  #mira i:nth-child(4) { top: 50%; right: 0; height: 1px; width: 7px; margin-top: -.5px; }
+  #mira i:nth-child(5) { left: 50%; top: 50%; width: 2px; height: 2px; margin: -1px 0 0 -1px; }
+  /* La marca de impacto: cuatro trazos **en diagonal**, blancos. La forma es lo
+     que la distingue de la mira —no el color— porque en la paleta todos los
+     tonos ya significan algo y el rojo es «te están disparando a ti». */
+  #mira.dado i:nth-child(1) { transform: rotate(45deg) translateY(-3px); }
+  #mira.dado i:nth-child(2) { transform: rotate(45deg) translateY(3px); }
+  #mira.dado i:nth-child(3) { transform: rotate(45deg) translateX(-3px); }
+  #mira.dado i:nth-child(4) { transform: rotate(45deg) translateX(3px); }
+  #mira.dado i { background: #FFF; }
+
+  #vital { position: fixed; left: 18px; bottom: 16px; }
+  #vitalN { font-size: 26px; line-height: 1; color: #FFF; font-variant-numeric: tabular-nums; }
+  #vitalB { width: 132px; height: 3px; margin-top: 5px; background: #242424; }
+  #vitalB i { display: block; height: 100%; background: #2FCB82; transition: width .12s linear; }
+
+  /* Ojo: **aquí no se pone `display`**. La regla de arriba lo apaga y ésta
+     tiene la misma especificidad —un id—, así que un `display: grid` puesto
+     aquí gana por ir después y el cartel de ABATIDO se queda encendido con la
+     vida a 100. Pasó, y no lo cazó ninguna aserción: lo cazó mirar la captura. */
+  #abatido { position: fixed; inset: 0; place-items: center; pointer-events: none;
+    background: radial-gradient(ellipse at center, rgba(10,10,10,.25) 35%, rgba(10,10,10,.88) 100%);
+    text-align: center; letter-spacing: .3em; }
+  body.jugando #abatido.puesto { display: grid; }
+  #abatido b { font-size: 34px; color: #E4462B; }
+
+  /* ---------------------------------------------- la pantalla de menú */
+  #aviso { position: fixed; inset: 0; display: grid; place-items: center; cursor: pointer;
+    background: rgba(10,10,10,.78); text-align: center; letter-spacing: .06em; }
+  #aviso[hidden] { display: none !important; }
+  #sala { display: inline-block; text-align: left; margin-bottom: 18px; padding: 14px 16px;
+    background: rgba(10,10,10,.9); border: 1px solid #2A2A2A; border-radius: 6px; cursor: auto; }
+  #sala h1 { margin: 0 0 10px; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: #E4462B; }
+  #codigo { font-size: 30px; letter-spacing: .3em; color: #FFF; }
+  .linea { display: flex; gap: 6px; align-items: center; margin: 7px 0; width: 340px; }
+  .linea input { flex: 1; min-width: 0; background: #141414; color: #E8E8E8; border: 1px solid #333;
+    border-radius: 3px; padding: 5px 7px; font: inherit; }
+  .linea button { background: #2FCB82; color: #08130D; border: 0; border-radius: 3px;
+    padding: 6px 10px; font: inherit; font-weight: 700; cursor: pointer; }
+  #otro { text-transform: uppercase; letter-spacing: .12em; }
+
+  /* ---------------------------------------------- depuración (F3) */
+  #panel { position: fixed; top: 12px; right: 12px; width: 352px; padding: 12px 14px; z-index: 3;
+    background: rgba(10,10,10,.88); border: 1px solid #2A2A2A; border-radius: 6px; cursor: auto; }
+  #panel[hidden] { display: none !important; }
   #panel h1 { margin: 0 0 8px; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: #E4462B; }
   .fila { display: flex; justify-content: space-between; gap: 10px; white-space: nowrap; }
   .fila span:last-child { color: #FFF; font-variant-numeric: tabular-nums; }
-  .apagado { color: #6A6A6A; }
-  hr { border: 0; border-top: 1px solid #222; margin: 9px 0; }
-  label { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 4px 0; }
-  input[type=range] { width: 150px; accent-color: #2FCB82; }
-  #aviso { position: fixed; inset: 0; display: grid; place-items: center; cursor: pointer;
-    background: rgba(10,10,10,.75); text-align: center; letter-spacing: .06em; }
-  #aviso[hidden] { display: none !important; }
-  kbd { border: 1px solid #333; border-bottom-width: 2px; border-radius: 3px; padding: 1px 5px; color: #FFF; }
-  .bien { color: #2FCB82; } .mal { color: #E4462B; }
-  #codigo { font-size: 20px; letter-spacing: .22em; color: #FFF; }
-  .sala { display: flex; gap: 6px; align-items: center; margin: 5px 0; }
-  .sala input { flex: 1; min-width: 0; background: #141414; color: #E8E8E8; border: 1px solid #333;
-    border-radius: 3px; padding: 4px 6px; font: inherit; }
-  .sala button { background: #2FCB82; color: #08130D; border: 0; border-radius: 3px;
-    padding: 5px 9px; font: inherit; font-weight: 700; cursor: pointer; }
-  #otro { text-transform: uppercase; letter-spacing: .12em; }
+  #panel label { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 4px 0; }
+  #panel input[type=range] { width: 150px; accent-color: #2FCB82; }
 </style>
 <canvas id="lienzo"></canvas>
-<div id="panel">
-  <h1>Vektor · Duelo 1v1</h1>
-  <div class="fila"><span class="apagado">código de partida</span><span id="codigo">—</span></div>
-  <div class="sala"><input id="enlace" readonly /><button id="copiar">copiar</button></div>
-  <div class="sala"><input id="otro" placeholder="entrar en otro código" maxlength="9" /><button id="entrar">ir</button></div>
-  <hr />
-  <div class="fila"><span class="apagado">yo / rival</span><span id="quien">—</span></div>
+
+<div id="mira"><i></i><i></i><i></i><i></i><i></i></div>
+<div id="vital"><div id="vitalN">100</div><div id="vitalB"><i style="width:100%"></i></div></div>
+<div id="abatido"><div><b>ABATIDO</b><p class="apagado" id="reaparece">&nbsp;</p></div></div>
+
+<div id="aviso"><div>
+  <div id="sala" class="control">
+    <h1>Vektor · Duelo 1v1</h1>
+    <div class="fila"><span class="apagado">código de partida</span><span id="codigo">—</span></div>
+    <div class="linea"><input id="enlace" readonly /><button id="copiar">copiar</button></div>
+    <div class="linea"><input id="otro" placeholder="entrar en otro código" maxlength="9" /><button id="entrar">ir</button></div>
+    <hr />
+    <div class="fila"><span class="apagado">tú</span><span id="quien">conectando…</span></div>
+    <div class="fila"><span class="apagado">rival</span><span id="hayRival">—</span></div>
+  </div>
+  <p><b>Pásale el enlace a la otra persona</b> y haz clic para jugar.</p>
+  <p class="apagado">o abre esta misma página en dos pestañas para probar solo</p>
+  <p class="apagado"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> mover ·
+     <kbd>Espacio</kbd> saltar · <kbd>C</kbd> agachar · <kbd>Shift</kbd> andar · <kbd>Esc</kbd> soltar</p>
+  <p class="apagado"><kbd>clic izquierdo</kbd> disparar · <kbd>F3</kbd> números de red</p>
+</div></div>
+
+<div id="panel" class="control" hidden>
+  <h1>Depuración · F3</h1>
+  <div class="fila"><span class="apagado">yo / rival</span><span id="quienDbg">—</span></div>
   <div class="fila"><span class="apagado">paso · servidor · ack</span><span id="pasos">—</span></div>
   <div class="fila"><span class="apagado">RTT medido</span><span id="rtt">—</span></div>
   <div class="fila"><span class="apagado">sin confirmar</span><span id="pendientes">—</span></div>
@@ -61,14 +128,6 @@
   <label>latencia ida <input id="lat" type="range" min="0" max="150" step="5" value="0" /><b id="latV">0</b></label>
   <label>jitter <input id="jit" type="range" min="0" max="40" step="1" value="0" /><b id="jitV">0</b></label>
   <label>pérdida <input id="per" type="range" min="0" max="20" step="1" value="0" /><b id="perV">0</b></label>
-  <label>fantasma <input id="gho" type="checkbox" checked /></label>
+  <label>fantasma <input id="gho" type="checkbox" /></label>
 </div>
-<div id="aviso"><div>
-  <p><b>Pásale el enlace del panel a la otra persona</b> y haz clic aquí.</p>
-  <p class="apagado">o abre esta misma página en dos pestañas para probar solo</p>
-  <p class="apagado"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> mover ·
-     <kbd>Espacio</kbd> saltar · <kbd>C</kbd> agachar · <kbd>Shift</kbd> andar · <kbd>Esc</kbd> soltar</p>
-  <p class="apagado"><kbd>clic izquierdo</kbd> disparar — el servidor lo juzga contra lo que tenías en pantalla</p>
-  <p class="apagado">clic para capturar el ratón</p>
-</div></div>
 <script type="module" src="./prueba.js"></script>

@@ -19,7 +19,7 @@
  * fases, y nada de eso hace falta para responder a la pregunta de esta vuelta.
  */
 import * as THREE from 'three'
-import { CAMERA, NET, RENDER, SIM_STEP_MS, TEAMS } from '../src/config.js'
+import { CAMERA, COLORS, NET, RENDER, SIM_STEP_MS, TEAMS } from '../src/config.js'
 import { createScene } from '../src/game/scene.js'
 import { Scenario } from '../src/game/scenario.js'
 import { MovementController } from '../src/game/movement.js'
@@ -35,7 +35,14 @@ import { codigoDeLaDireccion, direccionDeLaBarra, enlaceDeSala, urlDeSala } from
 
 const lienzo = document.getElementById('lienzo')
 const aviso = document.getElementById('aviso')
+const panel = document.getElementById('panel')
+const mira = document.getElementById('mira')
 const $ = (id) => document.getElementById(id)
+
+// El color de la mira sale de `config.js` y de ningún otro sitio, igual que en
+// `src/ui/Crosshair.jsx`: se publica como variable CSS y la hoja de estilos la
+// lee. Dos literales del mismo gris es cómo acaban siendo dos grises distintos.
+document.documentElement.style.setProperty('--crosshair-color', COLORS.crosshair)
 
 const renderer = new THREE.WebGLRenderer({ canvas: lienzo, antialias: RENDER.antialias })
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, RENDER.maxPixelRatio))
@@ -101,7 +108,20 @@ const cliente = new ClienteRed({
 })
 cliente.onBienvenida = (m) => {
   $('quien').textContent = `${m.id} · ${m.escenario}`
+  $('quienDbg').textContent = `${m.id} · ${m.escenario}`
   document.title = `Vektor · ${codigo} · ${m.id}`
+}
+/**
+ * **La marca de impacto.** Se enciende con el veredicto **del servidor**, que es
+ * el que decide: avisar con el veredicto propio sería prometer una baja que
+ * luego no aparece en la vida del rival.
+ */
+let apagarMarca = 0
+cliente.onVeredicto = (v) => {
+  if (!v.impacto) return
+  mira.classList.add('dado')
+  clearTimeout(apagarMarca)
+  apagarMarca = setTimeout(() => mira.classList.remove('dado'), NET.hitMarkerMs)
 }
 cliente.conectar()
 
@@ -163,8 +183,39 @@ addEventListener('blur', () => {
   for (const k of Object.keys(cliente.teclas)) cliente.teclas[k] = false
 })
 
-lienzo.addEventListener('click', () => {
-  if (document.pointerLockElement !== lienzo) lienzo.requestPointerLock()
+/**
+ * **Un clic en cualquier sitio que no sea un control captura el ratón.**
+ *
+ * Estaba en el canvas, y el canvas **nunca recibía el clic**: el aviso ocupa la
+ * pantalla entera (`inset: 0`), va después en el documento y no llevaba
+ * `z-index`, así que se pinta encima; y los eventos suben, no bajan. Resultado:
+ * la página no se podía empezar a jugar, y no salió en ninguna suite porque los
+ * bancos escriben en `cliente.teclas` desde dentro y nunca hicieron clic. La
+ * lección está en `docs/decisions.md` §48.
+ *
+ * Por eso ahora escucha el documento —que es quien recibe todo— y la única
+ * excepción son los controles: copiar el enlace, teclear un código o mover un
+ * mando de depuración se hacen con el ratón suelto, y capturarlo al tocarlos
+ * dejaría el enlace a medias y la partida empezada.
+ */
+addEventListener('click', (e) => {
+  if (document.pointerLockElement === lienzo) return
+  if (e.target.closest('.control')) return
+  // Chrome rechaza la captura si se pide justo después de soltarla con Escape.
+  // No es un error del que haya que enterarse: se vuelve a hacer clic.
+  Promise.resolve(lienzo.requestPointerLock()).catch(() => {})
+})
+
+/**
+ * **F3 enseña los números**, como en el juego. Están apagados de fábrica: un
+ * jugador no tiene por qué mirar el error de reconciliación, y los mandos de
+ * red estropeada al lado del código de partida invitan a tocarlos sin saber que
+ * lo que hacen es empeorar tu propia conexión a propósito.
+ */
+addEventListener('keydown', (e) => {
+  if (e.code !== 'F3') return
+  e.preventDefault()
+  panel.hidden = !panel.hidden
 })
 /**
  * **El disparo sale del evento**, con su instante real y con el rumbo que tenía
@@ -179,6 +230,8 @@ addEventListener('mousedown', (e) => {
 document.addEventListener('pointerlockchange', () => {
   const capturado = document.pointerLockElement === lienzo
   aviso.hidden = capturado
+  // Mira, vida y «abatido» son de jugar; con el ratón suelto tapan el menú.
+  document.body.classList.toggle('jugando', capturado)
   controles.enabled = capturado
   if (capturado) controles.connect(document)
   else controles.disconnect()
@@ -288,7 +341,45 @@ function bucle(ahora) {
   renderer.render(scene, camara)
   if (interpolando) camara.position.copy(actual)
 
+  pintarVitales()
   pintarPanel()
+}
+
+/**
+ * **Vida y abatido son de jugar, así que se pintan siempre**, esté el panel de
+ * depuración abierto o no. Es lo mínimo para que «vida y reaparición» quiera
+ * decir algo: sin un número en pantalla, morir es quedarse tirado en el suelo
+ * sin saber por qué.
+ *
+ * La cuenta de reaparición **no viaja por la red**: sale de `NET.respawnMs`, que
+ * es la misma constante que usa el servidor, contada desde que llega la foto que
+ * te da por muerto. Eso la deja corta en medio viaje —25 ms de 2000— y es
+ * preferible a meter un campo más en cada foto de cada paso para ganar ese 1%.
+ */
+let muertoDesde = 0
+let vidaPintada = -1
+let cuentaPintada = ''
+function pintarVitales() {
+  // **Sólo se escribe en el DOM cuando el número ha cambiado.** Va dentro del
+  // bucle, y escribir `textContent` sesenta veces por segundo con el mismo valor
+  // es trabajo de maquetación por nada: la misma regla por la que el HUD del
+  // juego se actualiza por refs y no repinta por frame.
+  const vida = Math.max(0, Math.min(100, cliente.vida))
+  if (vida !== vidaPintada) {
+    vidaPintada = vida
+    $('vitalN').textContent = vida
+    $('vitalN').className = vida >= 45 ? '' : 'mal'
+    $('vitalB').firstElementChild.style.width = `${vida}%`
+    if (vida === 0) muertoDesde = performance.now()
+    $('abatido').classList.toggle('puesto', vida === 0)
+  }
+  if (vida > 0) return
+  const quedan = Math.max(0, NET.respawnMs - (performance.now() - muertoDesde))
+  const texto = `reapareces en ${(quedan / 1000).toFixed(1)}`
+  if (texto !== cuentaPintada) {
+    cuentaPintada = texto
+    $('reaparece').textContent = texto
+  }
 }
 
 let ultimoInforme = 0
@@ -298,6 +389,16 @@ function pintarPanel() {
   const ventana = (ahora - ultimoInforme) / 1000
   ultimoInforme = ahora
   const m = cliente.medidas
+  $('hayRival').textContent = cliente.poseDelRival() ? 'dentro' : 'esperando'
+  // El caudal se mide sobre la ventana, así que hay que vaciarlo aunque el panel
+  // esté cerrado: si no, al abrirlo la primera lectura sería la suma de todo lo
+  // que ha pasado desde que se cerró.
+  const subida = m.bytesSalida / ventana / 1024
+  const bajada = m.bytesEntrada / ventana / 1024
+  m.bytesSalida = 0
+  m.bytesEntrada = 0
+  if (panel.hidden) return
+  $('caudal').textContent = `${subida.toFixed(2)} / ${bajada.toFixed(2)} KB/s`
   $('pasos').textContent = `${paso} · ${m.pasoServidor} · ${m.ack}`
   $('rtt').textContent = `${m.rtt.toFixed(1)} ms`
   $('pendientes').textContent = `${m.pendientes}`
@@ -321,10 +422,6 @@ function pintarPanel() {
       `${m.ultimoDisparo.yo} / ${m.ultimoDisparo.servidor}` + (m.ultimoDisparo.dano ? ` (−${m.ultimoDisparo.dano})` : '')
     $('rebobinado').textContent = `${m.rebobinadoMs.toFixed(0)} ms · ${m.retrocesoMax.toFixed(2)} u`
   }
-  $('caudal').textContent =
-    `${(m.bytesSalida / ventana / 1024).toFixed(2)} / ${(m.bytesEntrada / ventana / 1024).toFixed(2)} KB/s`
-  m.bytesSalida = 0
-  m.bytesEntrada = 0
   if (costes.length > 30) {
     const orden = [...costes].sort((a, b) => a - b)
     $('coste').textContent =

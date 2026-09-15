@@ -2919,4 +2919,15 @@ export const NET = {
    * siempre; el cliente los descarta por número, así que repetir no cuesta.
    */
   verdictRepeats: 8,
+  /**
+   * Cuánto dura la marca de impacto sobre la mira (vuelta 48). Es el único
+   * aviso de que le has dado a alguien, y va **corta** a propósito: lo que tiene
+   * que confirmar es el disparo que acabas de hacer, no quedarse encima del
+   * siguiente.
+   *
+   * Y va en `NET` y no en `FEEDBACK` porque es de la página del duelo, no del
+   * juego: el aviso nace de un veredicto del servidor, que es algo que en el
+   * juego de un solo jugador no existe.
+   */
+  hitMarkerMs: 140,
 }

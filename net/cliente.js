@@ -44,6 +44,14 @@ export class ClienteRed {
 
     this.id = null
     this.conectado = false
+    /**
+     * **Avisos hacia fuera.** `onBienvenida` cuando el servidor te da sitio y
+     * `onVeredicto` cada vez que dice qué pasó con uno de tus disparos. Son
+     * pulsaciones, no valores por frame, así que quien las escuche puede pintar
+     * sin saltarse la regla de no repintar por frame.
+     */
+    this.onBienvenida = null
+    this.onVeredicto = null
     /** Paso propio. Va por delante del servidor lo que tarde el viaje. */
     this.paso = 0
     /** Entradas mandadas y todavía sin confirmar, en orden. */
@@ -269,6 +277,10 @@ export class ClienteRed {
       servidor: resultado.impacto ? resultado.zona : (resultado.tapado ? 'tapado' : 'fallo'),
       dano: resultado.dano,
     }
+    // El veredicto que se avisa es **el del servidor**, no el tuyo: la marca de
+    // impacto tiene que decir que le has dado de verdad, no que a ti te lo
+    // pareció. Es la misma razón por la que se miden los dos por separado.
+    this.onVeredicto?.(resultado)
   }
 
   /** La misma llamada que hace el servidor, con la misma entrada. */

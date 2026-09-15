@@ -184,13 +184,22 @@ de él, ése mismo botón lo anula al instante en todas partes.
 ## 4. Jugar
 
 1. Abre `https://vektor.<tu-subdominio>.workers.dev/duelo`.
-2. Arriba a la izquierda sale el **código de la partida** y el **enlace**. Dale a
+2. En el centro sale el **código de la partida** y el **enlace**. Dale a
    **copiar**.
 3. Pásale el enlace a la otra persona por donde quieras.
 4. Los dos hacéis clic en la pantalla para capturar el ratón. Ya estáis dentro.
 
 WASD para moverte, espacio para saltar, C para agacharte, clic izquierdo para
-disparar, Escape para soltar el ratón.
+disparar, Escape para soltar el ratón y volver al menú.
+
+En pantalla verás la **mira**, tu **vida** abajo a la izquierda y, si te matan,
+**ABATIDO** con la cuenta para reaparecer. Nada más: no hay munición, ni armas
+que elegir, ni puntuación todavía.
+
+**F3** enseña los números de red —el RTT de verdad, las correcciones, cuánto
+rebobina el servidor cada disparo— y unos mandos para estropear la conexión a
+propósito. Vienen apagados y así deben quedarse para jugar: los mandos **empeoran
+tu propia conexión**, no la del rival. Son para medir.
 
 **Son dos jugadores por sala.** Si entra un tercero con el mismo código se le
 dice que está llena y se queda fuera; los dos de dentro no se enteran.

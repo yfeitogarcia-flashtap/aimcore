@@ -1184,9 +1184,15 @@ Para publicarlo, `npm run deploy` — los pasos completos, incluido qué plan
 hace falta (**el gratuito**), están en
 [`docs/despliegue-cloudflare.md`](docs/despliegue-cloudflare.md).
 
-Clic en cada pestaña para capturar el ratón; WASD, espacio, C y Shift como en el
-juego, y clic izquierdo para disparar. Cada pestaña ve a la otra como un cuerpo
-del color del equipo contrario, moviéndose por el Plano A.
+Clic en cualquier sitio para capturar el ratón; WASD, espacio, C y Shift como en
+el juego, clic izquierdo para disparar y Escape para soltar. Cada pestaña ve a la
+otra como un cuerpo del color del equipo contrario, moviéndose por el Plano A.
+
+En pantalla, jugando, hay **mira, vida y el cartel de abatido con su cuenta de
+reaparición**, y nada más: no hay munición, ni armas, ni HUD completo, ni
+puntuación. **F3** enseña los números de red —RTT, correcciones, rebobinado— y los
+mandos para estropear la conexión a propósito; vienen apagados, porque no son
+para jugar sino para medir.
 
 ### La partida va por código
 

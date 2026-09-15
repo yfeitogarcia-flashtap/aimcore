@@ -4845,6 +4845,105 @@ que el mensaje se tira sin mirarlo.
   entran se cuentan— pero esta vuelta era de despliegue y cambiar el protocolo
   habría invalidado los bancos con los que se estaba comprobando la migración.
 
+## Ronda 48 — Que se pueda empezar a jugar
+
+Vuelta corta y de una sola idea: el duelo de la 47 estaba desplegado y **no se
+podía jugar**. No es una mejora de experiencia: era un arreglo.
+
+### El fallo: el clic nunca llegaba al canvas
+
+El aviso (`#aviso`) ocupa la pantalla entera (`position: fixed; inset: 0`), va
+después del canvas en el documento y ninguno de los dos llevaba `z-index`, así
+que se pinta encima. Y quien escuchaba el clic era el canvas. Los eventos del
+DOM **suben, no bajan**: el clic moría en el aviso y `requestPointerLock` no se
+llamaba nunca. Medido con un clic de verdad: `lienzo: 0 · aviso: 1`, y forzando
+el evento sobre el canvas, captura a la primera.
+
+Lo que importa de esto no es el arreglo —una línea— sino **por qué ninguna
+suite lo vio**. `red45.mjs`, `tiro46.mjs` y `sala47.mjs` conducen al jugador
+escribiendo en `cliente.teclas` y llamando a `cliente.disparar()` desde dentro
+de la página. Ninguna hizo nunca clic, ni pulsó una tecla de verdad. Se midió el
+error de reconciliación hasta el último dígito de coma flotante sobre una página
+que no se podía empezar.
+
+**La regla que queda:** una suite que conduce el juego por dentro prueba el
+modelo, no el producto. Si algo tiene que hacerlo una persona —un clic, una
+tecla, leer un número en pantalla—, hay que hacerlo como lo hace ella. De ahí
+sale `jugable48.mjs`, que es la primera suite del repositorio que usa
+`mouse.click` y `keyboard.down` contra la página real.
+
+Y una consecuencia inmediata de mirar de verdad: **no había mira**. Disparar
+apuntando a nada. Mismo agujero y misma causa — los bancos apuntaban con
+`camara.rotation` y disparaban por llamada, así que nunca hizo falta.
+
+### Lo que no se puede dirigir desde un banco
+
+Salir de la captura con **Escape lo resuelve el navegador**, no la página: una
+tecla sintética no lo dispara. El banco usa `document.exitPointerLock()`, que
+llega al mismo sitio —`pointerlockchange`— que es lo que la página escucha. Vale
+la pena anotarlo porque la primera versión de la suite falló por esto y parecía
+un fallo del menú.
+
+### Dos capas, y un clic que distingue entre ellas
+
+El panel lo tenía todo junto: el código de partida —que hace falta **antes** de
+jugar— y los números de red —que no le importan a nadie que esté jugando—. Ahora:
+
+- **El bloque de sala vive en el aviso**, que es la pantalla de «no estás
+  jugando». Es donde tiene sentido: se abre la página, se copia el enlace, se
+  hace clic y se juega; con Escape vuelve.
+- **Los números y los mandos de red estropeada van detrás de F3**, apagados de
+  fábrica, coherente con la vista de depuración del juego. Un jugador no tiene
+  por qué mirar el error de reconciliación, y unos mandos de latencia al lado del
+  código invitan a tocarlos sin saber que lo que hacen es **empeorar tu propia
+  conexión a propósito**.
+- **El fantasma pasa a estar apagado.** Es un instrumento de medida —dónde dice
+  el servidor que estás tú—, no un ajuste: encendido, en una partida normal se ve
+  un cuerpo translúcido pegado a la cara.
+
+Y el clic que captura el ratón escucha el documento, con **una sola excepción**:
+los controles (`.control`). Copiar el enlace, teclear un código o mover un mando
+se hacen con el ratón suelto, y capturarlo al tocarlos dejaría el enlace a medias
+y la partida empezada.
+
+### Lo mínimo para que «vida y reaparición» quiera decir algo
+
+Vida, barra y el cartel de ABATIDO con su cuenta. No es un HUD y no pretende
+serlo —no hay munición, ni armas, ni puntuación—, pero tener vida y no poder
+verla es no tenerla: morir sería quedarse en el suelo sin saber por qué.
+
+La cuenta de reaparición **no viaja por la red**: sale de `NET.respawnMs`, la
+misma constante que usa el servidor, contada desde que llega la foto que te da
+por muerto. Eso la deja corta medio viaje —25 ms de 2000, un 1%— y es mejor que
+meter un campo más en cada foto de cada paso para ganar eso.
+
+La marca de impacto se enciende con el veredicto **del servidor**, no con el
+propio: avisar con el tuyo sería prometer una baja que luego no aparece. Son
+cuatro trazos en diagonal y **blancos**: la forma es lo que la separa de la mira,
+no el color, porque en esta paleta todos los tonos significan ya algo y el rojo
+es «te están disparando a ti». Misma regla que la visera del casco y que el
+fogonazo de cuatro puntas.
+
+### Lo que costó: un `display` que gana por ir después
+
+El cartel de ABATIDO salía **siempre**, con la vida a 100. La regla que apaga las
+capas de juego (`#mira, #vital, #abatido { display: none }`) y la que da forma al
+cartel (`#abatido { ... display: grid ... }`) tienen **la misma especificidad**
+—un id cada una— y la segunda va después, así que gana.
+
+No lo cazó ninguna aserción: las que había miraban la mira, la vida y el panel,
+que era lo que yo estaba pensando. **Lo cazó mirar una captura de pantalla.** La
+suite tiene ahora la aserción que faltaba, y la lección es la de siempre por otra
+puerta: se comprueba lo que se ha pensado, así que de vez en cuando hay que mirar
+lo que sale de verdad.
+
+### Lo que confirmó el banco sin buscarlo
+
+Andando de frente desde la salida sólo se avanzan **0.90 u**: ahí está el muro de
+aparición de la vuelta 43, haciendo exactamente su trabajo. De lado son 4.55 u en
+700 ms —los 6.5 u/s de carrera— y de espaldas 1.90 hasta la pared de la sala. La
+primera versión de la suite medía de frente y daba el movimiento por roto.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
@@ -4973,6 +5072,12 @@ objetivo era medir tiempos y rendimiento de verdad.
 - **Que la migración a Cloudflare no cambió nada**: los bancos de las vueltas 45
   y 46, sin tocar una aserción, pasados contra el Durable Object corriendo en
   `wrangler dev --local`.
+- **Que se puede empezar a jugar** (`jugable48.mjs`): con clics y teclas de
+  verdad contra la página real —no escribiendo en `cliente.teclas` desde dentro—,
+  que un clic captura el ratón, que aparecen mira y vida y no el cartel de
+  abatido, que F3 enseña y esconde los números, que el fantasma viene apagado,
+  que tocar un control no captura el ratón, que escribir un código no mueve al
+  jugador, y que dos personas se ven, se disparan y se matan.
 
 Lo que **no** está verificado automáticamente: la sensación de juego, el balance
 entre armas y la legibilidad del HUD en pantallas pequeñas. Eso sigue siendo
