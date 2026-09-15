@@ -39,6 +39,16 @@
   #mira.dado i:nth-child(4) { transform: rotate(45deg) translateX(3px); }
   #mira.dado i { background: #FFF; }
 
+  /* **El aviso de que la partida ya no está.** Va arriba y centrado, por encima
+     de todo: es lo único que explica por qué el juego no responde, y hasta la
+     vuelta 51 no existía — una partida llena o un cable caído se veían igual que
+     un juego colgado. */
+  #aviso-red { position: fixed; top: 0; left: 0; right: 0; z-index: 4; padding: 10px 14px;
+    text-align: center; letter-spacing: .08em; background: #E4462B; color: #120404; font-weight: 700; }
+  #aviso-red[hidden] { display: none !important; }
+  #aviso-red.suave { background: #FFD23F; color: #141000; }
+  #aviso-red small { display: block; font-weight: 400; letter-spacing: .04em; opacity: .8; }
+
   #vital { position: fixed; left: 18px; bottom: 16px; }
   #vitalN { font-size: 26px; line-height: 1; color: #FFF; font-variant-numeric: tabular-nums; }
   #vitalB { width: 132px; height: 3px; margin-top: 5px; background: #242424; }
@@ -80,6 +90,7 @@
   #panel input[type=range] { width: 150px; accent-color: #2FCB82; }
 </style>
 <canvas id="lienzo"></canvas>
+<div id="aviso-red" hidden></div>
 
 <div id="mira"><i></i><i></i><i></i><i></i><i></i></div>
 <div id="vital"><div id="vitalN">100</div><div id="vitalB"><i style="width:100%"></i></div></div>
@@ -123,6 +134,7 @@
   <div class="fila"><span class="apagado">caudal ↑ / ↓</span><span id="caudal">—</span></div>
   <div class="fila"><span class="apagado">pasos sin entrada</span><span id="hambre">—</span></div>
   <div class="fila"><span class="apagado">re-anclajes del reloj</span><span id="reanclajes">—</span></div>
+  <div class="fila"><span class="apagado">sin fotos desde hace</span><span id="silencio">—</span></div>
   <div class="fila"><span class="apagado">rival dibujado</span><span id="retraso">—</span></div>
   <div class="fila"><span class="apagado">coste del paso</span><span id="coste">—</span></div>
   <hr />

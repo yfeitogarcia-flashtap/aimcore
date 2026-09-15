@@ -36,6 +36,7 @@ import { codigoDeLaDireccion, direccionDeLaBarra, enlaceDeSala, urlDeSala } from
 const lienzo = document.getElementById('lienzo')
 const aviso = document.getElementById('aviso')
 const panel = document.getElementById('panel')
+const avisoRed = document.getElementById('aviso-red')
 const mira = document.getElementById('mira')
 const $ = (id) => document.getElementById(id)
 
@@ -138,6 +139,43 @@ cliente.onVeredicto = (v) => {
   mira.classList.add('dado')
   clearTimeout(apagarMarca)
   apagarMarca = setTimeout(() => mira.classList.remove('dado'), NET.hitMarkerMs)
+}
+/**
+ * **Lo que ve el jugador cuando la partida deja de estar.** Dos estados, y la
+ * diferencia importa: el **amarillo** es «no llegan fotos», que puede pasarse
+ * solo; el **rojo** es definitivo —te han echado o el cable se ha cortado— y no
+ * se va a arreglar mirando.
+ */
+let redCaida = null
+function pintarRed(ahora) {
+  if (redCaida) {
+    avisoRed.hidden = false
+    avisoRed.classList.remove('suave')
+    avisoRed.innerHTML = `PARTIDA DESCONECTADA — ${redCaida.motivo}` +
+      '<small>recarga la página para volver a entrar</small>'
+    return
+  }
+  const silencio = cliente.silencioMs(ahora)
+  cliente.medidas.sinFotosMs = silencio
+  if (silencio > NET.offlineMs) {
+    avisoRed.hidden = false
+    avisoRed.classList.add('suave')
+    avisoRed.innerHTML = `SIN CONEXIÓN — ${(silencio / 1000).toFixed(1)} s sin noticias del servidor` +
+      '<small>tu jugador se sigue moviendo aquí, pero nadie más lo ve</small>'
+  } else {
+    avisoRed.hidden = true
+  }
+}
+cliente.onDesconectado = (d) => {
+  redCaida = d
+  // Y el panel deja de decir «conectando…» debajo de un cartel que dice que no
+  // hay partida: dos mensajes que se contradicen es medio arreglo.
+  $('quien').textContent = 'fuera de la partida'
+  $('hayRival').textContent = '—'
+  // Se suelta el ratón: seguir capturado en una partida que ya no existe es
+  // dejar al jugador encerrado en una pantalla que no responde.
+  if (document.pointerLockElement === lienzo) document.exitPointerLock()
+  pintarRed(performance.now())
 }
 cliente.conectar()
 
@@ -272,6 +310,8 @@ let paso = 0
 const previa = new THREE.Vector3()
 const actual = new THREE.Vector3()
 let posaLista = false
+/** Frames seguidos en los que el enganche ha frenado al cliente. Ver abajo. */
+let frenados = 0
 let epoca = movimiento.poseEpoch
 const costes = []
 
@@ -302,7 +342,14 @@ function bucle(ahora) {
   // recuperan nunca, así que el cliente se iría quedando atrás y sus entradas
   // llegarían selladas con un paso cada vez más viejo. Con banda muerta de dos
   // pasos, para no oscilar.
-  const objetivo = cliente.pasoObjetivo()
+  // **Y sólo se le hace caso a un reloj que esté vivo** (vuelta 51). El enganche
+  // frena al cliente cuando va por delante, restándole un paso por frame; contra
+  // un reloj **parado** eso es una trampa sin fondo. Si dejan de llegar fotos,
+  // `pasoServidor` se congela, el desfase crece hacia abajo sin límite y el
+  // cliente se frena hasta cero pasos por segundo — medido, 60 → 3 → 0 en cuatro
+  // segundos, y de ahí no sale. Sin reloj fresco se predice a tiempo real por el
+  // acumulador, que es lo que toca mientras no haya noticias.
+  const objetivo = cliente.relojFresco(ahora) ? cliente.pasoObjetivo() : 0
   if (objetivo > 0) {
     const desfase = objetivo - (paso + pasos)
     if (desfase > NET.resyncTicks) {
@@ -318,8 +365,19 @@ function bucle(ahora) {
       // Y el dibujado no interpola a través del salto, que es la regla de
       // siempre: las dos poses se vuelven a sembrar en el paso siguiente.
       posaLista = false
-    } else if (desfase > NET.clockDeadbandTicks) pasos += Math.min(NET.maxCatchUpTicks, desfase)
-    else if (desfase < -NET.clockDeadbandTicks && pasos > 0) pasos -= 1
+    } else if (desfase > NET.clockDeadbandTicks) {
+      pasos += Math.min(NET.maxCatchUpTicks, desfase)
+      frenados = 0
+    } else if (desfase < -NET.clockDeadbandTicks && pasos > 0 && frenados < NET.clockDeadbandTicks) {
+      // **Y el freno tiene suelo**: como mucho unos pocos frames seguidos sin
+      // avanzar. Con un reloj que avanza esto no llega a morder —el freno se
+      // apaga solo en cuanto el desfase entra en la banda—, pero un reloj que
+      // vaya a trompicones no puede dejar el mundo parado. Un suelo «de un paso
+      // por frame» no vale: a 144 Hz el acumulador da menos de un paso por frame
+      // y forzarlo haría correr el mundo a 144 pasos por segundo.
+      pasos -= 1
+      frenados += 1
+    } else frenados = 0
   }
 
   for (let i = 0; i < pasos; i++) {
@@ -371,6 +429,7 @@ function bucle(ahora) {
   if (interpolando) camara.position.copy(actual)
 
   pintarVitales()
+  pintarRed(ahora)
   pintarPanel()
 }
 
@@ -439,6 +498,7 @@ function pintarPanel() {
   $('perdidos').textContent = `↑${enlace.tirados ?? 0} ↓${enlace.tiradosEntrada ?? 0} de ${m.enviados}`
   $('hambre').textContent = `${m.hambre}`
   $('reanclajes').textContent = `${m.reanclajes}`
+  $('silencio').textContent = redCaida ? 'desconectado' : `${m.sinFotosMs.toFixed(0)} ms`
   $('vida').innerHTML = cliente.vida > 0
     ? `<span class="${cliente.vida < 45 ? 'mal' : 'bien'}">${cliente.vida}</span>`
     : '<span class="mal">ABATIDO</span>'

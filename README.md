@@ -1197,6 +1197,14 @@ vienen apagados, porque no son para jugar sino para medir.
 Cada jugador lleva **el color de su equipo** —azul o magenta— según la ranura que
 le dé el servidor, que es la misma de la que sale su punto de salida.
 
+**Y cuando la partida deja de estar, se dice.** Hay tres formas de quedarse
+fuera —te echan de una partida llena, se corta el cable o dejan de llegar fotos—
+y las tres se veían igual: el juego quedándose quieto sin explicación. Ahora sale
+un aviso **amarillo** si no llegan fotos (puede pasarse solo) o **rojo** si es
+definitivo, con el motivo. Y el cliente ya no se congela cuando el servidor calla:
+sigue prediciendo a tiempo real —medido, 61 pasos/s con la red cortada, contra los
+0 de antes— en vez de frenarse hasta parar.
+
 **Y reaparecer es un teletransporte.** Al morir lejos del punto de aparición, el
 rival te veía **recorrer** la distancia hasta el spawn: la interpolación mezclaba
 las dos fotos que rodean el salto y te pintaba en sitios donde nunca estuviste.

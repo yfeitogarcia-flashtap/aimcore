@@ -5134,6 +5134,108 @@ a unos 400 u/s, contra los 6.5 u/s de carrera.
   tandas distintas: así no hay dos redes que comparar, y la suite puede cazar la
   regresión —con la fórmula vieja sigue dibujando el cuerpo por el camino—.
 
+## Ronda 51 — El cliente deja de quedarse callado (y de congelarse)
+
+De la primera prueba remota: al unirse el segundo jugador, uno se quedó
+**bloqueado sin poder moverse** y el otro **no le veía en absoluto**. No se
+repitió al segundo intento.
+
+### No era la carrera que parecía
+
+Lo primero fue descartar lo sospechado, con datos y no con lectura:
+
+| Experimento | Resultado |
+|---|---|
+| Los dos entran **a la vez** en una sala nueva | 12/12 bien |
+| Uno recarga antes de que entre el otro | 12/12 bien |
+| Muerte sucia del TCP, sin saludo de cierre | la ranura se libera |
+| ¿Se queda el foco atrapado en el campo de código? | no: pinchar el lienzo lo suelta |
+
+Y en el código tampoco había dónde: `Sala.fetch()` **no tiene un solo `await`**,
+así que dos conexiones simultáneas no pueden entrelazarse — el Durable Object
+las atiende una detrás de otra.
+
+### Lo que era: un freno sin suelo contra un reloj muerto
+
+El enganche al reloj del servidor frena al cliente cuando va por delante,
+restándole un paso por frame. Contra un reloj que avanza eso es correcto y se
+apaga solo. Contra un reloj **parado** es una trampa sin fondo: si dejan de
+llegar fotos, `pasoServidor` se congela, el desfase crece hacia abajo sin límite
+y el cliente se frena **hasta cero**. Medido congelando sólo ese número:
+
+```
+con la red bien                      60 pasos/s
+con el reloj del servidor parado      3 pasos/s
+   ... y dos segundos después         0 pasos/s
+```
+
+Y de ahí no sale, porque cuanto más pasa, más «por delante» se cree.
+
+**Eso explica las dos mitades del síntoma a la vez.** El jugador no se puede
+mover —su mundo no avanza— y se queda clavado en el punto de aparición, que
+desde la vuelta 43 está **detrás del muro**: desde casi todo el mapa, el otro no
+le ve en absoluto.
+
+**El arreglo son dos cosas, y la que manda es la primera.** Al reloj del
+servidor sólo se le hace caso si está **fresco** (`NET.clockStaleMs`, 250 ms,
+unas 15 fotos); sin noticias se predice a tiempo real por el acumulador, que es
+lo que toca mientras no se sabe nada. Y el freno tiene **suelo**: como mucho
+`clockDeadbandTicks` frames seguidos sin avanzar.
+
+Medido con un corte de red de verdad: **61 pasos/s** con la red cortada, contra
+los 0 de antes. Y quitando sólo la puerta de frescura, el cliente se hunde a
+**20 pasos/s** — que es lo que demuestra que es la puerta, y no el suelo, lo que
+lo salva.
+
+**Ojo con el suelo, que la formulación obvia es falsa.** «Nunca menos de un paso
+por frame» no vale: a 144 Hz el acumulador da menos de un paso por frame, y
+forzarlo pondría el mundo a 144 pasos por segundo. El suelo tiene que ser sobre
+**frames seguidos frenados**, no sobre pasos por frame.
+
+### Y dos silencios que convertían cualquier fallo en magia negra
+
+- **`MSG.ADIOS` no lo atendía nadie.** `_recibir` conocía `BIENVENIDA` y `FOTO`
+  y nada más, así que «la partida está llena» se tiraba sin mirarlo.
+- **El transporte no escuchaba `close` ni `error`**, sólo `message`. Una
+  conexión caída no se notaba nunca.
+
+Y como `dar()` **predice en local aunque no haya conexión** (`_aplicar` va antes
+del `if (!this.conectado) return`), un jugador rechazado se movía tan ricamente
+en su pantalla sin existir para nadie. Tres formas distintas de quedarse fuera,
+las tres con la misma pinta: un juego colgado.
+
+Ahora hay **dos avisos y son distintos a propósito**: el amarillo dice «no
+llegan fotos» y puede pasarse solo; el rojo es definitivo —te han echado o el
+cable se ha cortado— y lleva el motivo que da el servidor. Y al desconectarse se
+**suelta el ratón**: dejar a alguien capturado en una partida que ya no existe es
+encerrarle en una pantalla que no responde.
+
+### La cuarta función del transporte
+
+La regla de la vuelta 46 decía **tres**: `send`, `onMessage`, `close`. Ahora son
+cuatro, y la regla no se rompe, se precisa: lo que la 46 prohibía era **exponer
+si está abierto**, que es preguntar por un estado, y eso sigue prohibido — que
+hay partida lo dice la bienvenida, que es del protocolo.
+
+Colgarse es otra cosa. **Un cable que se corta no manda ningún mensaje**, así que
+no hay forma de enterarse por el protocolo. `onClose` es un **aviso**, no un
+estado, y es lo único que el cable sabe y el protocolo no. La alternativa
+—inventarse un mensaje dentro de `onMessage`— pone al transporte a redactar un
+protocolo que no es suyo.
+
+Medido matando el Worker de verdad: el aviso sale **en rojo** con
+`deFuera: false`, o sea que el cliente distingue «me han echado» de «se ha
+cortado», que es justo lo que no podía hacer.
+
+### Lo que costó
+
+**Congelar el reloj del servidor dejando las fotos llegando prueba un estado que
+no existe.** La primera versión del banco lo hacía: el resultado eran 20 pasos/s
+—el suelo del freno— en vez de los 60 del arreglo, y un aviso que aparecía y
+desaparecía, porque las fotos seguían reseteando el contador de silencio. El
+servidor nunca para su reloj mientras sigue mandando: el estímulo bueno es
+**cortar la red de verdad** (`context.setOffline`), y entonces sale 61.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
@@ -5262,6 +5364,12 @@ objetivo era medir tiempos y rendimiento de verdad.
 - **Que la migración a Cloudflare no cambió nada**: los bancos de las vueltas 45
   y 46, sin tocar una aserción, pasados contra el Durable Object corriendo en
   `wrangler dev --local`.
+- **Que el cliente no se congela ni se queda callado** (`aviso51.mjs`): con un
+  corte de red de verdad, que el mundo local sigue a 61 pasos/s en vez de caer a
+  cero, que quitar la puerta de frescura lo hunde a 20 —o sea que es eso lo que
+  lo arregla—, que el silencio se avisa en amarillo, que al tercero de una
+  partida de dos se le dice en rojo con el motivo del servidor, y que matando el
+  Worker el cliente distingue el cable del portazo.
 - **Que reaparecer es un teletransporte y no un viaje** (`reaparecer50.mjs`): con
   dos navegadores a 60 fps, que la marca de teletransporte viaja en la foto y
   cambia al reaparecer, y que el salto se dibuja en un frame sin pasar por

@@ -1,7 +1,7 @@
 /**
- * **El transporte, detrás de tres funciones** (vuelta 46).
+ * **El transporte, detrás de cuatro funciones** (vuelta 46; la cuarta, en la 51).
  *
- * `send`, `onMessage`, `close`. Nada más. El netcode —predicción,
+ * `send`, `onMessage`, `close`, `onClose`. El netcode —predicción,
  * reconciliación, compensación de retraso— no sabe si debajo hay un WebSocket,
  * un canal de datos de WebRTC o un Durable Object: sólo que puede mandar una
  * cadena, enterarse de las que llegan y colgar.
@@ -18,18 +18,46 @@
  */
 
 /**
+ * **Por qué hay una cuarta y no sigue habiendo tres** (vuelta 51). La regla de
+ * la 46 sigue en pie en lo que decía: **no se expone si está abierto**. Eso es
+ * preguntar por un estado, y quien necesite saber que hay partida lo sabe por el
+ * primer mensaje que llega, que es la bienvenida — información del protocolo, no
+ * del cable.
+ *
+ * Colgarse es otra cosa. **Un cable que se corta no manda ningún mensaje**, así
+ * que no hay forma de enterarse por el protocolo: el `ADIOS` cubre «el servidor
+ * me ha echado», pero una conexión que se cae no dice nada de nada. Hasta la 51
+ * el cliente no escuchaba `close` ni `error`, y el resultado era que cualquier
+ * caída se veía como el juego quedándose quieto sin explicación. `onClose` es un
+ * **aviso**, no un estado, y es lo único que el cable sabe y el protocolo no.
+ *
+ * La alternativa era inventarse un mensaje dentro de `onMessage` para fingir que
+ * el corte venía por el protocolo. Eso es peor: pone al transporte a redactar
+ * mensajes de un protocolo que no es suyo.
+ */
+
+/**
  * WebSocket del navegador.
  *
- * No expone si está abierto a propósito: son **tres** funciones. Lo que se
- * manda antes de la apertura se tira, y no pasa nada — el cliente manda una
- * entrada por paso, así que la siguiente llega 16 ms después. Quien necesite
- * saber que hay partida lo sabe por el primer mensaje que llega, que es la
- * bienvenida, y eso es información del protocolo y no del cable.
+ * Lo que se manda antes de la apertura se tira, y no pasa nada — el cliente
+ * manda una entrada por paso, así que la siguiente llega 16 ms después.
  */
 export function transporteWebSocket(url) {
   const socket = new WebSocket(url)
   let escucha = null
+  let adios = null
+  let avisado = false
+  // `close` y `error` pueden llegar los dos por la misma caída; el aviso se da
+  // una sola vez. `error` no dice qué ha pasado —el navegador no lo cuenta, por
+  // seguridad— así que lo único honrado es decir que se ha cortado.
+  const caida = (motivo) => {
+    if (avisado) return
+    avisado = true
+    adios?.(motivo)
+  }
   socket.addEventListener('message', (evento) => escucha?.(evento.data))
+  socket.addEventListener('close', (evento) => caida(evento.reason || null))
+  socket.addEventListener('error', () => caida(null))
   return {
     send(texto) {
       if (socket.readyState === 1) socket.send(texto)
@@ -37,8 +65,14 @@ export function transporteWebSocket(url) {
     onMessage(fn) {
       escucha = fn
     },
+    onClose(fn) {
+      adios = fn
+    },
     close() {
       escucha = null
+      // Cerrar a propósito no es caerse: se calla el aviso antes de cerrar.
+      avisado = true
+      adios = null
       socket.close()
     },
   }
@@ -82,6 +116,14 @@ export function conRedSimulada(base, enlace) {
         }
         tras(() => fn(datos))
       })
+    },
+    /**
+     * El aviso de caída **no se retrasa ni se pierde** con la red simulada:
+     * retrasar la noticia de que el cable está cortado es justo lo contrario de
+     * lo que se quiere probar, y tirarla dejaría el banco sin la señal.
+     */
+    onClose(fn) {
+      base.onClose(fn)
     },
     close() {
       base.close()

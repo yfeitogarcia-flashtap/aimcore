@@ -2953,4 +2953,28 @@ export const NET = {
    * rebobinado.
    */
   resyncTicks: 60,
+  /**
+   * **Cuándo deja de ser de fiar el reloj del servidor** (vuelta 51).
+   *
+   * El enganche al reloj frena al cliente cuando va por delante, restándole un
+   * paso por frame. Eso está bien contra un reloj que avanza; contra uno
+   * **parado** es una trampa sin fondo: si dejan de llegar fotos,
+   * `pasoServidor` se congela, el desfase crece hacia abajo sin límite y el
+   * cliente se frena hasta **cero pasos por segundo** — medido: 60 → 3 → 0 en
+   * cuatro segundos, y de ahí no sale. El jugador no se puede mover y se queda
+   * clavado en el punto de aparición, que además está detrás del muro, así que
+   * el rival no le ve en absoluto.
+   *
+   * Pasada esta silencio, el reloj del servidor no se consulta: el cliente sigue
+   * prediciendo a tiempo real por su acumulador, que es lo que tiene que hacer
+   * mientras no haya noticias. Son unas 15 fotos a `snapshotEvery` 1.
+   */
+  clockStaleMs: 250,
+  /**
+   * **Y cuándo se le dice al jugador que no hay conexión.** Unas 90 fotos: lo
+   * bastante para no dar un susto por un hipo de medio segundo, y lo bastante
+   * poco para que nadie siga jugando dos minutos contra un servidor que no está.
+   * Punto de partida, a calibrar jugando.
+   */
+  offlineMs: 1000,
 }

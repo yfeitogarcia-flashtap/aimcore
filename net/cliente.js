@@ -44,6 +44,8 @@ export class ClienteRed {
 
     this.id = null
     this.conectado = false
+    /** Cuándo llegó la última foto. Null mientras no haya llegado ninguna. */
+    this._ultimaFotoEn = null
     /**
      * **Avisos hacia fuera.** `onBienvenida` cuando el servidor te da sitio y
      * `onVeredicto` cada vez que dice qué pasó con uno de tus disparos. Son
@@ -52,6 +54,16 @@ export class ClienteRed {
      */
     this.onBienvenida = null
     this.onVeredicto = null
+    /**
+     * **Y por qué se ha acabado la partida para ti** (vuelta 51). Llega con un
+     * motivo legible y con `deFuera` puesto si lo dijo el servidor (`ADIOS`) o
+     * quitado si sólo se cortó el cable. Hasta la 51 no existía, y el resultado
+     * era que una partida llena o un socket caído se veían **exactamente igual
+     * que un juego colgado**: nada en pantalla y nada en la consola.
+     */
+    this.onDesconectado = null
+    /** El último motivo, para quien lo quiera pintar sin esperar al aviso. */
+    this.desconexion = null
     /** Paso propio. Va por delante del servidor lo que tarde el viaje. */
     this.paso = 0
     /** Entradas mandadas y todavía sin confirmar, en orden. */
@@ -78,6 +90,8 @@ export class ClienteRed {
       rtt: 0,
       /** Veces que se ha re-anclado el reloj por volver de un parón largo. */
       reanclajes: 0,
+      /** Cuánto lleva sin llegar una foto. Cero mientras la partida va. */
+      sinFotosMs: 0,
       pendientes: 0,
       errorUltimo: 0,
       errorMax: 0,
@@ -124,6 +138,39 @@ export class ClienteRed {
       this.medidas.totalEntrada += datos.length
       this._recibir(JSON.parse(datos))
     })
+    // El cable cortado no manda ningún mensaje: es lo único que hay que
+    // escuchar aparte del protocolo (ver `net/transporte.js`).
+    this.transporte.onClose?.((motivo) => {
+      this._desconectar(motivo || 'se ha cortado la conexión con el servidor', false)
+    })
+  }
+
+  /**
+   * **Se acabó, y se dice por qué.** Un solo camino para las dos formas de
+   * quedarse fuera —el servidor te echa, o el cable se corta—, porque para el
+   * jugador son la misma cosa: la partida ya no está ahí.
+   */
+  _desconectar(motivo, deFuera) {
+    if (this.desconexion) return
+    this.conectado = false
+    this.desconexion = { motivo, deFuera }
+    this.onDesconectado?.(this.desconexion)
+  }
+
+  /**
+   * **¿Hace cuánto que no llega una foto?** El servidor manda una por paso, así
+   * que en una partida sana esto no pasa de unos milisegundos. Es lo único que
+   * distingue «no me llega nada» de «estoy colgado», y hasta la vuelta 51 no
+   * había forma de saberlo ni desde dentro ni desde fuera.
+   */
+  silencioMs(ahora = performance.now()) {
+    if (this._ultimaFotoEn === null) return 0
+    return ahora - this._ultimaFotoEn
+  }
+
+  /** ¿Se puede uno fiar del reloj del servidor ahora mismo? */
+  relojFresco(ahora = performance.now()) {
+    return this._ultimaFotoEn !== null && ahora - this._ultimaFotoEn <= NET.clockStaleMs
   }
 
   cerrar() {
@@ -295,6 +342,10 @@ export class ClienteRed {
   }
 
   _recibir(mensaje) {
+    if (mensaje.t === MSG.ADIOS) {
+      this._desconectar(mensaje.razon || 'el servidor ha cerrado la partida', true)
+      return
+    }
     if (mensaje.t === MSG.BIENVENIDA) {
       this.conectado = true
       this.id = mensaje.id
@@ -309,6 +360,8 @@ export class ClienteRed {
 
   _reconciliar(foto) {
     this.medidas.fotos += 1
+    this._ultimaFotoEn = performance.now()
+    this.medidas.sinFotosMs = 0
     this.medidas.pasoServidor = foto.n
 
     // El rival, a su cola de interpolación.

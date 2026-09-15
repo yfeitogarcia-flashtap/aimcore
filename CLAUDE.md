@@ -208,7 +208,15 @@ no la mitad.** La foto que dice en qué paso va el servidor ya salió hace un vi
 de ida, y la entrada que mandes ahora tardará otro. Con la mitad, el servidor se
 queda sin entrada en un tercio de los pasos.
 
-**El transporte son tres funciones: `send`, `onMessage`, `close`** (vuelta 46).
+**El transporte son cuatro funciones: `send`, `onMessage`, `close`, `onClose`**
+(vuelta 46; la cuarta, en la 51). La regla de la 46 sigue en pie en lo que decía
+—**no se expone si está abierto**, que es preguntar por un estado, y que hay
+partida lo dice la bienvenida, que es del protocolo—. Lo que la 51 añadió es que
+**un cable que se corta no manda ningún mensaje**: el `ADIOS` cubre «me han
+echado», pero una caída no dice nada de nada, así que no hay forma de enterarse
+por el protocolo. `onClose` es un **aviso**, no un estado. Inventarse un mensaje
+dentro de `onMessage` habría puesto al transporte a redactar un protocolo que no
+es suyo.
 El netcode no sabe qué hay debajo, y por eso la red simulada —latencia, jitter,
 pérdida— **es un transporte que envuelve a otro** (`conRedSimulada`) y no un
 puñado de `setTimeout` dentro del cliente: son propiedades del cable. Ninguna de
@@ -1281,6 +1289,30 @@ vuelta 34 con el escudo, y la 1 y la 2 en la 39 con las dos ranuras de arma—. 
 mapa de controles tiene que ser el definitivo desde el principio: si se añaden
 cuando existan las mecánicas, alguien ya habrá puesto ahí su bind favorito. El
 panel las marca «sin efecto todavía».
+
+**Al reloj del servidor sólo se le hace caso si está fresco** (vuelta 51). El
+enganche frena al cliente cuando va por delante restándole un paso por frame:
+contra un reloj que avanza se apaga solo, contra uno **parado** es una trampa sin
+fondo — medido, 60 → 3 → **0 pasos por segundo**, y de ahí no sale, porque cuanto
+más pasa más «por delante» se cree. El jugador se queda sin poder moverse y
+clavado en el punto de aparición, que está detrás del muro, así que el rival no
+le ve en absoluto: las dos mitades del síntoma salen de la misma línea.
+
+Sin foto en `NET.clockStaleMs` no se consulta el reloj: se predice a tiempo real
+por el acumulador. Y el freno tiene **suelo**, medido en **frames seguidos
+frenados** y no en pasos por frame — «nunca menos de un paso por frame» es falso,
+porque a 144 Hz el acumulador da menos de uno y forzarlo pondría el mundo a 144
+pasos por segundo.
+
+**Y quedarse fuera se dice, no se sufre.** Hay tres formas de que la partida deje
+de estar —te echan (`ADIOS`), se corta el cable (`onClose`) o dejan de llegar
+fotos (`NET.offlineMs`)— y hasta la 51 las tres tenían la misma pinta: un juego
+colgado. Ahora el aviso **amarillo** dice «no llegan fotos» y puede pasarse solo;
+el **rojo** es definitivo y lleva el motivo del servidor. Al desconectarse se
+suelta el ratón: dejar a alguien capturado en una partida que no existe es
+encerrarle en una pantalla que no responde. Ojo al añadir mecánicas: `dar()`
+**predice en local aunque no haya conexión**, así que sin estos avisos un jugador
+rechazado se mueve tan contento sin existir para nadie.
 
 **Hay tres relojes y los tres re-anclan: el motor, el Durable Object y el
 cliente** (vuelta 49). El del cliente era el único que no lo hacía, y de ahí
