@@ -219,7 +219,18 @@ dentro de `onMessage` habría puesto al transporte a redactar un protocolo que n
 es suyo.
 El netcode no sabe qué hay debajo, y por eso la red simulada —latencia, jitter,
 pérdida— **es un transporte que envuelve a otro** (`conRedSimulada`) y no un
-puñado de `setTimeout` dentro del cliente: son propiedades del cable. Ninguna de
+puñado de `setTimeout` dentro del cliente: son propiedades del cable.
+
+**Y ese aislamiento no se rompe nunca por comodidad, por un motivo que va más
+allá de la limpieza:** el día que Vektor quiera sostener partidas de nivel
+competitivo real hará falta un cliente nativo con **UDP**, y con el transporte
+aislado eso es escribir estas cuatro funciones otra vez — no rehacer predicción,
+reconciliación ni compensación de retraso, que es lo que han costado las vueltas
+45 a 58. Si alguien propone llamar al socket desde `cliente.js` porque es más
+corto, la respuesta está en `docs/decisions.md` §0.2. De ahí se siguen dos reglas
+que ya están en pie: **nada de netcode pregunta por el estado del cable**, y **el
+reloj de la red es el número de paso**, que sobrevive a que los mensajes lleguen
+desordenados. Ninguna de
 las tres dice si está abierto, a propósito: lo que se manda antes de la apertura
 se tira y la entrada siguiente sale 16 ms después, y que hay partida lo dice el
 primer mensaje que llega —que es del protocolo, no del cable—.
@@ -1707,7 +1718,12 @@ reloj y cable:
 - **En local**, `npm run net` levanta el huésped en el 5199 —y desde la 58 sirve
   también `dist/`, así que `npm run host` es el despliegue entero en tu máquina—.
 - **En Fly.io** (vuelta 58), **el mismo `net/servidor.mjs`** en un contenedor, con
-  **IPv4 dedicada**. Es donde se juega. El porqué es el bloqueo de IPs de LaLiga:
+  **IPv4 dedicada**. Es donde se juega, y es **principio permanente mientras dure
+  el bloqueo** (`docs/decisions.md` §0.1): todo lo que un jugador visite
+  directamente —web, partida, y el día que existan login, tienda, rankings o
+  cualquier API pública— va en infraestructura con IP propia. Cloudflare queda
+  para lo que **no** sirve tráfico directo a un jugador: DNS en modo sólo-DNS y
+  trabajo interno entre servidores. El porqué es el bloqueo de IPs de LaLiga:
   las operadoras anulan direcciones **enteras** de Cloudflare ignorando el SNI, y
   eso se lleva la página igual que la partida. Ficheros: `Dockerfile` y
   `fly.toml`; guía en `docs/despliegue-fly.md`; evaluación en

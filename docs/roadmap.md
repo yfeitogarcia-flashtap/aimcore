@@ -35,6 +35,42 @@ Tres etiquetas por entrada, cuando aportan algo:
 
 ---
 
+## La decisión de secuencia: primero el navegador
+
+**Ya está tomada, y ordena buena parte de lo de abajo.**
+
+Vektor prioriza **el navegador como vía principal de crecimiento** mientras el
+juego busca sus primeros jugadores reales. El motivo es una ventaja concreta y no
+una preferencia técnica: **cero fricción de instalación**. Un enlace que se pega
+en un chat y se abre en el momento, contra las herramientas con las que se compara
+—Kovaak's, Aim Lab— que exigen descargar, instalar y, en un caso, comprar antes
+de haber apuntado a nada. Esa distancia entre «me lo has contado» y «estoy
+jugando» es hoy lo mejor que tiene el producto, y no se regala.
+
+**El launcher nativo con UDP se construye más adelante, sobre el mismo código**,
+el día que exista una comunidad pidiendo ese nivel de precisión competitiva. No
+antes. Construirlo ahora sería ponerle una instalación por delante a un juego que
+todavía no tiene a quién pedírsela — o sea, gastar la única ventaja que tiene
+para resolver un problema que aún no tiene nadie.
+
+Dos cosas que hacen que esto sea una secuencia y no una renuncia:
+
+- **La ambición competitiva está escrita y sigue en pie**, con su porqué, en
+  `docs/decisions.md` §0.2. Lo que se decide aquí es **cuándo**, no **si**.
+- **«Sobre el mismo código» es literal, y está construido.** El netcode no sabe
+  qué hay debajo: el transporte son tres funciones (más un aviso). Cambiar de
+  WebSocket a UDP es escribir esas funciones otra vez, no rehacer predicción,
+  reconciliación ni compensación de retraso. Por eso ese aislamiento **no se
+  rompe por comodidad** aunque falten años para usarlo: es lo que hace que este
+  aplazamiento no cueste nada.
+
+Mientras tanto, lo que sí se puede hacer por la latencia dentro del navegador
+—elegir bien dónde vive el servidor, y que el netcode siga midiéndose— ya se está
+haciendo. Y la única cosa que de verdad urgía de este apartado, que el juego
+**esté** desde España, es la fase 1.0 y está hecha.
+
+---
+
 ## Fase 0 — De dónde se parte
 
 No es trabajo, es el punto de partida, y está aquí porque la mitad de lo de abajo

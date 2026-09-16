@@ -35,6 +35,101 @@ tema concreto, el índice de abajo apunta al apartado donde se decidió.
 - Práctica libre → §12.2
 - Marca y nomenclatura → §6.2
 - Bugs con enseñanza duradera → §13
+- **Principios permanentes** (infraestructura, transporte) → §0
+
+---
+
+## §0. Principios permanentes
+
+Dos cosas que **no son de una ronda**. El resto de este documento explica por qué
+algo se hizo como se hizo en su momento; esto es lo que hay que seguir cumpliendo
+en las rondas que vengan, y va aquí arriba porque el propósito del fichero es
+«evitar que una sesión futura deshaga por ignorancia algo que se eligió a
+conciencia».
+
+### §0.1 Lo que un jugador visita va en infraestructura con IP propia
+
+**Mientras dure la situación legal española** —las operadoras anulando IPs
+**compartidas** de Cloudflare por orden de LaLiga, ignorando el SNI—, **todo lo
+que un jugador visite directamente vive en infraestructura con IP propia**
+(Fly.io o equivalente), no en Cloudflare.
+
+«Directamente» quiere decir cualquier cosa contra la que el navegador o el
+cliente de un jugador abra una conexión: la web del juego, el servidor de
+partida, y también lo que hoy no existe — **login, tienda, rankings, perfiles y
+cualquier API pública que se añada**. Si un jugador español teclea una dirección
+o su cliente abre un socket contra algo, ese algo no puede estar detrás de una IP
+que comparta con desconocidos.
+
+**Cloudflare no queda prohibido; queda acotado.** Sigue siendo válido para lo que
+**no** sirve tráfico directo a un jugador: DNS en modo «sólo DNS» —la nube gris,
+que resuelve el nombre y deja que el tráfico vaya derecho a nuestra IP—, y
+cualquier trabajo interno entre servidores, construcción o almacenamiento que un
+jugador nunca toque. La línea es «¿abre un jugador una conexión contra esto?», y
+no «¿es esto importante?».
+
+**El porqué, en corto.** El bloqueo es por dirección y se aplica a la IP entera:
+no distingue el dominio, aunque técnicamente podría —el SNI viaja en claro—. Así
+que estar en una IP compartida no es un riesgo que se gestione, es una
+dependencia de que ningún vecino desconocido haga nada que moleste a LaLiga. No
+hay configuración, plan ni dominio propio que lo arregle desde dentro: la IP
+dedicada de Cloudflare es de plan Enterprise, y un dominio propio resuelve a las
+mismas direcciones compartidas. Lo comprobamos sobre el despliegue real dos veces
+—el juego caído en día de partido— y una tercera con el control delante: `fly.io`
+cargaba mientras nuestro Worker seguía sin responder. El detalle está en §58 y en
+`docs/propuestas/03-servidor-con-ip-propia.md`.
+
+**Cuándo deja de aplicar.** Cuando la situación cambie: si Cloudflare y LaLiga
+llegan a un acuerdo como el que ya tienen otros proveedores —bloqueos
+quirúrgicos en vez de rangos enteros—, o si el marco legal cambia. Ese día se
+revisa **esta entrada**, no se revierte por comodidad en mitad de otra vuelta.
+Hasta entonces, un «es que en Cloudflare esto sería más fácil» no es un
+argumento: lo que está en juego no es la comodidad, es que el juego exista los
+sábados por la tarde.
+
+### §0.2 El transporte está aislado porque algún día habrá UDP
+
+**Ambición de producto, no decisión técnica de hoy.** Vektor aspira a poder
+sostener algún día **partidas de nivel competitivo real**, del tipo donde la
+latencia importa al máximo y donde diez milisegundos son una diferencia que un
+jugador nota y reclama. Eso, casi con seguridad, no se alcanza dentro de un
+navegador: pide un **cliente nativo con transporte UDP**, porque lo que sobra en
+TCP —la entrega ordenada y la retransmisión— es justamente lo que un juego de
+disparos no quiere. Una foto de hace tres pasos no sirve de nada, y esperarla
+retrasa la que sí sirve.
+
+No es trabajo de esta vuelta ni de las próximas. Está escrito aquí por una razón
+concreta y muy práctica: **es el motivo por el que el aislamiento del transporte
+no se debe romper nunca por comodidad.**
+
+`net/transporte.js` expone `send`, `onMessage` y `close` —y desde la vuelta 51 un
+cuarto, `onClose`, que es un aviso y no un estado—. Nada más. El netcode **no
+sabe qué hay debajo**, y por eso la red simulada es un transporte que envuelve a
+otro en vez de un puñado de `setTimeout` dentro del cliente. La consecuencia que
+importa es ésta: **predicción, reconciliación, compensación de retraso,
+interpolación del rival y el reloj de pasos no dependen del cable**. Cambiar de
+WebSocket a UDP sería escribir una implementación nueva de esas funciones y nada
+más — no rehacer el netcode, que es lo que ha costado las vueltas 45 a 58 y lo
+que está medido hasta el último dígito.
+
+Dos cosas que se siguen de ahí, y son las que hay que defender:
+
+- **Nada de netcode puede preguntar por el estado del cable.** Ni «¿está
+  abierto?», ni el tipo de socket, ni una propiedad del navegador. Que hay
+  partida lo dice la bienvenida, que es del protocolo. Esa regla es de la vuelta
+  46 y parecía purismo; es lo que hace que el día del UDP no haya que auditar
+  todo el cliente buscando dónde se coló una suposición.
+- **Lo que viaja tiene que seguir siendo describible sin el cable.** El reloj de
+  la red es **el número de paso**, no el de nadie (vuelta 45). Un protocolo
+  atado a la entrega ordenada de TCP —«el mensaje N va después del N−1»— sería
+  precisamente lo que habría que rehacer con UDP. El número de paso sobrevive a
+  que los mensajes lleguen desordenados, que es la mitad del trabajo hecho por
+  adelantado.
+
+Lo que **no** significa esta entrada: que haya que preparar nada hoy, ni añadir
+abstracciones «por si acaso», ni evitar WebSocket. Significa que cuando alguien
+proponga meter una llamada al socket en `cliente.js` porque es más cómodo, la
+respuesta ya está escrita.
 
 ---
 
