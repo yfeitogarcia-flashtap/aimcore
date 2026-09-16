@@ -256,6 +256,13 @@ rebobinar`): con `0/0/0` delante, un 100% se lee al instante como lo que es. Si
 una suite nueva mide un porcentaje, que enseñe de cuántos — y que compruebe su
 propia premisa antes de medir.
 
+**Y un techo necesita que se vea su suelo**, que es lo mismo por la otra punta
+(vuelta 57). «No se mueve más rápido de lo que permite el juego (≤ 9.5 u/s)» lo
+cumple igual de bien un jugador que anda que uno congelado, así que el brazo que
+guardaba el arreglo del avance rápido salía verde con la medida rota debajo.
+`fondo49` afirma ahora la **velocidad sostenida** del tramo **antes** que el
+techo: si el jugador no anda de verdad, el resto de la fila no significa nada.
+
 **El huésped pone el reloj y el cable; la partida pone el mundo** (vuelta 47).
 Desde que hay dos huéspedes —Node en local y un Durable Object en Cloudflare— las
 reglas viven en `net/partida.js` y ninguno de los dos las conoce: un jugador entra
@@ -1563,7 +1570,8 @@ arranca con el frenado desactivado, así que con sus banderas de serie el fallo
 **no se reproduce**. Lo que vale es **parar el `requestAnimationFrame` y dejar
 todo lo demás corriendo** —el navegador para el dibujado y el WebSocket sigue
 entregando—, que es lo que lo distingue de bloquear el hilo, que pararía también
-el socket y mediría otra cosa. Y tres cautelas que costaron tres medidas falsas:
+el socket y mediría otra cosa. Y cinco cautelas, cada una de una medida falsa —las
+tres primeras de la 49, las dos últimas de la 57:
 
 - **En unidades de mapa por segundo, no en pasos por segundo.** Con el re-anclaje
   el contador de pasos **salta** en un frame: la primera tabla decía «28.784
@@ -1573,8 +1581,19 @@ el socket y mediría otra cosa. Y tres cautelas que costaron tres medidas falsas
   33 u/s donde la sonda de dentro da 6.5. Misma regla que la del render target de
   la vuelta 39.
 - **Y se mira la ventana del fenómeno**, no lo que venga después: pasado el
-  primer segundo, este contenedor vuelve a frenar la pestaña y lo que se mide es
-  un tirón nuevo.
+  primer segundo lo que se mide es un tirón nuevo.
+- **Un jugador por navegador** (la regla de la vuelta 50, que a este banco le
+  llegó en la 57). Con las dos páginas en el mismo, A es la pestaña de atrás y el
+  contenedor la frena —medido, **9 fps**—; un cliente frenado va permanentemente
+  atrasado, o sea permanentemente en recuperación acotada, y eso se lee **igual
+  que el fallo**: el brazo del arreglo daba 28.3 u/s sin que el arreglo tuviera
+  nada que ver.
+- **El hueco de la ausencia no es un fotograma.** La marca desde la que se
+  analiza re-siembra la referencia de la sonda y tira la muestra siguiente. Sin
+  eso llegaba con `dt` de **1016 ms** —el parón entero dentro de un «frame»—, y
+  como la ventana de análisis mide 1000 ms desde la primera muestra, esa sola
+  muestra **era** la ventana, y encima se descartaba por larga: pico 0.0 u/s con
+  el jugador recorriendo 19 u por delante.
 
 **Una suite que conduce el juego por dentro prueba el modelo, no el producto**
 (vuelta 48). Los bancos de red mueven al jugador escribiendo en `cliente.teclas`
@@ -1618,6 +1637,13 @@ para siempre. Por eso `#abatido` no declara `display` y sólo lo hace su regla c
 verdad cazó a la primera una regresión de 12/12 a 0/12. Si un test no puede
 fallar, no está guardando nada. (`x8.mjs` sigue siendo un informe a propósito: no
 afirma, mide.)
+
+**Y una suite verde tampoco está verificada por estar verde** (vuelta 57). Los
+tres fallos de `fondo49` —la muestra que se comía la ventana, la pestaña frenada
+y el techo sin suelo— no produjeron ni un rojo en ocho vueltas; lo que los delató
+fue mirar el volcado y preguntar de cuántos frames salía cada número. Y el de la
+pestaña estaba resuelto **por escrito** desde la vuelta 50: lo que faltó fue
+volver a pasar la regla nueva por las suites que ya existían.
 
 **Mantén este fichero al día como parte del trabajo normal**, en el mismo commit
 que introduce el cambio que lo afecta. No es una tarea aparte ni de "limpieza

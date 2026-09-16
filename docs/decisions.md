@@ -5050,6 +5050,10 @@ segundo tras volver**, que es donde vive el fenómeno — más allá, este conte
 vuelve a frenar la pestaña y lo que se mide es un tirón nuevo, con un solo
 re-anclaje y a 1.5 s del regreso.
 
+*(Lo de «este contenedor vuelve a frenar la pestaña» era verdad y tenía una causa
+que esta vuelta no miró: las dos páginas estaban en el mismo navegador. Ocho
+vueltas después acabó midiendo el frenado en vez del fallo — ver §57.)*
+
 ## Ronda 50 — Reaparecer es un teletransporte, no un viaje
 
 De la segunda prueba real entre dos PCs (RTT 35-42 ms): al morir lejos del punto
@@ -5862,6 +5866,101 @@ sus tres filas, con cero correcciones y el re-anclaje disparándose. Queda
 anotado aquí a propósito: una suite roja que se explica es mejor que una suite
 verde que no mide.
 
+*(Resuelto en la §57, y con dos causas debajo en vez de una: la de aquí, y una
+segunda que llevaba ocho vueltas dando por bueno el brazo del arreglo.)*
+
+## Ronda 57 — El banco que medía el frenado
+
+Una vuelta sin una línea de producto: la única que se toca es `fondo49.mjs`. Lo
+que estaba mal era la medida, y debajo había **dos** fallos, no uno — el segundo
+llevaba ocho vueltas dando por bueno justo el brazo que guarda el arreglo.
+
+### Uno: el hueco de la ausencia se anotaba como un fotograma
+
+El banco para el `requestAnimationFrame` de A, espera, y marca desde dónde
+analizar. La sonda va por su cuenta —llama siempre al rAF de verdad, porque mide
+el juego y no participa en él—, así que mientras la página vaya a su ritmo sigue
+muestreando durante el parón y la primera muestra de después es un fotograma
+normal.
+
+Con la página frenada no: la primera muestra tras la marca llegaba con un `dt` de
+**1016 ms**, el parón entero metido dentro de un «frame». Y como el análisis sólo
+mira `REGRESO` (1000 ms) desde la primera muestra, **esa sola muestra era la
+ventana completa** — y encima se descartaba por larga, con la regla que tira las
+ventanas con un tropiezo de la máquina dentro. De ahí el 0.0 u/s de la §56, con
+el jugador recorriendo 19 u por delante, y de ahí el «(1 ventanas con tropiezo de
+la máquina, descartadas)» que salía en todas las filas y que nadie leyó como lo
+que era: el aviso de que no quedaba nada que medir.
+
+El arreglo es una línea: `marcar()` pide además **re-sembrar la referencia**, y
+la muestra siguiente se tira en vez de anotarse. La marca es el sitio donde ese
+hueco se corta, lo vaya a necesitar o no.
+
+Con eso, el brazo de reproducción volvió a cazar el fallo: **31.2 u/s**.
+
+### Dos: y entonces el brazo del arreglo también daba 28.3 u/s
+
+Que es lo que convierte esto en una vuelta y no en un parche. Con la primera
+causa cerrada, el brazo **con** el re-anclaje —el que tiene que salir andando—
+daba también un avance rápido. El volcado enseñaba un patrón demasiado regular
+para ser un tirón: **0.49 u cada 16 ms**, o sea unos 4.5 pasos de mundo por
+frame, que es exactamente `maxCatchUpTicks`. Eso no es un cliente que vuelve de
+un parón: es un cliente que **no sale nunca** de la recuperación acotada.
+
+Y no salía porque iba permanentemente atrasado. Medido en la traza de A: **8
+muestras en 900 ms**, o sea unos 9 fps. `fondo49` abría las dos páginas en el
+**mismo navegador**, así que A era la pestaña de atrás y el contenedor la frenaba
+— y un cliente frenado se lee igual que el fallo que se está buscando.
+
+Es la regla de la §50 —«dos navegadores, no dos pestañas»— y `fondo49` es de la
+§49, o sea de antes de que se aprendiera. Todo lo que vino después ya la cumple;
+ésta se quedó sin revisar porque **estaba verde**. Un navegador por jugador, y
+cada uno es la pestaña de delante del suyo.
+
+### Tres: un techo necesita que se vea el suelo
+
+Los dos fallos de arriba se leían en pantalla como un brazo **verde**, y no por
+casualidad: la aserción del brazo del arreglo decía «no se mueve más rápido de lo
+que permite el juego (≤ 9.5 u/s)», y eso lo cumple igual de bien un jugador que
+anda que uno congelado. Es la regla del denominador de la §46 por otra puerta —
+allí un 100% sin impactos, aquí un techo sin suelo.
+
+Ahora el banco mide además la **velocidad sostenida** del segundo entero tras
+volver, la enseña en su propia columna y la afirma **antes** que el techo: si el
+jugador no anda de verdad, el resto de la fila no significa nada.
+
+### Lo que sale ahora
+
+Tres ausencias, los dos brazos, con el motor completo delante:
+
+| | Ausencia | Se queda atrás | Su velocidad | Sostenida | La que ve el rival | Tiempo a >1.5× | Re-anclajes |
+|---|---|---|---|---|---|---|---|
+| **sin re-anclaje** | 5 s | 296 pasos | **31.2 u/s** | 14.9 u/s | 24.5 u/s | 0.42 s | 0 |
+| | 20 s | 1.196 | **31.3 u/s** | 14.9 u/s | 23.9 u/s | 0.43 s | 0 |
+| | 60 s | 3.596 | **31.2 u/s** | 15.1 u/s | 23.7 u/s | 0.42 s | 0 |
+| **con re-anclaje** | 5 s | 295 | 6.2 u/s | 5.7 u/s | 6.0 u/s | 0.00 s | 1 |
+| | 20 s | 1.195 | 5.9 u/s | 5.8 u/s | 6.0 u/s | 0.00 s | 1 |
+| | 60 s | 3.596 | 6.2 u/s | 5.8 u/s | 5.9 u/s | 0.00 s | 1 |
+
+Cero correcciones y 0.000 u de error en las seis filas, y **ninguna ventana
+descartada por tropiezo** — que era el otro síntoma de la pestaña frenada. Los
+números del brazo roto son los de la vuelta 49 (32.9 / 29.6 / 32.9) dentro de su
+dispersión, así que lo que se reproduce es el fallo de entonces y no otro.
+
+Y la sostenida del brazo bueno no sale en 6.5 sino en **5.7-5.8**, que es la otra
+forma de comprobar que el número es real: la página del duelo sale con la **Rift**
+y sus 3.6 kg dan 5.88 u/s. Un jugador andando con el arma que lleva puesta, no una
+constante de la tabla.
+
+### Lo que deja dicho
+
+Una suite verde no está verificada por estar verde. Las tres cosas que fallaron
+aquí —la muestra que se comía la ventana, la pestaña frenada y el techo sin
+suelo— **no producían ni un rojo**; lo que las delató fue mirar el volcado y
+preguntar de cuántos frames salía cada número. Y la segunda se arregló sola el
+día que se escribió la regla en la §50: lo que faltó fue volver a pasarla por las
+suites que ya existían.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
@@ -6016,7 +6115,11 @@ objetivo era medir tiempos y rendimiento de verdad.
   estímulo real —el `requestAnimationFrame` parado y el socket vivo—, la
   velocidad aparente del jugador y la que ve el rival, en unidades de mapa por
   segundo y con sonda dentro de la página, contra tres ausencias y con el
-  re-anclaje encendido y apagado en la misma tanda.
+  re-anclaje encendido y apagado en la misma tanda. Desde la §57, **un navegador
+  por jugador** (con los dos en el mismo, el frenado de la pestaña de atrás se
+  lee igual que el fallo), sin anotar el hueco de la ausencia como un fotograma,
+  y afirmando la **velocidad sostenida** antes que el techo — un techo que no
+  enseña su suelo lo cumple también un jugador congelado.
 - **Que se puede empezar a jugar** (`jugable48.mjs`): con clics y teclas de
   verdad contra la página real —no escribiendo en `cliente.teclas` desde dentro—,
   que un clic captura el ratón, que aparecen mira y vida y no el cartel de
