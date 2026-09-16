@@ -1583,6 +1583,10 @@ encargue.
 - [`docs/despliegue-cloudflare.md`](docs/despliegue-cloudflare.md) — cómo poner
   el 1v1 en internet, paso a paso y sin dar nada por sabido: cuenta, plan, token
   con el permiso mínimo y cómo hacerlo llegar sin pegarlo en un chat.
+- [`docs/propuestas/03-servidor-con-ip-propia.md`](docs/propuestas/03-servidor-con-ip-propia.md)
+  — evaluación de sacar el servidor de partida de Cloudflare a una IP exclusiva,
+  por los bloqueos de LaLiga en España: candidatos, coste mensual, cuánto del
+  trabajo hecho se reutiliza y qué habría que construir. Evaluado, sin construir.
 - [`docs/roadmap.md`](docs/roadmap.md) — lo que vendría después, por dependencia
   y sin fechas: qué hace falta antes de cada cosa, cómo se sabría que está bien y
   qué se descarta a propósito. No autoriza nada; recopila.

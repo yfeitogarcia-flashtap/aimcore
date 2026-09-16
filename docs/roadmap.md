@@ -363,6 +363,29 @@ demás, y la única regla que este proyecto ya tiene de fábrica es la de arriba
 
 ---
 
+## Fase 1.0 — Y una que se coló delante de todas: salir de la IP compartida
+
+Confirmado dos veces sobre el despliegue real: el bloqueo de IPs de Cloudflare que
+LaLiga ordena a las operadoras españolas deja el juego **inaccesible desde España
+en jornadas con partido**. No es hipotético y no se arregla desde dentro de
+Cloudflare —el bloqueo es por IP entera e ignora el SNI, así que se lleva por
+delante la página igual que la partida—.
+
+Va delante de todo lo demás por una razón sencilla: lo de arriba son cosas que
+harían el juego mejor, y esto es que el juego **no está** los días en que se
+juega. La evaluación, con números y recomendación, está en
+`docs/propuestas/03-servidor-con-ip-propia.md`.
+
+- **Bloqueante:** comprobar la premisa desde España en día de partido, que es lo
+  único que no se puede medir desde el repositorio.
+- **Medible:** los bancos de red existentes, verdes contra el huésped nuevo y sin
+  tocar una aserción — exactamente el listón que se usó en la vuelta 47 para dar
+  por buena la migración al Durable Object.
+- **Rompe:** nada del cliente, si se mueven la página y la partida juntas. Lo que
+  se va es `worker/`, y con él la dependencia de `wrangler`.
+
+---
+
 ## Deuda que arrastra todo lo de arriba
 
 Transversal: no es una fase, es lo que hay que ir pagando según se sube.
