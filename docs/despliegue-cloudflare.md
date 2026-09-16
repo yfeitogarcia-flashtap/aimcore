@@ -1,4 +1,15 @@
-# Poner Vektor en internet (Cloudflare) — paso a paso
+# Poner el 1v1 de Vektor en internet, paso a paso
+
+> **Aviso (vuelta 58): esto ya no es donde se juega.** El despliegue de Vektor se
+> mudó a Fly.io porque las operadoras españolas anulan IPs **enteras** de
+> Cloudflare por orden de LaLiga —ignorando el nombre del dominio—, y los días de
+> partido caía la página igual que la partida. La guía vigente es
+> [`despliegue-fly.md`](despliegue-fly.md) y el porqué está en
+> [`propuestas/03-servidor-con-ip-propia.md`](propuestas/03-servidor-con-ip-propia.md).
+>
+> Esta guía se queda **entera y sin tocar**: el Worker sigue en pie como respaldo
+> unas semanas, y mientras tanto esto es cómo se vuelve a publicar allí.
+
 
 Esto es para **Yago**, no para un programador. Cada paso dice qué ves, dónde
 haces clic y qué tiene que pasar. Si algo no coincide con lo que dice aquí,

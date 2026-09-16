@@ -9,10 +9,11 @@
  *    página sin código **crea** la partida sin darse cuenta de que la ha creado,
  *    que es como tiene que ser: el paso «crear partida» no añade nada, sólo un
  *    botón más entre el jugador y jugar.
- * 2. **Qué servidor.** El de la propia página. En Cloudflare el juego y las
- *    salas los sirve el mismo Worker, así que `wss://<este host>/sala/<código>`
- *    y no hay nada que configurar. En local no hay Worker: el servidor de
- *    sobremesa es un proceso aparte en `NET.port`, y a ése se va por `ws://`.
+ * 2. **Qué servidor.** El de la propia página. En el despliegue —Fly desde la
+ *    vuelta 58, Cloudflare antes— el juego y las salas los sirve el mismo
+ *    huésped, así que `wss://<este host>/sala/<código>` y no hay nada que
+ *    configurar. En local, con `vite` sirviendo la página, el huésped es un
+ *    proceso aparte en `NET.port` y a ése se va por `ws://`.
  * 3. **Qué enlace se manda.** El de esta misma página con el código puesto,
  *    tal cual, para copiar y pegar.
  *
@@ -49,9 +50,12 @@ export function urlDeSala(codigo, ubicacion = window.location) {
     const esquema = ubicacion.protocol === 'https:' ? 'wss:' : 'ws:'
     return `${esquema}//${ubicacion.host}${rutaDeSala(codigo)}`
   }
-  // El servidor de sobremesa (`npm run net`) no encamina por código: es una
-  // sola partida. El código viaja igual para que la página se comporte igual en
-  // los dos sitios, y el servidor lo ignora.
+  // **Ojo desde la vuelta 58: el huésped de Node ya encamina por código**, igual
+  // que el Durable Object. Hasta la 57 era una sola partida y el código se
+  // ignoraba, así que dos pestañas abiertas sin código en la dirección —cada una
+  // con el suyo, recién generado— acababan juntas de todos modos. Ahora no: cada
+  // una entra en su sala y no se ven. Si abres dos a mano, pásales el código
+  // (`...#MQXTUV`) o entra por `/duelo/<código>`.
   return `ws://${ubicacion.hostname}:${NET.port}${rutaDeSala(codigo)}`
 }
 

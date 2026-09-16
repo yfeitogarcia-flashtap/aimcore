@@ -2894,6 +2894,21 @@ export const NET = {
   /** Puerto del servidor de pruebas local (`npm run net`). */
   port: 5199,
   /**
+   * **Cuánto sobrevive una sala vacía en el huésped de Node** (vuelta 58).
+   *
+   * No es lo mismo parar el reloj que olvidar el mundo, y hacen falta las dos
+   * cosas por razones distintas. El reloj para al salir el último —una sala
+   * vacía no gasta reloj— pero **el número de paso se conserva**, que es lo que
+   * hace que volver a entrar con el mismo código no sea empezar otra partida.
+   *
+   * En Cloudflare eso salía gratis: el Durable Object se queda en memoria un
+   * rato y luego la plataforma lo desaloja. Aquí el proceso es nuestro y nadie
+   * desaloja nada, así que una sala por cada código que alguien haya tecleado
+   * nunca se iría. Diez minutos es de sobra para que quien se cae vuelva a su
+   * partida, y corto para que la memoria no crezca sola.
+   */
+  salaOlvidadaMs: 600000,
+  /**
    * Cuántas entradas acumula el servidor antes de empezar a consumir. Es el
    * colchón contra el jitter: con menos, una entrada que llega tarde deja al
    * jugador sin avanzar ese paso.

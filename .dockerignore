@@ -1,0 +1,12 @@
+# Lo que no tiene por qué viajar a la imagen.
+node_modules
+dist
+.git
+.wrangler
+scratchpad
+# Material de trazado, nunca assets: la regla de siempre.
+Reference
+*.log
+*.png
+!public/**
+docs

@@ -1167,10 +1167,25 @@ npm run dev     # el juego, como siempre
 npm run net     # el servidor de partida, en ws://localhost:5199
 ```
 
-Y se abre `http://localhost:5173/net/prueba.html` **en dos pestañas**.
+Y se abre `http://localhost:5173/net/prueba.html#MQXTUV` **en dos pestañas** —con
+el mismo código en las dos—. **Desde la vuelta 58 el código hace falta**: el
+huésped de Node encamina por sala como el de la nube, así que dos pestañas sin
+código abren cada una la suya y no se ven. Antes daba igual porque era una sola
+partida y el código se ignoraba.
 
-**En Cloudflare**, para jugar con alguien de fuera. Se prueba entero sin cuenta y
-sin internet, porque `wrangler` corre el Durable Object de verdad en tu máquina:
+**Como en el despliegue**, con el huésped que corre en Fly.io — que es el mismo
+fichero, sirviendo también la página:
+
+```
+npm run host      # construye y levanta el juego y las salas en http://localhost:5199
+```
+
+Y se abre `http://localhost:5199/duelo` en dos pestañas. Es literalmente lo que
+hay publicado, en tu máquina.
+
+**En Cloudflare**, que desde la vuelta 58 es el **respaldo** y no donde se juega.
+Se prueba sin cuenta y sin internet, porque `wrangler` corre el Durable Object de
+verdad en tu máquina:
 
 ```
 npm run worker    # el Worker y la sala, en http://localhost:8787
@@ -1300,9 +1315,11 @@ una línea.
 
 Y **no sabe nada de red**: un jugador entra con una función `enviar(texto)` y ya
 está. Eso es lo que permite que la corran dos huéspedes distintos —`ws` en Node
-(`net/servidor.mjs`, 78 líneas) y un Durable Object en Cloudflare
-(`worker/sala.js`)— sin que ninguna regla del juego viva en dos sitios. Los dos
-bancos de medida se pasan contra los dos, sin cambiar una aserción.
+(`net/servidor.mjs`) y un Durable Object en Cloudflare (`worker/sala.js`)— sin que
+ninguna regla del juego viva en dos sitios. Los bancos de medida se pasan contra
+los dos, sin cambiar una aserción — y ésa fue exactamente la prueba de que mudar
+el despliegue de Cloudflare a Fly.io en la vuelta 58 no había cambiado nada:
+`partida.js` no se tocó.
 
 ### Lo que sale medido
 
@@ -1437,11 +1454,13 @@ net/                    prototipo de 1v1 — fuera de src/
 ├── pose.js             el objeto plano que hace de cámara en el servidor
 └── prueba.html/.js     la página del duelo (ésta sí entra en el build)
 
-worker/                 el despliegue en Cloudflare
+worker/                 el respaldo en Cloudflare (ya no es donde se juega)
 ├── index.js            el portero: /sala/<código> al Durable Object
 └── sala.js             huésped de la nube: el Durable Object
 
-wrangler.jsonc          qué se publica y cómo (plan gratuito: new_sqlite_classes)
+wrangler.jsonc          qué se publica en Cloudflare (respaldo)
+Dockerfile              la imagen del huésped: construir el juego y servirlo
+fly.toml                el despliegue en Fly.io, con IPv4 dedicada
 ```
 
 ### Por qué React no toca el bucle de render
@@ -1559,7 +1578,9 @@ Fuera de alcance también, por decisión explícita: minimapa, pasos sonoros.
 Cuentas, ranking y matchmaking van aparte.
 
 El **multijugador** dejó de estar fuera de alcance en la vuelta 45, y la nube en
-la 47, pero sólo hasta donde llega el prototipo de arriba: una sala por código,
+la 47 —que desde la 58 es **Fly.io** y no Cloudflare, por los bloqueos de IPs de
+LaLiga en España: ver `docs/despliegue-fly.md`—, pero sólo hasta donde llega el
+prototipo de arriba: una sala por código,
 dos jugadores, movimiento y disparo. Sin cuentas, sin matchmaking, sin rankings y
 sin nada guardado. El plan completo, con costes y riesgos, está en
 [`docs/propuestas/02-multijugador-1v1.md`](docs/propuestas/02-multijugador-1v1.md);
@@ -1586,7 +1607,11 @@ encargue.
 - [`docs/propuestas/03-servidor-con-ip-propia.md`](docs/propuestas/03-servidor-con-ip-propia.md)
   — evaluación de sacar el servidor de partida de Cloudflare a una IP exclusiva,
   por los bloqueos de LaLiga en España: candidatos, coste mensual, cuánto del
-  trabajo hecho se reutiliza y qué habría que construir. Evaluado, sin construir.
+  trabajo hecho se reutiliza y qué habría que construir. **Decidida y
+  construida** en la vuelta 58.
+- [`docs/despliegue-fly.md`](docs/despliegue-fly.md) — cómo publicar el juego y
+  las partidas en Fly.io, paso a paso y sin dar nada por sabido, con el aviso de
+  que la IPv4 tiene que pedirse **dedicada**: la compartida no resuelve nada.
 - [`docs/roadmap.md`](docs/roadmap.md) — lo que vendría después, por dependencia
   y sin fechas: qué hace falta antes de cada cosa, cómo se sabría que está bien y
   qué se descarta a propósito. No autoriza nada; recopila.

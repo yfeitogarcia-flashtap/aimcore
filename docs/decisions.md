@@ -5961,6 +5961,167 @@ preguntar de cuántos frames salía cada número. Y la segunda se arregló sola 
 día que se escribió la regla en la §50: lo que faltó fue volver a pasarla por las
 suites que ya existían.
 
+## Ronda 58 — Un tercer huésped, y una IP que no comparte nadie
+
+La vuelta que mueve Vektor fuera de Cloudflare. No es una decisión técnica: es
+que **el juego no estaba** los días de partido. La evaluación entera, con
+candidatos y números, está en `docs/propuestas/03-servidor-con-ip-propia.md`; el
+paso a paso del despliegue, en `docs/despliegue-fly.md`. Aquí queda lo que hay
+que saber para no deshacerlo.
+
+### El hecho, y la corrección que cambió la forma de la solución
+
+Las operadoras españolas anulan **IPs enteras** de Cloudflare por orden de
+LaLiga, **ignorando el SNI**. El SNI es el nombre del dominio y viaja en claro:
+con él se podría bloquear un sitio y dejar en paz a los demás que comparten esa
+dirección. No se usa. Se bloquea la dirección, y con ella todo lo que haya
+detrás.
+
+El encargo daba por hecho que el bloqueo afectaba al tráfico de la partida y no a
+servir la página. **Es al revés de como se pensaba: afecta a las dos por igual**,
+y eso descarta el arreglo desde dentro de Cloudflare —un dominio propio resuelve
+a las mismas IPs compartidas; la IP dedicada es de plan Enterprise—.
+
+Y a cambio **simplifica** la mudanza, que es lo que no se veía: si hay que mover
+también la página, la decisión de la vuelta 47 —**un solo origen**— se conserva
+entera, y con ella el hecho de que el cliente saque la dirección del WebSocket de
+la página en la que está. Mover sólo la partida habría sido lo peor de los dos
+mundos: no arregla la página **y** reintroduce una dirección de servidor
+configurable, que es justo lo que la 47 quitó.
+
+Consecuencia medible: **el cliente no cambió ni una línea**. Ni `cliente.js`, ni
+`transporte.js`, ni `prueba.js`, ni `sala-cliente.js`.
+
+### La premisa, y por qué no se pudo medir desde el repositorio
+
+Toda la propuesta se apoyaba en una cosa: que una IP exclusiva del candidato no
+esté bloqueada desde España. **Eso no se puede medir desde un contenedor en la
+nube**, y el motivo no es de permisos: el bloqueo lo aplica la operadora **al
+tráfico de sus propios clientes**. Desde fuera responde todo siempre, incluido lo
+que en Madrid está caído. Un verde medido desde fuera no dice «no está
+bloqueado», dice «no estoy donde se bloquea» — el error de instrumento de la
+vuelta 49 (medir con `evaluate` desde fuera daba 33 u/s donde la sonda de dentro
+daba 6.5) y el de la 57 (la pestaña frenada medía el frenado).
+
+Lo midió Yago, desde su conexión y con el bloqueo activo: **`fly.io` cargó con
+normalidad mientras `vektor.vektorbyflicklab.workers.dev` seguía caído**. El
+control por delante de la medida, que es lo que le da sentido.
+
+### Lo que se construyó: tres cosas, y ninguna es de juego
+
+`net/servidor.mjs` pasa de 84 líneas a ~390 y deja de ser «el huésped de
+sobremesa» para ser el del despliegue.
+
+1. **Encaminar por código de sala.** En la nube lo resolvía `idFromName(código)`
+   sin que nadie llevara una lista de partidas; aquí la lista es un `Map` y la
+   llevamos nosotros. Hacia fuera no cambia nada: sigue sin haber registro de
+   salas ni matchmaking, el código sigue siendo la dirección.
+2. **Un reloj por sala**, copiado en forma del Durable Object porque el reloj es
+   del huésped por diseño (vuelta 47) y lo que se comparte es la regla, no el
+   `setTimeout`. Con la regla de la 47 intacta: **una sala vacía no gasta
+   reloj**.
+3. **Servir `dist/`**, que es lo que hacía el binding de assets de Cloudflare,
+   con las mismas rutas que `worker/index.js` —`/duelo/<código>` sirve la página
+   del duelo, un código malo da 400, uno bueno sin WebSocket da 426—.
+
+### Parar el reloj y olvidar el mundo son dos cosas
+
+La más fácil de hacer mal, y la que el Durable Object resolvía sin que nadie se
+diera cuenta. `sala47.mjs` [6] exige **dos** cosas a la vez de una sala que se
+queda vacía: que el mundo **no avance** (o se paga un reloj que no mira nadie) y
+que **el número de paso se conserve**, que es lo que hace que volver a entrar con
+el mismo código no sea empezar otra partida.
+
+En Cloudflare eso salía gratis: el objeto se queda en memoria un rato y luego la
+plataforma lo desaloja. Aquí el proceso es nuestro y **nadie desaloja nada**, así
+que borrar la sala al quedarse vacía rompería la segunda mitad —el paso volvería
+a cero— y no borrarla nunca dejaría una sala por cada código que alguien haya
+tecleado en la vida del proceso. De ahí `NET.salaOlvidadaMs` (10 minutos): el
+reloj para al instante, el mundo se queda, y lo que se olvida es lo que lleva
+diez minutos sin nadie.
+
+Medido contra el huésped nuevo: **17 pasos en 5,4 s vacía**, contra los 328 que
+habría dado el reloj, y el paso conservado entre visitas (15 → 32).
+
+### Dos cosas que Cloudflare hacía y que ahora hacemos nosotros
+
+- **Comprimir.** Cloudflare gzipeaba de oficio. Un proceso de Node no. El
+  paquete son ~900 KB de los que la mayor parte es JavaScript, y **gzip lo deja
+  en 179 KB**. En un despliegue donde el tráfico se paga, no comprimir habría
+  costado el triple por visita. Se comprime una vez y se guarda en memoria: no
+  hay nada que invalidar, porque un despliegue nuevo es un proceso nuevo.
+- **Acotar el atraso del reloj.** El huésped de Node **no tenía tope**: apuntaba
+  al instante exacto del paso siguiente y, si se atrasaba, daba pasos tan rápido
+  como pudiera hasta ponerse al día. En un proceso de sobremesa eso no pasa
+  nunca; en un servidor —sin CPU, la máquina dormida— son cientos de pasos de
+  golpe y una ráfaga de fotos a los dos clientes. Ahora lleva el mismo
+  `SIM.maxFrameDeltaMs` que el motor y que el Durable Object. **Los tres relojes,
+  la misma regla**, que es lo que la vuelta 49 dejó escrito y este huésped no
+  cumplía.
+
+### Lo que costó: dos pestañas sin código dejaron de caer en la misma partida
+
+Lo cazaron `red45.mjs` y `tiro46.mjs`, que salieron con **0 muestras
+comparables**, **0 de 16 disparos** y un acuerdo del **0%** en las cinco
+latencias. Nada de eso es de red: es que no había partida que medir.
+
+Las dos abren la misma dirección dos veces (`/net/prueba.html`, servida por
+`vite preview`), y esa dirección **no trae código**, así que
+`codigoDeLaDireccion` genera uno nuevo **en cada pestaña**. Hasta la 57 daba
+igual, y estaba escrito en `net/sala-cliente.js`: «el servidor de sobremesa no
+encamina por código: es una sola partida (…) y el servidor lo ignora». En cuanto
+el huésped encamina, cada pestaña entra en su sala y no se ven.
+
+No es un fallo del huésped: es que **ese comentario describía un comportamiento
+que ya no existe**, y las dos suites se apoyaban en él sin decirlo. La forma de
+arreglarlo dice de qué tipo de problema era: las dos ya tenían `VEKTOR_URL`, así
+que bastó pasarles la dirección **con el código puesto** (`...#MQXTUV`) y salieron
+verdes las dos —22 y 19 aserciones— **sin editar una línea de ninguna**. Un banco
+que no dice en qué sala mide no estaba midiendo una sala, estaba midiendo que
+sólo había una.
+
+### Cómo se verificó: el listón de la 47, otra vez
+
+La vuelta 47 dio por buena la migración a Cloudflare exigiendo que **los bancos
+de las vueltas anteriores pasaran sin cambiar una aserción**. Aquí se exigió lo
+mismo, y se llevó un paso más allá: el huésped nuevo se levantó **en el puerto
+8787**, el que usaba `wrangler dev`, así que las suites corrieron sin cambiar
+**ni la dirección**.
+
+`sala47.mjs` es la que prueba el huésped, y es la que importa: pasó entera, sus
+siete bloques, incluido el de la sala vacía y el de que sin `VEKTOR_DEBUG` no hay
+forma de teletransportarse.
+
+| Banco | Aserciones | Qué guarda |
+|---|---|---|
+| `sala47` | 13 | **el huésped**: encaminado por código, 400/426, tercero fuera, sala vacía, `VEKTOR_DEBUG` |
+| `jugable48` | 23 | que se puede empezar a jugar, con clics y teclas de verdad |
+| `fondo49` | 21 | volver de otra pestaña, los dos brazos |
+| `reaparecer50` | 8 | reaparecer se dibuja como un teletransporte |
+| `aviso51` | 13 | corte de red de verdad, silencio y `ADIOS` |
+| `conexion51` | 2 | 12/12 y 12/12 entrando a la vez en salas nuevas |
+| `abatido52` | 15 | un abatido no se mueve ni se dibuja |
+| `pausa53` / `pausa54` / `pausa55` | 20 / 20 / 56 | pausa del mundo, topes y votación |
+| `motor56` | 39 | el motor completo contra un rival de verdad |
+| `red45` | 22 | reconciliación hasta 300 ms de RTT |
+| `tiro46` | 19 | disparo con rebobinado, acuerdo tirador/servidor |
+| **Total** | **271** | |
+
+Sin cambiar una aserción en ninguno. `pausa55` dio un fallo en la tanda larga
+—seis suites seguidas— y pasó las dos veces que se corrió sola; queda anotado
+tal cual, sin llamarlo flake, porque el runner truncó la salida y **no se llegó a
+saber qué aserción era**. Si vuelve a salir, ahí está lo que hay que mirar.
+
+### Lo que no se tocó
+
+- **`net/partida.js`, ni una línea.** Es el motivo de que esto quepa en un
+  fichero y en una vuelta, y viene de haberla sacado del servidor en la 47.
+- **El cliente, ni una línea.**
+- **`worker/`**, que se queda **como respaldo** unas semanas. Borrarlo es trabajo
+  de un minuto el día que haya confianza, y hasta entonces es la red de
+  seguridad. Lo que sí cambió de sitio es `ws`: pasa de dependencia de desarrollo
+  a dependencia de producción, porque ahora hay producción.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

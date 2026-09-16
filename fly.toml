@@ -1,0 +1,68 @@
+# **Vektor en Fly.io** (vuelta 58).
+#
+# El porqué de estar aquí y no en Cloudflare está en
+# `docs/propuestas/03-servidor-con-ip-propia.md`: las operadoras españolas
+# anulan IPs **enteras** de Cloudflare por orden de LaLiga, ignorando el SNI, y
+# eso se lleva por delante la página igual que la partida. Lo que se compra aquí
+# es una IPv4 que **no comparte nadie**, que es lo único que hace imposible ser
+# daño colateral de la piratería de un vecino.
+#
+# El paso a paso de cómo se despliega esto está en `docs/despliegue-fly.md`.
+# Cámbiale el nombre a la aplicación y nada más.
+
+app = 'vektor'
+
+# **París y no Madrid**, y no por gusto: Fly cerró la región de Madrid (`mad`) en
+# la consolidación de 2025. Son unos 15 ms más de ida y vuelta desde España,
+# contra un netcode medido con error de reconciliación **cero hasta 300 ms**. Si
+# algún día Fly reabre `mad`, cambiar esta línea y volver a desplegar es todo.
+primary_region = 'cdg'
+
+[build]
+  dockerfile = 'Dockerfile'
+
+[env]
+  PORT = '8080'
+  # `VEKTOR_DEBUG` **no se pone aquí, nunca.** Es la puerta de `MSG.COLOCAR`, que
+  # existe para los bancos de medida: con ella puesta, cualquiera puede pedir
+  # desde la consola del navegador que le teletransporten donde quiera. Que el
+  # despliegue no la lleve es justo lo que comprueba `sala47.mjs` [7].
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+
+  # **La máquina no se apaga sola, y es a propósito.** Fly sabe parar una máquina
+  # ociosa y arrancarla con la petición siguiente, y eso ahorraría unos dólares
+  # al mes. Aquí no compensa por dos motivos: un arranque en frío se le come el
+  # primer clic a quien abre el enlace, y al parar el proceso se van las salas —o
+  # sea el número de paso, que es lo que hace que volver a entrar con el mismo
+  # código no sea empezar otra partida—.
+  auto_stop_machines = 'off'
+  auto_start_machines = true
+  min_machines_running = 1
+
+  # Una partida son dos conexiones que duran lo que dure. Los límites van altos
+  # porque aquí no hay nada que escalar: una sola máquina lleva decenas de salas
+  # —2,55 µs de CPU por paso, el 0,015% de un núcleo— y el primer techo que
+  # aparecería es el tráfico, no las conexiones.
+  [http_service.concurrency]
+    type = 'connections'
+    soft_limit = 200
+    hard_limit = 400
+
+  # Si el proceso deja de contestar, que lo reinicien sin que nadie mire.
+  [[http_service.checks]]
+    grace_period = '15s'
+    interval = '30s'
+    method = 'GET'
+    path = '/salud'
+    protocol = 'http'
+    timeout = '5s'
+
+[[vm]]
+  size = 'shared-cpu-1x'
+  # 512 y no 256: el proceso arranca en ~90 MB y cada sala añade poco, pero
+  # quedarse sin memoria en un servidor de partidas es tirar a los dos jugadores.
+  # La diferencia son un par de dólares al mes. Medido en `docs/despliegue-fly.md`.
+  memory = '512mb'

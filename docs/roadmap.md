@@ -363,7 +363,7 @@ demás, y la única regla que este proyecto ya tiene de fábrica es la de arriba
 
 ---
 
-## Fase 1.0 — Y una que se coló delante de todas: salir de la IP compartida
+## Fase 1.0 — Salir de la IP compartida *(hecha en la vuelta 58)*
 
 Confirmado dos veces sobre el despliegue real: el bloqueo de IPs de Cloudflare que
 LaLiga ordena a las operadoras españolas deja el juego **inaccesible desde España
@@ -376,13 +376,15 @@ harían el juego mejor, y esto es que el juego **no está** los días en que se
 juega. La evaluación, con números y recomendación, está en
 `docs/propuestas/03-servidor-con-ip-propia.md`.
 
-- **Bloqueante:** comprobar la premisa desde España en día de partido, que es lo
-  único que no se puede medir desde el repositorio.
-- **Medible:** los bancos de red existentes, verdes contra el huésped nuevo y sin
-  tocar una aserción — exactamente el listón que se usó en la vuelta 47 para dar
-  por buena la migración al Durable Object.
-- **Rompe:** nada del cliente, si se mueven la página y la partida juntas. Lo que
-  se va es `worker/`, y con él la dependencia de `wrangler`.
+**Hecho.** La premisa se confirmó desde España con el bloqueo activo —`fly.io`
+cargaba mientras el despliegue de Cloudflare seguía caído— y la vuelta 58 movió
+las dos cosas a un huésped de Node con IPv4 dedicada en Fly.io. El cliente no
+cambió una línea y `net/partida.js` tampoco; los bancos de red pasaron contra el
+huésped nuevo sin tocar una aserción, que era el listón de la 47.
+
+Lo que queda de esta fase, y no corre prisa: **retirar `worker/`** y la
+dependencia de `wrangler` cuando el despliegue nuevo lleve semanas funcionando.
+Hasta entonces se queda como respaldo.
 
 ---
 

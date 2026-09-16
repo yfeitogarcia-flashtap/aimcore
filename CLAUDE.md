@@ -77,8 +77,8 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Música | `src/audio/music.js` | Ambiente de menús, generado. Su propio volumen. |
 | Config | `src/config.js` | Todo el tuning, sin excepción. |
 | Partida (servidor) | `net/partida.js` | **Todo lo que decide el servidor**, sin saber por dónde viaja: entradas, pasos, disparo, rebobinado y fotos. Un jugador entra con una función `enviar(texto)` y nada más. **No hay red en este fichero.** |
-| Huésped local | `net/servidor.mjs` | Node + `ws`. Puerto, reloj e informe. 78 líneas. |
-| Huésped en la nube | `worker/sala.js` | El Durable Object. Lo mismo, con las piezas de Cloudflare. |
+| Huésped de Node | `net/servidor.mjs` | Node + `ws`, y desde la vuelta 58 **el del despliegue**: encamina por código de sala, lleva un reloj por sala y sirve `dist/`. El mismo fichero en local y en Fly. |
+| Huésped de Cloudflare | `worker/sala.js` | El Durable Object. Lo mismo, con las piezas de Cloudflare. **Respaldo** desde la 58; ya no es donde se juega. |
 | Portero | `worker/index.js` | `/sala/<código>` → `idFromName(código)`; todo lo demás, los ficheros del juego. |
 | Código de sala | `net/codigo.js` | Alfabeto, normalización y forma de la ruta. **Lo usan el cliente y el Worker.** |
 | Duelo (pantalla) | `net/prueba.html`, `net/prueba.js` | La página del 1v1. **Hospeda el motor completo** (vuelta 56) y se queda con lo suyo: código de partida, menú, avisos, pausas y los números detrás de **F3**. |
@@ -264,9 +264,11 @@ guardaba el arreglo del avance rápido salía verde con la medida rota debajo.
 techo: si el jugador no anda de verdad, el resto de la fila no significa nada.
 
 **El huésped pone el reloj y el cable; la partida pone el mundo** (vuelta 47).
-Desde que hay dos huéspedes —Node en local y un Durable Object en Cloudflare— las
-reglas viven en `net/partida.js` y ninguno de los dos las conoce: un jugador entra
-con una función `enviar(texto)` y quién la implementa no se sabe desde ahí. Es la
+Desde que hay más de un huésped —hoy tres: Node en local, Node en Fly y un Durable
+Object en Cloudflare— las reglas viven en `net/partida.js` y ninguno de ellos las
+conoce: un jugador entra con una función `enviar(texto)` y quién la implementa no
+se sabe desde ahí. Ése es el motivo de que mudarse de nube en la vuelta 58 fuera
+una vuelta y no un proyecto: `partida.js` no cambió ni una línea. Es la
 convención de siempre («una sola fuente de verdad para lógica compartida»)
 aplicada al servidor, y es la misma idea que el transporte del cliente, aplicada
 al otro extremo. Si añades una regla de juego al servidor, va en `partida.js`; si
@@ -292,10 +294,17 @@ limpiar cuando una partida acaba. Tres consecuencias:
   llevó por delante `?worker=1` y dejó a las dos pestañas hablando con servidores
   distintos, sin un solo error (`docs/decisions.md` §47).
 
-**Una sala vacía no gasta reloj.** En Node daba igual, el proceso es tuyo; en
-Cloudflare el tiempo de ejecución se paga, y 60 pasos por segundo con nadie
-dentro se pagan enteros. El mundo arranca al entrar el primero y para al salir el
-último, y el número de paso se conserva entre visitas. Y el atraso se acota con
+**Una sala vacía no gasta reloj, y aun así el mundo no se olvida** (la regla es
+de la 47; la segunda mitad se hizo explícita en la 58). El reloj arranca al entrar
+el primero y para al salir el último —60 pasos por segundo con nadie dentro se
+pagan enteros— pero **el número de paso se conserva**, que es lo que hace que
+volver a entrar con el mismo código no sea empezar otra partida.
+
+**Son dos cosas, no una**, y en Cloudflare parecían la misma porque la plataforma
+desalojaba el objeto por su cuenta. En un proceso propio no desaloja nadie:
+borrar la sala al quedarse vacía pondría el paso a cero y no borrarla nunca
+dejaría una sala por cada código que alguien haya tecleado. Por eso el huésped de
+Node para el reloj al instante y olvida el mundo a los `NET.salaOlvidadaMs`. Y el atraso se acota con
 `SIM.maxFrameDeltaMs` —**el mismo número** que acota el frame largo del
 navegador—: volver de un parón largo apuntando al instante exacto serían cientos
 de pasos de golpe y una ráfaga de fotos a los dos clientes.
@@ -1664,12 +1673,14 @@ que parecía roto y no lo estaba.
 **Si un resultado te parece extraño, reinicia el servidor de desarrollo antes de
 creerte el diagnóstico.** No depures un falso negativo durante media hora.
 
-**Y el Worker sirve `dist/`, no `src/`.** `npm run worker` construye antes por
-eso mismo: con `wrangler dev` levantado, cambiar un fichero del juego **no se ve**
-—wrangler recarga el Worker cuando tocas `worker/`, pero los ficheros del juego
-son los que había en `dist/` cuando arrancó—. Es la misma clase de falso negativo
-que el de arriba, por otra puerta: vuelve a lanzarlo antes de creerte el
-diagnóstico.
+**Y los dos huéspedes sirven `dist/`, no `src/`.** `npm run worker` y `npm run
+host` construyen antes por eso mismo: con cualquiera de los dos levantado,
+cambiar un fichero del juego **no se ve** —los ficheros que sirven son los que
+había en `dist/` cuando arrancaron—. Es la misma clase de falso negativo que el
+de arriba, por otra puerta: vuelve a lanzarlo antes de creerte el diagnóstico.
+Y el de Node además **cachea en memoria lo que sirve, comprimido**, así que ni
+siquiera reconstruir `dist/` por debajo le cambia nada: hay que reiniciar el
+proceso.
 
 Y no es sólo «una función que no hace nada»: en la vuelta 45 pasó **dos veces**
 con la batería de pruebas entera. Los síntomas fueron suites que salían con
@@ -1693,10 +1704,17 @@ La partida entera es `net/partida.js` y **no tiene código de juego**: importa
 objeto plano donde iría la cámara. La corren **dos huéspedes**, que sólo ponen
 reloj y cable:
 
-- **En local**, `npm run net` levanta el servidor `ws` en el 5199 y dos pestañas
-  en `net/prueba.html` bastan.
+- **En local**, `npm run net` levanta el huésped en el 5199 —y desde la 58 sirve
+  también `dist/`, así que `npm run host` es el despliegue entero en tu máquina—.
+- **En Fly.io** (vuelta 58), **el mismo `net/servidor.mjs`** en un contenedor, con
+  **IPv4 dedicada**. Es donde se juega. El porqué es el bloqueo de IPs de LaLiga:
+  las operadoras anulan direcciones **enteras** de Cloudflare ignorando el SNI, y
+  eso se lleva la página igual que la partida. Ficheros: `Dockerfile` y
+  `fly.toml`; guía en `docs/despliegue-fly.md`; evaluación en
+  `docs/propuestas/03-servidor-con-ip-propia.md`.
 - **En Cloudflare**, un **Durable Object por código de partida**
-  (`worker/sala.js`), con el mismo Worker sirviendo el juego y las salas. Se
+  (`worker/sala.js`), con el mismo Worker sirviendo el juego y las salas.
+  **Desde la 58 es respaldo, no producción**, y se queda en pie unas semanas. Se
   prueba sin cuenta y sin internet con `npx wrangler dev --local`, que corre el
   Durable Object de verdad en esta máquina. El despliegue paso a paso está en
   `docs/despliegue-cloudflare.md`; los Durable Objects **entran en el plan
