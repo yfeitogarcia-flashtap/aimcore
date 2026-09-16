@@ -6300,6 +6300,173 @@ resto del HUD». Tres cosas distintas, y ninguna es un fallo:
 Que la armería y la silueta lleguen o no al duelo es una decisión de producto que
 no se ha tomado, no un arreglo pendiente.
 
+## Ronda 60 — Lo que se vio jugando
+
+Seis cosas de la primera partida de verdad entre dos personas con el motor
+completo. Cuatro son de forma y dos son fallos, y los dos fallos estaban
+escondidos detrás de un síntoma que no era el suyo.
+
+### La brújula apuntaba a la espalda del rival
+
+**Dos convenciones de yaw que se parecen lo bastante como para colarse.**
+`facing` —lo que gira la brújula— mira a **+Z** con yaw 0, y así lo produce un
+muñeco, que lo saca de `Math.atan2(dx, dz)`. Una **cámara** de three.js mira a
+**−Z** con `rotation.y` 0, y lo dice el propio movimiento en su cuenta de la
+dirección: `forward = (−sin, −cos)`.
+
+O sea que el mismo número significa lo contrario en cada sitio. Con los muñecos
+no se veía nunca, porque su `facing` no sale de una cámara; en el duelo de la
+vuelta 56 el rival **es** una cámara, y `instancia.facing = pose.yaw` pintaba la
+brújula justo al revés.
+
+La conversión vive ahora en una función con nombre (`facingDesdeCamara`) y en el
+fichero que define la convención, no como un `+ Math.PI` suelto donde se use.
+
+**Y sólo se podía ver comparando las dos pantallas a la vez**, que es como lo
+cazó Yago: mirando una sola, una brújula al revés se lee como un rival que te da
+la espalda. El banco lo hace igual —cinco rumbos, el de A leído en la página de
+A— y sale **0.0° de desvío en los cinco**.
+
+El cuerpo del rival se queda con el yaw crudo **a propósito**: es un sólido de
+revolución, así que su giro no se ve, y ponerle el de la brújula sería afirmar
+que tiene frente.
+
+### La mancha de daño no se quedaba por el derribo
+
+Se veía al morir y no tenía nada que ver con morir: **se quedaba desde el primer
+impacto de la partida**. Al morir es cuando se nota, porque el último disparo
+recibido es el que la deja encendida y ahí ya no llegan más.
+
+La causa es de las que no se ven leyendo la lógica, porque no está en la lógica:
+
+```js
+cuna.style.opacity = String(Math.min(1, 0.35 + fraccion))   // ← en línea
+cuna.classList.add('puesto')
+setTimeout(() => cuna.classList.remove('puesto'), 500)
+```
+
+**Un estilo en línea gana a cualquier selector.** Así que ni `#dano { opacity: 0 }`
+ni quitar `.puesto` volvían a apagarla nunca: el temporizador funcionaba
+perfectamente y no servía para nada. La fuerza del impacto y el encendido se
+estaban peleando por la misma propiedad, y la que escribía en línea ganaba
+siempre.
+
+Ahora la fuerza va en una variable CSS (`--fuerza`) que sólo tiñe el gradiente, y
+**la opacidad la manda la clase**, que es lo que el temporizador sabe quitar.
+
+### Escape abre el menú; pausar es un botón
+
+Desde la 53 soltar el ratón **pedía la pausa solo**. La idea era buena y cerraba
+un agujero real —que el mundo siguiera corriendo con el menú puesto— pero el
+precio se vio a la primera partida: abrir el menú para mirar el código, copiar el
+enlace o teclear otro **gastaba una de las tres libres** sin que nadie la hubiera
+pedido, y no había forma de abrirlo sin pagarla.
+
+Lo que la 53 arregló de verdad sigue en pie, y era lo que importaba: **soltar el
+ratón suelta las teclas**, así que con el menú abierto no se anda. Medido otra
+vez en esta vuelta: 0.39 u contra los 7.8 de antes.
+
+Lo que se acepta a cambio: el mundo sigue corriendo mientras miras el menú, o sea
+que ahí eres un blanco. Es el mismo trato que la votación de la 55 y por la misma
+razón — **pausarle la partida al rival no puede ser el efecto secundario de un
+gesto tuyo**.
+
+Y una cosa que costó encontrar al construirlo: el botón sólo se pintaba en
+`onPausa`, que avisa de los **cambios** de estado. Al empezar una partida no ha
+habido ninguna pausa todavía, así que no se llamaba nunca y el botón se quedaba
+con el `hidden` del HTML. Con el de votación no se había notado: ése sólo hace
+falta cuando se agotan las libres, y agotarlas **es** un cambio.
+
+### Los ajustes sí se guardaban, y aun así se perdían
+
+La causa raíz no estaba donde parecía. **El store funciona**: se comprobó
+escribiendo las 17 claves con valores distintos, recargando y comparándolas una a
+una — **17 de 17 sobreviven**. (Las tres primeras «pérdidas» de esa medida eran
+del instrumento: dos catálogos que me inventé y el paso de 0.01 del deslizador.
+La regla del denominador aplicada a uno mismo.)
+
+Lo que sí estaba mal era otra cosa, y explica el síntoma: **la página del duelo
+le reescribía al jugador su escenario guardado en cada visita**. Hacía
+`updateSettings({ scenario: 'largoYPuerta' })` al cargar, porque el motor lee el
+mapa de los ajustes, y eso son las preferencias de una persona usadas como
+variable de trabajo de una página. Dos precios, los dos callados: el ajuste
+cambiado, y el mapa colgando del store —así que tocar cualquier ajuste en mitad
+de un duelo reconstruía el escenario **en caliente**—.
+
+El escenario de una partida no es una preferencia de nadie: ahora el motor lo
+recibe al construirse (`new Engine(lienzo, callbacks, { escenario })`) y el store
+no se toca.
+
+Y queda una tercera causa que no es del código y conviene tener escrita:
+**`localStorage` es por origen**, así que la mudanza de la vuelta 58 —de
+`workers.dev` a `fly.dev`— dejó atrás todo lo guardado. Una vez.
+
+Lo que se ha añadido para que esto no vuelva a ser un misterio: **si el navegador
+no deja guardar, el panel lo dice**. El `try/catch` que se lo tragaba era
+correcto —sin persistencia se juega igual— pero desde fuera era indistinguible de
+un juego que pierde los ajustes por su cuenta.
+
+### La música se retira entera
+
+No se baja a cero: se va. Módulo, ajuste, fila del panel, llamadas y sección del
+README. Lo que deja son las dos trampas del contexto de audio, que ahora viven
+donde todavía hacen falta (`samples.js`): que el contexto no arranca sin gesto y
+`resume()` es asíncrono, y que `disposeAudio()` cierra el contexto, así que se
+guarda *sobre qué contexto* se estaba esperando.
+
+La clave `musicVolume` que quede en el `localStorage` de quien ya jugó se cae
+sola en el primer guardado: es exactamente lo que el saneado hace con cualquier
+clave que el catálogo ya no conoce.
+
+### Las pisadas de los demás
+
+Estaban aparcadas «hasta que hubiera multijugador», y ya lo hay. Tres decisiones:
+
+- **Son de los demás, y de nadie más.** El jugador no oye las suyas: no dirían
+  nada que no sepa —está pulsando la tecla— y taparían justo lo que estas
+  pisadas vienen a dejar oír. Es la regla del silbido de la vuelta 40.
+- **Una zancada es un trozo de suelo, no un intervalo de tiempo.** Así agacharse
+  o andar bajan el ritmo solos, sin una segunda tabla de cadencias. Por tiempo,
+  un agachado pisaría igual de rápido que uno corriendo, que es como se oye que
+  un sistema de pisadas es falso.
+- **Agachado suena, pero poco.** Un sigilo perfecto convertiría agacharse en la
+  única forma de moverse, y lo que tiene que costar es la velocidad.
+
+Y dos cosas que costaron medirlas, las dos de relojes y sondas:
+
+- **La pose del rival se mueve con el frame; este código corre dentro del paso de
+  mundo.** En un frame que gasta dos pasos, el segundo ve exactamente la misma
+  pose que el primero, y dividir el avance de un frame entre un paso infla la
+  velocidad. Con frames largos —un contenedor con dos navegadores y dibujado por
+  software— la inflaba por encima del techo del aire, así que el guardia de
+  teletransporte borraba la cuenta en cada frame: medido, **cero pisadas con el
+  rival andando de verdad**. El reloj de esto es el de pared, que es el que mueve
+  lo que se está midiendo.
+- **Y una zancada se mide contra dónde se dio la última, no sumando frames.** El
+  rival se interpola entre fotos y esa trayectoria tiembla: sumando el avance de
+  cada frame el camino sale más largo que el recorrido. Medido, **11 pisadas en
+  13.3 u** con una zancada de 1.9 — media docena de sobra. Contra la posición de
+  la última: **6 en 13.4 u**, que es justo lo que toca.
+
+### Lo que costó: tres medidas falsas seguidas, y todas del banco
+
+Vale la pena dejarlas escritas porque las tres son de método:
+
+- **Un error de página es un fallo, no una línea de registro.** Un
+  `FOOTSTEPS is not defined` produjo **318 errores** durante una tanda entera y
+  las **seis suites salieron verdes**. El motivo es que `_loop` reprograma el
+  frame siguiente **antes** de trabajar, así que una excepción por frame no mata
+  el bucle: degrada en silencio. El banco de esta vuelta cuenta los `pageerror` y
+  falla con ellos; las demás suites los imprimen y siguen, y eso es deuda.
+- **El huésped cachea `dist/` en memoria**, así que reconstruir con el servidor
+  levantado no cambia nada de lo que se sirve. Está escrito en `CLAUDE.md` desde
+  la vuelta 58 y aun así caí: la tanda entera corrió contra el bundle roto. Hay
+  que reiniciar el proceso.
+- **Y la premisa, siempre.** El rival «no pisaba» porque andaba **contra el muro
+  de aparición**: 0.9 u en 2.2 segundos. Y el emisor posicionado **no pasa por el
+  máster**, va por el listener, así que medir amplitud allí daba 0 con las
+  pisadas sonando. Dos ceros seguidos, ninguno del código.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
@@ -6459,6 +6626,16 @@ objetivo era medir tiempos y rendimiento de verdad.
   lee igual que el fallo), sin anotar el hueco de la ausencia como un fotograma,
   y afirmando la **velocidad sostenida** antes que el techo — un techo que no
   enseña su suelo lo cumple también un jugador congelado.
+- **Que la brújula no miente, la mancha se apaga, Escape no gasta pausa y al
+  rival se le oye andar** (`ux60.mjs`): con **dos navegadores**, el rumbo que B
+  le pone al marcador contra la dirección de la cámara de A **leída en la página
+  de A** —un error de 180° no se ve en una sola pantalla—; la cuña de daño
+  medida con **sonda dentro de la página**, porque dura 500 ms y desde fuera se
+  lee el hueco entre dos disparos; que abrir el menú no toca la cuenta de libres
+  y que el botón sí; y las pisadas por **amplitud en el emisor del rival** —no
+  en el máster, que un sonido posicionado no pasa por ahí— con el rival andando
+  en terreno abierto, comprobando antes que se ha movido de verdad. Y cuenta los
+  `pageerror`: son fallos, no líneas de registro.
 - **Que se puede empezar a jugar** (`jugable48.mjs`): con clics y teclas de
   verdad contra la página real —no escribiendo en `cliente.teclas` desde dentro—,
   que un clic captura el ratón, que aparecen mira y vida y no el cartel de

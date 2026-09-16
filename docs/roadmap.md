@@ -483,7 +483,9 @@ fichero añade.
   objeto que cae del cielo es exactamente lo contrario de eso.
 - **Cualquier cosa que cambie lo que ves en el mapa.** Es la regla que sale sola de
   la decisión de las skins: la lectura del mapa es del juego, no de la tienda.
-- **Minimapa y pasos sonoros.** Fuera desde el principio.
+- **Minimapa.** Fuera desde el principio. (Los **pasos sonoros** estaban aquí
+  hasta la vuelta 60: se aparcaron «hasta que hubiera multijugador», lo hubo, y
+  se construyeron.)
 - **Matchmaking público antes de antitrampas.** No es una prohibición moral, es el
   orden: abrir partidas públicas sin 3.2 resuelto es publicar el problema.
 

@@ -20,10 +20,10 @@
  * contraria. Lo que sigue siendo suyo: el código de partida, el menú, los
  * avisos de conexión, las pausas y los números de F3.
  */
+import { masterGain } from '../src/audio/sfx.js'
 import { COLORS, NET, TARGET, TEAMS, WEAPONS } from '../src/config.js'
 import { Engine } from '../src/game/engine.js'
 import { Avatar } from '../src/game/avatar.js'
-import { updateSettings } from '../src/settings.js'
 import { hasLineOfSight } from '../src/game/sight.js'
 import { cuerpoDeJugador } from './pose.js'
 import { resolverDisparo } from './disparo.js'
@@ -47,13 +47,17 @@ const $ = (id) => document.getElementById(id)
 document.documentElement.style.setProperty('--crosshair-color', COLORS.crosshair)
 
 /**
- * **El escenario de la partida lo manda el servidor**, y hoy es uno solo. Se
- * fija en los ajustes **antes** de construir el motor porque de ahí lo lee él:
- * montar uno y cambiarlo después sería rehacer colisión, rutas y sala en
- * caliente. La bienvenida trae el del servidor y el panel de F3 lo enseña, que
- * es donde se vería una discrepancia el día que haya más de uno.
+ * **El escenario de la partida lo manda el servidor**, y hoy es uno solo. Se le
+ * dice al motor al construirlo, y **no pasa por los ajustes del jugador**.
+ *
+ * Hasta la vuelta 58 esto era un `updateSettings({ scenario })`, y costaba dos
+ * cosas que no se veían: le **reescribía al jugador su escenario guardado** cada
+ * vez que abría un enlace de duelo —la mitad del «no se guarda la configuración»
+ * que se notaba jugando— y dejaba el mapa colgando del store, así que tocar
+ * cualquier ajuste en mitad de un duelo reconstruía el escenario en caliente. El
+ * escenario de una partida no es una preferencia de nadie.
  */
-updateSettings({ scenario: 'largoYPuerta' })
+const ESCENARIO = 'largoYPuerta'
 
 /**
  * **El motor completo, con la red enchufada** (vuelta 56). Hasta aquí esta
@@ -70,7 +74,7 @@ const motor = new Engine(lienzo, {
   onWeapon: (w) => pintarArma(w),
   onDamage: (fraccion, rumbo) => marcarDano(fraccion, rumbo),
   onVerdict: (v) => marcarDisparo(v),
-})
+}, { escenario: ESCENARIO })
 
 /**
  * **El fantasma: dónde dice el servidor que estás tú.** Es lo que hace visible
@@ -217,6 +221,10 @@ function pintarPausa() {
   $('libresMenu').textContent = p.libres
   // **El botón de votación sólo existe cuando es la única salida** (vuelta 55):
   // con libres que gastar, pedirle permiso al rival sería pedir por pedir.
+  // Pausar, sólo con libres que gastar y sin nada en marcha; pedir votación,
+  // sólo cuando ya no quedan. Nunca los dos a la vez: son la misma acción con
+  // distinto precio, y dos botones juntos obligan a leerlos para saber cuál.
+  $('pausar').hidden = p.libres <= 0 || p.pausada || cliente.votacion.activa
   $('pedirVoto').hidden = p.libres > 0 || p.pausada || cliente.votacion.activa
   if (p.pausada) {
     panelPausa.hidden = false
@@ -244,6 +252,14 @@ function medirCartel() {
     panelPausa.hidden ? '0px' : `${panelPausa.offsetHeight}px`)
 }
 cliente.onPausa = pintarPausa
+/**
+ * **Y una vez al arrancar, porque el estado inicial también es un estado.**
+ * `onPausa` avisa de los **cambios**, así que al empezar una partida —donde no
+ * ha habido ninguna pausa todavía— no se llamaba nunca y el botón de pausar se
+ * quedaba con el `hidden` que trae el HTML. Con el de votación no se notó: ése
+ * sólo hace falta cuando se agotan las libres, y agotarlas **es** un cambio.
+ */
+pintarPausa()
 
 /**
  * **El cartel de la votación, que entra desde el borde derecho** (vuelta 55).
@@ -320,6 +336,16 @@ addEventListener('keydown', (e) => {
  * Quien la pide no espera en ninguna parte — si sale, se entera porque el mundo
  * se para; si no sale, no pasa nada y no hay ningún aviso que cerrar.
  */
+/**
+ * **Pausar es un botón, no un gesto** (vuelta 60). Hasta la 58 soltar el ratón
+ * pedía la pausa por su cuenta, y eso hacía que abrir el menú —para mirar el
+ * código, copiar el enlace o teclear otro— gastase una de las tres libres sin
+ * que nadie la hubiera pedido. Ahora Escape abre el menú y nada más; lo que
+ * gasta una pausa es pulsar aquí.
+ */
+$('pausar').addEventListener('click', () => {
+  cliente.pedirPausa()
+})
 $('pedirVoto').addEventListener('click', () => {
   cliente.pedirVotacion()
   motor.requestLock()
@@ -430,17 +456,19 @@ addEventListener('keydown', (e) => {
 // con su instante real. Esta página ya no toca el gatillo.
 document.addEventListener('pointerlockchange', () => {
   const capturado = document.pointerLockElement === lienzo
-  // **Soltar el ratón pide pausa**, que es lo que hace Escape desde el punto de
-  // vista del jugador. Hasta la vuelta 53 sólo se abría el menú y el mundo
-  // seguía corriendo por detrás: con WASD se andaba con el menú puesto. No se
-  // pide si ya hay pausa o petición, ni cuando el ratón se ha soltado porque la
-  // partida se ha caído.
-  // **Y sólo si quedan libres** (vuelta 55). Sin ninguna, Escape abre el menú de
-  // siempre y ahí está el botón de pedir votación: abrirle al rival un cartel
-  // por el gesto de soltar el ratón sería pedirle permiso sin querer.
-  if (!capturado && !redCaida && !cliente.pausa.pausada && cliente.pausa.libres > 0) {
-    cliente.pedirPausa()
-  }
+  // **Soltar el ratón ya no pide pausa** (vuelta 60). Lo hizo desde la 53, y la
+  // idea era buena —que el mundo no siguiera corriendo con el menú puesto— pero
+  // el precio se veía jugando: abrir el menú para mirar el código, copiar el
+  // enlace o teclear otro **gastaba una de las tres libres** sin que nadie la
+  // hubiera pedido, y no había forma de abrirlo sin pagarla.
+  //
+  // Ahora Escape abre el menú y nada más; pausar es el botón de ahí dentro. Lo
+  // que la 53 arregló de verdad sigue en pie y es lo que importaba: **soltar el
+  // ratón suelta las teclas**, así que con el menú puesto no se anda. Lo que se
+  // acepta a cambio es que el mundo siga corriendo mientras miras el menú, o
+  // sea que ahí sigues siendo un blanco — igual que en la votación de la 55, y
+  // por la misma razón: pausar al rival no puede ser un efecto secundario de un
+  // gesto tuyo.
   // **Y volver a pinchar la levanta**, si era tuya. Escape pausa, clic reanuda:
   // sin esto se recuperaba el ratón con el mundo todavía congelado, que es
   // justo el estado confuso que esta vuelta viene a quitar. La del rival no se
@@ -456,6 +484,10 @@ document.addEventListener('pointerlockchange', () => {
     // misma razón (ver `_onPointerLockChange`). Aquí queda lo que es de la
     // página: qué se enseña.
   }
+  // El menú se abre y se cierra muchas veces sin que la pausa cambie de estado,
+  // y lo que se enseña ahí dentro depende de las libres que queden: se repinta
+  // al abrirlo, que es cuando se mira.
+  if (!capturado) pintarPausa()
   aviso.hidden = capturado
   // Mira, vida y «abatido» son de jugar; con el ratón suelto tapan el menú.
   document.body.classList.toggle('jugando', capturado)
@@ -570,7 +602,19 @@ let apagarDano = 0
 function marcarDano(fraccion, rumbo) {
   const cuna = $('dano')
   cuna.style.setProperty('--angulo', `${(rumbo * 180) / Math.PI}deg`)
-  cuna.style.opacity = String(Math.min(1, 0.35 + fraccion))
+  /**
+   * **La fuerza del impacto va en una variable, no en `style.opacity`**
+   * (arreglo de la vuelta 60). Escribir la opacidad en línea la deja por encima
+   * de **toda** la hoja de estilos —un estilo en línea gana a cualquier
+   * selector—, así que ni `#dano { opacity: 0 }` ni quitar `.puesto` volvían a
+   * apagarla: la cuña se quedaba puesta **desde el primer impacto** y para
+   * siempre. Se notaba al morir porque el último disparo recibido es el que la
+   * dejaba encendida, pero el derribo no tenía nada que ver.
+   *
+   * Ahora quien manda la opacidad es la clase, que es lo que el temporizador
+   * sabe quitar; la fuerza sólo tiñe el gradiente.
+   */
+  cuna.style.setProperty('--fuerza', String(Math.min(1, 0.35 + fraccion).toFixed(3)))
   cuna.classList.add('puesto')
   clearTimeout(apagarDano)
   apagarDano = setTimeout(() => cuna.classList.remove('puesto'), 500)
@@ -648,6 +692,12 @@ window.vektorNet = {
   get escenario() { return motor.scenario },
   get rival() { return motor._rivalAvatar },
   get paso() { return cliente.paso },
+  /**
+   * **El nodo máster**, para que un banco pueda medir amplitud en vez de contar
+   * llamadas a funciones. Es la regla de la vuelta 31: lo que se mide de un
+   * sonido es que **se oiga**, y eso sólo se ve en la salida.
+   */
+  get audio() { return masterGain() },
   verDesde: hasLineOfSight,
   cuerpoDe: cuerpoDeJugador,
   resolver: resolverDisparo,

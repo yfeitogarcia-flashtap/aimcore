@@ -1309,18 +1309,6 @@ export const SETTINGS = {
     label: 'Mensajes de ayuda',
     default: true,
   },
-  musicVolume: {
-    label: 'Música de menús',
-    /**
-     * Volumen de la música de inicio, opciones y pausa. Va por su propio nodo:
-     * bajarla a cero no toca ni el pitido del explosivo ni los disparos.
-     */
-    default: 0.4,
-    min: 0,
-    max: 1,
-    step: 0.05,
-    decimals: 2,
-  },
   /**
    * **Cuánto dura un Deathmatch.** Sólo se aplica a ese modo: la ronda con
    * explosivo la sigue midiendo el temporizador de la bomba, y el gridshot de
@@ -2653,8 +2641,72 @@ export const AUDIO = {
   sampleVolume: 1,
   /** Daño recibido, curación y la carga eléctrica del escudo. */
   damageVolume: 0.6,
+  /**
+   * **Las pisadas de un rival.** Por debajo del silbido a propósito: una pisada
+   * dice dónde está alguien que no ves, y para eso no hace falta que suene
+   * fuerte — hace falta que suene **desde algún sitio**. Subirla taparía el
+   * disparo, que es la información urgente.
+   */
+  footstepVolume: 0.42,
   healVolume: 0.5,
   shieldVolume: 0.42,
+}
+
+/**
+ * **Las pisadas de los demás** (vuelta 60). Estaban fuera de alcance «hasta que
+ * hubiera multijugador», y ya lo hay.
+ *
+ * Son de **los demás** y de nadie más: el jugador no oye las suyas. Las propias
+ * no dicen nada que no sepas ya —estás pulsando la tecla— y a cambio enmascaran
+ * justo lo que estas pisadas vienen a dejar oír. Es la misma regla que la de la
+ * vuelta 40 con el silbido: lo que se añade al audio de una partida se añade
+ * porque informa.
+ *
+ * **El paso se mide en distancia recorrida, no en tiempo.** Una zancada es un
+ * trozo de suelo, así que agacharse o andar no cambian cada cuánto se pisa: bajan
+ * la marcha, y con ella el ritmo, solos. Medir por tiempo habría dado el mismo
+ * ritmo corriendo que agachado, que es justo lo que delata a un sistema de
+ * pisadas falso.
+ */
+export const FOOTSTEPS = {
+  /** Lo que se anda entre una pisada y la siguiente, en unidades de mapa. */
+  strideU: 1.9,
+  /**
+   * Por debajo de esta marcha no se pisa: es alguien parado o ajustando la mira,
+   * y un crujido por cada milímetro sería ruido constante.
+   */
+  minSpeed: 1.2,
+  /**
+   * A partir de aquí no se oye. Es algo menos que el largo del Plano A: lo que
+   * se quiere es «hay alguien cerca», no un radar del mapa entero.
+   */
+  maxDistanceU: 22,
+  /**
+   * **Agachado suena, pero poco.** No se calla del todo a propósito: un sigilo
+   * perfecto convierte agacharse en la única forma de moverse, y lo que tiene
+   * que costar es la velocidad, no volverse inaudible.
+   */
+  crouchGain: 0.45,
+  /** Andando (SHIFT), entre agachado y correr. */
+  walkGain: 0.7,
+  /** Perfil del sonido. Roce de suela y un cuerpo corto y grave, como el aterrizaje. */
+  sound: {
+    scuffHz: 1900,
+    scuffGain: 0.5,
+    scuffDecay: 0.075,
+    bodyType: 'triangle',
+    bodyFrom: 150,
+    bodyTo: 68,
+    bodyAttack: 0.007,
+    bodyDecay: 0.1,
+    bodyGain: 0.42,
+  },
+  /**
+   * Cuánto varía el tono de una pisada a la siguiente. Sin esto son la misma
+   * muestra repetida y a la tercera se oye el bucle; es la misma razón por la
+   * que la música generada no tenía un bucle reconocible.
+   */
+  pitchJitter: 0.12,
 }
 
 /**

@@ -69,6 +69,31 @@ const _frustum = new THREE.Frustum()
 const _sphere = new THREE.Sphere()
 
 /**
+ * **De la mirada de una cámara a la orientación de un marcador** (vuelta 60).
+ *
+ * Son dos convenciones distintas y se parecen lo bastante como para colarse:
+ *
+ * - `facing` mira a **+Z** con yaw 0. Es lo que usa la brújula
+ *   (`needle.rotation.y = facing`) y lo que produce un muñeco, que lo saca de
+ *   `Math.atan2(dx, dz)` hacia donde va.
+ * - Una **cámara** de three.js mira a **−Z** con `rotation.y` 0. Lo dice el
+ *   propio movimiento en su cuenta de la dirección: `forward = (−sin, −cos)`.
+ *
+ * O sea que el mismo número significa **lo contrario** en cada sitio, y pasarlo
+ * tal cual pinta la brújula apuntando justo a la espalda del rival. Pasó: con
+ * los muñecos no se veía porque su `facing` nunca sale de una cámara, y en el
+ * duelo de la vuelta 56 el rival **es** una cámara. Se cazó comparando las dos
+ * pantallas a la vez, que es la única forma de ver un error de 180°: mirando
+ * una sola, una brújula al revés se lee como un rival que te da la espalda.
+ *
+ * @param {number} yaw `rotation.y` de la cámara de ese jugador
+ * @returns {number} el mismo rumbo en la convención de `facing`
+ */
+export function facingDesdeCamara(yaw) {
+  return yaw + Math.PI
+}
+
+/**
  * **La brújula.** Una cuña: rectángulo en la cola y punta en el morro, con el
  * morro hacia +Z —la convención de yaw de todo el motor: la dirección de
  * `facing` es `(sin yaw, 0, cos yaw)`—.

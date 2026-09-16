@@ -19,6 +19,7 @@ import {
   AVATAR,
   CAMERA,
   COVER,
+  FOOTSTEPS,
   FRAME_LIMITS,
   OBJECTIVE,
   MOVEMENT,
@@ -49,6 +50,7 @@ import {
   initAudio,
   playDamage,
   playDryFire,
+  playFootstep,
   playHeal,
   playHelmetCrack,
   playHit,
@@ -60,11 +62,11 @@ import {
   playUiConfirm,
 } from '../audio/sfx.js'
 import { loadWeaponSamples, playWeaponShot } from '../audio/samples.js'
-import { attachListener, detachListener, setSpatialEnabled } from '../audio/spatial.js'
+import { attachListener, createEmitter, detachListener, setSpatialEnabled } from '../audio/spatial.js'
 import { ActionPanel } from './actionPanel.js'
 import { Avatar } from './avatar.js'
 import { EnemyFire } from './enemyFire.js'
-import { DummyMarkers } from './markers.js'
+import { DummyMarkers, facingDesdeCamara } from './markers.js'
 import { MuzzleFlash } from './muzzleFlash.js'
 import { PickupField } from './pickups.js'
 import { PlayerStatus, playerBody } from './player.js'
@@ -138,9 +140,29 @@ export class Engine {
    *   onFinish?: (summary: object) => void,
    * }} callbacks
    */
-  constructor(canvas, callbacks = {}) {
+  /**
+   * @param {HTMLCanvasElement} canvas
+   * @param {object} [callbacks]
+   * @param {{escenario?: string}} [opciones] `escenario` **fija** el mapa y deja
+   *   fuera el ajuste del jugador. Lo usa el duelo, que siempre juega el Plano A.
+   */
+  constructor(canvas, callbacks = {}, opciones = {}) {
     this.canvas = canvas
     this.callbacks = callbacks
+    /**
+     * **El escenario del duelo no es una preferencia del jugador** (vuelta 60).
+     * Hasta la 58 la página del duelo lo conseguía llamando a `updateSettings`
+     * antes de construir el motor, y eso tenía dos precios que se pagaban
+     * callando: **le reescribía al jugador su escenario guardado** en cada
+     * visita a un enlace de duelo —que es la mitad del «no se guarda la
+     * configuración» que se veía jugando— y dejaba el mapa colgando del store,
+     * así que cualquier cambio de ajuste en mitad de un duelo (la **V** del
+     * silenciador, sin ir más lejos) reconstruía el escenario al del jugador
+     * **en mitad de la partida**.
+     *
+     * Con esto el duelo dice qué mapa juega y no toca nada de nadie.
+     */
+    this._escenarioFijo = opciones.escenario ?? null
 
     this.renderer = new THREE.WebGLRenderer({
       canvas,
@@ -161,7 +183,7 @@ export class Engine {
 
     // El escenario se monta antes que el movimiento: de él salen la colisión y
     // el punto de aparición.
-    this.scenario = new Scenario(this.scene, getSettings().scenario)
+    this.scenario = new Scenario(this.scene, this._escenarioFijo ?? getSettings().scenario)
     // La sala la manda el escenario: la grilla y las paredes se montan a su
     // medida, y con ellas el límite real de movimiento.
     this._setRoom(this.scenario.room)
@@ -690,7 +712,8 @@ export class Engine {
    * pantalla se vuelven a repartir, porque las viejas dejan de existir.
    */
   _applySettings(settings) {
-    this._applyScenario(settings.scenario)
+    // Con escenario fijo el ajuste del jugador no manda aquí: ver `_escenarioFijo`.
+    this._applyScenario(this._escenarioFijo ?? settings.scenario)
     setSpatialEnabled(settings.spatialAudio)
     this.controls.setSensitivity(settings.sensitivity)
     const limit = FRAME_LIMITS[settings.frameLimit].fps
@@ -1273,16 +1296,116 @@ export class Engine {
     if (!pose || !pose.vivo) {
       avatar.group.visible = false
       instancia.state = 'down'
+      // Un abatido no pisa, y al reaparecer lo hace en otro sitio: sin esto, el
+      // salto del teletransporte contaría como suelo andado y sonaría una
+      // ráfaga de pisadas en el punto de aparición.
+      this._rivalPrevX = null
+      this._rivalPrevZ = null
+      this._rivalPasoX = null
+      this._rivalPasoZ = null
+      this._rivalPisadaT = 0
     } else {
       avatar.group.visible = true
       avatar.group.position.set(pose.x, pose.feetY, pose.z)
       avatar.group.rotation.y = pose.yaw
       avatar.setEyeHeight(pose.eyeHeight)
       instancia.state = 'alive'
-      instancia.facing = pose.yaw
+      // **El yaw del rival es el de su cámara, y `facing` es de un marcador.**
+      // Son convenciones opuestas —una mira a −Z y la otra a +Z— y pasarlo tal
+      // cual pintaba la brújula apuntando a su espalda. El cuerpo se queda con
+      // el yaw crudo a propósito: es un sólido de revolución, así que su giro
+      // no se ve, y ponerle el de la brújula sería decir que tiene frente.
+      instancia.facing = facingDesdeCamara(pose.yaw)
       instancia.weaponKey = this.net.rival.arma ?? instancia.weaponKey
+      this._pisadasDelRival(pose)
     }
     this.markers.update(now, deltaMs, this._rivalInstancias, this.camera, _sinFase)
+  }
+
+  /**
+   * **Las pisadas del rival** (vuelta 60), que es lo que deja oír a alguien que
+   * no ves. Se apoyan en la pose que ya se está dibujando, así que no piden ni
+   * un dato más al protocolo ni un rayo por frame.
+   *
+   * Tres cosas que son el mecanismo:
+   *
+   * - **El paso se mide en suelo andado, no en tiempo.** Una zancada es un trozo
+   *   de suelo (`FOOTSTEPS.strideU`), así que agacharse o andar bajan el ritmo
+   *   solos, sin una segunda tabla de cadencias. Por tiempo, un agachado pisaría
+   *   igual de rápido que uno corriendo, que es como se oye que las pisadas son
+   *   de mentira.
+   * - **Un teletransporte no es suelo andado.** La época de pose ya dice cuándo
+   *   el rival ha saltado (vuelta 50) y aquí se traduce en olvidar la referencia:
+   *   si no, reaparecer sonaría a media docena de pisadas de golpe.
+   * - **Y el jugador no oye las suyas.** Esto sólo mira al rival. Las propias no
+   *   dicen nada que no sepas —estás pulsando la tecla— y taparían justo lo que
+   *   se quiere oír.
+   */
+  _pisadasDelRival(pose) {
+    const emisor = this._rivalEmisor
+    if (!emisor) return
+
+    const previaX = this._rivalPrevX
+    const previaZ = this._rivalPrevZ
+    const ahora = performance.now()
+    const antes = this._rivalPisadaT
+    this._rivalPrevX = pose.x
+    this._rivalPrevZ = pose.z
+    // Sin referencia —acaba de entrar, de reaparecer o de saltar— este frame
+    // sólo sirve para sembrarla.
+    if (previaX === null) {
+      this._rivalPisadaT = ahora
+      return
+    }
+
+    const avance = Math.hypot(pose.x - previaX, pose.z - previaZ)
+    // **La pose del rival se mueve con el frame, no con el paso de mundo**, y
+    // este método corre dentro del paso: en un frame que gasta dos pasos, el
+    // segundo ve exactamente la misma pose que el primero. Así que aquí no se
+    // usa el `stepMs` —dividir el avance de un frame entre un paso infla la
+    // velocidad, y con frames largos la inflaba por encima del techo del aire y
+    // el guardia de teletransporte borraba la cuenta en cada frame: medido,
+    // **cero pisadas** con el rival andando de verdad—. El reloj de esto es el
+    // de pared, que es el que mueve lo que se está midiendo.
+    if (avance === 0) return
+    this._rivalPisadaT = ahora
+    const dt = ahora - antes
+    if (dt <= 0) return
+    const velocidad = (avance / dt) * 1000
+
+    // Parado o ajustando la mira no se pisa. Y un salto de pose no es suelo
+    // andado: por encima del techo del aire es que ha habido teletransporte.
+    if (velocidad < FOOTSTEPS.minSpeed) return
+    if (velocidad > MOVEMENT.airStrafeMaxSpeed * 2) {
+      this._rivalPasoX = null
+      this._rivalPasoZ = null
+      return
+    }
+    const lejos = Math.hypot(pose.x - this.camera.position.x, pose.z - this.camera.position.z)
+    if (lejos > FOOTSTEPS.maxDistanceU) return
+
+    // **Una zancada es lo que te has movido, no lo que ha sumado el dibujo.** El
+    // rival se interpola entre fotos y esa trayectoria tiembla: sumando el
+    // avance de cada frame, el camino sale más largo que el recorrido y las
+    // pisadas salen de más —medido, 11 en 13.3 u con una zancada de 1.9, o sea
+    // media docena de sobra—. Se mide contra dónde se dio la última.
+    if (this._rivalPasoX === null) {
+      this._rivalPasoX = pose.x
+      this._rivalPasoZ = pose.z
+      return
+    }
+    if (Math.hypot(pose.x - this._rivalPasoX, pose.z - this._rivalPasoZ) < FOOTSTEPS.strideU) return
+    this._rivalPasoX = pose.x
+    this._rivalPasoZ = pose.z
+
+    // **Lo agachado sale de la altura de ojos, que ya viaja en la foto.** No hace
+    // falta un campo nuevo para saber si va agachado: es el mismo dato del que
+    // el cuerpo saca su achatamiento.
+    const agachado = pose.eyeHeight <= (MOVEMENT.crouchHeight + MOVEMENT.standHeight) / 2
+    const marcha = Math.min(1, velocidad / MOVEMENT.speed)
+    const sigilo = agachado ? FOOTSTEPS.crouchGain : marcha < 0.75 ? FOOTSTEPS.walkGain : 1
+    this._rivalPisadas += 1
+    playFootstep(marcha * sigilo, emisor)
   }
 
   /**
@@ -1307,6 +1430,21 @@ export class Engine {
         weaponKey: null,
       }
       this._rivalInstancias = [this._rivalInstancia]
+      /**
+       * **El emisor cuelga del cuerpo del rival**, así que se mueve con él y
+       * nadie tiene que acordarse de colocarlo. Se crea una vez: un emisor por
+       * pisada serían sesenta nodos de audio por segundo.
+       */
+      this._rivalEmisor = createEmitter(this._rivalAvatar.group)
+      /** Dónde se dio la última pisada. Una zancada es distancia, no tiempo. */
+      this._rivalPasoX = null
+      this._rivalPasoZ = null
+      this._rivalPrevX = null
+      this._rivalPrevZ = null
+      /** Cuándo se leyó la pose del rival por última vez, en reloj de pared. */
+      this._rivalPisadaT = 0
+      /** Cuántas pisadas del rival se han soltado. Lo miran los bancos. */
+      this._rivalPisadas = 0
     }
     this._rivalAvatar.setColor(suyo.color)
     this._rivalInstancia.nick = this.net.nickRival

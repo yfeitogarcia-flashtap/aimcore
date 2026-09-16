@@ -136,9 +136,15 @@
   #dano { position: fixed; inset: 0; z-index: 2; pointer-events: none; opacity: 0;
     transition: opacity .18s linear;
     background: conic-gradient(from calc(var(--angulo, 0deg) - 34deg),
-      rgba(255,45,31,.55) 0deg, rgba(255,45,31,0) 68deg, rgba(255,45,31,0) 360deg);
+      rgba(255,45,31,calc(.55 * var(--fuerza, 1))) 0deg,
+      rgba(255,45,31,0) 68deg, rgba(255,45,31,0) 360deg);
     -webkit-mask-image: radial-gradient(circle at 50% 50%, transparent 24%, #000 62%);
     mask-image: radial-gradient(circle at 50% 50%, transparent 24%, #000 62%); }
+  /* **La opacidad la manda esta clase y nadie más.** Hasta la vuelta 60 la
+     fuerza del impacto se escribía como `style.opacity` desde el JS, y un
+     estilo en línea gana a cualquier selector: quitar `.puesto` no apagaba
+     nada y la cuña se quedaba encendida desde el primer disparo recibido. La
+     fuerza va ahora en `--fuerza`, que sólo tiñe el gradiente. */
   #dano.puesto { opacity: 1; }
 
   /* Ojo: **aquí no se pone `display`**. La regla de arriba lo apaga y ésta
@@ -182,11 +188,11 @@
   #panel label { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 4px 0; }
   #panel input[type=range] { width: 150px; accent-color: #2FCB82; }
 
-  #pedirVoto { background: #1A1A1A; color: #E8E8E8; border: 1px solid #3A3A3A;
+  #pausar, #pedirVoto { background: #1A1A1A; color: #E8E8E8; border: 1px solid #3A3A3A;
     border-radius: 3px; padding: 8px 16px; font: inherit; letter-spacing: .06em;
     cursor: pointer; }
-  #pedirVoto:hover { border-color: #2FCB82; color: #FFF; }
-  #pedirVoto[hidden] { display: none !important; }
+  #pausar:hover, #pedirVoto:hover { border-color: #2FCB82; color: #FFF; }
+  #pausar[hidden], #pedirVoto[hidden] { display: none !important; }
 </style>
 <canvas id="lienzo"></canvas>
 <div id="aviso-red" hidden></div>
@@ -220,8 +226,13 @@
   <p class="apagado"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> mover ·
      <kbd>Espacio</kbd> saltar · <kbd>C</kbd> agachar · <kbd>Shift</kbd> andar · <kbd>Esc</kbd> soltar</p>
   <p class="apagado"><kbd>clic izquierdo</kbd> disparar · <kbd>F3</kbd> números de red</p>
-  <p class="apagado"><kbd>Esc</kbd> pausa la partida para los dos —
-     te quedan <b id="libresMenu">3</b> sin pedir permiso</p>
+  <p class="apagado"><kbd>Esc</kbd> abre este menú — <b>no pausa por sí solo</b>.
+     Te quedan <b id="libresMenu">3</b> pausas sin pedir permiso</p>
+  <!-- **Pausar es un botón, no un gesto** (vuelta 60). Hasta la 58 soltar el
+       ratón pedía la pausa solo, así que abrir el menú para mirar el código o
+       copiar el enlace gastaba una de las tres libres sin haberlo pedido. Ahora
+       Escape sólo abre, y lo que gasta una pausa es pulsar esto. -->
+  <p><button id="pausar" class="control" hidden>Pausar la partida</button></p>
   <!-- Es un `.control`: se pincha con el ratón suelto y su clic no cuenta como
        el clic que captura. Sale sólo sin pausas libres; lo decide `pintarPausa`. -->
   <p><button id="pedirVoto" class="control" hidden>Solicitar pausa por votación</button></p>

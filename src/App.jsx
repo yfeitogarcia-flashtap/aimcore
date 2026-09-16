@@ -17,7 +17,6 @@ import {
 } from './config.js'
 import { Engine, PHASE } from './game/engine.js'
 import { disposeAudio } from './audio/sfx.js'
-import { setMusicVolume, startMusic, stopMusic } from './audio/music.js'
 import { getKeybinds, subscribeKeybinds } from './keybinds.js'
 import { getSettings, resetSettings, subscribeSettings, updateSettings } from './settings.js'
 import Crosshair from './ui/Crosshair.jsx'
@@ -129,19 +128,6 @@ export default function App() {
       if (import.meta.env.DEV) delete window.aimcore
     }
   }, [])
-
-  // La música acompaña a los menús y se calla al jugar: durante la partida el
-  // audio es información —el pitido del explosivo— y una base encima estorba.
-  // Se apaga también si no hay WebGL: ahí no hay nada que acompañar.
-  useEffect(() => {
-    if (engineError || phase === PHASE.RUNNING) stopMusic()
-    else startMusic()
-  }, [phase, engineError])
-
-  useEffect(() => setMusicVolume(settings.musicVolume), [settings.musicVolume])
-
-  // Al desmontar se para antes de cerrar el contexto de audio, que es de los dos.
-  useEffect(() => () => stopMusic(), [])
 
   /** Captura el ratón: reanuda una pausada o arranca donde toque. */
   const lock = useCallback(() => {

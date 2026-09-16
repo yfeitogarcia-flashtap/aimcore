@@ -24,7 +24,7 @@
  * falsa —y en este juego el sonido es información—, así que cae al perfil
  * silenciado sintetizado, que al menos suena a silenciador.
  *
- * **Dos trampas del contexto de audio**, las dos ya conocidas de `music.js`:
+ * **Dos trampas del contexto de audio**, las dos con cicatriz propia:
  *
  *  - El contexto no existe hasta el primer gesto del usuario, así que la carga
  *    tampoco puede empezar antes: `loadWeaponSamples()` se llama desde donde se

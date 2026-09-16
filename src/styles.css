@@ -768,6 +768,12 @@ body {
   color: var(--text-muted);
 }
 
+/* El mismo pie, cuando lo que dice es que algo no va. Naranja de la marca y no
+   rojo: el rojo es «te están disparando» y esto es un aviso de ajustes. */
+.panel__hint--alerta {
+  color: var(--naranja, #E4462B);
+}
+
 /* ---------- Panel de opciones ---------- */
 
 .panel--options {

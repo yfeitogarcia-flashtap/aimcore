@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import Controls from './Controls.jsx'
 import { keyLabel, keysOf } from '../keybinds.js'
+import { persistenciaDisponible } from '../settings.js'
 import ScenarioThumbnail from './ScenarioThumbnail.jsx'
 import {
   ENEMY_DIFFICULTIES,
@@ -456,18 +457,6 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
         }
       />
 
-      <SliderRow
-        id="opt-music"
-        setting="musicVolume"
-        value={settings.musicVolume}
-        onChange={onChange}
-        hint={
-          settings.musicVolume === 0
-            ? 'Sin música en los menús.'
-            : 'Suena en inicio, opciones y pausa; se calla al empezar a jugar.'
-        }
-      />
-
       <Controls binds={binds} />
 
       <div className="panel__actions">
@@ -478,7 +467,19 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
           Restablecer
         </button>
       </div>
-      <p className="panel__hint">Los ajustes se guardan en este navegador.</p>
+      {/* **Y si no se guardan, se dice.** Hasta la vuelta 60 el fallo de
+          `localStorage` se tragaba en silencio, así que un navegador que borra
+          los datos al cerrarse o una ventana privada se veían como un juego que
+          pierde los ajustes solo. Ahora la frase cambia. */}
+      {persistenciaDisponible() ? (
+        <p className="panel__hint">Los ajustes se guardan en este navegador.</p>
+      ) : (
+        <p className="panel__hint panel__hint--alerta">
+          Este navegador no deja guardar ajustes, así que se perderán al cerrar.
+          Suele ser una ventana privada, las cookies de terceros bloqueadas o el
+          navegador configurado para borrar los datos del sitio al salir.
+        </p>
+      )}
     </div>
   )
 }

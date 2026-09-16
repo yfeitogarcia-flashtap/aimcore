@@ -17,7 +17,7 @@
  * (el click que activa el Pointer Lock), que es lo que exigen los navegadores.
  */
 
-import { AUDIO, LANDING, OBJECTIVE } from '../config.js'
+import { AUDIO, FOOTSTEPS, LANDING, OBJECTIVE } from '../config.js'
 
 /** @type {AudioContext | null} */
 let ctx = null
@@ -357,6 +357,73 @@ export function playKill() {
  *
  * @param {number} strength 0..1, lo fuerte que fue la caída
  */
+/**
+ * **La pisada de otro** (vuelta 60). Siempre con emisor: una pisada sin sitio no
+ * es información, es ruido — el sentido entero de esto es enterarse de que hay
+ * alguien **por ahí** sin verlo. Por eso, si no hay emisor, no suena.
+ *
+ * El perfil es el del aterrizaje en pequeño: roce de suela y un cuerpo grave y
+ * corto. Lo que lo separa de aquél es la duración —una décima contra media— y
+ * que el tono se mueve un poco en cada paso, para que seis pisadas seguidas no
+ * suenen a la misma muestra repetida.
+ *
+ * @param {number} strength 0-1: la marcha del que pisa, ya con lo de agacharse
+ * @param {{input: AudioNode|null}} emitter emisor posicionado. Sin él no suena.
+ */
+export function playFootstep(strength = 1, emitter = null) {
+  if (!ctx || !master || !noiseBuffer) return
+  const out = emitter?.input
+  if (!out) return
+  const level = Math.max(0, Math.min(1, strength))
+  if (level <= 0) return
+
+  const profile = FOOTSTEPS.sound
+  const t = ctx.currentTime
+  const gain = AUDIO.footstepVolume * (0.45 + 0.55 * level)
+  // Un paso nunca es idéntico al anterior. Va sobre el tono y no sobre el
+  // volumen: variar el volumen se lee como distancia, y la distancia ya la está
+  // diciendo el panner.
+  const tono = 1 + (Math.random() * 2 - 1) * FOOTSTEPS.pitchJitter
+
+  // Suela: ruido por un pasa-banda. Es roce contra el suelo, no un golpe.
+  const noise = ctx.createBufferSource()
+  noise.buffer = noiseBuffer
+  const band = ctx.createBiquadFilter()
+  band.type = 'bandpass'
+  band.frequency.value = profile.scuffHz * tono
+  band.Q.value = 0.8
+  const noiseGain = ctx.createGain()
+  noiseGain.gain.setValueAtTime(0.0001, t)
+  noiseGain.gain.exponentialRampToValueAtTime(gain * profile.scuffGain, t + 0.006)
+  noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + profile.scuffDecay)
+  noise.connect(band).connect(noiseGain).connect(out)
+  noise.start(t)
+  noise.stop(t + profile.scuffDecay + 0.02)
+  noise.onended = () => {
+    noise.disconnect()
+    band.disconnect()
+    noiseGain.disconnect()
+  }
+
+  // Cuerpo: el peso del pie. Grave, corto y con ataque suave, que es lo que lo
+  // separa de un clic.
+  const body = ctx.createOscillator()
+  body.type = profile.bodyType
+  body.frequency.setValueAtTime(profile.bodyFrom * tono, t)
+  body.frequency.exponentialRampToValueAtTime(profile.bodyTo * tono, t + profile.bodyDecay * 0.7)
+  const bodyGain = ctx.createGain()
+  bodyGain.gain.setValueAtTime(0.0001, t)
+  bodyGain.gain.exponentialRampToValueAtTime(gain * profile.bodyGain, t + profile.bodyAttack)
+  bodyGain.gain.exponentialRampToValueAtTime(0.0001, t + profile.bodyDecay)
+  body.connect(bodyGain).connect(out)
+  body.start(t)
+  body.stop(t + profile.bodyDecay + 0.02)
+  body.onended = () => {
+    body.disconnect()
+    bodyGain.disconnect()
+  }
+}
+
 export function playLanding(strength = 1) {
   initAudio()
   if (!ctx || !master || !noiseBuffer) return

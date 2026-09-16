@@ -127,14 +127,39 @@ export function sanitizeSettings(raw) {
   return result
 }
 
+/**
+ * **Si no se puede guardar, hay que decirlo** (vuelta 60). El `try/catch` de
+ * abajo es correcto —sin persistencia se juega igual— pero se lo tragaba en
+ * silencio, y desde fuera eso es indistinguible de un juego que pierde los
+ * ajustes por su cuenta: se configuran, se cierra, se vuelve, y están de
+ * fábrica otra vez sin que nadie haya dicho nada.
+ *
+ * Pasa de verdad y no hace falta ser raro para provocarlo: una ventana privada,
+ * un navegador que borra los datos del sitio al cerrarse, o las cookies de
+ * terceros bloqueadas. Y hay un caso que no es del navegador y se lee igual:
+ * `localStorage` es **por origen**, así que mudar el despliegue de un dominio a
+ * otro —lo que hizo la vuelta 58— deja atrás todo lo guardado.
+ */
+let persistencia = true
+
+/** ¿Se están guardando los ajustes de verdad? Lo enseña el panel de opciones. */
+export function persistenciaDisponible() {
+  return persistencia
+}
+
 function load() {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY)
+    // Una lectura que funciona no dice que la escritura vaya a funcionar: hay
+    // navegadores que dejan leer y no escribir. Se comprueba escribiendo.
+    window.localStorage.setItem(STORAGE_KEY + '.prueba', '1')
+    window.localStorage.removeItem(STORAGE_KEY + '.prueba')
     return sanitizeSettings(stored ? JSON.parse(stored) : null)
   } catch {
     // localStorage puede estar bloqueado (modo incógnito, cookies de terceros)
     // y el JSON guardado puede estar corrupto. En ambos casos, valores por
     // defecto: el prototipo tiene que arrancar igual.
+    persistencia = false
     return defaultSettings()
   }
 }
@@ -183,8 +208,11 @@ export function resetSettings() {
 function save() {
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(current))
+    persistencia = true
   } catch {
-    // Sin persistencia se juega igual; sólo se pierde al recargar.
+    // Sin persistencia se juega igual; sólo se pierde al recargar. Lo que no se
+    // hace es callarlo: el panel de opciones lo dice.
+    persistencia = false
   }
 }
 

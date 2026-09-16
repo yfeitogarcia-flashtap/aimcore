@@ -124,18 +124,20 @@ Cuatro reglas que el sistema no se salta:
 Las **flechas** y el **Shift derecho** siguen funcionando como alternativas
 fijas: no son binds y no se pueden perder.
 
-## Música
+## Pisadas de los demás
 
-Un ambiente sintetizado en tiempo real acompaña la pantalla de inicio, las
-opciones y la pausa, y **se calla al empezar a jugar** — durante la partida el
-audio es información (el pitido del explosivo, los disparos) y una base encima
-sólo estorba. Vuelve al pausar.
+Cuando un rival se mueve cerca, se le **oye andar**, con dirección y volumen
+según dónde esté: si pasa por tu izquierda, suena a tu izquierda. Es la forma de
+enterarte de que hay alguien detrás de una esquina sin verlo.
 
-No es un bucle grabado: **no hay ni un fichero de audio en el repositorio**, como
-con los efectos. La pieza se genera mientras suena —un colchón grave y notas
-sueltas de una pentatónica menor— así que no tiene costura ni se reconoce a la
-tercera vuelta. Tiene **su propio volumen** en el panel: bajarla a cero no toca
-los efectos.
+Son de **los demás** y de nadie más: tus propias pisadas no suenan. No te dirían
+nada que no sepas —estás pulsando la tecla— y taparían justo lo que estas
+pisadas vienen a dejar oír.
+
+El paso se cuenta en **suelo recorrido**, no en tiempo, así que agacharse o andar
+con SHIFT bajan el ritmo solos además de sonar más flojo. Agachado se oye poco,
+pero se oye: un sigilo perfecto convertiría agacharse en la única forma de
+moverse, y lo que tiene que costar es la velocidad.
 
 ## Muestras de disparo (sin ficheros todavía)
 
@@ -689,6 +691,12 @@ aplican al momento y se guardan en `localStorage`, así que sobreviven a una
 recarga. **Restablecer**, al final del panel, vuelve a los valores de
 `config.js` de golpe.
 
+**Y si tu navegador no deja guardarlos, el panel te lo dice** en vez de callarse:
+suele ser una ventana privada, las cookies de terceros bloqueadas o el navegador
+puesto a borrar los datos del sitio al cerrarse. Ojo con otra cosa que no es del
+navegador y se parece mucho: lo guardado va **por dirección**, así que si el
+juego cambia de dominio, los ajustes de antes se quedan en el dominio viejo.
+
 Cada ajuste lleva además **su propio botón «por defecto»**, en la misma línea
 que su etiqueta, que restablece **sólo ese**: trastear con la sensibilidad y
 querer volver atrás no debería costar también el escenario, el arma y la
@@ -1223,10 +1231,19 @@ Quien decide sigue siendo el servidor —dónde estás, a quién le has dado, cu
 caes y cuándo vuelves—; el arma es tuya y lo único que el servidor le exige es
 que no dispares más rápido de lo que esa arma permite.
 
-**Escape pausa la partida, y la pausa es de verdad.** Para el mundo de **los
-dos** —ninguno ve moverse nada, ni lo suyo ni lo del rival— porque la decide el
-servidor y no la pantalla. Tienes **tres pausas libres** por partida. Abajo a la
-izquierda pone cuántas os quedan a cada uno. Volver a pinchar levanta la tuya.
+**Escape abre el menú; pausar es un botón.** Soltar el ratón no gasta nada: te
+saca el menú, suelta las teclas —así que con el menú abierto no andas— y el mundo
+sigue corriendo, así que ahí sigues siendo un blanco. Para parar la partida hay
+que pulsar **«Pausar la partida»**, y entonces sí: la pausa es de verdad y para
+el mundo de **los dos** —ninguno ve moverse nada, ni lo suyo ni lo del rival—
+porque la decide el servidor y no la pantalla.
+
+Tienes **tres pausas libres** por partida. Abajo a la izquierda pone cuántas os
+quedan a cada uno. Volver a pinchar levanta la tuya.
+
+*Hasta la vuelta 60 bastaba con Escape, y se cambió por lo que pasaba jugando:
+abrir el menú para mirar el código o copiar el enlace te gastaba una pausa sin
+haberla pedido.*
 
 **Y toda pausa tiene su reloj, que se ve en el propio cartel.** Una libre dura
 como mucho **dos minutos** y una votada, **uno**; al acabarse la cuenta se
@@ -1574,7 +1591,7 @@ Sin Supabase, sin login y sin cuentas: lo único que persiste son los ajustes,
 en el `localStorage` de este navegador. Las estadísticas de partida siguen en
 memoria y se pierden al recargar.
 
-Fuera de alcance también, por decisión explícita: minimapa, pasos sonoros.
+Fuera de alcance también, por decisión explícita: minimapa.
 Cuentas, ranking y matchmaking van aparte.
 
 El **multijugador** dejó de estar fuera de alcance en la vuelta 45, y la nube en

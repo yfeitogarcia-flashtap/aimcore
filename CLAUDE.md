@@ -74,7 +74,6 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Marcadores | `src/game/markers.js` | Brújula, iconos `?` / `!` y ficha arma+nick sobre cada muñeco. Sólo dibuja, y la brújula **sólo a quien se ve de verdad**. |
 | Fogonazo | `src/game/muzzleFlash.js` | El destello de cada disparo enemigo. Pool de estrellas aditivas; sólo dibuja. |
 | Recogibles | `src/game/pickups.js` | Cruces de vida, cargas de escudo y casco por el suelo. |
-| Música | `src/audio/music.js` | Ambiente de menús, generado. Su propio volumen. |
 | Config | `src/config.js` | Todo el tuning, sin excepción. |
 | Partida (servidor) | `net/partida.js` | **Todo lo que decide el servidor**, sin saber por dónde viaja: entradas, pasos, disparo, rebobinado y fotos. Un jugador entra con una función `enviar(texto)` y nada más. **No hay red en este fichero.** |
 | Huésped de Node | `net/servidor.mjs` | Node + `ws`, y desde la vuelta 58 **el del despliegue**: encamina por código de sala, lleva un reloj por sala y sirve `dist/`. El mismo fichero en local y en Fly. |
@@ -739,6 +738,18 @@ información pasiva sobre un cuerpo que tienes delante, y los iconos son avisos 
 que te han visto o de que te disparan — un aviso que sólo llega cuando ya puedes
 ver al que dispara llega tarde.
 
+**El yaw de una cámara y el `facing` de un marcador son convenciones opuestas**
+(vuelta 60). `facing` mira a **+Z** con yaw 0 —así lo produce un muñeco, de
+`atan2(dx, dz)`— y una cámara de three.js mira a **−Z**, como dice el propio
+movimiento en su cuenta de la dirección (`forward = (−sin, −cos)`). El mismo
+número significa lo contrario en cada sitio, así que pasar el yaw del rival tal
+cual pintaba la brújula **apuntando a su espalda**. La conversión tiene nombre y
+vive donde se define la convención: `facingDesdeCamara`, en `markers.js`. Con los
+muñecos no se veía nunca, porque su `facing` no sale de una cámara.
+
+Y **un error de 180° sólo se ve comparando las dos pantallas a la vez**: en una
+sola, una brújula al revés se lee como un rival que te da la espalda.
+
 **La brújula no se billboardea; los iconos sí.** No es una inconsistencia: es que
 dicen cosas distintas. La brújula dice **hacia dónde mira el muñeco**, así que va
 paralela al suelo y gira sólo en yaw —girada hacia la cámara apuntaría siempre al
@@ -1032,10 +1043,14 @@ sonido queda clavado en el origen.
 Con panner, el volumen por distancia lo aplica **sólo** el panner: pasar además
 la curva manual sería atenuar dos veces.
 
-**La música va por su propio nodo y sólo suena en los menús.** Generada, como
-todo el audio: ni un fichero, y sin bucle que se reconozca a la tercera vuelta.
-Se calla al empezar a jugar —durante la partida el audio es información— y vuelve
-al pausar. Dos trampas, las dos con su cicatriz:
+**No hay música, y no es que esté a cero: no existe** (vuelta 60). Hubo un
+ambiente de menús generado en tiempo real, con su volumen propio, y se retiró
+entero —módulo, ajuste, fila de opciones y llamadas—. Lo que dejó son las dos
+trampas del contexto de audio, que ahora viven donde todavía hacen falta, en
+`samples.js`: **el contexto no arranca sin gesto** y `resume()` es asíncrono, así
+que se espera al cambio de estado y no al gesto; y **`disposeAudio()` cierra el
+contexto**, así que se guarda *sobre qué contexto* se estaba esperando y no un
+booleano — React en modo estricto monta, desmonta y vuelve a montar.
 
 - **El contexto de audio no arranca sin gesto**, y `resume()` es asíncrono:
   preguntar por `ctx.state` justo después devuelve todavía `suspended`. Se espera
@@ -1045,6 +1060,27 @@ al pausar. Dos trampas, las dos con su cicatriz:
   Una espera armada sobre el viejo no se entera de nada nunca más. Por eso se
   guarda *sobre qué contexto* se está esperando y no un booleano. Pasa de verdad:
   React en modo estricto monta, desmonta y vuelve a montar.
+
+**Un estilo en línea gana a cualquier selector, y por eso no se escribe una
+propiedad que también manda una clase** (vuelta 60). La cuña de daño del duelo
+ponía la fuerza del impacto en `style.opacity` y el apagado en una clase: el
+temporizador quitaba la clase perfectamente y no servía de nada, así que la
+mancha roja **se quedaba desde el primer impacto de la partida**. Se veía al
+morir sólo porque ahí ya no llegan más disparos. La fuerza va ahora en una
+variable CSS que tiñe el gradiente; la opacidad la manda la clase, y nadie más.
+
+**El escenario de una partida no es una preferencia del jugador** (vuelta 60). El
+duelo lo fija al construir el motor (`new Engine(lienzo, callbacks, { escenario })`)
+y **no toca el store**. Hacerlo con `updateSettings` —como hasta la 58— le
+reescribía al jugador su escenario guardado en cada visita a un enlace de duelo, y
+dejaba el mapa colgando de los ajustes: tocar cualquier otro en mitad de la
+partida reconstruía el escenario en caliente.
+
+**Y si no se puede guardar, se dice.** El `try/catch` de `localStorage` es
+correcto —sin persistencia se juega igual— pero tragárselo en silencio es
+indistinguible de un juego que pierde los ajustes por su cuenta. Ojo también con
+que **`localStorage` es por origen**: mudar el despliegue de dominio deja atrás
+todo lo guardado, una vez.
 
 **Se llevan dos armas, y la pistola no se elige.** La ranura la declara el arma
 (`WEAPONS[x].slot`) y de ahí salen `PRIMARY_WEAPONS` —lo que ofrece el
@@ -1156,7 +1192,7 @@ saberlo. Cuatro reglas que sostienen el respaldo:
   cae al perfil silenciado sintetizado.
 - **Los buffers son del contexto en el que se decodificaron.** `disposeAudio()`
   cierra el contexto y el siguiente `initAudio()` crea otro: se guarda *sobre qué
-  contexto* se decodificó, igual que la espera de `music.js`. React en modo
+  contexto* se decodificó. React en modo
   estricto monta, desmonta y vuelve a montar.
 
 **Renombrar una clave de catálogo borra lo que hay guardado, salvo que se
@@ -1434,12 +1470,24 @@ propia, o el otro se queda en un mundo parado para siempre. Se contesta con
 jugando con el ratón capturado, y soltarlo para pinchar sería pausarle la partida
 para preguntarle si quiere pausarla.
 
-Y dos gestos que **no** son pausa local y sí hacen falta: **soltar el ratón suelta
-las teclas** (como perder el foco: quien abre el menú no está pulsando nada) y
-**volver a pinchar levanta tu propia pausa** —Escape pausa, clic reanuda—, o se
-recupera el ratón con el mundo todavía congelado. Se contesta a una votación con
-**teclas** (Intro / N) y también con los botones del cartel: ver abajo por qué las
-dos cosas y no una.
+**Y pausar es un botón, no un gesto** (vuelta 60). Desde la 53 y hasta la 58,
+soltar el ratón **pedía la pausa solo**, y el precio se vio a la primera partida
+de verdad: abrir el menú para mirar el código, copiar el enlace o teclear otro
+**gastaba una de las tres libres** sin que nadie la hubiera pedido, y no había
+forma de abrirlo sin pagarla. Escape abre el menú; lo que gasta una pausa es
+pulsar «Pausar» ahí dentro.
+
+Lo que la 53 arregló de verdad sigue en pie, que era lo que importaba: **soltar el
+ratón suelta las teclas** (como perder el foco: quien abre el menú no está
+pulsando nada), así que con el menú puesto no se anda. Lo que se acepta a cambio
+es que el mundo siga corriendo mientras miras el menú — ahí eres un blanco, igual
+que durante una votación desde la 55, y por la misma razón: **pausarle la partida
+al rival no puede ser el efecto secundario de un gesto tuyo**.
+
+Y el otro gesto que sí hace falta: **volver a pinchar levanta tu propia pausa**, o
+se recupera el ratón con el mundo todavía congelado. Se contesta a una votación
+con **teclas** (Intro / N) y también con los botones del cartel: ver abajo por qué
+las dos cosas y no una.
 
 **La votación no es una pausa, y por eso no congela a nadie** (vuelta 55). La 54
 la metió dentro de la pausa para cerrar el agujero de la 53 —quien la pedía se
@@ -1458,8 +1506,10 @@ mensaje y el servidor decidía qué era mirando las libres que quedaran. La cuen
 de libres le llega al cliente **en la foto**, o sea con un viaje de retraso, así
 que un cliente con la cuenta vieja podía abrirle al rival un cartel que su jugador
 no había pedido. Un mensaje dice lo que se quiere, no lo que se supone. De ahí
-también que **soltar el ratón sólo pida pausa si quedan libres**: sin ninguna,
-Escape es un menú y nada más.
+también que pedir y votar sean dos botones distintos y nunca los dos a la vez:
+con libres sale «Pausar», sin ellas «Solicitar pausa por votación». (Hasta la 58
+esto era «soltar el ratón sólo pide pausa si quedan libres»; desde la 60 soltar
+el ratón no pide nada.)
 
 **Quien no contesta se suma al que va ganando.** Quien la pide vota que sí sin
 decir nada —pedirla es quererla— y al agotarse `PAUSE.voteWindowSeconds` los votos
@@ -1665,11 +1715,39 @@ la que va después. Un `display` en la regla base del cartel lo deja encendido
 para siempre. Por eso `#abatido` no declara `display` y sólo lo hace su regla con
 `.puesto`.
 
+**Las pisadas son de los demás, y una zancada es un trozo de suelo** (vuelta 60).
+Cuando un rival se mueve cerca se le oye andar, con dirección y distancia
+(`FOOTSTEPS`, emisor colgado de su cuerpo). Tres cosas que son el diseño:
+
+- **El jugador no oye las suyas.** No dirían nada que no sepa —está pulsando la
+  tecla— y taparían justo lo que estas pisadas vienen a dejar oír. Misma regla
+  que el silbido de la vuelta 40.
+- **El paso se cuenta en distancia, no en tiempo**, así que agacharse o andar
+  bajan el ritmo solos, sin una segunda tabla de cadencias. Y se mide **contra
+  dónde se dio la última pisada**, no sumando el avance de cada frame: el rival
+  se interpola entre fotos y esa trayectoria tiembla —medido, 11 pisadas para
+  13.3 u con zancada de 1.9; contra la última, 6 para 13.4, que es lo que toca—.
+- **Agachado suena, pero poco.** Un sigilo perfecto haría de agacharse la única
+  forma de moverse, y lo que tiene que costar es la velocidad.
+
+Y una trampa de relojes: **la pose del rival se mueve con el frame y este código
+corre dentro del paso de mundo**. Dividir el avance de un frame entre un paso
+infla la velocidad, y con frames largos la infla por encima del techo del aire —o
+sea que el guardia de teletransporte borra la cuenta en cada frame: medido, cero
+pisadas con el rival andando—. El reloj de esto es el de pared.
+
 **Una suite sin aserciones no es una prueba, es un informe.** `baja.mjs` imprimía
 «se sube en 12/12» y salía en verde pasara lo que pasara; con aserciones de
 verdad cazó a la primera una regresión de 12/12 a 0/12. Si un test no puede
 fallar, no está guardando nada. (`x8.mjs` sigue siendo un informe a propósito: no
 afirma, mide.)
+
+**Un error de página es un fallo, no una línea de registro** (vuelta 60). Un
+`FOOTSTEPS is not defined` produjo **318 errores** en una tanda entera y las seis
+suites salieron **verdes**: `_loop` reprograma el frame siguiente **antes** de
+trabajar, así que una excepción por frame no mata el bucle — degrada en silencio.
+Un banco tiene que contar los `pageerror` y fallar con ellos; casi todos los de
+`net/` sólo los imprimen, y eso es deuda.
 
 **Y una suite verde tampoco está verificada por estar verde** (vuelta 57). Los
 tres fallos de `fondo49` —la muestra que se comía la ventana, la pestaña frenada
@@ -1767,8 +1845,9 @@ y esa máquina de estados hoy sólo existe para los muñecos.
 Hasta la 55 en pantalla había **mira, vida y el cartel de abatido**, y nada más.
 Los números de red y el fantasma siguen apagados detrás de **F3**.
 
-Desde la vuelta 53 **Escape pausa la partida de los dos**, con tres pausas libres
-por jugador y permiso del rival a partir de la cuarta. Y desde la 54 **con
+Desde la vuelta 53 se puede **pausar la partida de los dos**, con tres pausas
+libres por jugador y permiso del rival a partir de la cuarta — y desde la 60
+**Escape sólo abre el menú**: la pausa la gasta el botón «Pausar» de ahí dentro. Y desde la 54 **con
 reloj**: dos minutos una libre, uno una votada, con la cuenta atrás en el cartel
 y reanudación automática al agotarse.
 
@@ -1863,10 +1942,6 @@ capturando la siguiente pulsación, botón por acción y por lo general.
 Persistido en `aimcore.keybinds.v1` con saneado. **Escape queda fuera del
 sistema** y el panel lo dice.
 
-**Música de menús:** ambiente generado en tiempo real (`src/audio/music.js`),
-con su propio volumen en opciones. Suena en inicio, opciones y pausa; se calla al
-jugar.
-
 **Avatar del jugador (sólo visual):** **el mismo cuerpo que una diana** —cápsula
 con cabeza ovalada, tres piezas, una por zona del hitbox— tintado con el color de
 su equipo (`TEAMS`: azul `#2F6BF0` y magenta `#D94BD9`). Sin extremidades, sin
@@ -1942,6 +2017,11 @@ que no hay tablero; y **bajo la mira**, centrado, el bloque de arma en
 **una sola fila** —silueta a un lado, munición actual/máximo al otro, con
 parpadeo en reserva baja—, con el nombre del arma como rótulo secundario debajo,
 más el indicador de recarga y los mensajes de ayuda.
+
+**Pisadas del rival** (vuelta 60): cuando alguien se mueve cerca se le oye
+andar, con dirección y volumen por distancia. Sólo las de los demás; el paso se
+cuenta en suelo recorrido, así que agacharse y andar bajan el ritmo además del
+volumen. Tuning en `FOOTSTEPS`.
 
 **Audio espacial:** interruptor en opciones, activado por defecto. Los sonidos
 posicionados suenan con dirección (listener en la cámara, `PositionalAudio` en el
@@ -2064,7 +2144,7 @@ el botón no pueda apuntar a un ajuste distinto del que enseña la fila.
 
 ## 6. Fuera de alcance por decisión, no por olvido
 
-Cuentas, guardado en la nube, rankings, minimapa, pasos sonoros. Si el encargo no
+Cuentas, guardado en la nube, rankings y minimapa. Si el encargo no
 lo pide explícitamente, no se añade.
 
 **Lo que está fuera pero se ha dicho que vendría después vive en
