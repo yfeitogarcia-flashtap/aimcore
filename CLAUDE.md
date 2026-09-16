@@ -1106,6 +1106,27 @@ Tres consecuencias que **son** el sistema:
   `LEGACY_KEYBINDS`. Y el saneado acota contra `supportsSuppressor`: lo que
   decide es el dato del arma, no lo que diga localStorage.
 
+**El retroceso es una fuerza continua, no una animación con final** (vuelta 61).
+El patrón de `WEAPONS[x].recoil` describe **la subida**, que es de una vez; al
+agotarse se vuelve a `recoilLoopFrom` y **la cola se repite** mientras el gatillo
+siga apretado. Sin ese número la cola es el último paso: que el retroceso no pare
+es la regla, dónde repite es tuning.
+
+Hasta la vuelta 60 se paraba al acabarse el patrón, y eso no se leía como «ha
+llegado a su techo» sino como **que el arma se controla sola**: la Rift tiene 15
+pasos y un cargador de 30, así que **quince disparos seguidos salían sin
+retroceso ninguno** y clavados en el mismo punto. Medido tras el arreglo: 0 de 29
+disparos sin empuje, y la mira acaba a 10.43° de donde empezó.
+
+Y dos cosas que **no** se tocan al calibrar esto:
+
+- **La mira no vuelve nunca sola**, ni con el gatillo suelto ni apretado
+  (`applyRecoil`, en `lookControls.js`). Compensar es del jugador.
+- **El control no es un estado que se resuelva una vez.** El retroceso suma a la
+  rotación igual que lo hace el ratón, así que no hay ningún «controlado» que se
+  fije: compensar bien en la bala 14 no compra la 19. Si alguna vez aparece un
+  flag de «el jugador va compensando», es este fallo por otra puerta.
+
 **Un arma pesa, y el peso lo traduce una sola función.** Cada entrada de
 `WEAPONS` declara `weight` en kilos y `weaponSpeedFactor` dice cuánto frena: peso
 gratis hasta `MOVEMENT.load.free`, un `perKg` de pérdida por encima y un suelo en

@@ -837,9 +837,17 @@ nada más: ni daño, ni retroceso, ni cadencia.
 
 **Retroceso.** El patrón es un `[pitch, yaw]` en grados por cada disparo
 consecutivo de la ráfaga. Son incrementos, no posiciones: el motor los suma.
-Pitch positivo sube, yaw positivo desvía a la izquierda. Agotado el patrón deja
-de acumularse — ese es el techo del arma —, y un array vacío significa sin
-retroceso.
+Pitch positivo sube, yaw positivo desvía a la izquierda. Un array vacío significa
+sin retroceso.
+
+**El arma no deja de empujar mientras mantengas el gatillo.** Los primeros pasos
+del patrón son la subida, que pasa una vez; al acabarse, el arma sigue con **la
+cola en bucle** (`recoilLoopFrom`), que es el vaivén. La Rift deriva a la
+izquierda, la Volt zigzaguea, y ninguna de las dos se para a medio cargador.
+
+*Hasta la vuelta 60 sí se paraba, y era un fallo de bulto: la Rift tiene 15 pasos
+de patrón y 30 balas, así que **media ráfaga salía sin retroceso ninguno** y
+clavada en el mismo punto. Se veía como si el arma se controlase sola.*
 
 El empuje se suma a la rotación de la cámara igual que lo haría el ratón, así
 que el arma desplaza la mira además de lo que mueva el jugador. **No hay

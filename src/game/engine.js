@@ -1998,13 +1998,45 @@ export class Engine {
     this._showHelp('Pulsa R para recargar')
   }
 
-  /** Empuja la cámara según el disparo que toque del patrón. */
+  /**
+   * Empuja la cámara según el disparo que toque del patrón.
+   *
+   * **El retroceso es una fuerza continua, no una animación con final** (vuelta
+   * 61). Hasta la 60, agotado el patrón dejaba de empujar, y eso no se leía como
+   * «ha llegado a su techo»: se leía como que **el arma se controla sola**. Con
+   * la Rift —15 pasos de patrón y cargador de 30— eran **quince disparos
+   * seguidos sin retroceso ninguno**, clavados en el mismo punto, o sea media
+   * ráfaga convertida en un láser.
+   *
+   * Lo que no había, y el síntoma hacía sospechar, es una recuperación: la mira
+   * **nunca vuelve sola** (ver `applyRecoil` en `lookControls.js`). Lo que había
+   * era un array que se acababa.
+   */
   _applyRecoil(weapon) {
     const pattern = weapon.recoil
-    // Agotado el patrón, el retroceso se queda en su techo y deja de crecer.
-    if (this._sprayIndex >= pattern.length) return
-    const step = pattern[this._sprayIndex]
+    if (!pattern.length) return
+    const step = pattern[this._pasoDelPatron(weapon)]
     this.controls.applyRecoil(step[0], step[1])
+  }
+
+  /**
+   * Qué paso del patrón toca. Dentro del patrón, el que dice el índice; pasado
+   * el final, **la cola en bucle** (`recoilLoopFrom`): la subida es de una vez y
+   * el vaivén no se acaba mientras se mantenga el gatillo.
+   *
+   * Sin `recoilLoopFrom` la cola es el último paso, así que un arma a la que se
+   * le olvide el número sigue empujando en vez de quedarse quieta. Que el
+   * retroceso no pare es la regla; dónde repite es tuning.
+   */
+  _pasoDelPatron(weapon) {
+    const pattern = weapon.recoil
+    if (this._sprayIndex < pattern.length) return this._sprayIndex
+    const desde = Math.min(
+      Math.max(0, weapon.recoilLoopFrom ?? pattern.length - 1),
+      pattern.length - 1,
+    )
+    const largo = pattern.length - desde
+    return desde + ((this._sprayIndex - pattern.length) % largo)
   }
 
   _shoot(instanteReal = this._simTime) {

@@ -444,8 +444,21 @@ export const HELP = {
  * - `recoil`: patrón de retroceso, un `[pitch, yaw]` en **grados** por cada
  *   disparo consecutivo de la ráfaga. Son incrementos, no posiciones: el motor
  *   los va sumando. Pitch positivo sube, yaw positivo desvía a la izquierda.
- *   Agotado el patrón deja de acumularse: ese es el techo del arma. Un array
- *   vacío significa sin retroceso.
+ *   Un array vacío significa sin retroceso.
+ * - `recoilLoopFrom`: **desde qué paso se repite el patrón cuando se acaba**
+ *   (vuelta 61). El patrón describe la **subida**, que es de una vez; la cola
+ *   describe el **vaivén**, que no se acaba nunca. Agotado el patrón se vuelve
+ *   a este índice y se recorre la cola en bucle hasta que se suelte el gatillo.
+ *
+ *   Hasta la vuelta 60 el retroceso **se paraba** al agotarse el patrón, y eso
+ *   convertía media ráfaga en un láser: la Rift tiene 15 pasos y un cargador de
+ *   30, así que **quince disparos salían sin retroceso ninguno** y clavados en
+ *   el mismo punto. Se veía exactamente como lo que parecía —«el arma se
+ *   autocontrola sobre el disparo 17»— y no había ninguna recuperación por
+ *   medio: simplemente se acababa la animación.
+ *
+ *   Sin declararlo, la cola es **el último paso**, así que un arma nueva nunca
+ *   se queda quieta aunque se olvide poner el número.
  *
  * Los números son un punto de partida con el carácter descrito; se calibran
  * jugando, igual que la sensibilidad o el tamaño de diana.
@@ -541,6 +554,14 @@ export const WEAPONS = {
       [0.05, 0.26],
       [0.04, 0.22],
     ],
+    /**
+     * La subida son los diez primeros pasos; de aquí en adelante la Rift ya no
+     * sube, **deriva**. Repetir esos cinco da ~0.08° de pitch y ~0.30° de yaw
+     * por disparo mientras se mantenga el gatillo: una deriva a la izquierda
+     * que se contrarresta con el ratón y que **nunca se detiene**. Punto de
+     * partida; se calibra jugando.
+     */
+    recoilLoopFrom: 10,
   },
   'volt': {
     label: 'Volt',
@@ -584,6 +605,13 @@ export const WEAPONS = {
       [0.02, 0.18],
       [0.02, -0.16],
     ],
+    /**
+     * La Volt no deriva: **zigzaguea**, y su cola son los cuatro últimos pasos,
+     * que ya alternan el signo del yaw. En bucle eso es un vaivén de ±0.2°
+     * alrededor del punto al que haya subido, con el pitch casi a cero — que es
+     * su carácter: sube poco y no se está quieta. Punto de partida.
+     */
+    recoilLoopFrom: 11,
   },
 }
 

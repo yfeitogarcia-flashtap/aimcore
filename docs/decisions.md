@@ -6467,6 +6467,81 @@ Vale la pena dejarlas escritas porque las tres son de método:
   máster**, va por el listener, así que medir amplitud allí daba 0 con las
   pisadas sonando. Dos ceros seguidos, ninguno del código.
 
+## Ronda 61 — El retroceso es una fuerza, no una animación
+
+Un fallo de una sola línea con un síntoma que apuntaba a otra parte.
+
+### Lo que se veía y lo que era
+
+Manteniendo el gatillo en automático **sin tocar el ratón**, el arma dibujaba su
+patrón de retroceso y hacia el disparo 15-18 se quedaba clavada: el resto del
+cargador salía por el mismo punto, como un láser. Desde la silla se lee como que
+**el arma se controla sola** — que es exactamente lo que no puede pasar en un
+juego donde controlar el patrón es la habilidad.
+
+La sospecha razonable era una recuperación disparándose con el gatillo apretado.
+**No existe ninguna**: `applyRecoil` suma a la rotación y lo dice en su cabecera
+desde que se escribió —«no hay recuperación: el retroceso se queda donde deja la
+mira»—, y la mira nunca vuelve sola.
+
+Lo que había era la otra mitad de la sospecha: **el patrón se aplicaba como una
+animación con final**.
+
+```js
+// Agotado el patrón, el retroceso se queda en su techo y deja de crecer.
+if (this._sprayIndex >= pattern.length) return
+```
+
+Y los números lo cuentan solos:
+
+| Arma | Cargador | Pasos de patrón | Disparos con retroceso **cero** |
+|---|---|---|---|
+| Rift | 30 | 15 | **15** |
+| Volt | 25 | 15 | **10** |
+| Pulse | 18 | 0 | 18 *(semiautomática y sin retroceso, a propósito)* |
+
+Media ráfaga de la Rift salía sin empuje ninguno. No era un techo alto: era
+**medio cargador sin retroceso**.
+
+### El arreglo: la subida se acaba, el vaivén no
+
+El patrón describe dos cosas distintas pegadas: los primeros pasos son **la
+subida**, que es de una vez, y la cola es **el vaivén**, que no tiene por qué
+acabarse nunca. Agotado el patrón se vuelve a `recoilLoopFrom` y se recorre la
+cola en bucle mientras el gatillo siga apretado.
+
+Dónde empieza la cola es tuning y vive en `config.js`, por arma. **Que el
+retroceso no pare es la regla**, y por eso sin declarar el número la cola es el
+último paso: un arma nueva a la que se le olvide nunca se queda quieta.
+
+Lo que no se ha tocado: la mira **sigue sin volver sola**, ni con el gatillo
+suelto ni con él apretado. Compensar es del jugador y sólo del jugador.
+
+### Y por qué el control no podía ser binario, ni lo era
+
+El encargo pedía además que compensar bien en la bala 14 no comprara las
+siguientes. Eso ya se cumplía por construcción y conviene dejar escrito por qué,
+para no «arreglarlo» algún día: el retroceso **suma** a la rotación de la cámara
+igual que lo hace el ratón, así que no hay ningún estado de «controlado» que se
+resuelva una vez. Lo que fallaba no era el modelo, era que el empuje desaparecía.
+
+### Lo que sale medido
+
+Con la Rift, cargador entero en automático y sin tocar el ratón (`recoil61.mjs`,
+sonda dentro de la página y **una muestra por disparo**, no por frame):
+
+- **0 disparos de 29 sin empuje**, contra los 15 de antes.
+- **0.573°/disparo** de media en la primera mitad del cargador y **0.307°** en la
+  segunda: sigue empujando, con menos fuerza, que es lo que tiene que hacer una
+  cola.
+- La mira acaba a **10.43°** de donde empezó, o sea que no se autocentra.
+- Y tras compensar a mitad de ráfaga, los 12 disparos siguientes empujan todos
+  (0.304° de media): el control reacciona a cada disparo.
+
+Aritmética sobre los mismos datos: el cargador entero de la Rift pasa de 7.19° de
+pitch y 2.62° de yaw a **8.39° y 7.06°**. Los números son un punto de partida y
+**se calibran jugando**, como el resto del arsenal.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
@@ -6626,6 +6701,12 @@ objetivo era medir tiempos y rendimiento de verdad.
   lee igual que el fallo), sin anotar el hueco de la ausencia como un fotograma,
   y afirmando la **velocidad sostenida** antes que el techo — un techo que no
   enseña su suelo lo cumple también un jugador congelado.
+- **Que el arma no deja de empujar** (`recoil61.mjs`): cargador entero en
+  automático **sin tocar el ratón**, con sonda dentro de la página y **una
+  muestra por disparo** —lo que se afirma es de disparos, no de frames—; que
+  ningún disparo sale con empuje cero, que la segunda mitad del cargador sigue
+  empujando, que la mira acaba lejos de donde empezó (no se autocentra) y que
+  compensar a media ráfaga no compra los disparos siguientes.
 - **Que la brújula no miente, la mancha se apaga, Escape no gasta pausa y al
   rival se le oye andar** (`ux60.mjs`): con **dos navegadores**, el rumbo que B
   le pone al marcador contra la dirección de la cámara de A **leída en la página
