@@ -6217,6 +6217,89 @@ saber qué aserción era**. Si vuelve a salir, ahí está lo que hay que mirar.
   seguridad. Lo que sí cambió de sitio es `ws`: pasa de dependencia de desarrollo
   a dependencia de producción, porque ahora hay producción.
 
+## Ronda 59 — Dos máquinas son dos mundos
+
+Primera prueba real del motor completo en red, entre dos personas y contra el
+despliegue de Fly. Síntoma: **los dos jugadores se identifican como `p1` y los
+dos salen azules**, con el mismo código en la dirección, y no se ven.
+
+### La hipótesis era el enrutado, y no era el enrutado
+
+Lo que se sospechaba —razonablemente— era que el encaminado por código escrito en
+la 58 no estuviera encontrando la sala existente y creara una `Partida` por
+conexión. Encaja con el síntoma a la perfección, y por eso había que descartarlo
+mirando, no razonando.
+
+**No es eso**, y se demuestra en dos líneas. `_siguienteId` es un contador **de
+cada `Partida`** y `equipo` sale de la primera ranura libre, así que dos `p1`
+azules **son dos `Partida` distintas**, una por jugador. Dentro de un proceso eso
+no puede pasar: `salaDe(codigo)` es un `Map.get` con la clave que devuelve
+`normalizarCodigo`, la misma función en los dos extremos.
+
+Medido con dos conexiones crudas al mismo código (`/tmp/ruteo58.mjs`):
+
+| | A | B | |
+|---|---|---|---|
+| **Un** proceso | `p1` | `p2` | una sola partida — el enrutado encuentra la sala |
+| **Dos** procesos | `p1` | `p1` | dos partidas — **el síntoma exacto** |
+
+O sea que el enrutado está bien y lo que hay es **dos procesos**. En Fly, dos
+máquinas.
+
+### La causa: `fly deploy` crea dos máquinas por defecto
+
+Por alta disponibilidad, y en cualquier aplicación normal es lo correcto. Aquí
+no: **las salas viven en la memoria del proceso**. Dos máquinas sirviendo la
+misma aplicación son dos mundos para el mismo código; el reparto de carga manda a
+cada jugador a una y cada una crea su sala. La página carga, el código coincide en
+las dos pantallas, no hay un solo error por ninguna parte, y el juego no funciona.
+
+**Es un fallo de la guía de despliegue, no del código.** `docs/despliegue-fly.md`
+decía `fly deploy` a secas. Ahora dice `fly deploy --ha=false`, con el
+`fly scale count 1` para arreglarlo si ya se desplegó, y `fly.toml` lo lleva
+escrito en mayúsculas donde se va a leer.
+
+### Lo que deja: el estado en memoria fija el número de máquinas
+
+Es la consecuencia que hay que recordar antes de tocar el despliegue o de
+escalar. **Un mundo en memoria no se replica**: mientras las salas vivan en el
+proceso, la aplicación es de **una sola máquina**, y eso no es una limitación de
+Fly sino de la forma del servidor. Cloudflare lo resolvía sin que se notara
+—`idFromName(código)` **es** el encaminado a la instancia— y al salir de ahí esa
+pieza se quedó allí sin que nadie la echara de menos, porque con un proceso no
+hace falta.
+
+El día que haga falta más de una máquina, lo que hace falta **antes** es
+encaminar por código hasta la misma —con `fly-replay` o con lo que sea— y no un
+`fly scale count 2`. Queda anotado en el roadmap, donde bloquea el modo de varios
+jugadores.
+
+### Y una lección de instrumento: desde fuera esto no se distingue
+
+Dos máquinas y un enrutado roto **producen exactamente el mismo síntoma**, y
+ninguno de los dos da un error. Por eso `/salud` dice ahora **qué máquina
+contesta** (`FLY_MACHINE_ID`): pedirlo dos veces y ver si el campo cambia
+responde la pregunta en un segundo, sin entrar en el código. Un servidor que no
+dice quién es obliga a deducirlo.
+
+### Lo que no era un fallo
+
+Del mismo informe venían «no aparece silueta de arma, armería, brújula ni el
+resto del HUD». Tres cosas distintas, y ninguna es un fallo:
+
+- **La armería y la silueta del arma no existen en `/duelo`**, y no por olvido:
+  la página del duelo es una página aparte desde la vuelta 45 —sin menú, sin
+  armería, sin puntuación— y su HUD es el suyo, mínimo. `#armaHud` enseña
+  munición y **el nombre del arma en texto**; la silueta trazada con potrace es
+  del HUD de React, que esa página no monta.
+- **La brújula y la ficha son marcadores sobre un rival.** Sin rival no hay nada
+  que dibujar, así que eso era el mismo fallo de arriba visto por otro lado.
+- **Todo el HUD del duelo vive bajo `body.jugando`**, o sea sólo con el ratón
+  capturado. Sin hacer clic no se ve, y es deliberado (vuelta 48).
+
+Que la armería y la silueta lleguen o no al duelo es una decisión de producto que
+no se ha tomado, no un arreglo pendiente.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

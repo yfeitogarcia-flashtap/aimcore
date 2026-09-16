@@ -329,11 +329,20 @@ const servidor = http.createServer(async (peticion, respuesta) => {
 
   // Un sitio al que mirar para saber si esto está vivo, y lo que la plataforma
   // consulta para decidir si hay que reiniciar.
+  //
+  // **Y dice qué máquina contesta, que no es un adorno** (vuelta 59). Las salas
+  // viven en la memoria de este proceso, así que dos máquinas sirviendo la misma
+  // aplicación son **dos mundos** para el mismo código de partida: cada jugador
+  // entra en el suyo, los dos se creen `p1` y no se ven. Pasó en la primera
+  // prueba real, y desde fuera es indistinguible de un fallo de enrutado. Con la
+  // máquina en la respuesta, pedir `/salud` dos veces lo dice en un segundo.
   if (url.pathname === '/salud') {
     const ocupadas = [...salas.values()].filter((s) => !s.vacia)
     respuesta.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
     return respuesta.end(JSON.stringify({
       ok: true,
+      maquina: process.env.FLY_MACHINE_ID || 'local',
+      region: process.env.FLY_REGION || 'local',
       escenario: ESCENARIO,
       hz: SIM.hz,
       salas: salas.size,

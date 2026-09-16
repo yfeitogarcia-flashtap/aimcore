@@ -28,6 +28,23 @@ primary_region = 'cdg'
   # desde la consola del navegador que le teletransporten donde quiera. Que el
   # despliegue no la lleve es justo lo que comprueba `sala47.mjs` [7].
 
+# **UNA SOLA MÁQUINA, Y NO ES UN AHORRO: ES UN REQUISITO** (vuelta 59).
+#
+# Las salas viven en la memoria del proceso, así que dos máquinas sirviendo esta
+# aplicación son **dos mundos** para el mismo código de partida: el reparto de
+# carga manda a cada jugador a una, las dos crean su propia sala con ese código,
+# los dos se creen `p1` y no se ven. Es exactamente lo que pasó en la primera
+# prueba real entre dos personas.
+#
+# **`fly deploy` crea dos máquinas por defecto** en aplicaciones con
+# `http_service`, por alta disponibilidad. Aquí eso rompe el juego. Se despliega
+# con `fly deploy --ha=false`, y se comprueba con `fly status` (una sola fila) o
+# pidiendo `/salud` dos veces: si el campo `maquina` cambia, hay más de una.
+#
+# El día que haga falta más de una máquina, lo que hace falta **antes** es
+# encaminar por código de sala hasta la misma —lo que el Durable Object daba
+# gratis con `idFromName`—. Hasta entonces: una.
+
 [http_service]
   internal_port = 8080
   force_https = true

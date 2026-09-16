@@ -253,8 +253,13 @@ Lo que esto le pide al netcode no es poco, y conviene verlo antes de empezar:
   nota, con cuatro sí.
 - **El marcador de TAB** pasa de una fila a N, que es para lo que se hizo rejilla.
 
-- **Bloqueante:** 1.1 (con ocho jugadores, alguien se cae siempre), 1.2 y el
-  protocolo por jugador.
+- **Bloqueante:** 1.1 (con ocho jugadores, alguien se cae siempre), 1.2, el
+  protocolo por jugador, y **encaminar por código hasta la misma máquina**. Esto
+  último es nuevo desde la vuelta 59 y es fácil de pasar por alto: las salas
+  viven en la memoria del proceso, así que hoy la aplicación es de **una sola
+  máquina**. Cloudflare lo daba gratis —`idFromName(código)` era el encaminado—;
+  en Fly hay que ponerlo (`fly-replay` o equivalente) **antes** de escalar, no
+  después.
 - **Medible:** el coste por paso con N jugadores contra el presupuesto de siempre,
   y el ancho de banda. El servidor no era el problema con dos —2,55 µs por paso—;
   lo caro es el netcode, y eso escala distinto.

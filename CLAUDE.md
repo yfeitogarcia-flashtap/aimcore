@@ -305,6 +305,19 @@ limpiar cuando una partida acaba. Tres consecuencias:
   llevó por delante `?worker=1` y dejó a las dos pestañas hablando con servidores
   distintos, sin un solo error (`docs/decisions.md` §47).
 
+**Un mundo en memoria fija el número de máquinas: una** (vuelta 59). Las salas
+viven en la memoria del proceso, así que dos máquinas sirviendo la aplicación son
+**dos mundos** para el mismo código de partida: el reparto de carga manda a cada
+jugador a una, las dos crean su sala, los dos se creen `p1` y no se ven. Pasó en
+la primera prueba real y **no da ni un error**: la página carga y el código
+coincide en las dos pantallas. Por eso se despliega con `fly deploy --ha=false`
+—por defecto crea dos— y por eso `/salud` dice **qué máquina contesta**.
+
+En Cloudflare esto no existía porque `idFromName(código)` **era** el encaminado a
+la instancia. Al salir de ahí, esa pieza se quedó allí. Antes de escalar a más de
+una máquina hay que encaminar por código hasta la misma; `fly scale count 2` sin
+eso reparte a los amigos entre dos mundos.
+
 **Una sala vacía no gasta reloj, y aun así el mundo no se olvida** (la regla es
 de la 47; la segunda mitad se hizo explícita en la 58). El reloj arranca al entrar
 el primero y para al salir el último —60 pasos por segundo con nadie dentro se

@@ -152,10 +152,23 @@ Si por lo que sea te quedó también la compartida, se suelta con
 
 ---
 
-## 6. Desplegar
+## 6. Desplegar — **con una sola máquina**
 
 ```sh
-fly deploy
+fly deploy --ha=false
+```
+
+**El `--ha=false` no es opcional, y es el error que ya nos costó una prueba.**
+Por defecto `fly deploy` crea **dos** máquinas por alta disponibilidad, y aquí
+eso rompe el juego: las salas viven en la memoria del proceso, así que dos
+máquinas son **dos mundos** para el mismo código de partida. El reparto de carga
+manda a cada jugador a una, las dos crean su sala con ese código, los dos se
+creen el primer jugador y **no se ven**.
+
+Si ya habías desplegado sin esa opción, se arregla en un comando:
+
+```sh
+fly scale count 1
 ```
 
 Esto construye el juego y lo sube. La primera vez tarda unos minutos —está
@@ -167,7 +180,8 @@ Cuando acabe:
 fly status
 ```
 
-Tiene que salir una máquina en estado `started`.
+Tiene que salir **una sola** máquina, en estado `started`. Si salen dos, vuelve
+al `fly scale count 1` de arriba.
 
 Y para ver si está viva de verdad, abre en el navegador:
 
@@ -175,8 +189,13 @@ Y para ver si está viva de verdad, abre en el navegador:
 https://vektor-flicklab.fly.dev/salud
 ```
 
-Devuelve una línea de datos: cuántas salas hay, cuántas ocupadas, cuántos
-jugadores y cuánto lleva encendido. Si eso responde, el servidor está sirviendo.
+Devuelve una línea de datos: **qué máquina contesta**, cuántas salas hay,
+cuántas ocupadas, cuántos jugadores y cuánto lleva encendido. Si eso responde, el
+servidor está sirviendo.
+
+**Y recárgalo tres o cuatro veces seguidas mirando el campo `maquina`.** Tiene
+que ser **siempre el mismo**. Si cambia, hay más de una máquina y el duelo no va
+a funcionar por mucho que la página cargue: `fly scale count 1`.
 
 ---
 
@@ -224,7 +243,8 @@ quedarse corto sería tirar a dos jugadores en mitad de una partida.
 
 | Qué quieres hacer | Qué escribes |
 |---|---|
-| Publicar un cambio | `fly deploy` |
+| Publicar un cambio | `fly deploy --ha=false` |
+| Comprobar que sigue habiendo una sola máquina | `fly status` |
 | Ver si está encendido | `fly status` |
 | Ver qué está pasando | `fly logs` |
 | Reiniciarlo a mano | `fly apps restart vektor-flicklab` |
