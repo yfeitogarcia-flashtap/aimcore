@@ -620,6 +620,19 @@ export const PRIMARY_WEAPONS = Object.fromEntries(
   Object.entries(WEAPONS).filter(([, weapon]) => weapon.slot === 'primary'),
 )
 
+/**
+ * **El catálogo en orden, para que un arma quepa en un número** (vuelta 56).
+ *
+ * Cada entrada de red lleva el arma que se empuña —de ella salen la velocidad
+ * que frena el peso y la cadencia que el servidor exige— y mandar la clave en
+ * texto son diez bytes sesenta veces por segundo para decir lo mismo que un
+ * índice. Lo que hace que el índice sea seguro es que **sale del catálogo**,
+ * que es un módulo compartido por los dos extremos: no hay una segunda lista
+ * que pueda quedarse a medias. Añadir un arma al final no mueve las demás; si
+ * algún día se reordena, se reordena para los dos a la vez.
+ */
+export const WEAPON_ORDER = Object.keys(WEAPONS)
+
 /** La pistola, la única de su ranura. */
 export const SECONDARY_WEAPON = Object.keys(WEAPONS).find(
   (key) => WEAPONS[key].slot === 'secondary',
@@ -2934,6 +2947,30 @@ export const NET = {
   shotRange: 60,
   /** Con la vida a cero, cuánto tarda en volver. Sin escalado todavía. */
   respawnMs: 2000,
+  /**
+   * **La holgura con la que el servidor valida la cadencia** (vuelta 56), en
+   * pasos.
+   *
+   * El arma la lleva el cliente —cargador, recarga, retroceso y sonido son
+   * suyos— y lo que el servidor comprueba es una sola cosa: que entre dos
+   * disparos aceptados haya pasado lo que las RPM de esa arma dicen. Es el
+   * reparto barato: unas cuarenta líneas aquí contra el modelo de arma entero
+   * al otro lado, y cubre lo único que se gana haciendo trampa con un arma.
+   *
+   * La holgura es **un paso, y no un número inventado**: el cliente programa
+   * sus disparos con su reloj de mundo, que avanza en pasos de `SIM_STEP_MS`,
+   * así que dos disparos consecutivos caen en la rejilla de pasos y el hueco
+   * real alterna entre el suelo y el techo del intervalo. Un paso es justo esa
+   * cuantización. Lo que cuesta: con la Pulse (500 RPM, 120 ms) la holgura es
+   * el 14% del intervalo, así que un cliente que mienta puede ganar como mucho
+   * eso — no un arma automática de la nada.
+   *
+   * Y la cadencia se mide sobre `instanteDePaso(n)` y **no** sobre la fracción
+   * del disparo: la fracción existe para el rebobinado, que necesita saber el
+   * instante exacto; la cadencia sólo necesita un reloj monótono que los dos
+   * extremos compartan, y el número de paso lo es (ver `protocolo.js`).
+   */
+  shotRateSlackTicks: 1,
   /**
    * En cuántas fotos seguidas se repite el veredicto de un disparo. Mandarlo
    * una sola vez significa que perder esa foto pierde el veredicto para

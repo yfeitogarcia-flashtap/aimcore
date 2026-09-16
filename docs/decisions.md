@@ -5677,6 +5677,191 @@ con la tecla pulsada — que es exactamente lo que habría dado el fallo que se
 estaba buscando. Lo delató comprobar la premisa aparte: en un banco limpio, el
 mismo jugador se movía 9.86 u. Ventanas cortas y el rumbo como parámetro.
 
+## Ronda 56 — El motor completo, contra un rival de verdad
+
+La «Opción B» de la evaluación de la vuelta 50, que llevaba cinco vueltas
+esperando: conectar `engine.js` entero —arma, cargador, recarga, retroceso,
+dispersión, marcadores, HUD— a la red que las vueltas 45-55 dejaron validada.
+
+Hasta aquí la página del duelo montaba **su propia escena mínima**: cámara,
+escenario, movimiento y dos cuerpos. Era lo correcto mientras la pregunta fuese
+sobre la red; la de esta vuelta es la contraria —¿funciona el juego contra una
+persona?— y con una escena de a mano no se puede contestar.
+
+### Lo que cambia no es un modo: es de dónde sale la verdad
+
+`engine.usarRed(cliente)`, y a partir de ahí movimiento, disparo, vida y
+reaparición **dejan de decidirse en el motor**. El arma se queda del lado del
+cliente y lo único que el servidor le exige es la cadencia. El motor no
+construye el cliente ni sabe de sockets: `net/prueba.js` lo ensambla con la
+cámara, el movimiento y los oclusores **del motor** y se lo entrega. La regla de
+la vuelta 45 sigue en pie.
+
+Los seis métodos, y qué les pasa a cada uno:
+
+| | antes | en red |
+|---|---|---|
+| `_shoot` | raycast contra el pool de dianas | `net.disparar()` con el instante **real** del clic; el veredicto vuelve del servidor |
+| `_updateCombat` | `status.tick` + muñecos + marcadores | `_syncRival`: lee la foto y la pone en pantalla |
+| `_syncMarkers` | una ranura por diana viva | una, la del rival, con un adaptador rival→instancia |
+| `_onPlayerHit` | decide el daño | ya no existe ese camino: la vida baja en la foto |
+| `_downPlayer` | `status.die()` y apaga el movimiento | ni una cosa ni la otra: ver abajo |
+| `_respawnPlayer` | `status.respawn()` + `movement.reset()` | ya ocurrió en `_aplicar`; aquí sólo repone el cargador |
+| `_simStep` | dianas, combate, explosivo | `net.dar()` en vez de `movement.update`, y nada de lo demás |
+| `_beginSession` | siembra dianas, bomba y recogibles | no siembra nada; el único blanco es el rival |
+
+### Un abatido no se mueve, y **no** porque se le apague el movimiento
+
+Es el detalle que más fácil habría sido hacer mal. Fuera de la red, `_downPlayer`
+llama a `movement.setEnabled(false)`. En red eso sería doble error: quien decide
+que un muerto no avanza es el servidor, que ignora sus entradas hasta `vivoEn`
+(vuelta 52) — y apagar además el movimiento local **deja de producir entradas**,
+así que ese jugador **no reaparece nunca**, porque la reaparición cuelga de sus
+propias entradas. Se ve igual: 0.00 u con la tecla de andar pulsada.
+
+Lo mismo con `_respawnPlayer`: la reaparición ya la hizo `_aplicar` al ejecutar
+la primera entrada que alcanzaba `vivoEn`, con su `reset()` y su época de pose.
+Repetirla aquí sería un segundo teletransporte que el servidor no predijo.
+
+Y con la pausa: `_onPointerLockChange` **no llama a `_suspend()`** en red. Un
+`_suspend` local sería el «estoy en pausa» que la vuelta 53 quitó, y además
+dejaría de mandar entradas. Lo que sí se hace es la verdad de lo que pasa —soltar
+las teclas y apagar la mirada—; el mundo sigue hasta que la foto diga otra cosa.
+
+### La cadencia la valida el servidor, y el arma la lleva el cliente
+
+Es el reparto que recomendaba la evaluación: unas cuarenta líneas en
+`partida.js` contra el modelo de arma entero al otro lado. Entre dos disparos
+aceptados tiene que haber pasado lo que dicen las RPM del arma declarada; un
+arma que no está en el catálogo no dispara.
+
+Dos decisiones dentro:
+
+- **Se mide en número de paso, no en la fracción del disparo.** La fracción
+  existe para el rebobinado, que necesita el instante exacto; la cadencia sólo
+  necesita un reloj monótono que compartan los dos extremos, y el paso lo es.
+- **La holgura es un paso, y no un número inventado** (`NET.shotRateSlackTicks`).
+  El cliente programa sus disparos con su reloj de mundo, que avanza en pasos, y
+  el hueco real alterna entre el suelo y el techo del intervalo: un paso es esa
+  cuantización. Lo que cuesta: con la Pulse (500 RPM) la holgura es el 14% del
+  intervalo, así que un cliente que mienta gana eso y no un arma automática de
+  la nada.
+
+Medido pidiendo 3600 RPM con un arma de 600: **30 peticiones en 54 pasos, 9
+aceptadas y 21 rechazadas**, contra un techo teórico de 10. Y un disparo
+rechazado **recibe veredicto igual** —el cliente espera uno por `seq`— pero no
+toca el mundo, y no cuenta como desacuerdo de la red: es una medida aparte.
+
+### Lo que costó: un número que no viajaba
+
+El arma frena. `weaponSpeedFactor` multiplica las tres marchas, y con la Rift en
+la mano el cliente predecía a **5.88 u/s** mientras el servidor simulaba a
+**6.50**, porque el peso sólo lo sabía un lado. Resultado: **75 correcciones en
+286 fotos y 2.5 u de error máximo** — la reconciliación entera abierta por un
+campo que no estaba en el protocolo.
+
+El arreglo dice dónde estaba el error de concepto: **el arma no es un dato del
+disparo, es del movimiento**. Así que viaja en **cada entrada**, no sólo cuando
+se aprieta el gatillo, y como índice del catálogo (`WEAPON_ORDER`) para que
+quepa en un número. Un solo campo con tres usos —el peso, la cadencia y la
+silueta que el rival ve en la ficha— y ninguna ventana en la que los dos
+extremos puedan discrepar. Después: **0 correcciones de 286 fotos**.
+
+### Y el peor de los tres: las teclas
+
+Al conectar el cliente se apuntaba `cliente.teclas` a `movement.keys` — un
+objeto en vez de dos, que parecía justo la disciplina de la casa. Y es al revés:
+**la reconciliación reejecuta entradas guardadas**, así que `desempaquetarTeclas`
+llena `movement.keys` sesenta veces por segundo con máscaras **del pasado**. Con
+un solo objeto, cada foto borraba la tecla que el jugador tenía pulsada. Medido:
+con W apretada, `teclas.forward` volvía a `false` en el primer paso y el jugador
+**no se movía en absoluto**.
+
+Lo que separa las dos cosas no es un nombre, es un papel: `movement.input` es
+**lo que el jugador está pulsando** y `movement.keys` es **lo que el paso está
+ejecutando**. Fuera de la red son el mismo objeto a propósito —sin nadie que
+reejecute, la intención y lo ejecutado son lo mismo, y copiar por paso sería
+trabajo por nada—; `separateInput()` los desdobla, y sólo la red lo pide.
+
+De ahí sale también cuál de las dos se suelta cuándo: `reset()` —que ocurre en
+cada reaparición— suelta **lo que se ejecuta** y no la intención, o reaparecer
+con W apretada te dejaría parado. Soltar el ratón, perder el foco y desactivar
+el movimiento sueltan las dos, que es lo que significan.
+
+### Escribir en un campo no es jugar
+
+El juego no tiene ni un campo de texto, así que el teclado era del juego y punto.
+La página del duelo sí los tiene —el código de la sala— y con el motor completo
+teclear ahí **era jugar**: la `B` abría la armería, la `A` y la `C` movían, y
+`preventDefault` se llevaba por delante lo escrito. Medido: teclear `abc` en el
+campo del código dejaba el campo vacío.
+
+`typingInField()` vive en `keybinds.js`, con `eventCode` y `keysOf`, porque es el
+mismo vocabulario: qué cuenta como entrada del juego y qué no. Lo miran el motor
+y el movimiento, desde el mismo sitio.
+
+### La sesión empieza con la partida, no con el clic
+
+Fuera de la red el clic arranca una ronda. Aquí la ronda ya está corriendo al
+otro lado, y un jugador conectado que no manda entradas es un jugador al que el
+servidor deja parado —y que, si le matan, no reaparece—. El clic enciende el
+**mando**: mirar y teclear. La bienvenida enciende el **mundo**.
+
+Y va en el **mismo turno** que la bienvenida, no en el frame siguiente:
+`_beginSession` suelta las teclas, así que arrancar un frame tarde se comía una
+tecla pulsada justo al entrar — que es lo que hacía fallar cuatro de cada doce
+entradas simultáneas en `conexion51`.
+
+De propina, la sesión de red empieza **en la ranura que da el servidor** y no en
+el spawn del escenario: `movement.reset()` conoce uno solo y el servidor reparte
+dos. Sin eso, el primer paso de cada partida llegaba con 2.5 u de error.
+
+### Lo que el bucle se llevó
+
+El bucle de la página —acumulador con arrastre, enganche al reloj del servidor,
+re-anclaje tras un parón y freno con suelo— se ha movido a
+`cliente.pasosDeFrame()`. Vive en el cliente porque es **del netcode**: el
+acumulador solo bastaría para un juego local, y lo que lo distingue es el
+enganche. Y vive en **un** sitio porque si no el motor habría llevado una
+segunda copia de las vueltas 49 y 51.
+
+### Lo que esta vuelta no trae
+
+- **Escudo y casco**, tal como se decidió: sólo vida.
+- **Los iconos `?` y `!`** sobre el rival. Dicen «te ha visto» y «te está
+  disparando», y eso es el estado de una máquina que hoy sólo existe para los
+  muñecos. Deducirlo desde fuera mirando relojes sería la segunda copia que la
+  vuelta 37 se negó a tener: el día que el disparo del rival viaje en la foto, la
+  fase sale de ahí. La brújula y la ficha flotante sí funcionan, y no dependen
+  de eso.
+- **Fogonazo y silbido** del rival, por lo mismo.
+
+### Dos cosas que aprendió el banco
+
+- **El ratón sintético miente bajo `pointerlock`.** Medido: con el ratón
+  capturado, `mouse.down()` de Playwright dispara además un `mousemove` con el
+  desplazamiento que va del centro bloqueado a su posición virtual, y eso **gira
+  la cámara** — de −1.5708 a 0.0003 en el mismo evento. Un jugador no hace eso.
+  `mouse.up()` no lo hace, y reponer el rumbo después se queda puesto: se
+  aprieta, se apunta y se dispara, en ese orden.
+- **Y una premisa que no se comprueba mide un muro.** Los primeros ocho disparos
+  del banco salieron `0 impactos` con las dos columnas de acuerdo… en el fallo:
+  entre (0,0) y (0,−8) está El Largo. La tabla vacía de la vuelta 46, otra vez.
+  Ahora el banco resuelve el tiro **antes** de medir y afirma que hay línea.
+
+### Y una que queda pendiente
+
+El brazo de **reproducción** de `fondo49` —el que apaga el re-anclaje para
+enseñar el fallo de la vuelta 49— ya no lo caza a través de su ventana de 250 ms
+con el motor delante: sale 0.0 u/s donde debería salir treinta y pico. El fallo
+**sí se reproduce**: medido con una sonda directa sobre la misma página y con el
+re-anclaje apagado, el jugador recorre de −10.4 a 18.5 u en 900 ms (**≈32 u/s**,
+contra los 6.5 de carrera). Lo que no sobrevive es la medida del banco, no el
+fenómeno. El brazo que guarda el producto —con el arreglo puesto— sigue verde en
+sus tres filas, con cero correcciones y el re-anclaje disparándose. Queda
+anotado aquí a propósito: una suite roja que se explica es mejor que una suite
+verde que no mide.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

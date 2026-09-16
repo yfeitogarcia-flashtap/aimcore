@@ -18,7 +18,7 @@
  * El reloj de la simulación es **el número de paso**, no el de nadie: ver
  * `protocolo.js`.
  */
-import { NET, PAUSE, SIM_STEP_MS } from '../src/config.js'
+import { NET, PAUSE, SIM_STEP_MS, WEAPONS, WEAPON_ORDER } from '../src/config.js'
 import { resolverDisparo } from './disparo.js'
 import { cuerpoDeJugador } from './pose.js'
 import { MSG, desempaquetarTeclas, empaquetarTeclas, instanteDePaso, instanteEnPaso } from './protocolo.js'
@@ -44,6 +44,8 @@ export class ClienteRed {
 
     this.id = null
     this.conectado = false
+    /** Tu ranura (0 o 1). La da la bienvenida. */
+    this.equipo = 0
     /** Cuándo llegó la última foto. Null mientras no haya llegado ninguna. */
     this._ultimaFotoEn = null
     /**
@@ -76,6 +78,13 @@ export class ClienteRed {
     this.paso = 0
     /** Entradas mandadas y todavía sin confirmar, en orden. */
     this.pendientes = []
+    /**
+     * **El arma que se empuña.** La escribe quien la lleve —el motor, al
+     * equiparla— y viaja en cada entrada: de ella salen el peso que frena y la
+     * cadencia que el servidor valida. Por defecto, la de la ranura secundaria,
+     * que es la que se lleva siempre.
+     */
+    this.arma = WEAPON_ORDER[0]
     /** Teclas de este frame, que las escribe quien lea el teclado. */
     this.teclas = { forward: false, back: false, left: false, right: false, jump: false, crouch: false, walk: false }
     /** Instante real de la última pulsación de saltar sin repartir, o null. */
@@ -108,9 +117,12 @@ export class ClienteRed {
     /** Instante local en que caducan. Ver `restaPausaMs` / `restaVotacionMs`. */
     this._pausaHasta = null
     this._votacionHasta = null
+    /** El ritmo del bucle: sobrante del frame y frames seguidos frenados. */
+    this._acumulador = 0
+    this._frenados = 0
 
     /** Fotos del rival, para dibujarlo en el pasado. */
-    this.rival = { id: null, buffer: [], pose: null }
+    this.rival = { id: null, buffer: [], pose: null, arma: null, vida: 100 }
     /** La última pose autoritativa del jugador local, para el fantasma. */
     this.autoritativo = null
 
@@ -126,6 +138,8 @@ export class ClienteRed {
       errorMax: 0,
       correcciones: 0,
       fotos: 0,
+      /** Disparos que el servidor ha tirado por cadencia (vuelta 56). */
+      rechazados: 0,
       bytesEntrada: 0,
       bytesSalida: 0,
       /** Totales que nadie reinicia, para medir sobre ventanas largas. */
@@ -195,6 +209,38 @@ export class ClienteRed {
   silencioMs(ahora = performance.now()) {
     if (this._ultimaFotoEn === null) return 0
     return ahora - this._ultimaFotoEn
+  }
+
+  /** La ranura del rival: en un 1v1 es la otra. */
+  get equipoRival() {
+    return this.equipo === 0 ? 1 : 0
+  }
+
+  /** Su nick provisional, de su ranura. Placeholder hasta que haya cuentas. */
+  get nickRival() {
+    return `VK-0${this.equipoRival + 1}`
+  }
+
+  /**
+   * **Cuánto falta para reaparecer**, o 0 si se está vivo. Sale del reloj de
+   * las entradas —`vivoEn` menos el paso propio— y no de un cronómetro local:
+   * es el mismo número con el que el servidor lo decide, así que la cuenta de
+   * la pantalla y la reaparición caen en el mismo instante (vuelta 52).
+   */
+  restaReaparicionMs() {
+    if (this.vivoEn <= 0) return 0
+    return Math.max(0, (this.vivoEn - this.paso) * SIM_STEP_MS)
+  }
+
+  /**
+   * **Deja al jugador en su sitio de salida.** Lo usa el motor al empezar una
+   * sesión de red: `movement.reset()` por su cuenta lo llevaría al spawn del
+   * escenario, que es uno solo, y el servidor le ha dado **su ranura** —dos
+   * sitios separados, para no aparecer uno dentro del otro—. Medido sin esto:
+   * 2.5 u de error y una corrección en el primer paso de cada partida.
+   */
+  colocarEnSalida() {
+    this._reaparecerAqui()
   }
 
   /** ¿Se puede uno fiar del reloj del servidor ahora mismo? */
@@ -287,6 +333,17 @@ export class ClienteRed {
       k: empaquetarTeclas(this.teclas),
       yaw: this.camara.rotation.y,
       jt,
+      /**
+       * **El arma que se empuña, en cada entrada** (vuelta 56). No es un dato
+       * del disparo: es del **movimiento**, porque el peso frena, y por eso
+       * tiene que viajar con cada paso y no sólo cuando se aprieta el gatillo.
+       * Medido con la Rift en la mano y sin mandarla: el cliente predecía a
+       * 5.88 u/s y el servidor simulaba a 6.50, o sea 75 correcciones en 286
+       * fotos y 2.5 u de error — la reconciliación entera abierta por un
+       * número que no viajaba. De paso es de donde salen la cadencia que el
+       * servidor valida y el arma que el rival ve en la ficha flotante.
+       */
+      w: WEAPON_ORDER.indexOf(this.arma),
     }
     if (d) entrada.d = d
 
@@ -370,6 +427,16 @@ export class ClienteRed {
     this.disparosEnVuelo.delete(resultado.seq)
     const m = this.medidas
     m.disparos += 1
+    // **Un disparo rechazado por cadencia no es un desacuerdo de la red**: el
+    // servidor no lo ha resuelto, lo ha tirado. Se cuenta aparte, o el
+    // porcentaje de acuerdo diría que la compensación falla cuando lo que pasa
+    // es que alguien está pidiendo más disparos de los que su arma da.
+    if (resultado.rechazado) {
+      m.rechazados += 1
+      m.detalle.push({ rechazado: true })
+      if (m.detalle.length > 400) m.detalle.shift()
+      return
+    }
     if (mio.mio.impacto === resultado.impacto) m.acuerdos += 1
     // **Fantasma**: viste el impacto y el servidor no. **Sorpresa**: al revés.
     else if (mio.mio.impacto) m.fantasmas += 1
@@ -419,6 +486,11 @@ export class ClienteRed {
       this._reaparecerAqui()
     }
     desempaquetarTeclas(entrada.k, m.keys)
+    // **El peso del arma entra en la simulación, no al lado.** Se aplica aquí,
+    // en el mismo sitio en que lo aplica el servidor, para que reejecutar una
+    // entrada vieja la vuelva a dar con el arma que se llevaba entonces.
+    const arma = WEAPONS[WEAPON_ORDER[entrada.w]]
+    if (arma) m.setWeaponWeight(arma.weight)
     this.camara.rotation.y = entrada.yaw
     if (entrada.jt >= 0) m.pressJump(instanteEnPaso(entrada.n, entrada.jt))
     m.update(SIM_STEP_MS / 1000, instanteDePaso(entrada.n))
@@ -452,6 +524,13 @@ export class ClienteRed {
       // El sitio de salida de su ranura. Se guarda porque la reaparición vuelve
       // aquí, y predecirla necesita saberlo.
       this.salida = { x: mensaje.salida.x, z: mensaje.salida.z }
+      /**
+       * **Tu ranura**, que es tu sitio de salida y tu color (vuelta 49). En un
+       * 1v1 la del rival es la otra, y de ahí sale también su nick provisional:
+       * no hay cuentas, así que el nombre es la ranura, como el `VK-01` del
+       * pool de dianas. El día que haya identidades, esto es lo que cambia.
+       */
+      this.equipo = mensaje.equipo
       this.camara.position.x = mensaje.salida.x
       this.camara.position.z = mensaje.salida.z
       this.onBienvenida?.(mensaje)
@@ -535,6 +614,10 @@ export class ClienteRed {
         yaw: foto.p[id].yaw, s: foto.p[id].s, vivo: foto.p[id].vida > 0,
       })
       while (this.rival.buffer.length > 30) this.rival.buffer.shift()
+      // Fuera del buffer: no se interpola ni se dibuja en el pasado, es una
+      // etiqueta. La ficha flotante la lee y el HUD no la mira.
+      this.rival.vida = foto.p[id].vida
+      this.rival.arma = foto.p[id].arma ?? this.rival.arma
     }
 
     const mio = foto.p[this.id]
@@ -623,6 +706,71 @@ export class ClienteRed {
     this.pendientes.length = 0
     this.medidas.pendientes = 0
     this.medidas.reanclajes += 1
+  }
+
+  /**
+   * **Cuántos pasos de mundo toca dar en este frame** (vuelta 56).
+   *
+   * Es el bucle de la página del duelo, movido aquí tal cual al conectarse el
+   * motor completo: acumulador con arrastre del resto y enganche al reloj del
+   * servidor. Vive en el cliente porque es **del netcode**, no del dibujado —el
+   * acumulador solo bastaría para un juego local, y lo que lo distingue es el
+   * enganche—, y porque tenerlo en la página significaba que el motor habría
+   * tenido que llevar una segunda copia.
+   *
+   * Tres reglas, y las tres están medidas en vueltas anteriores:
+   *
+   * - **El acumulador guarda el sobrante y lleva tolerancia**, como el del
+   *   motor y por la misma razón: un monitor a 60 Hz entrega frames de 16.666
+   *   ms contra un paso de 16.667.
+   * - **Por encima de `NET.resyncTicks` de atraso no se recupera corriendo: se
+   *   re-ancla** (vuelta 49). Sin bucle no se produjo ni una entrada, así que
+   *   no hay nada que recuperar.
+   * - **Y sólo se le hace caso a un reloj fresco** (vuelta 51). Contra un reloj
+   *   parado el freno es una trampa sin fondo: 60 → 3 → 0 pasos por segundo.
+   *   El freno tiene suelo, y se mide en **frames seguidos frenados**.
+   *
+   * Devuelve los pasos a dar y si ha re-anclado — quien dibuje necesita saberlo
+   * para no interpolar a través del salto.
+   */
+  pasosDeFrame(ahora, delta) {
+    const tolerancia = Math.min(1, SIM_STEP_MS * 0.1)
+    this._acumulador += delta
+    let pasos = 0
+    while (this._acumulador >= SIM_STEP_MS - tolerancia) {
+      this._acumulador -= SIM_STEP_MS
+      pasos += 1
+    }
+    let reanclado = false
+    const objetivo = this.relojFresco(ahora) ? this.pasoObjetivo() : 0
+    if (objetivo > 0) {
+      const desfase = objetivo - (this.paso + pasos)
+      if (desfase > NET.resyncTicks) {
+        this.reanclar(objetivo)
+        pasos = 0
+        this._acumulador = 0
+        reanclado = true
+      } else if (desfase > NET.clockDeadbandTicks) {
+        pasos += Math.min(NET.maxCatchUpTicks, desfase)
+        this._frenados = 0
+      } else if (desfase < -NET.clockDeadbandTicks && pasos > 0 && this._frenados < NET.clockDeadbandTicks) {
+        pasos -= 1
+        this._frenados += 1
+      } else {
+        this._frenados = 0
+      }
+    }
+    return { pasos, reanclado }
+  }
+
+  /** Lo que le sobra al último paso, para el alfa del dibujado interpolado. */
+  get acumulador() {
+    return this._acumulador
+  }
+
+  /** En pausa el mundo no avanza y **el acumulador no guarda el rato parado**. */
+  soltarAcumulador() {
+    this._acumulador = 0
   }
 
   pasoObjetivo() {

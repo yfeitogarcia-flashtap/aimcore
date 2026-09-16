@@ -13,11 +13,14 @@
   hr { border: 0; border-top: 1px solid #222; margin: 9px 0; }
 
   /* ---------------------------------------------- lo que se ve jugando
-     Tres cosas y ninguna más: dónde apuntas, cuánta vida te queda y si estás
-     abatido. Todo esto sólo existe con el ratón capturado (`body.jugando`);
-     con el ratón suelto estorba al aviso, que es la pantalla de menú. */
-  #mira, #vital, #abatido { display: none; }
-  body.jugando #mira, body.jugando #vital { display: block; }
+     Dónde apuntas, cuánta vida te queda, qué arma llevas y con cuánta munición,
+     de dónde te disparan y si estás abatido. Todo esto sólo existe con el ratón
+     capturado (`body.jugando`); con el ratón suelto estorba al aviso, que es la
+     pantalla de menú. El bloque de arma y la cuña de daño entran con la vuelta
+     56, que es cuando el motor completo pasa a llevar la partida. */
+  #mira, #vital, #abatido, #armaHud, #dano { display: none; }
+  body.jugando #mira, body.jugando #vital, body.jugando #armaHud { display: block; }
+  body.jugando #dano { display: block; }
 
   #mira { position: fixed; left: 50%; top: 50%; width: 22px; height: 22px;
     transform: translate(-50%, -50%); pointer-events: none; }
@@ -117,6 +120,27 @@
   #vitalB { width: 132px; height: 3px; margin-top: 5px; background: #242424; }
   #vitalB i { display: block; height: 100%; background: #2FCB82; transition: width .12s linear; }
 
+  /* **El bloque de arma**, bajo la mira y centrado. Cifras de ancho fijo: la
+     munición cambia disparo a disparo y con ancho variable el bloque baila. */
+  #armaHud { position: fixed; left: 50%; bottom: 74px; transform: translateX(-50%);
+    text-align: center; pointer-events: none; }
+  #municion { font-size: 22px; line-height: 1; color: #FFF; letter-spacing: .08em;
+    font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgba(10,10,10,.9); }
+  #municion.mal { color: #E4462B; }
+  #arma { margin-top: 4px; font-size: 11px; letter-spacing: .18em; color: #8A8A8A;
+    text-transform: uppercase; text-shadow: 0 1px 2px rgba(10,10,10,.9); }
+
+  /* **La cuña de daño.** El hueco del centro es una máscara radial y no una
+     opacidad afinada: así la regla de no tapar la mira queda garantizada por
+     construcción y no por un número que alguien pueda subir. */
+  #dano { position: fixed; inset: 0; z-index: 2; pointer-events: none; opacity: 0;
+    transition: opacity .18s linear;
+    background: conic-gradient(from calc(var(--angulo, 0deg) - 34deg),
+      rgba(255,45,31,.55) 0deg, rgba(255,45,31,0) 68deg, rgba(255,45,31,0) 360deg);
+    -webkit-mask-image: radial-gradient(circle at 50% 50%, transparent 24%, #000 62%);
+    mask-image: radial-gradient(circle at 50% 50%, transparent 24%, #000 62%); }
+  #dano.puesto { opacity: 1; }
+
   /* Ojo: **aquí no se pone `display`**. La regla de arriba lo apaga y ésta
      tiene la misma especificidad —un id—, así que un `display: grid` puesto
      aquí gana por ir después y el cartel de ABATIDO se queda encendido con la
@@ -172,6 +196,13 @@
 <div id="mira"><i></i><i></i><i></i><i></i><i></i></div>
 <div id="vital"><div id="vitalN">100</div><div id="vitalB"><i style="width:100%"></i></div>
   <div id="libres">pausas 3 · rival 3</div></div>
+<!-- El bloque de arma va **bajo la mira y centrado**, como en el HUD del juego:
+     munición a un lado, nombre del arma como rótulo secundario debajo. -->
+<div id="armaHud"><div id="municion">—</div><div id="arma">—</div></div>
+<!-- Y la cuña de daño, que dice **de dónde** te han disparado. El ángulo lo
+     calcula el motor; esto sólo lo pinta. El centro va libre por construcción:
+     es una máscara radial, no una opacidad afinada (vuelta 40). -->
+<div id="dano"></div>
 <div id="abatido"><div><b>ABATIDO</b><p class="apagado" id="reaparece">&nbsp;</p></div></div>
 
 <div id="aviso"><div>

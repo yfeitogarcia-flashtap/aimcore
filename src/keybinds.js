@@ -277,3 +277,25 @@ export function eventCode(event) {
     ? `Mouse${event.button}`
     : event.code
 }
+
+/**
+ * **¿Se está escribiendo en un campo?** (vuelta 56).
+ *
+ * El juego no tiene ni un campo de texto, así que hasta aquí no hacía falta: el
+ * teclado era del juego y punto. La página del duelo sí los tiene —el código de
+ * la sala y el enlace— y desde que corre el motor completo teclear ahí era
+ * jugar: la `B` abría la armería, la `A` y la `C` movían, y `preventDefault` se
+ * llevaba por delante lo que se estaba escribiendo. Medido: teclear `abc` en el
+ * campo del código dejaba el campo vacío.
+ *
+ * Vive aquí, con `eventCode` y `keysOf`, porque es el mismo vocabulario: qué
+ * cuenta como entrada del juego y qué no. Dos copias de esta comprobación —una
+ * en el motor y otra en el movimiento— es cómo una de las dos se olvida.
+ */
+export function typingInField(target = document) {
+  const el = target?.activeElement
+  if (!el) return false
+  if (el.isContentEditable) return true
+  const tag = el.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+}

@@ -1197,6 +1197,17 @@ vienen apagados, porque no son para jugar sino para medir.
 Cada jugador lleva **el color de su equipo** —azul o magenta— según la ranura que
 le dé el servidor, que es la misma de la que sale su punto de salida.
 
+**Y desde la vuelta 56 juegas con el juego, no con una maqueta.** El duelo lo
+lleva el motor completo: llevas **el arma de verdad** —la que tengas equipada, con
+su cargador, su recarga, su retroceso y su dispersión al moverte—, y en pantalla
+tienes **vida, munición y el nombre del arma**, una **cuña roja** hacia quien te
+dispara y, sobre el rival, la **brújula** que dice hacia dónde mira y su ficha con
+nick y arma. Sigue sin haber escudo ni casco: sólo vida.
+
+Quien decide sigue siendo el servidor —dónde estás, a quién le has dado, cuándo
+caes y cuándo vuelves—; el arma es tuya y lo único que el servidor le exige es
+que no dispares más rápido de lo que esa arma permite.
+
 **Escape pausa la partida, y la pausa es de verdad.** Para el mundo de **los
 dos** —ninguno ve moverse nada, ni lo suyo ni lo del rival— porque la decide el
 servidor y no la pantalla. Tienes **tres pausas libres** por partida. Abajo a la

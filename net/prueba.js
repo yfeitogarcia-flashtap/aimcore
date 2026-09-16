@@ -13,20 +13,18 @@
  * con `net/servidor.mjs` en local y con el Durable Object en Cloudflare, y no
  * sabe cuál de los dos hay al otro lado (ver `sala-cliente.js`).
  *
- * El bucle es el del motor: **paso fijo de 60 Hz con arrastre del resto**, y la
- * cámara se dibuja interpolada entre los dos últimos pasos. No se reutiliza
- * `engine.js` a propósito: ahí dentro están el HUD, el audio, las dianas y las
- * fases, y nada de eso hace falta para responder a la pregunta de esta vuelta.
+ * **Desde la vuelta 56 el mundo lo pone `engine.js`**, el motor completo: arma,
+ * cargador, recarga, retroceso, dispersión, marcadores y HUD, contra un rival
+ * de verdad. Hasta entonces esta página montaba su propia escena mínima, y era
+ * lo correcto —la pregunta de la vuelta 45 era sobre la red—; la de la 56 es la
+ * contraria. Lo que sigue siendo suyo: el código de partida, el menú, los
+ * avisos de conexión, las pausas y los números de F3.
  */
-import * as THREE from 'three'
-import { CAMERA, COLORS, NET, RENDER, SIM_STEP_MS, TEAMS } from '../src/config.js'
-import { createScene } from '../src/game/scene.js'
-import { Scenario } from '../src/game/scenario.js'
-import { MovementController } from '../src/game/movement.js'
+import { COLORS, NET, TARGET, TEAMS, WEAPONS } from '../src/config.js'
+import { Engine } from '../src/game/engine.js'
 import { Avatar } from '../src/game/avatar.js'
-import { LookControls } from '../src/game/lookControls.js'
+import { updateSettings } from '../src/settings.js'
 import { hasLineOfSight } from '../src/game/sight.js'
-import { initAudio, playHit, playKill } from '../src/audio/sfx.js'
 import { cuerpoDeJugador } from './pose.js'
 import { resolverDisparo } from './disparo.js'
 import { ClienteRed } from './cliente.js'
@@ -48,42 +46,42 @@ const $ = (id) => document.getElementById(id)
 // lee. Dos literales del mismo gris es cómo acaban siendo dos grises distintos.
 document.documentElement.style.setProperty('--crosshair-color', COLORS.crosshair)
 
-const renderer = new THREE.WebGLRenderer({ canvas: lienzo, antialias: RENDER.antialias })
-renderer.setPixelRatio(Math.min(window.devicePixelRatio, RENDER.maxPixelRatio))
-const { scene, setRoom } = createScene()
-const camara = new THREE.PerspectiveCamera(CAMERA.fov, 1, CAMERA.near, CAMERA.far)
-camara.rotation.order = 'YXZ'
-
-const escenario = new Scenario(scene, 'largoYPuerta')
-setRoom(escenario.room)
-
-const movimiento = new MovementController(camara)
-movimiento.setScenario(escenario)
-movimiento.reset()
-movimiento.setEnabled(true)
-
-const controles = new LookControls(camara)
-const equipos = Object.keys(TEAMS)
+/**
+ * **El escenario de la partida lo manda el servidor**, y hoy es uno solo. Se
+ * fija en los ajustes **antes** de construir el motor porque de ahí lo lee él:
+ * montar uno y cambiarlo después sería rehacer colisión, rutas y sala en
+ * caliente. La bienvenida trae el del servidor y el panel de F3 lo enseña, que
+ * es donde se vería una discrepancia el día que haya más de uno.
+ */
+updateSettings({ scenario: 'largoYPuerta' })
 
 /**
- * **Cada jugador con el color de su equipo** (vuelta 49). Hasta aquí el rival se
- * pintaba siempre con `equipos[1]` y el fantasma siempre con `equipos[0]`, o sea
- * que **los dos se veían del mismo color**: cada uno era azul para sí mismo y
- * magenta para el otro. El color de equipo existe justo para lo contrario —un
- * rival se reconoce por el color, que se ve igual desde cualquier ángulo—, así
- * que se tiñen al llegar la bienvenida, que es cuando se sabe qué ranura te ha
- * tocado. Se construyen con un color cualquiera porque `setColor` los repinta.
+ * **El motor completo, con la red enchufada** (vuelta 56). Hasta aquí esta
+ * página montaba su propia escena mínima —cámara, escenario, movimiento y dos
+ * cuerpos— porque la pregunta de la vuelta 45 era sobre la red y el motor no
+ * hacía falta. Ahora la pregunta es la contraria: si el juego de verdad —arma,
+ * cargador, recarga, retroceso, dispersión, marcadores, HUD— funciona contra un
+ * rival real. Así que el mundo lo pone `engine.js` y esta página se queda con lo
+ * que siempre fue suyo: el código de partida, el menú, los avisos de conexión,
+ * las pausas y los números de F3.
  */
-const rival = new Avatar(0.45, TEAMS[equipos[1]].color)
-rival.group.visible = false
-scene.add(rival.group)
+const motor = new Engine(lienzo, {
+  onFrame: (stats) => pintarHud(stats),
+  onWeapon: (w) => pintarArma(w),
+  onDamage: (fraccion, rumbo) => marcarDano(fraccion, rumbo),
+  onVerdict: (v) => marcarDisparo(v),
+})
 
 /**
  * **El fantasma: dónde dice el servidor que estás tú.** Es lo que hace visible
  * la reconciliación — sin pérdida de paquetes va clavado dentro de tu cabeza y
  * no se ve; con pérdida se despega, y eso es exactamente la corrección.
+ *
+ * Lo pone la página y no el motor porque es un **instrumento de medida**, no
+ * una pieza del juego: vive detrás de F3 con los demás y apagado de fábrica.
  */
-const fantasma = new Avatar(0.45, TEAMS[equipos[0]].color)
+const equipos = Object.keys(TEAMS)
+const fantasma = new Avatar(TARGET.radius, TEAMS[equipos[0]].color)
 for (const zona of Object.keys(fantasma.zones)) {
   for (const malla of fantasma.zones[zona]) {
     malla.material.transparent = true
@@ -91,7 +89,8 @@ for (const zona of Object.keys(fantasma.zones)) {
     malla.material.depthWrite = false
   }
 }
-scene.add(fantasma.group)
+fantasma.group.visible = false
+motor.scene.add(fantasma.group)
 
 /**
  * **El enlace.** Latencia, jitter y pérdida son propiedades del cable, así que
@@ -112,10 +111,17 @@ history.replaceState(null, '', direccionDeLaBarra(codigo))
 $('codigo').textContent = codigo
 $('enlace').value = enlaceDeSala(codigo)
 
+/**
+ * **La página ensambla la red; el motor sólo la usa.** El cliente se construye
+ * con la cámara, el movimiento y los oclusores **del motor** —son los mismos que
+ * dibujan y contra los que se choca, no copias— y `usarRed` se lo entrega antes
+ * de arrancar. La regla de la vuelta 45 sigue en pie: `engine.js` no sabe de
+ * sockets ni de códigos de sala.
+ */
 const cliente = new ClienteRed({
-  camara,
-  movimiento,
-  oclusores: escenario.occluders,
+  camara: motor.camera,
+  movimiento: motor.movement,
+  oclusores: motor.scenario.occluders,
   transporte: conRedSimulada(transporteWebSocket(urlDeSala(codigo)), enlace),
 })
 cliente.onBienvenida = (m) => {
@@ -126,29 +132,32 @@ cliente.onBienvenida = (m) => {
   const mio = equipos[m.equipo % equipos.length]
   const suyo = equipos[(m.equipo + 1) % equipos.length]
   fantasma.setColor(TEAMS[mio].color)
-  rival.setColor(TEAMS[suyo].color)
+  // El cuerpo del rival lo tiñe el motor al montar la sesión: sale de la misma
+  // ranura, y ahí es donde vive desde la vuelta 56.
   $('quien').innerHTML = `${m.id} · <span style="color:${TEAMS[mio].color}">${TEAMS[mio].label}</span>`
   $('quienDbg').textContent = `${m.id} · ${mio} · ${m.escenario}`
   document.title = `Vektor · ${codigo} · ${m.id}`
 }
+// **Después de poner lo suyo**: `usarRed` encadena sobre la bienvenida para
+// arrancar la sesión en el mismo turno, y encadenar sobre algo que todavía no
+// está puesto es perderlo.
+motor.usarRed(cliente)
 /**
  * **La marca de impacto.** Se enciende con el veredicto **del servidor**, que es
  * el que decide: avisar con el veredicto propio sería prometer una baja que
  * luego no aparece en la vida del rival.
  */
 let apagarMarca = 0
-cliente.onVeredicto = (v) => {
+function marcarDisparo(v) {
+  // El sonido lo pone el motor, que es de quien es el audio; aquí sólo se
+  // pinta. Baja y acierto **se distinguen por forma**, no por intensidad: la
+  // baja cierra un intercambio y hay que poder saberlo sin mirar.
   if (!v.impacto) return
-  // **Baja y acierto se distinguen por forma y por voz**, no por intensidad. La
-  // baja cierra un intercambio y hay que poder saberlo sin mirar: por eso dura
-  // más y suena a otra cosa (ver `playKill`).
   mira.classList.add('dado')
   mira.classList.toggle('mato', !!v.baja)
   clearTimeout(apagarMarca)
   apagarMarca = setTimeout(() => mira.classList.remove('dado', 'mato'),
                            v.baja ? NET.killMarkerMs : NET.hitMarkerMs)
-  if (v.baja) playKill()
-  else playHit()
 }
 /**
  * **Lo que ve el jugador cuando la partida deja de estar.** Dos estados, y la
@@ -313,7 +322,7 @@ addEventListener('keydown', (e) => {
  */
 $('pedirVoto').addEventListener('click', () => {
   cliente.pedirVotacion()
-  lienzo.requestPointerLock()
+  motor.requestLock()
 })
 
 cliente.conectar()
@@ -397,12 +406,12 @@ addEventListener('blur', () => {
 addEventListener('click', (e) => {
   if (document.pointerLockElement === lienzo) return
   if (e.target.closest('.control')) return
-  // El contexto de audio **no arranca sin un gesto**, y éste es el único que hay
-  // seguro: el clic con el que se entra a jugar. Es idempotente.
-  initAudio()
-  // Chrome rechaza la captura si se pide justo después de soltarla con Escape.
-  // No es un error del que haya que enterarse: se vuelve a hacer clic.
-  Promise.resolve(lienzo.requestPointerLock()).catch(() => {})
+  // **Capturar es cosa del motor** desde la vuelta 56: además del `pointerLock`
+  // arranca el contexto de audio —que no existe sin un gesto y éste es el único
+  // que hay seguro—, pide las muestras de disparo y engancha el listener
+  // espacial a la cámara. Es idempotente, y Chrome puede rechazar la captura
+  // justo después de un Escape: no es un error del que haya que enterarse.
+  motor.requestLock()
 })
 
 /**
@@ -416,16 +425,9 @@ addEventListener('keydown', (e) => {
   e.preventDefault()
   panel.hidden = !panel.hidden
 })
-/**
- * **El disparo sale del evento**, con su instante real y con el rumbo que tenía
- * la mira en ese momento — no el del paso, que se muestreó al empezarlo y el
- * ratón se mueve entre medias.
- */
-addEventListener('mousedown', (e) => {
-  if (document.pointerLockElement !== lienzo || e.button !== 0) return
-  const ts = Number.isFinite(e.timeStamp) && e.timeStamp > 0 ? e.timeStamp : performance.now()
-  cliente.disparar(ts, camara.rotation.y, camara.rotation.x)
-})
+// El disparo lo lleva el motor desde la vuelta 56: cargador, cadencia, recarga,
+// retroceso y dispersión son suyos, y lo que sale a la red es el clic sellado
+// con su instante real. Esta página ya no toca el gatillo.
 document.addEventListener('pointerlockchange', () => {
   const capturado = document.pointerLockElement === lienzo
   // **Soltar el ratón pide pausa**, que es lo que hace Escape desde el punto de
@@ -450,14 +452,13 @@ document.addEventListener('pointerlockchange', () => {
     // en llegar— sino la verdad de lo que pasa: quien abre el menú no está
     // pulsando nada. Sin esto, entre Escape y la confirmación del servidor se
     // andaba un viaje entero: medido, 0.22 u con 35 ms de RTT.
-    for (const k of Object.keys(cliente.teclas)) cliente.teclas[k] = false
+    // Las teclas y la mirada las suelta el motor, en el mismo evento y por la
+    // misma razón (ver `_onPointerLockChange`). Aquí queda lo que es de la
+    // página: qué se enseña.
   }
   aviso.hidden = capturado
   // Mira, vida y «abatido» son de jugar; con el ratón suelto tapan el menú.
   document.body.classList.toggle('jugando', capturado)
-  controles.enabled = capturado
-  if (capturado) controles.connect(document)
-  else controles.disconnect()
 })
 
 for (const [id, campo] of [['lat', 'latenciaMs'], ['jit', 'jitterMs']]) {
@@ -472,129 +473,25 @@ $('per').addEventListener('input', (e) => {
 })
 $('gho').addEventListener('change', (e) => { fantasma.group.visible = e.target.checked })
 
-// ------------------------------------------------------------------ bucle
-let ultimoFrame = performance.now()
-let acumulador = 0
-let paso = 0
-const previa = new THREE.Vector3()
-const actual = new THREE.Vector3()
-let posaLista = false
-/** Frames seguidos en los que el enganche ha frenado al cliente. Ver abajo. */
-let frenados = 0
-let epoca = movimiento.poseEpoch
+// ------------------------------------------------------------------ pantalla
+$('gho').addEventListener('change', (e) => { fantasma.group.visible = e.target.checked })
+
+/**
+ * **El bucle es el del motor desde la vuelta 56.** Aquí no queda ninguno: lo
+ * que había —acumulador, enganche al reloj del servidor, re-anclaje, freno con
+ * suelo y dibujado interpolado— se ha movido a `cliente.pasosDeFrame()` y a
+ * `engine._advanceNet()`, que es donde puede haber **uno solo**. Esta página se
+ * engancha por `onFrame`, que el motor publica una vez por fotograma.
+ */
+motor.start()
+
 const costes = []
-
-function redimensionar() {
-  const { clientWidth: w, clientHeight: h } = lienzo
-  if (w === 0 || h === 0) return
-  camara.aspect = w / h
-  camara.updateProjectionMatrix()
-  renderer.setSize(w, h, false)
-}
-addEventListener('resize', redimensionar)
-redimensionar()
-
-function bucle(ahora) {
-  requestAnimationFrame(bucle)
-  const delta = Math.min(ahora - ultimoFrame, 100)
-  ultimoFrame = ahora
-
-  // **En pausa el mundo no avanza, y el acumulador no guarda el rato parado**
-  // (vuelta 53). Dejarlo acumular sería soltar un minuto de pasos de golpe al
-  // reanudar. Es la misma razón por la que el motor acota el frame largo.
-  if (cliente.pausa.pausada) {
-    acumulador = 0
-    ultimoFrame = ahora
-    renderer.render(scene, camara)
-    pintarVitales()
-    pintarRestas(ahora)
-    pintarRed(ahora)
-    pintarPanel()
-    return
-  }
-
-  const tolerancia = Math.min(1, SIM_STEP_MS * 0.1)
-  acumulador += delta
-  let pasos = 0
-  while (acumulador >= SIM_STEP_MS - tolerancia) {
-    acumulador -= SIM_STEP_MS
-    pasos += 1
-  }
-  // **Y engancharse al reloj del servidor.** El acumulador solo no basta: un
-  // frame largo se acota a 100 ms y los pasos que se pierden ahí no se
-  // recuperan nunca, así que el cliente se iría quedando atrás y sus entradas
-  // llegarían selladas con un paso cada vez más viejo. Con banda muerta de dos
-  // pasos, para no oscilar.
-  // **Y sólo se le hace caso a un reloj que esté vivo** (vuelta 51). El enganche
-  // frena al cliente cuando va por delante, restándole un paso por frame; contra
-  // un reloj **parado** eso es una trampa sin fondo. Si dejan de llegar fotos,
-  // `pasoServidor` se congela, el desfase crece hacia abajo sin límite y el
-  // cliente se frena hasta cero pasos por segundo — medido, 60 → 3 → 0 en cuatro
-  // segundos, y de ahí no sale. Sin reloj fresco se predice a tiempo real por el
-  // acumulador, que es lo que toca mientras no haya noticias.
-  const objetivo = cliente.relojFresco(ahora) ? cliente.pasoObjetivo() : 0
-  if (objetivo > 0) {
-    const desfase = objetivo - (paso + pasos)
-    if (desfase > NET.resyncTicks) {
-      // **Demasiado atrás para recuperarlo corriendo: se re-ancla** (vuelta 49).
-      // Es el caso de la pestaña en segundo plano, donde el navegador para el
-      // rAF. Ni se dan los pasos perdidos ni se guarda el sobrante del
-      // acumulador: el tiempo que el bucle no corrió no produjo entradas, y el
-      // servidor dejó a ese jugador parado. Ver `cliente.reanclar`.
-      cliente.reanclar(objetivo)
-      paso = objetivo
-      pasos = 0
-      acumulador = 0
-      // Y el dibujado no interpola a través del salto, que es la regla de
-      // siempre: las dos poses se vuelven a sembrar en el paso siguiente.
-      posaLista = false
-    } else if (desfase > NET.clockDeadbandTicks) {
-      pasos += Math.min(NET.maxCatchUpTicks, desfase)
-      frenados = 0
-    } else if (desfase < -NET.clockDeadbandTicks && pasos > 0 && frenados < NET.clockDeadbandTicks) {
-      // **Y el freno tiene suelo**: como mucho unos pocos frames seguidos sin
-      // avanzar. Con un reloj que avanza esto no llega a morder —el freno se
-      // apaga solo en cuanto el desfase entra en la banda—, pero un reloj que
-      // vaya a trompicones no puede dejar el mundo parado. Un suelo «de un paso
-      // por frame» no vale: a 144 Hz el acumulador da menos de un paso por frame
-      // y forzarlo haría correr el mundo a 144 pasos por segundo.
-      pasos -= 1
-      frenados += 1
-    } else frenados = 0
-  }
-
-  for (let i = 0; i < pasos; i++) {
-    paso = cliente.paso + 1
-    // Cuándo empezó **este** paso en tiempo real, para repartir la pulsación de
-    // salto dentro de él.
-    inicioDePaso = ahora - acumulador - (pasos - i) * SIM_STEP_MS
-    previa.copy(camara.position)
-    const t0 = performance.now()
-    cliente.dar(paso, inicioDePaso)
-    costes.push(performance.now() - t0)
-    if (costes.length > 600) costes.shift()
-    if (epoca !== movimiento.poseEpoch) { epoca = movimiento.poseEpoch; previa.copy(camara.position) }
-    actual.copy(camara.position)
-    posaLista = true
-  }
-
-  // El rival, en el pasado y entre dos fotos.
-  const pose = cliente.poseDelRival()
-  // **Un cadáver no se dibuja.** Hasta la vuelta 52 el cuerpo del rival se
-  // quedaba en pie donde cayó durante los dos segundos de su reaparición, así
-  // que no había forma de saber si le habías matado o seguía ahí quieto.
-  if (pose && pose.vivo) {
-    rival.group.visible = true
-    rival.group.position.set(pose.x, pose.feetY, pose.z)
-    rival.group.rotation.y = pose.yaw
-    rival.setEyeHeight(pose.eyeHeight)
-    $('retraso').textContent = `${pose.retraso.toFixed(1)} pasos · ${(pose.retraso * SIM_STEP_MS).toFixed(0)} ms atrás`
-  } else {
-    rival.group.visible = false
-    $('retraso').textContent = 'esperando rival'
-  }
-
-  // El fantasma: la última palabra del servidor sobre ti.
+function pintarHud(stats) {
+  const ahora = performance.now()
+  pintarVitales(stats)
+  pintarArmaEnVivo(stats)
+  // El fantasma: la última palabra del servidor sobre ti. Va aquí y no en el
+  // motor porque es un instrumento de medida, no una pieza del juego.
   if (cliente.autoritativo && $('gho').checked) {
     fantasma.group.visible = true
     fantasma.group.position.set(cliente.autoritativo.x, cliente.autoritativo.feetY, cliente.autoritativo.z)
@@ -602,61 +499,81 @@ function bucle(ahora) {
   } else {
     fantasma.group.visible = false
   }
-
-  // Dibujado interpolado, igual que en el motor: la pose intermedia vive lo que
-  // dura el `render()` y después se devuelve la autoritativa.
-  let interpolando = false
-  if (posaLista) {
-    const alfa = Math.min(1, Math.max(0, acumulador / SIM_STEP_MS))
-    camara.position.lerpVectors(previa, actual, alfa)
-    interpolando = true
-  }
-  renderer.render(scene, camara)
-  if (interpolando) camara.position.copy(actual)
-
-  pintarVitales()
-  // La cuenta de la votación corre **con el mundo en marcha**, así que se pinta
-  // aquí y no sólo en la rama de pausa: es justo la diferencia entre las dos.
   pintarRestas(ahora)
   pintarRed(ahora)
   pintarPanel()
 }
 
 /**
- * **Vida y abatido son de jugar, así que se pintan siempre**, esté el panel de
- * depuración abierto o no. Es lo mínimo para que «vida y reaparición» quiera
- * decir algo: sin un número en pantalla, morir es quedarse tirado en el suelo
- * sin saber por qué.
+ * **Vida, munición y abatido son de jugar, así que se pintan siempre**, esté el
+ * panel de depuración abierto o no.
  *
- * La cuenta de reaparición **no viaja por la red**: sale de `NET.respawnMs`, que
- * es la misma constante que usa el servidor, contada desde que llega la foto que
- * te da por muerto. Eso la deja corta en medio viaje —25 ms de 2000— y es
- * preferible a meter un campo más en cada foto de cada paso para ganar ese 1%.
+ * Desde la vuelta 56 los números salen del motor (`onFrame`), que ya los tiene
+ * todos: vida y cuenta de reaparición **las dice el servidor** —y la cuenta va
+ * en el reloj de las entradas, el mismo con el que se decide, así que la
+ * pantalla y la reaparición caen en el mismo instante— y cargador, recarga y
+ * arma son del cliente.
  */
-let muertoDesde = 0
 let vidaPintada = -1
 let cuentaPintada = ''
-function pintarVitales() {
-  // **Sólo se escribe en el DOM cuando el número ha cambiado.** Va dentro del
-  // bucle, y escribir `textContent` sesenta veces por segundo con el mismo valor
-  // es trabajo de maquetación por nada: la misma regla por la que el HUD del
-  // juego se actualiza por refs y no repinta por frame.
-  const vida = Math.max(0, Math.min(100, cliente.vida))
+function pintarVitales(stats) {
+  // **Sólo se escribe en el DOM cuando el número ha cambiado.** Va por frame, y
+  // escribir `textContent` sesenta veces por segundo con el mismo valor es
+  // trabajo de maquetación por nada: la misma regla por la que el HUD del juego
+  // se actualiza por refs y no repinta por frame.
+  const vida = Math.max(0, Math.min(100, Math.round(stats.health)))
   if (vida !== vidaPintada) {
     vidaPintada = vida
     $('vitalN').textContent = vida
-    $('vitalN').className = vida >= 45 ? '' : 'mal'
+    $('vitalN').className = stats.lowHealth ? 'mal' : ''
     $('vitalB').firstElementChild.style.width = `${vida}%`
-    if (vida === 0) muertoDesde = performance.now()
-    $('abatido').classList.toggle('puesto', vida === 0)
+    $('abatido').classList.toggle('puesto', !stats.alive)
   }
-  if (vida > 0) return
-  const quedan = Math.max(0, NET.respawnMs - (performance.now() - muertoDesde))
-  const texto = `reapareces en ${(quedan / 1000).toFixed(1)}`
+  if (stats.alive) return
+  const texto = `reapareces en ${(stats.respawnLeftMs / 1000).toFixed(1)}`
   if (texto !== cuentaPintada) {
     cuentaPintada = texto
     $('reaparece').textContent = texto
   }
+}
+
+/** El cargador, que cambia disparo a disparo. Mismo criterio: sólo si cambia. */
+let municionPintada = ''
+function pintarArmaEnVivo(stats) {
+  const texto = stats.reloading
+    ? `${'·'.repeat(1 + Math.floor(stats.reloadProgress * 6))}`
+    : `${stats.ammo} / ${stats.magazine}`
+  if (texto === municionPintada) return
+  municionPintada = texto
+  $('municion').textContent = texto
+  $('municion').classList.toggle('mal', !stats.reloading && stats.ammo <= Math.max(1, stats.magazine * 0.25))
+}
+
+/**
+ * Y el nombre del arma, que sólo cambia al cambiar de arma — una pulsación, no
+ * un valor por frame, que es por lo que viaja por callback y no en `stats`.
+ * Con silenciador se dice, porque cambia cómo suena y a quién se oye.
+ */
+function pintarArma({ weaponKey, suppressed }) {
+  const arma = WEAPONS[weaponKey]
+  $('arma').textContent = arma ? arma.label + (suppressed ? ' · SUPR' : '') : ''
+}
+
+/**
+ * **De dónde te han disparado** (la cuña de la vuelta 40, aquí en su versión
+ * mínima). El ángulo lo calcula el motor con el vector de la cámara y medido en
+ * horizontal; esta página sólo lo pinta. El `conic-gradient` cuenta los grados
+ * desde arriba y en el sentido del reloj, que es la misma convención, así que
+ * no hay conversión que pueda salir espejada.
+ */
+let apagarDano = 0
+function marcarDano(fraccion, rumbo) {
+  const cuna = $('dano')
+  cuna.style.setProperty('--angulo', `${(rumbo * 180) / Math.PI}deg`)
+  cuna.style.opacity = String(Math.min(1, 0.35 + fraccion))
+  cuna.classList.add('puesto')
+  clearTimeout(apagarDano)
+  apagarDano = setTimeout(() => cuna.classList.remove('puesto'), 500)
 }
 
 let ultimoInforme = 0
@@ -676,7 +593,7 @@ function pintarPanel() {
   m.bytesEntrada = 0
   if (panel.hidden) return
   $('caudal').textContent = `${subida.toFixed(2)} / ${bajada.toFixed(2)} KB/s`
-  $('pasos').textContent = `${paso} · ${m.pasoServidor} · ${m.ack}`
+  $('pasos').textContent = `${cliente.paso} · ${m.pasoServidor} · ${m.ack}`
   $('rtt').textContent = `${m.rtt.toFixed(1)} ms`
   $('pendientes').textContent = `${m.pendientes}`
   const err = m.errorUltimo
@@ -708,8 +625,6 @@ function pintarPanel() {
   }
 }
 
-requestAnimationFrame(bucle)
-
 // Para las sondas de medida: todo lo que hace falta, en un solo sitio.
 /**
  * **El asa de depuración de la página.** Esto no es una pantalla del juego: es
@@ -724,8 +639,15 @@ requestAnimationFrame(bucle)
  * dos huéspedes, que es justo lo que hay que poder hacer.
  */
 window.vektorNet = {
-  cliente, movimiento, camara, escenario, enlace, rival, fantasma, costes,
-  get paso() { return paso },
+  cliente, motor, enlace, fantasma, costes,
+  // Los bancos llevan desde la vuelta 45 hablando de `camara`, `movimiento` y
+  // `escenario`: siguen siendo los mismos objetos, sólo que ahora los construye
+  // el motor. Renombrarlos habría sido reescribir nueve suites para no ganar nada.
+  get camara() { return motor.camera },
+  get movimiento() { return motor.movement },
+  get escenario() { return motor.scenario },
+  get rival() { return motor._rivalAvatar },
+  get paso() { return cliente.paso },
   verDesde: hasLineOfSight,
   cuerpoDe: cuerpoDeJugador,
   resolver: resolverDisparo,

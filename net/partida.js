@@ -17,7 +17,7 @@
  * Y sigue sin tener código de juego: importa `movement.js`, `scenario.js`,
  * `hitPlayer` y `hasLineOfSight` tal cual.
  */
-import { NET, PAUSE, SIM, SIM_STEP_MS } from '../src/config.js'
+import { NET, PAUSE, SIM, SIM_STEP_MS, WEAPONS, WEAPON_ORDER } from '../src/config.js'
 import { MovementController } from '../src/game/movement.js'
 import { crearPose, cuerpoDeJugador } from './pose.js'
 import { direccionDeMira, resolverDisparo } from './disparo.js'
@@ -157,6 +157,17 @@ export class Partida {
       vivoEn: 0,
       /** Veredictos pendientes de mandarle. */
       disparos: [],
+      /**
+       * **El arma que dice llevar** (vuelta 56). La declara con cada disparo y
+       * de ella sale la cadencia que se le exige; también viaja en la foto, que
+       * es de donde el rival saca la silueta de su ficha flotante. El servidor
+       * no lleva cargador ni recarga: eso es del cliente.
+       */
+      arma: null,
+      /** Instante (reloj de pasos) del último disparo **aceptado**. */
+      ultimoTiroEn: -Infinity,
+      /** Disparos rechazados por cadencia. Se mira en el informe. */
+      rapidos: 0,
       bajas: 0,
       muertes: 0,
       /** Pausas que puede pedir sin permiso. No se recuperan. */
@@ -406,6 +417,9 @@ export class Partida {
         // Quién ha votado ya, para que su cartel se retire. Va por jugador y no
         // como lista en `vo` porque a cada cliente sólo le importa el suyo.
         ...(this.votacion?.votos.has(jugador.id) ? { vv: 1 } : null),
+        // Y el arma que lleva, para la ficha flotante del rival. Sólo cuando se
+        // sabe —o sea, desde su primer disparo—: antes no hay nada que decir.
+        ...(jugador.arma ? { arma: jugador.arma } : null),
         bajas: jugador.bajas,
         muertes: jugador.muertes,
         yaw: jugador.pose.rotation.y,
@@ -432,7 +446,8 @@ export class Partida {
     return [...this.jugadores.values()].map((j) => {
       const fila =
         `${j.id} ack ${j.ack} cola ${j.cola.length} hambre ${j.hambre} tardías ${j.tardias} ` +
-        `vida ${j.vida} ↑${(j.bytesEntrada / 1024).toFixed(2)} ↓${(j.bytesSalida / 1024).toFixed(2)} KB`
+        `vida ${j.vida} arma ${j.arma ?? '—'} rápidos ${j.rapidos} ` +
+        `↑${(j.bytesEntrada / 1024).toFixed(2)} ↓${(j.bytesSalida / 1024).toFixed(2)} KB`
       j.bytesEntrada = 0
       j.bytesSalida = 0
       return fila
@@ -503,6 +518,17 @@ export class Partida {
       this._reaparecer(jugador)
     }
     desempaquetarTeclas(entrada.k, m.keys)
+    // **El arma viaja con cada entrada y su peso entra en la simulación**
+    // (vuelta 56). Es del movimiento, no del disparo: un rifle frena, y si sólo
+    // lo supiera el cliente predeciría a una velocidad y el servidor simularía
+    // a otra — medido antes de esto, 75 correcciones en 286 fotos y 2.5 u de
+    // error. De aquí salen además la cadencia que se le exige y el arma que el
+    // rival ve en su ficha.
+    const arma = WEAPONS[WEAPON_ORDER[entrada.w]]
+    if (arma) {
+      jugador.arma = WEAPON_ORDER[entrada.w]
+      m.setWeaponWeight(arma.weight)
+    }
     jugador.pose.rotation.y = entrada.yaw
     if (entrada.jt >= 0) m.pressJump(instanteEnPaso(entrada.n, entrada.jt))
     m.update(SIM_STEP_MS / 1000, instanteDePaso(entrada.n))
@@ -525,7 +551,18 @@ export class Partida {
     const salida = {
       seq: d.seq, impacto: false, zona: null, dano: 0, tapado: false, baja: false,
       sinRebobinar: false, retroceso: 0, lateral: 0, rebobinadoMs: 0,
-      pedidoMs: 0, topado: false,
+      pedidoMs: 0, topado: false, rechazado: false,
+    }
+    // **La cadencia la valida el servidor; el arma la lleva el cliente**
+    // (vuelta 56). Ver `NET.shotRateSlackTicks` para el reparto y para por qué
+    // la holgura es un paso. Un disparo rechazado se contesta igual —el cliente
+    // espera un veredicto por `seq` y dejarle sin él sería dejarle esperando—
+    // pero no toca el mundo: ni rebobinado, ni daño, ni baja.
+    if (!this._cadenciaValida(tirador, entrada)) {
+      tirador.rapidos += 1
+      salida.rechazado = true
+      this._anotarVeredicto(tirador, salida)
+      return
     }
     if (!rival || !tirador.vida) {
       this._anotarVeredicto(tirador, salida)
@@ -574,6 +611,39 @@ export class Partida {
     this._anotarVeredicto(tirador, salida)
   }
 
+  /**
+   * **¿Cabía este disparo?** (vuelta 56).
+   *
+   * Lo único que el servidor le exige a un arma es su ritmo. El cliente dice
+   * cuál lleva (`d.w`) y de ahí salen las RPM; un arma que no existe en el
+   * catálogo no dispara, que es la única forma de que declarar cualquier cosa
+   * no sea gratis.
+   *
+   * Se mide en **número de paso**, no en la fracción del disparo: la fracción
+   * es para el rebobinado, que necesita el instante exacto; la cadencia sólo
+   * necesita un reloj monótono que compartan los dos extremos, y el paso lo es.
+   * Y se acepta con una holgura de `NET.shotRateSlackTicks` pasos porque el
+   * cliente programa sus disparos sobre esa misma rejilla: sin holgura, un arma
+   * cuyo intervalo no sea múltiplo del paso se rechazaría uno de cada dos
+   * disparos legítimos.
+   *
+   * **Sólo avanza el reloj si el disparo se acepta.** Si lo moviera también un
+   * disparo rechazado, bastaría con pedir el doble de rápido para correr el
+   * reloj hacia delante y colar el siguiente.
+   */
+  _cadenciaValida(tirador, entrada) {
+    // El arma es la de **esta entrada**, la misma de la que ha salido el peso
+    // con el que se acaba de mover: un disparo no puede declarar un arma y
+    // andar con otra, porque es un solo campo.
+    const arma = WEAPONS[WEAPON_ORDER[entrada.w]]
+    if (!arma) return false
+    const instante = instanteDePaso(entrada.n)
+    const intervalo = 60000 / arma.rpm - NET.shotRateSlackTicks * SIM_STEP_MS
+    if (instante < tirador.ultimoTiroEn + intervalo) return false
+    tirador.ultimoTiroEn = instante
+    return true
+  }
+
   /** Un veredicto vive unas cuantas fotos, para que perder una no lo pierda. */
   _anotarVeredicto(jugador, dato) {
     jugador.disparos.push({ dato, ttl: NET.verdictRepeats })
@@ -606,5 +676,8 @@ export class Partida {
     jugador.pose.position.z = salida.z
     jugador.vida = 100
     jugador.vivoEn = 0
+    // Reaparecer recarga, así que el reloj de cadencia vuelve a cero: arrastrar
+    // el del último disparo de antes de morir castigaría el primer tiro nuevo.
+    jugador.ultimoTiroEn = -Infinity
   }
 }

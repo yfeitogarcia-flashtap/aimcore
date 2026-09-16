@@ -54,7 +54,7 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 
 | Capa | Dónde | Qué hace |
 |---|---|---|
-| Motor | `src/game/` | Bucle rAF, input, raycast, dianas, armas, panel de acciones. **Vive fuera de React.** El mundo avanza en **pasos fijos de 60 Hz** (`_advanceSimulation` / `_simStep`); el frame sólo dibuja. |
+| Motor | `src/game/` | Bucle rAF, input, raycast, dianas, armas, panel de acciones. **Vive fuera de React.** El mundo avanza en **pasos fijos de 60 Hz** (`_advanceSimulation` / `_simStep`); el frame sólo dibuja. Con `usarRed(cliente)` la verdad del movimiento, el disparo, la vida y la reaparición pasa al servidor (vuelta 56). |
 | Escenario | `src/game/scenario.js` | Convierte los datos de `SCENARIOS` en mallas, colisionadores, oclusores y **rutas**. Y publica su sala (`scenario.room`) y su zona de aparición (`isInSpawnZone`). |
 | Línea de visión | `src/game/sight.js` | `hasLineOfSight`: el **único** raycast de «¿se ve eso desde aquí?». Lo usan la aparición y los marcadores. |
 | Sala | `src/game/scene.js` | Rejilla y paredes, reconstruibles con `setRoom`: cada escenario tiene su tamaño. |
@@ -81,7 +81,7 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Huésped en la nube | `worker/sala.js` | El Durable Object. Lo mismo, con las piezas de Cloudflare. |
 | Portero | `worker/index.js` | `/sala/<código>` → `idFromName(código)`; todo lo demás, los ficheros del juego. |
 | Código de sala | `net/codigo.js` | Alfabeto, normalización y forma de la ruta. **Lo usan el cliente y el Worker.** |
-| Duelo (pantalla) | `net/prueba.html`, `net/prueba.js` | La página del 1v1. Dos capas: lo de jugar bajo `body.jugando`, lo de no jugar en el aviso, y los números detrás de **F3**. |
+| Duelo (pantalla) | `net/prueba.html`, `net/prueba.js` | La página del 1v1. **Hospeda el motor completo** (vuelta 56) y se queda con lo suyo: código de partida, menú, avisos, pausas y los números detrás de **F3**. |
 | Red (cliente) | `net/cliente.js`, `net/transporte.js` | Predicción, reconciliación, interpolación del rival y disparo. El transporte, detrás de tres funciones. |
 | Transporte | `net/transporte.js` | `send` / `onMessage` / `close`, y nada más. La red simulada es un transporte que envuelve a otro. |
 | Disparo en red | `net/disparo.js` | `hitPlayer` + `hasLineOfSight` en el orden que cuesta menos. **Lo llaman los dos extremos.** |
@@ -1290,6 +1290,82 @@ mapa de controles tiene que ser el definitivo desde el principio: si se añaden
 cuando existan las mecánicas, alguien ya habrá puesto ahí su bind favorito. El
 panel las marca «sin efecto todavía».
 
+**El motor completo se conecta a la red por `usarRed(cliente)`, y lo que cambia
+no es un modo: es de dónde sale la verdad** (vuelta 56, la «Opción B»).
+Movimiento, disparo, vida y reaparición **dejan de decidirse en el motor**; el
+arma —cargador, recarga, retroceso, dispersión, sonido— se queda del lado del
+cliente y lo único que el servidor le exige es la cadencia. El motor no
+construye el cliente ni sabe de sockets: `net/prueba.js` lo ensambla con la
+cámara, el movimiento y los oclusores **del motor** y se lo entrega, así que la
+regla de la 45 sigue en pie. Ocho métodos se adaptan y ninguno se duplica: el
+detalle, en `docs/decisions.md` §56.
+
+**En red no se apaga nada que produzca entradas.** Es la regla que gobierna los
+tres métodos del abatido, y la más fácil de hacer mal:
+
+- **`_downPlayer` no apaga el movimiento.** Quien decide que un muerto no avanza
+  es el servidor, que ignora sus entradas hasta `vivoEn` (vuelta 52); apagarlo
+  además aquí deja de producir entradas, y entonces **ese jugador no reaparece
+  nunca**, porque la reaparición cuelga de sus propias entradas. Se ve igual:
+  0.00 u con la tecla de andar pulsada.
+- **`_respawnPlayer` no reaparece**: ya lo hizo `_aplicar`, con su `reset()` y su
+  época de pose. Repetirlo sería un segundo teletransporte que nadie predijo.
+- **`_onPointerLockChange` no llama a `_suspend()`.** Sería el «estoy en pausa»
+  local que la vuelta 53 quitó. Lo que sí se hace es la verdad de lo que pasa:
+  soltar las teclas y apagar la mirada.
+
+**El arma viaja en cada entrada, porque es del movimiento y no del disparo.**
+Un rifle frena (`weaponSpeedFactor` multiplica las tres marchas), así que si el
+peso sólo lo sabe un lado los dos simulan distinto: medido con la Rift, el
+cliente predecía a 5.88 u/s contra los 6.50 del servidor, o sea **75
+correcciones en 286 fotos y 2.5 u de error**. Va como índice de `WEAPON_ORDER`
+para que quepa en un número, y un solo campo sirve para tres cosas —el peso, la
+cadencia que el servidor valida y la silueta que el rival ve en su ficha— sin
+ninguna ventana en la que puedan discrepar. Después: **0 correcciones**.
+
+**La cadencia la valida el servidor; el arma la lleva el cliente.** Entre dos
+disparos aceptados tiene que haber pasado lo que dicen las RPM del arma
+declarada, y un arma que no está en el catálogo no dispara. Se mide en **número
+de paso** y no en la fracción del disparo —la fracción es para el rebobinado, que
+necesita el instante exacto; la cadencia sólo necesita un reloj monótono que
+compartan los dos—, con una holgura de un paso (`NET.shotRateSlackTicks`) que es
+la cuantización del propio reloj del cliente y no un número inventado. Un disparo
+rechazado **recibe veredicto igual** —el cliente espera uno por `seq`— pero no
+toca el mundo ni cuenta como desacuerdo de la red.
+
+**Lo que el jugador pulsa y lo que el paso ejecuta son dos cosas**
+(`movement.input` y `movement.keys`). Fuera de la red son **el mismo objeto** a
+propósito: sin nadie que reejecute, la intención y lo ejecutado son lo mismo y
+copiar por paso sería trabajo por nada. `separateInput()` los desdobla, y sólo
+la red lo pide — porque la reconciliación reejecuta entradas guardadas y llena
+`keys` sesenta veces por segundo con máscaras **del pasado**. Con un solo objeto,
+cada foto borraba la tecla que el jugador tenía pulsada: medido, con W apretada
+el jugador **no se movía en absoluto**. De ahí sale cuál se suelta cuándo:
+`reset()` —o sea cada reaparición— suelta lo que se ejecuta y **no** la
+intención, o reaparecer con W apretada te dejaría parado; soltar el ratón,
+perder el foco y desactivar el movimiento sueltan las dos.
+
+**Escribir en un campo no es jugar** (`typingInField`, en `keybinds.js`). El
+juego no tiene ni un campo de texto y por eso no hacía falta; la página del duelo
+sí, y con el motor completo teclear el código de la sala **era jugar**: la `B`
+abría la armería y `preventDefault` se comía lo escrito. Vive con `eventCode` y
+`keysOf` porque es el mismo vocabulario, y lo miran el motor y el movimiento
+desde el mismo sitio.
+
+**Y la sesión de red empieza con la bienvenida, no con el clic.** El clic
+enciende el mando —mirar y teclear—; el mundo lleva corriendo desde que el
+servidor dio sitio. Va en el **mismo turno** que la bienvenida: `_beginSession`
+suelta las teclas, así que arrancar un frame tarde se come una tecla pulsada
+justo al entrar. Y empieza **en la ranura que da el servidor**, no en el spawn
+del escenario —`movement.reset()` conoce uno solo y el servidor reparte dos—, o
+el primer paso de cada partida llega con 2.5 u de error.
+
+**El ritmo del bucle en red vive en `cliente.pasosDeFrame()`**, no en el motor ni
+en la página. Es del netcode: el acumulador solo bastaría para un juego local, y
+lo que lo distingue es el enganche al reloj del servidor, el re-anclaje de la
+vuelta 49 y el freno con suelo de la 51. En un solo sitio, o el motor llevaría
+una segunda copia de las dos.
+
 **Pausar es parar el mundo de los dos, y sólo lo decide el servidor** (vuelta
 53). Un «estoy en pausa» local sería el mismo fallo con otro disfraz: hasta la 53
 Escape abría el menú y el mundo seguía corriendo por detrás, así que con WASD se
@@ -1605,11 +1681,18 @@ reloj y cable:
 alfabeto que no se confunde al dictarlo— y pasa el enlace. Quien lo abre entra en
 la misma. Es `idFromName(código)`: no hay lista de partidas ni matchmaking.
 
-**Y desde la vuelta 48 se puede jugar de verdad**, que hasta entonces no: el clic
-no llegaba al canvas y no había mira. En pantalla, jugando, hay **mira, vida y el
-cartel de abatido con su cuenta**, y nada más — ni munición, ni armas, ni
-puntuación, que son de la Opción B. Los números de red y el fantasma están
-apagados detrás de **F3**.
+**Y desde la vuelta 56 el duelo lo lleva el motor completo** (la «Opción B»).
+La página del duelo ya no monta una escena mínima: instancia `engine.js` y le
+entrega el cliente de red. Lo que eso trae a una partida real es **el arma de
+verdad** —las tres, con su cargador, su recarga, su retroceso y su dispersión—,
+los **marcadores** sobre el rival (brújula y ficha con nick y arma) y un HUD con
+**vida, munición, nombre del arma y cuña de daño**. Sin escudo ni casco: sólo
+vida, como estaba decidido. Los iconos `?` / `!`, el fogonazo y el silbido del
+rival se quedan fuera, y no por olvido: dicen en qué fase está quien te dispara,
+y esa máquina de estados hoy sólo existe para los muñecos.
+
+Hasta la 55 en pantalla había **mira, vida y el cartel de abatido**, y nada más.
+Los números de red y el fantasma siguen apagados detrás de **F3**.
 
 Desde la vuelta 53 **Escape pausa la partida de los dos**, con tres pausas libres
 por jugador y permiso del rival a partir de la cuarta. Y desde la 54 **con

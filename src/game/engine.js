@@ -31,8 +31,10 @@ import {
   SESSION_DURATION_S,
   SESSION_MODES,
   SIM,
+  NET,
   SIM_STEP_MS,
   TARGET,
+  TEAMS,
   WEAPONS,
 } from '../config.js'
 import { createScene } from './scene.js'
@@ -50,6 +52,7 @@ import {
   playHeal,
   playHelmetCrack,
   playHit,
+  playKill,
   playLanding,
   playObjectiveDefused,
   playObjectiveExplosion,
@@ -66,7 +69,7 @@ import { MuzzleFlash } from './muzzleFlash.js'
 import { PickupField } from './pickups.js'
 import { PlayerStatus, playerBody } from './player.js'
 import { getSettings, subscribeSettings, updateSettings } from '../settings.js'
-import { eventCode, getKeybinds, keysOf, subscribeKeybinds } from '../keybinds.js'
+import { eventCode, getKeybinds, keysOf, subscribeKeybinds, typingInField } from '../keybinds.js'
 
 /** Centro exacto de la pantalla: el crosshair no se mueve, así que es constante. */
 const SCREEN_CENTER = new THREE.Vector2(0, 0)
@@ -80,6 +83,16 @@ const _spreadUp = new THREE.Vector3(0, 1, 0)
 const _spreadFallback = new THREE.Vector3(1, 0, 0)
 /** Hacia dónde mira la cámara, para saber de qué lado te han disparado. */
 const _bearingForward = new THREE.Vector3()
+
+/**
+ * **La fase de un rival real, que hoy no existe** (vuelta 56). `markers.js`
+ * pide quién está en alerta y quién disparando, y eso es el estado de la
+ * máquina de `enemyFire`: una persona no la tiene. Deducirlo desde fuera
+ * mirando relojes sería la segunda copia que la vuelta 37 se negó a tener, así
+ * que los dos iconos se quedan apagados hasta que el disparo del rival viaje en
+ * la foto. La brújula y la ficha no dependen de esto.
+ */
+const _sinFase = () => 'idle'
 
 /**
  * Desvía una dirección un ángulo aleatorio dentro de un cono de `spreadDeg`.
@@ -225,6 +238,21 @@ export class Engine {
     this._lastPanelActionAt = -Infinity
     /** Si la pulsación en curso ya se gastó en el panel, no dispara. */
     this._triggerConsumedByPanel = false
+
+    /**
+     * **La partida en red, o null.** Lo pone `usarRed()` antes de `start()`, y
+     * de él cuelga todo lo que la vuelta 56 saca del motor: quién decide el
+     * movimiento, el disparo, la vida y la reaparición.
+     */
+    this.net = null
+    /** El cuerpo del rival y su época de pose, para no interpolar un salto. */
+    this._rivalAvatar = null
+    /** Adaptador rival→instancia para `markers`. Ver `_syncRival`. */
+    this._rivalInstancia = null
+    /** Vida del servidor en la foto anterior, para saber si te han dado. */
+    this._vidaPrevia = PLAYER.maxHealth
+    /** ¿Estaba abatido en el frame anterior? Para no repetir el abatimiento. */
+    this._abatidoEnRed = false
 
     this.phase = PHASE.IDLE
     this.durationMs = SESSION_DURATION_S * 1000
@@ -419,6 +447,90 @@ export class Engine {
   }
 
   /** Engancha listeners, ajusta tamaño y arranca el bucle de render. */
+  /**
+   * **Conecta el motor a una partida en red** (vuelta 56, la «Opción B»).
+   *
+   * El motor no construye el cliente ni sabe de sockets: lo recibe ya montado.
+   * Es la misma regla de siempre —la red vive en `net/`— llevada hasta donde se
+   * puede llevar: `net/prueba.js` ensambla el transporte y el `ClienteRed` con
+   * la cámara, el movimiento y los oclusores **de este motor**, y a partir de
+   * ahí el motor le habla por tres verbos (`pasosDeFrame`, `dar`, `disparar`) y
+   * le lee tres estados (`vida`, `vivoEn`, `poseDelRival`).
+   *
+   * Lo que cambia con esto no es un modo de juego: es de dónde sale la verdad.
+   * Movimiento, disparo, vida y reaparición dejan de decidirse aquí y pasan a
+   * obedecer al servidor; el arma —cargador, recarga, retroceso, sonido— se
+   * queda del lado del cliente, y lo único que el servidor le exige es la
+   * cadencia (ver `NET.shotRateSlackTicks`).
+   *
+   * **Las teclas pasan a ser el mismo objeto**, no una copia: el cliente las
+   * empaqueta desde `movement.keys` y las desempaqueta encima. Dos objetos que
+   * hay que copiar en cada paso es cómo se desincronizan, y además deja que los
+   * bancos sigan escribiendo en `cliente.teclas` como han hecho desde la 45.
+   *
+   * Se llama **antes** de `start()`.
+   */
+  usarRed(cliente) {
+    this.net = cliente
+    /**
+     * **Las teclas del cliente son la intención, no lo que se ejecuta.** Son el
+     * mismo objeto que el del movimiento —una copia por paso es justo lo que el
+     * bucle caliente no hace— pero el desdoblado importa: la reconciliación
+     * reejecuta entradas guardadas y llena `movement.keys` con máscaras del
+     * pasado, así que apuntar aquí a `keys` borraba sesenta veces por segundo la
+     * tecla que el jugador tenía pulsada. Medido: con W apretada el jugador no
+     * se movía en absoluto. Ver `movement.separateInput`.
+     */
+    cliente.teclas = this.movement.separateInput()
+    /**
+     * **La sesión de red empieza con la bienvenida, no con el clic** (vuelta
+     * 56). Fuera de la red el clic es lo que arranca una ronda; aquí la ronda ya
+     * está corriendo al otro lado, y un jugador conectado que no manda entradas
+     * es un jugador al que el servidor deja parado — y que, si le matan, no
+     * reaparece nunca, porque la reaparición cuelga de sus propias entradas. El
+     * clic enciende el mando; la bienvenida enciende el mundo.
+     *
+     * Y va **en el mismo turno** que la bienvenida, no en el frame siguiente:
+     * `_beginSession` suelta las teclas, así que arrancar un frame tarde puede
+     * comerse una tecla pulsada justo al entrar. Se encadena con lo que la
+     * página ya hubiera puesto —por eso se asigna después de ella—, que es la
+     * forma de no pelearse por un callback que usan los dos.
+     */
+    const suyo = cliente.onBienvenida
+    cliente.onBienvenida = (m) => {
+      suyo?.(m)
+      if (this.phase !== PHASE.RUNNING) this._beginSession()
+    }
+
+    // **El veredicto lo cuenta el motor**, que es de quien son los contadores y
+    // el audio: aciertos, bajas y sus dos voces. Quien lo quiera para pintar
+    // una marca lo recibe por callback, igual que el daño.
+    cliente.onVeredicto = (v) => this._onVerdict(v)
+    return cliente
+  }
+
+  /**
+   * Qué pasó con uno de tus disparos, según el servidor. **El del servidor y no
+   * el tuyo**: la marca de impacto tiene que decir que le has dado de verdad,
+   * no que a ti te lo pareció (vuelta 46).
+   */
+  _onVerdict(v) {
+    if (v.impacto) {
+      this.hits += 1
+      playHit()
+    }
+    if (v.baja) {
+      this.kills += 1
+      playKill()
+    }
+    this.callbacks.onVerdict?.(v)
+  }
+
+  /** ¿Hay una partida en red al otro lado? Lo preguntan los seis adaptados. */
+  get enRed() {
+    return this.net !== null
+  }
+
   start() {
     if (this._running) return
     this._running = true
@@ -602,7 +714,7 @@ export class Engine {
     this._publishWeapon(settings)
     // Los muñecos disparan **sólo con escenario y hitbox completo**: sin
     // cobertura no habría dónde meterse, y una esfera flotante no dispara.
-    this.enemyFire.setEnabled(this.scenario.hasGeometry && settings.targetType === 'hitbox')
+    this.enemyFire.setEnabled(!this.enRed && this.scenario.hasGeometry && settings.targetType === 'hitbox')
     this.enemyFire.setRadius(settings.targetRadius)
     this.enemyFire.setDifficulty(settings.enemyDifficulty)
     const hadSession = this.targets.sessionActive
@@ -662,7 +774,7 @@ export class Engine {
     this.pickups.setSites(this.scenario.pickupSites)
     this.enemyFire.setOccluders(this.scenario.occluders)
     this.markers.setOccluders(this.scenario.occluders)
-    this.enemyFire.setEnabled(this.scenario.hasGeometry && getSettings().targetType === 'hitbox')
+    this.enemyFire.setEnabled(!this.enRed && this.scenario.hasGeometry && getSettings().targetType === 'hitbox')
     this._syncMarkers(getSettings())
 
     // Las dianas vivas estaban ancladas a un mundo que ya no existe. Si había
@@ -756,6 +868,11 @@ export class Engine {
       suppressorSupported: this.weapon.supportsSuppressor,
       suppressorEnabled: this.suppressorEnabled,
     })
+    // **Y la red se entera de qué arma se empuña**, porque viaja en cada entrada:
+    // el peso frena y el servidor le exige su cadencia (vuelta 56). Se pone
+    // aquí porque éste es el único sitio por el que pasan los tres caminos que
+    // cambian el arma vigente.
+    if (this.enRed) this.net.arma = this.weaponKey
     this.callbacks.onWeapon?.({
       weaponKey: this.weaponKey,
       suppressed: this.suppressorEnabled,
@@ -846,9 +963,13 @@ export class Engine {
     // mismo modo con dos relojes. `endless` queda como lo que siempre fue —esta
     // sesión no acaba sola— para el HUD y el resumen.
     const deathmatchSeconds = DEATHMATCH_DURATIONS[getSettings().deathmatchDuration].seconds
-    this.endless = this.mode === 'deathmatch' && deathmatchSeconds === 0
-    this.durationMs =
-      (this.mode === 'deathmatch' ? deathmatchSeconds : SESSION_DURATION_S) * 1000
+    // **En red la sesión no acaba sola** (vuelta 56): la partida dura lo que
+    // dure la sala, que es lo único que hoy existe al otro lado. Un cronómetro
+    // local cerraría la sesión de uno y dejaría al otro jugando.
+    this.endless = this.enRed || (this.mode === 'deathmatch' && deathmatchSeconds === 0)
+    this.durationMs = this.enRed
+      ? Infinity
+      : (this.mode === 'deathmatch' ? deathmatchSeconds : SESSION_DURATION_S) * 1000
     this.stats.endless = this.endless
     this.elapsedMs = 0
     this.shots = 0
@@ -871,10 +992,42 @@ export class Engine {
     this.status.reset()
     this._stopShieldSound()
     this.muzzleFlash.clear()
+    this.camera.updateMatrixWorld()
+
+    // **Una sesión de red no siembra nada** (vuelta 56). Ni dianas, ni
+    // explosivo, ni recogibles, ni muñecos que disparen: el único blanco es el
+    // rival y lo pone el servidor. Se apagan aquí y no en `_applySettings`
+    // porque es la sesión la que decide qué se monta, y el motor le sigue
+    // hablando a los cuatro módulos desde los mismos sitios de siempre.
+    if (this.enRed) {
+      this.targets.clear()
+      this.objective.clear()
+      this.pickups.clear()
+      this.enemyFire.setEnabled(false)
+      this._prepararRival()
+      // **Y se empieza en la ranura que el servidor ha dado**, no en el spawn
+      // del escenario: `movement.reset()` conoce uno solo y el servidor reparte
+      // dos, separados para no aparecer uno dentro del otro. Sin esto, el primer
+      // paso de cada partida llegaba con 2.5 u de error y su corrección.
+      this.net.colocarEnSalida()
+      this.camera.updateMatrixWorld()
+      // Encendido para toda la partida: ver `_onPointerLockChange`.
+      this.movement.setEnabled(true)
+      if (!this.isLocked) this.movement.disconnect()
+      // **Y se entra en paso con el servidor.** Mientras se estaba en el menú el
+      // contador propio no avanzaba: empezar desde ahí sería mandar entradas
+      // selladas con pasos que el servidor dejó atrás hace rato.
+      if (this.net.relojFresco()) this.net.reanclar(this.net.pasoObjetivo())
+      this.net.soltarAcumulador()
+      this._simAccumulator = 0
+      this._simPoseEpoch = -1
+      this._setPhase(PHASE.RUNNING)
+      return
+    }
+
     this.enemyFire.begin()
     this.pickups.begin()
     // La primera diana nace en la posición ya reseteada del jugador.
-    this.camera.updateMatrixWorld()
     const now = this.gameTime
     // **Con explosivo armado no hay reaparición**: el selector de simultáneas
     // pasa a decir cuántos muñecos hay *en toda la ronda*, no cuántos a la vez.
@@ -954,6 +1107,11 @@ export class Engine {
 
     this._triggerHeld = true
     const now = this.gameTime
+    // **El instante real del clic**, que es de donde sale la fracción de paso
+    // del disparo en red. Fuera de la red no se usa y no cuesta nada.
+    const ts = Number.isFinite(event.timeStamp) && event.timeStamp > 0
+      ? event.timeStamp
+      : performance.now()
 
     // Darle a un botón es accionarlo, no disparar: no cuenta como acierto ni
     // como fallo, no gasta munición y no mueve la cámara. Pero sólo gana si es
@@ -978,7 +1136,7 @@ export class Engine {
       if (!this.reloading) this._showHelp('Pulsa R para recargar')
       return
     }
-    this._tryShoot(now)
+    this._tryShoot(now, ts)
   }
 
   _onMouseUp(event) {
@@ -1024,6 +1182,14 @@ export class Engine {
    * @param {number} deltaMs tiempo de juego del frame; cero en pausa
    */
   _updateCombat(now, deltaMs) {
+    // **En red el combate no se simula: se obedece** (vuelta 56). No hay
+    // muñecos a los que dar un paso ni una cuenta de reaparición que descontar
+    // —las dos cosas las lleva el servidor—, así que lo que queda es leer lo
+    // que ha llegado y ponerlo en pantalla.
+    if (this.enRed) {
+      this._syncRival(now, deltaMs)
+      return
+    }
     const status = this.status
     const { shieldReady, respawnReady } = status.tick(deltaMs)
     if (shieldReady) this._stopShieldSound()
@@ -1053,6 +1219,17 @@ export class Engine {
    * frame ni por sesión.
    */
   _syncMarkers(settings) {
+    // **En red hay un solo blanco y es una persona** (vuelta 56). Los
+    // marcadores no se enteran: siguen recibiendo una lista de instancias con
+    // la misma forma de siempre, y el adaptador que la fabrica está en
+    // `_syncRival`. Una ranura, del tamaño del cuerpo de un jugador.
+    if (this.enRed) {
+      this.markers.setEnabled(true)
+      if (this.markers.slots.length !== 1 || this.markers.radius !== TARGET.radius) {
+        this.markers.build(1, TARGET.radius)
+      }
+      return
+    }
     const enabled = this.enemyFire.enabled
     this.markers.setEnabled(enabled)
     if (!enabled) return
@@ -1063,6 +1240,77 @@ export class Engine {
       // una ranura por muñeco y el tamaño escalado con el suyo.
       this.muzzleFlash.build(slots, settings.targetRadius)
     }
+  }
+
+  /**
+   * **El rival de carne y hueso, y los marcadores puestos encima** (vuelta 56).
+   *
+   * Aquí está el adaptador que pedía la evaluación: `markers.update` espera una
+   * lista de instancias con `{ state, group.position, facing, friendly, nick,
+   * weaponKey }` y lo que hay es la pose interpolada de una persona. Se fabrica
+   * **una sola instancia, reutilizada**, y el cuerpo del rival es el objeto que
+   * la lleva: así la brújula gira con su rumbo de verdad y la ficha flotante
+   * sale apuntándole, con su arma y su ranura, sin que `markers.js` sepa que al
+   * otro lado hay una red.
+   *
+   * Dos cosas que no son evidentes:
+   *
+   * - **Un cadáver no se dibuja, y tampoco se marca.** `poseDelRival` publica
+   *   `vivo` del lado viejo de la interpolación (vuelta 52), y de ahí sale el
+   *   `state` que apaga la ranura entera — brújula, iconos y ficha.
+   * - **Los iconos `?` y `!` se quedan apagados**, y es a propósito: dicen «te
+   *   ha visto» y «te está disparando», y eso es estado de una máquina que hoy
+   *   sólo existe para los muñecos. Deducirlo desde fuera mirando relojes sería
+   *   la segunda copia que la vuelta 37 se negó a tener. El día que el disparo
+   *   del rival viaje en la foto, la fase sale de ahí y no de una suposición.
+   */
+  _syncRival(now, deltaMs) {
+    this._leerEstadoDeRed()
+    const pose = this.net.poseDelRival()
+    const avatar = this._rivalAvatar
+    const instancia = this._rivalInstancia
+    if (!avatar || !instancia) return
+    if (!pose || !pose.vivo) {
+      avatar.group.visible = false
+      instancia.state = 'down'
+    } else {
+      avatar.group.visible = true
+      avatar.group.position.set(pose.x, pose.feetY, pose.z)
+      avatar.group.rotation.y = pose.yaw
+      avatar.setEyeHeight(pose.eyeHeight)
+      instancia.state = 'alive'
+      instancia.facing = pose.yaw
+      instancia.weaponKey = this.net.rival.arma ?? instancia.weaponKey
+    }
+    this.markers.update(now, deltaMs, this._rivalInstancias, this.camera, _sinFase)
+  }
+
+  /**
+   * Monta el cuerpo del rival y su instancia de marcador. Se llama al empezar
+   * la sesión de red: el nick sale de la ranura que el servidor haya dado, que
+   * es la misma de la que sale su color.
+   */
+  _prepararRival() {
+    // `TEAMS` va por nombre y la ranura es un número: el orden de las claves es
+    // el mismo que usa el servidor para repartirlas (ver `salidas`).
+    const suyo = TEAMS[Object.keys(TEAMS)[this.net.equipoRival % Object.keys(TEAMS).length]]
+    if (!this._rivalAvatar) {
+      this._rivalAvatar = new Avatar(TARGET.radius, suyo.color)
+      this._rivalAvatar.group.visible = false
+      this.scene.add(this._rivalAvatar.group)
+      this._rivalInstancia = {
+        state: 'down',
+        group: this._rivalAvatar.group,
+        facing: 0,
+        friendly: false,
+        nick: '',
+        weaponKey: null,
+      }
+      this._rivalInstancias = [this._rivalInstancia]
+    }
+    this._rivalAvatar.setColor(suyo.color)
+    this._rivalInstancia.nick = this.net.nickRival
+    this._syncMarkers(getSettings())
   }
 
   /**
@@ -1109,21 +1357,73 @@ export class Engine {
     return Math.atan2((-fz * dx + fx * dz) / flat, (fx * dx + fz * dz) / flat)
   }
 
+  /**
+   * **El estado de red, leído de la foto** (vuelta 56). Se llama una vez por
+   * paso, desde `_syncRival`, y es el único sitio donde vida, abatido y
+   * reaparición entran en el motor.
+   *
+   * Los tres métodos de abajo no cambian de forma: lo que cambia es **quién los
+   * llama**. Fuera de la red los llama `status`, que lleva la cuenta; en red
+   * los llama esto, que no lleva ninguna — el servidor ya la lleva, y una
+   * segunda cuenta local es exactamente la que acaba discrepando.
+   *
+   * Y el aviso de daño sale de comparar la vida con la de la foto anterior, no
+   * de un evento: un campo que ya viaja dice lo mismo que un mensaje nuevo, y
+   * perder una foto no pierde el golpe porque la siguiente trae la vida igual.
+   * Lo que se pierde es **de cuántos golpes** venía, que no es lo que el anillo
+   * de la mira enseña.
+   */
+  _leerEstadoDeRed() {
+    const vida = this.net.vida
+    const abatido = vida <= 0
+    if (vida < this._vidaPrevia) {
+      const pose = this.net.poseDelRival()
+      const rumbo = pose ? this._bearingTo(pose.x, pose.z) : 0
+      const cuanto = (this._vidaPrevia - vida) / PLAYER.maxHealth
+      playDamage(Math.min(1, cuanto))
+      this.callbacks.onDamage?.(cuanto, rumbo)
+    }
+    this._vidaPrevia = vida
+    if (abatido && !this._abatidoEnRed) {
+      this._abatidoEnRed = true
+      this._downPlayer()
+      return
+    }
+    if (!abatido && this._abatidoEnRed) {
+      this._abatidoEnRed = false
+      this._respawnPlayer()
+    }
+  }
+
   /** Abatido: se congela al jugador y arranca la cuenta de reaparición. */
   _downPlayer() {
-    this.status.die()
+    // **En red la muerte ya la ha decidido el servidor**: `status` no lleva la
+    // cuenta de nada y llamarle aquí arrancaría una reaparición local que iría
+    // por su lado. Lo demás —soltar el gatillo, cancelar la recarga— sí es del
+    // cliente y se hace igual.
+    if (!this.enRed) this.status.die()
     this._stopShieldSound()
     this._releaseTrigger()
     this._cancelReload()
     this._defuseHeld = false
     // La mirada se queda: ver quién te ha matado es información. Lo que se
-    // apaga es andar y disparar.
-    this.movement.setEnabled(false)
+    // apaga es andar y disparar. **En red no**: quien decide que un muerto no
+    // se mueve es el servidor, que ignora sus entradas hasta `vivoEn` (vuelta
+    // 52), y apagar además el movimiento local dejaría de producir entradas —y
+    // sin entradas suyas no reaparece nunca, porque la reaparición cuelga de
+    // ellas—. El resultado se ve igual: 0.00 u con la tecla pulsada.
+    if (!this.enRed) this.movement.setEnabled(false)
   }
 
   _respawnPlayer() {
-    this.status.respawn()
-    this.movement.reset()
+    // **La reaparición en red ya ha ocurrido**: la hizo `_aplicar` al ejecutar
+    // la primera entrada que alcanzaba `vivoEn`, y con ella el `reset()` que
+    // sube la época de pose. Repetirla aquí sería un segundo teletransporte, y
+    // encima uno que el servidor no predijo.
+    if (!this.enRed) {
+      this.status.respawn()
+      this.movement.reset()
+    }
     this.movement.setEnabled(this.phase === PHASE.RUNNING)
     // Las dos armas llenas, pero en la mano sigue la que llevabas: reaparecer
     // repone munición, no te cambia de arma.
@@ -1185,6 +1485,7 @@ export class Engine {
   }
 
   _onKeyUp(event) {
+    if (typingInField()) return
     if (this._isBind('use', event)) this._defuseHeld = false
     if (this._isBind('scoreboard', event)) this._scoreboardHeld = false
   }
@@ -1206,6 +1507,26 @@ export class Engine {
   }
 
   _onKeyDown(event) {
+    // **Escribiendo en un campo no se juega** (vuelta 56). El juego no tiene ni
+    // un campo de texto y por eso hasta aquí no hacía falta; la página del duelo
+    // sí —el código de la sala—, y con el motor completo teclear ahí era jugar:
+    // la `B` abría la armería y `preventDefault` se comía lo escrito.
+    if (typingInField()) return
+    /**
+     * **La pulsación de salto viaja, y con su instante real** (vuelta 56). El
+     * movimiento también la anota por su cuenta con `event.timeStamp`, pero esa
+     * marca está en el reloj local y `movement.update` la va a comparar contra
+     * el reloj **compartido** de los pasos; la entrada la vuelve a poner en el
+     * bueno (`_aplicar` llama a `pressJump` antes de `update`, así que la pisa
+     * antes de que nadie la use). Sin esto los dos extremos de la ventana de
+     * encadenado vivirían en relojes distintos — ver `net/protocolo.js`.
+     */
+    if (this.enRed && !event.repeat && this._isBind('jump', event)) {
+      const ts = Number.isFinite(event.timeStamp) && event.timeStamp > 0
+        ? event.timeStamp
+        : performance.now()
+      this.net.pulsarSalto(ts)
+    }
     // La vista del avatar es de depuración: se abre esté como esté la partida,
     // que para eso existe — inspeccionar el modelo sin montar un multijugador.
     if (this._isBind('avatarDebug', event) && !event.repeat) {
@@ -1484,12 +1805,13 @@ export class Engine {
    *
    * @returns {boolean} si el disparo llegó a salir
    */
-  _tryShoot(now) {
+  _tryShoot(now, instanteReal = this._simTime) {
     // Recargando o sin munición no sale nada. El aviso del cargador vacío lo
     // da la pulsación del gatillo, no este camino.
     if (this.reloading || this.ammo <= 0) return false
-    // Abatido tampoco: el arma se calla hasta reaparecer.
-    if (!this.status.alive) return false
+    // Abatido tampoco: el arma se calla hasta reaparecer. En red, quien dice
+    // si estás vivo es el servidor.
+    if (this.enRed ? this.net.vida <= 0 : !this.status.alive) return false
 
     const weapon = this.weapon
     const intervalMs = 60000 / weapon.rpm
@@ -1511,7 +1833,7 @@ export class Engine {
     // El orden importa: primero se dispara desde donde apunta la mira ahora
     // —con el retroceso ya acumulado de los disparos anteriores— y después el
     // arma empuja. Así el primer disparo de cada ráfaga sale limpio.
-    this._shoot()
+    this._shoot(instanteReal)
     this._applyRecoil(weapon)
     this._sprayIndex += 1
     this._consumeAmmo(weapon, now)
@@ -1547,8 +1869,28 @@ export class Engine {
     this.controls.applyRecoil(step[0], step[1])
   }
 
-  _shoot() {
+  _shoot(instanteReal = this._simTime) {
     this.shots += 1
+
+    /**
+     * **En red el disparo no se resuelve aquí: se manda** (vuelta 56). Quién
+     * ha recibido el tiro lo decide el servidor rebobinando, y el veredicto
+     * vuelve por `onVeredicto`; lo que se resuelve en local —contra el rival
+     * tal como está dibujado ahora mismo— ya lo hace `net/cliente.js`, que es
+     * el mismo código que corre el servidor (`net/disparo.js`). Duplicarlo aquí
+     * serían dos fórmulas y una discrepancia que no diría nada de la red.
+     *
+     * El instante es **real**, no de juego: de él sale la fracción de paso con
+     * la que viaja el disparo, y ésa es la mitad de la compensación de retraso.
+     * Un clic trae el suyo del evento; el fuego automático, el del paso.
+     */
+    if (this.enRed) {
+      this.camera.updateMatrixWorld()
+      this.net.disparar(instanteReal, this.camera.rotation.y, this.camera.rotation.x)
+      playWeaponShot(this.weaponKey, this.suppressorEnabled)
+      this.callbacks.onShot?.(false)
+      return
+    }
 
     let hit = null
     if (this.targets.hasActive) {
@@ -1602,6 +1944,15 @@ export class Engine {
 
   _onPointerLockChange() {
     if (this.isLocked) {
+      if (this.enRed) {
+        // **Capturar el ratón no arranca nada: lo que arranca es la partida.**
+        // Lo que se enciende aquí es el *mando* —mirar y teclear—, no el mundo:
+        // el mundo lleva corriendo desde que el servidor dio la bienvenida.
+        this.controls.enabled = true
+        this.movement.connect(window)
+        if (this.phase !== PHASE.RUNNING) this._beginSession()
+        return
+      }
       if (this.phase === PHASE.IDLE || this.phase === PHASE.FINISHED) this._beginSession()
       else if (this.phase === PHASE.PAUSED) {
         this.controls.enabled = true
@@ -1610,11 +1961,36 @@ export class Engine {
         this.movement.setEnabled(this.status.alive)
         this._setPhase(PHASE.RUNNING)
       }
-    } else {
-      // Perder la captura en plena partida pausa el reloj en lugar de
-      // terminarla: salir con Escape no debería arruinar la sesión.
-      this._suspend()
+      return
     }
+    /**
+     * **En red, soltar el ratón no pausa nada** (vuelta 56, y es la regla de la
+     * 53). Una pausa es parar el mundo de los dos y sólo la decide el servidor;
+     * un `_suspend()` aquí sería justo el «estoy en pausa» local que aquella
+     * vuelta quitó — y además dejaría de producir entradas, así que un abatido
+     * no volvería a reaparecer nunca: la reaparición cuelga de sus entradas.
+     *
+     * Lo que sí se hace es la verdad de lo que pasa: se sueltan las teclas
+     * —quien abre el menú no está pulsando nada— y se apaga la mirada. El mundo
+     * sigue corriendo hasta que la foto diga otra cosa.
+     */
+    if (this.enRed) {
+      this.controls.enabled = false
+      this._releaseTrigger()
+      // **Se desconecta el teclado, no se apaga el movimiento.** El servidor
+      // sigue ejecutando las entradas de este jugador pase lo que pase, así que
+      // el cliente tiene que seguir prediciéndolas: apagar `movement` pararía
+      // `update()` en este lado y sólo en éste, o sea una corrección por paso.
+      // Lo que sobra con el ratón suelto son las teclas, y eso se quita
+      // quitando el oyente.
+      this.movement.disconnect()
+      this.movement.releaseKeys()
+      this.movement.releaseInput()
+      return
+    }
+    // Perder la captura en plena partida pausa el reloj en lugar de
+    // terminarla: salir con Escape no debería arruinar la sesión.
+    this._suspend()
   }
 
   /**
@@ -1702,6 +2078,15 @@ export class Engine {
    */
   _advanceSimulation(now, delta) {
     const step = SIM_STEP_MS
+    // **En red el ritmo lo pone el cliente** (vuelta 56). No es el mismo
+    // acumulador con otro nombre: además del sobrante lleva el enganche al
+    // reloj del servidor, el re-anclaje tras un parón y el freno con suelo, que
+    // son las vueltas 49 y 51 y no tienen sentido fuera de una partida. Vive en
+    // `net/cliente.js` para que no haya dos copias de ese cálculo.
+    if (this.enRed) {
+      this._advanceNet(now, delta)
+      return
+    }
     const tolerance = Math.min(1, step * 0.1)
     this._simAccumulator += delta
 
@@ -1723,6 +2108,51 @@ export class Engine {
   }
 
   /**
+   * **Los pasos de un frame en red** (vuelta 56).
+   *
+   * El mundo sigue yendo a 60 Hz fijos; lo que cambia es quién decide cuántos
+   * pasos caben en este frame, y la respuesta no es el acumulador solo: es el
+   * acumulador **enganchado al reloj del servidor**. Eso vive en el cliente
+   * (`pasosDeFrame`), que además es quien mueve al jugador dentro de cada paso.
+   *
+   * Tres cosas que son el mecanismo:
+   *
+   * - **En pausa no se gasta paso y el acumulador no guarda el rato parado.**
+   *   Dejarlo acumular sería soltar un minuto de pasos de golpe al reanudar; es
+   *   la misma razón por la que el motor acota el frame largo.
+   * - **Un re-anclaje no se interpola.** Tras un parón el número de paso salta,
+   *   y dibujar el punto intermedio sería barrer medio mapa: se suelta la pose
+   *   guardada, igual que con un teletransporte.
+   * - **`_simTime` se re-ancla al final**, exactamente como fuera de la red:
+   *   sigue siendo un instante real un sobrante por detrás de este frame, y de
+   *   ahí sale la fracción con la que viaja la pulsación de salto.
+   */
+  _advanceNet(now, delta) {
+    // Antes de la bienvenida no hay reloj al que engancharse: consultarlo sería
+    // leer un atraso que crece contra un mundo en el que nadie está jugando.
+    if (this.phase !== PHASE.RUNNING || this.net.pausa.pausada) {
+      this.net.soltarAcumulador()
+      this._simAccumulator = 0
+      this._simTime = now
+      return
+    }
+    const { pasos, reanclado } = this.net.pasosDeFrame(now, delta)
+    // **Un re-anclaje no se interpola.** Soltar la época hace que el paso
+    // siguiente vuelva a sembrar las dos poses, que es el mismo mecanismo con
+    // el que no se interpola un teletransporte.
+    if (reanclado) this._simPoseEpoch = -1
+    for (let i = 0; i < pasos; i++) {
+      // Cuándo empezó **este** paso en tiempo real: de ahí sale la fracción de
+      // paso con la que viajan la pulsación de salto y el clic de disparo.
+      const inicio = now - this.net.acumulador - (pasos - i) * SIM_STEP_MS
+      this._simTime = inicio + SIM_STEP_MS
+      this._simStep(SIM_STEP_MS, inicio)
+    }
+    this._simAccumulator = this.net.acumulador
+    this._simTime = now - this._simAccumulator
+  }
+
+  /**
    * Un paso de mundo. Es literalmente lo que hacía el frame hasta la vuelta 43,
    * con dos diferencias: el delta es fijo y las tres actualizaciones del mundo
    * —dianas, combate y objetivo— viven ya en el mismo sitio que el movimiento
@@ -1730,7 +2160,7 @@ export class Engine {
    * la misma y sigue cubriéndolas a todas: **el mundo sólo avanza jugando**, y
    * pausar es dejar de sumarle al reloj (ver `CLAUDE.md`).
    */
-  _simStep(stepMs) {
+  _simStep(stepMs, inicioDePaso = this._simTime - stepMs) {
     if (this.phase !== PHASE.RUNNING) return
 
     // El reloj del mundo avanza aquí y **sólo aquí**: pausar es dejar de
@@ -1752,7 +2182,12 @@ export class Engine {
     // depuración— manda sobre lo que hubiera guardado el dibujado.
     this._simPrev.copy(this.camera.position)
 
-    this.movement.update(stepMs / 1000, this._simTime)
+    // **En red no se mueve el motor: se da un paso de red.** `dar()` muestrea
+    // las teclas —que son las mismas de `movement.keys`—, predice llamando al
+    // mismo `movement.update` y manda la entrada sellada con su número de paso.
+    // Llamar aquí a `movement.update` además sería dar el paso dos veces.
+    if (this.enRed) this.net.dar(this.net.paso + 1, inicioDePaso)
+    else this.movement.update(stepMs / 1000, this._simTime)
 
     // Y aquí queda dónde acaba. Si el movimiento ha teletransportado (`reset`),
     // la época cambia y este paso no se interpola: se dibuja donde toca en vez
@@ -1772,11 +2207,13 @@ export class Engine {
       this._tryShoot(this.gameTime)
     }
 
-    this.targets.update(this.gameTime, stepMs / 1000, this.camera)
+    // Dianas y explosivo son del entrenamiento: en red no hay ni una cosa ni
+    // otra, y el combate lo sustituye el estado que llega del servidor.
+    if (!this.enRed) this.targets.update(this.gameTime, stepMs / 1000, this.camera)
     // El combate va después de las dianas: los muñecos disparan desde donde
     // han quedado este paso, no desde donde estaban en el anterior.
     this._updateCombat(this.gameTime, stepMs)
-    this._updateObjective(this.gameTime, stepMs / 1000)
+    if (!this.enRed) this._updateObjective(this.gameTime, stepMs / 1000)
   }
 
   /**
@@ -1884,6 +2321,29 @@ export class Engine {
     stats.scoring = this.objective.active
     if (stats.scoring) stats.stars = this._currentScore().stars
 
+    // **En red la vida la dice el servidor** (vuelta 56), y el bloque de
+    // vitales sale siempre: hay quien dispare por definición. Escudo y casco se
+    // quedan a cero a propósito — esta vuelta es sólo vida.
+    if (this.enRed) {
+      stats.combat = true
+      stats.health = this.net.vida
+      stats.shield = 0
+      stats.shieldSegments = 0
+      stats.charges = 0
+      stats.helmet = false
+      stats.applying = false
+      stats.applyProgress = 0
+      stats.alive = this.net.vida > 0
+      stats.respawnLeftMs = this.net.restaReaparicionMs()
+      stats.respawnMs = NET.respawnMs
+      stats.invulnerableLeftMs = 0
+      stats.invulnerableMs = 0
+      stats.lowHealth = this.net.vida > 0 && this.net.vida < PLAYER.lowHealth
+      stats.deaths = this.net.muertes ?? 0
+      stats.kills = this.net.bajas ?? this.kills
+      this.callbacks.onFrame?.(stats)
+      return
+    }
     // Vida y escudo: el bloque sólo aparece donde hay quien dispare.
     const status = this.status
     stats.combat = this.enemyFire.enabled

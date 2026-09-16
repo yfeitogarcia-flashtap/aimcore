@@ -54,7 +54,7 @@
  */
 
 import { COVER, LANDING, MOVEMENT, ROOM, weaponSpeedFactor } from '../config.js'
-import { defaultKeybinds, keysOf } from '../keybinds.js'
+import { defaultKeybinds, keysOf, typingInField } from '../keybinds.js'
 
 const DEG_TO_RAD = Math.PI / 180
 const TWO_PI = Math.PI * 2
@@ -93,6 +93,12 @@ export class MovementController {
     // Arranca con los de fábrica; el motor empuja los del jugador en cuanto
     // existe, igual que hace con los ajustes.
     this.keyMap = buildKeyMap(defaultKeybinds())
+    /**
+     * **Lo que el paso está ejecutando.** Lo lee `update()`. Fuera de la red lo
+     * escribe el teclado y es lo mismo que la intención; por la red lo escribe
+     * `desempaquetarTeclas` con la entrada que toque — **también al reejecutar
+     * una vieja**, que es de lo que va la separación de abajo.
+     */
     this.keys = {
       forward: false,
       back: false,
@@ -102,6 +108,20 @@ export class MovementController {
       walk: false,
       crouch: false,
     }
+    /**
+     * **Lo que el jugador está pulsando ahora.** Lo escribe el teclado y de
+     * aquí lo muestrea quien produzca la entrada del paso.
+     *
+     * Por defecto **es el mismo objeto** que `keys`: sin red, la intención y lo
+     * que se ejecuta son lo mismo y separarlos sería una copia por paso para
+     * nada. `separateInput()` los desdobla, y eso es lo que hace falta en red:
+     * la reconciliación reejecuta entradas guardadas, así que `keys` se llena
+     * sesenta veces por segundo con máscaras **del pasado**. Con un solo objeto
+     * cada foto borraba la tecla que el jugador tenía pulsada — medido: con W
+     * apretada, `teclas.forward` volvía a `false` en el primer paso y el jugador
+     * no se movía en absoluto.
+     */
+    this.input = this.keys
 
     /** Altura de los pies sobre el suelo. Sólo el salto la mueve. */
     this.feetY = 0
@@ -220,7 +240,7 @@ export class MovementController {
 
     this._onKeyDown = this._onKeyDown.bind(this)
     this._onKeyUp = this._onKeyUp.bind(this)
-    this._onBlur = this.releaseKeys.bind(this)
+    this._onBlur = () => { this.releaseKeys(); this.releaseInput() }
   }
 
   connect(target = window) {
@@ -246,7 +266,10 @@ export class MovementController {
    */
   setEnabled(value) {
     this.enabled = value && MOVEMENT.enabled
-    if (!this.enabled) this.releaseKeys()
+    if (!this.enabled) {
+      this.releaseKeys()
+      this.releaseInput()
+    }
   }
 
   /**
@@ -257,6 +280,24 @@ export class MovementController {
   setKeybinds(binds) {
     this.keyMap = buildKeyMap(binds)
     this.releaseKeys()
+    this.releaseInput()
+  }
+
+  /**
+   * **Desdobla la intención de lo que se ejecuta.** Lo llama el motor al
+   * conectarse a una partida: ver `input`. Devuelve el objeto de intención, que
+   * es lo que el productor de entradas tiene que muestrear.
+   */
+  separateInput() {
+    if (this.input === this.keys) this.input = { ...this.keys }
+    return this.input
+  }
+
+  /** Suelta lo que el jugador tiene pulsado. Ver `releaseKeys`. */
+  releaseInput() {
+    const input = this.input
+    if (input === this.keys) return
+    for (const k of Object.keys(input)) input[k] = false
   }
 
   releaseKeys() {
@@ -1172,13 +1213,14 @@ export class MovementController {
   }
 
   _onKeyDown(event) {
-    if (!this.enabled || event.repeat) return
+    // Escribiendo en un campo no se juega: ver `typingInField`.
+    if (!this.enabled || event.repeat || typingInField()) return
     const action = this.keyMap.get(event.code)
     if (!action) return
     // Corta el scroll con espacio y flechas. No alcanza a Ctrl+W: ese atajo se
     // lo queda Chrome (ver el comentario de KEYBINDS en config.js).
     event.preventDefault()
-    this.keys[action] = true
+    this.input[action] = true
     // La marca del salto sale del **evento**, no del frame que lo atiende:
     // `timeStamp` va en el mismo origen de tiempos que `performance.now()`, así
     // que la ventana de encadenado no hereda el retraso del bucle de dibujo.
@@ -1198,10 +1240,11 @@ export class MovementController {
   }
 
   _onKeyUp(event) {
+    if (typingInField()) return
     const action = this.keyMap.get(event.code)
     if (!action) return
     // El keyup se atiende siempre, incluso con los controles ya desactivados:
     // si no, una tecla soltada durante la pausa se quedaría marcada.
-    this.keys[action] = false
+    this.input[action] = false
   }
 }
