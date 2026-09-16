@@ -1566,6 +1566,12 @@ sin nada guardado. El plan completo, con costes y riesgos, está en
 los pasos para publicarlo, en
 [`docs/despliegue-cloudflare.md`](docs/despliegue-cloudflare.md).
 
+Y lo que se ha dicho que vendría después —reconexión, cuentas, ranking, modos,
+mapas de comunidad, economía— está recogido en
+[`docs/roadmap.md`](docs/roadmap.md), ordenado por dependencia y **sin fechas**.
+Es un inventario, no un compromiso: lo de esta sección sigue fuera hasta que se
+encargue.
+
 ## Documentación interna
 
 - [`CLAUDE.md`](CLAUDE.md) — contexto operativo del repositorio: arquitectura,
@@ -1577,3 +1583,6 @@ los pasos para publicarlo, en
 - [`docs/despliegue-cloudflare.md`](docs/despliegue-cloudflare.md) — cómo poner
   el 1v1 en internet, paso a paso y sin dar nada por sabido: cuenta, plan, token
   con el permiso mínimo y cómo hacerlo llegar sin pegarlo en un chat.
+- [`docs/roadmap.md`](docs/roadmap.md) — lo que vendría después, por dependencia
+  y sin fechas: qué hace falta antes de cada cosa, cómo se sabría que está bien y
+  qué se descarta a propósito. No autoriza nada; recopila.

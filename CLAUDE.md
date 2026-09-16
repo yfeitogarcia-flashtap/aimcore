@@ -2020,6 +2020,14 @@ el botón no pueda apuntar a un ajuste distinto del que enseña la fila.
 Cuentas, guardado en la nube, rankings, minimapa, pasos sonoros. Si el encargo no
 lo pide explícitamente, no se añade.
 
+**Lo que está fuera pero se ha dicho que vendría después vive en
+`docs/roadmap.md`**, ordenado por dependencia y sin fechas: reconexión, condición
+de victoria, escudo y casco en red, identidad y cuentas, el SDK Social de
+Discord, el modo de eliminación, el modo FlickLAB con ranking, los Planos B y C,
+los mapas de comunidad, la economía y la monetización. Ese fichero **no autoriza
+nada** —esta sección sigue mandando— y está para no reconstruir la lista cada vez
+buscando en `decisions.md` la vuelta en que salió cada idea.
+
 **El backend dejó de estarlo en la vuelta 45 y la nube en la 47**, pero sólo
 hasta donde llega el prototipo: un Durable Object por código de partida, y nada
 más. **Ni cuentas, ni matchmaking, ni persistencia, ni rankings** — la partida
@@ -2058,3 +2066,9 @@ llegar las dos ranuras de arma.
 relevante, su razonamiento y las alternativas descartadas. No se carga en cada
 sesión — consúltalo cuando necesites saber **por qué** algo está como está antes
 de cambiarlo.
+
+Y mirando hacia delante, `docs/roadmap.md`: el inventario de lo que se ha dicho
+que vendría después, por dependencia y sin fechas. Una entrada de ahí es un
+renglón, no un diseño — cuando a una le llegue el turno, lo que se escribe es una
+propuesta en `docs/propuestas/`, como se hizo con el escenario de cobertura y con
+el 1v1.
