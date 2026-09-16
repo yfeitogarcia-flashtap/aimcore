@@ -57,17 +57,45 @@ una dirección de servidor configurable, que es justo lo que la 47 quitó. Movie
 ### 1.3 La premisa que hay que comprobar antes de mover nada
 
 Toda la propuesta descansa en esto: **que una IP exclusiva en el proveedor
-elegido no esté bloqueada desde España en día de partido**. Es comprobable en
-diez minutos y sin migrar nada:
+elegido no esté bloqueada desde España en día de partido**.
 
-1. Levantar una máquina mínima en el candidato, con IP dedicada, sirviendo un
-   «hola» y un WebSocket que haga eco.
-2. Abrirlo desde España, con Movistar o DIGI, **durante un partido**.
+**Y esta comprobación no se puede hacer desde el repositorio, ni desde ninguna
+máquina que no esté en una operadora española.** Se intentó (vuelta 58) y no es
+una limitación de permisos: el bloqueo **lo aplica la operadora al tráfico de sus
+propios clientes**. Un contenedor en la nube no es cliente de Movistar, así que
+desde aquí todo responde siempre — incluido lo que en Madrid está caído. Un verde
+medido desde fuera no dice «no está bloqueado», dice «no estoy donde se bloquea»,
+que es el mismo error de instrumento de la vuelta 49 (medir desde fuera con
+`evaluate` daba 33 u/s donde la sonda de dentro daba 6.5) y de la 57 (la pestaña
+frenada medía el frenado). **La sonda tiene que estar donde ocurre el fenómeno.**
 
-Si contesta, la propuesta vale. Si no contesta, no hay nada que discutir y la
-respuesta es otra. Es la regla de siempre —comprobar la premisa antes de medir—,
-y es exactamente el fallo de la vuelta 46, donde cinco tablas dieron «100% de
-acuerdo» sobre cero disparos.
+Así que el instrumento es una persona con una conexión española, y el
+procedimiento es de navegador, no de consola. Tres pestañas, en este orden:
+
+1. **Confirmar que el bloqueo está activo ahora**, en `hayahora.futbol`. Sin
+   esto la prueba es a ciegas: un verde fuera de ventana de bloqueo no significa
+   nada, que es la trampa de la vuelta 46 —cinco «100% de acuerdo» sobre cero
+   disparos—.
+2. **El control:** el despliegue actual, `vektor.vektorbyflicklab.workers.dev`.
+   **Tiene que estar caído.** Si contesta con el bloqueo confirmadamente activo,
+   entonces las dos caídas observadas tuvieron otra causa y esta propuesta entera
+   está atacando el problema equivocado. El control va **antes** que la medida.
+3. **La medida:** cualquier servicio público alojado en el candidato. Para
+   empezar no hace falta desplegar nada ni pagar nada: lo que se está preguntando
+   es si las operadoras tienen anulados los rangos del proveedor.
+
+La lectura del punto 3 **no es simétrica**, y conviene saberlo antes de mirar:
+
+- **Responde** → los rangos del proveedor no están anulados en bloque. Como la
+  IP que se compraría además **no la comparte nadie**, una IP dedicada sólo puede
+  estar mejor que la compartida que se acaba de probar. Verde, y del bueno.
+- **No responde** → no condena la propuesta, sólo deja de resolverla: podría ser
+  que esa IP compartida concreta se llevara un bloqueo por un vecino, que es
+  exactamente el daño colateral del que se huye. Ahí sí hace falta la prueba cara
+  —máquina mínima con IP dedicada— antes de decidir.
+
+Si el control falla o la medida sale roja, **no se construye nada** y la decisión
+vuelve a la mesa.
 
 ---
 
@@ -290,9 +318,10 @@ dominio propio y una IPv4 dedicada. ~5-6 $ al mes.**
 
 El orden, y el primero no es construir:
 
-1. **Comprobar la premisa** (§1.3): una máquina mínima con IP dedicada, abierta
-   desde España en día de partido. Diez minutos y ningún compromiso. Si falla,
-   esta propuesta se cae entera y hay que replantear.
+1. **Comprobar la premisa** (§1.3), y **la tiene que hacer una persona en España**:
+   desde fuera de una operadora española la medida no existe. Tres pestañas con
+   el bloqueo confirmado activo, empezando por el control. Si el control no cae o
+   la medida sale roja, esta propuesta se cae entera y hay que replantear.
 2. **Comprar el dominio.** Vale por sí solo, pase lo que pase con el resto: hoy
    el enlace que le mandas a un amigo es un subdominio de Cloudflare del que no
    te puedes mover.
