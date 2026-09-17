@@ -103,6 +103,21 @@ export const MSG = {
    */
   COLOCAR: 'c',
   /**
+   * **Comprar** (vuelta 64). Del cliente al servidor: `q` es la clave del
+   * catálogo (`volt`, `chaleco`, `supresor`…) y `a`, sólo para el supresor, de
+   * qué arma. No lleva precio ni saldo a propósito: **lo que cuesta y si se
+   * puede lo decide el servidor**, que es la misma regla que la cadencia.
+   */
+  COMPRAR: 'm',
+  /**
+   * **Lo que tienes y lo que puedes** (vuelta 64). Del servidor a **un** jugador:
+   * dinero, inventario y el techo de la ronda. Va como mensaje suelto y no en la
+   * foto por dos motivos: cambia cada pocos minutos, no sesenta veces por
+   * segundo, y **el saldo del rival no se enseña** — en la foto compartida
+   * viajaría a los dos.
+   */
+  ECONOMIA: 'eco',
+  /**
    * **Pausa** (vuelta 53). Un solo tipo para las cuatro cosas que se pueden
    * decir sobre ella, en el campo `q`: `pedir`, `reanudar`, `si` y `no`.
    *

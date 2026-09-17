@@ -82,7 +82,15 @@ const MAX_ATRASO = Math.max(1, Math.round(SIM.maxFrameDeltaMs / SIM_STEP_MS))
  * huésped y otro es de quién es el `setTimeout`.
  */
 class Sala {
-  constructor(codigo) {
+  /**
+   * @param {string} codigo
+   * @param {number|null} [compraSegundos] lo que dura la fase de compra en esta
+   *   sala (vuelta 64). Lo trae **quien la crea** en la dirección del socket, por
+   *   el mismo motivo que el pase de reconexión: la sala se configura al nacer,
+   *   antes de que llegue ningún mensaje. Quien entra después no la cambia — el
+   *   segundo jugador no puede reescribirle la partida al primero.
+   */
+  constructor(codigo, compraSegundos = null) {
     this.codigo = codigo
     /**
      * El escenario se monta **una vez por sala**, no por conexión: son 20 piezas
@@ -90,7 +98,13 @@ class Sala {
      * distintos con los mismos datos.
      */
     this.escenario = new Scenario(new THREE.Scene(), ESCENARIO)
-    this.partida = new Partida({ escenario: this.escenario, colchon: COLCHON, depurar: DEPURAR, rondas: RONDAS })
+    this.partida = new Partida({
+      escenario: this.escenario,
+      colchon: COLCHON,
+      depurar: DEPURAR,
+      rondas: RONDAS,
+      ...(compraSegundos === null ? null : { compraSegundos }),
+    })
     this.reloj = null
     this.arranque = 0
     this.vaciaDesde = Date.now()
@@ -263,10 +277,10 @@ class Sala {
  */
 const salas = new Map()
 
-function salaDe(codigo) {
+function salaDe(codigo, compraSegundos = null) {
   let sala = salas.get(codigo)
   if (!sala) {
-    sala = new Sala(codigo)
+    sala = new Sala(codigo, compraSegundos)
     salas.set(codigo, sala)
   }
   return sala
@@ -500,7 +514,11 @@ servidor.on('upgrade', (peticion, socket, cabeza) => {
     // **El pase viaja en la dirección**, no en un mensaje: la partida lo
     // necesita para decidir si esto es una butaca nueva o una que ya estaba, y
     // eso se decide en `entra`, antes de que haya llegado ningún mensaje.
-    salaDe(codigo).entra(ws, url.searchParams.get('pase'))
+    // Y la duración de la fase de compra, que también viaja en la dirección y
+    // por el mismo motivo: sólo la pone quien crea la sala (vuelta 64).
+    const compra = url.searchParams.get('compra')
+    const segundos = compra === null ? null : Number(compra)
+    salaDe(codigo, Number.isFinite(segundos) ? segundos : null).entra(ws, url.searchParams.get('pase'))
   })
 })
 

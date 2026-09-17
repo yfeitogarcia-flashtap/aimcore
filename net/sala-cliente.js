@@ -44,12 +44,20 @@ export function codigoDeLaDireccion(ubicacion = window.location) {
  * @param {string} codigo
  * @param {Location} [ubicacion]
  */
-export function urlDeSala(codigo, ubicacion = window.location, pase = null) {
+export function urlDeSala(codigo, ubicacion = window.location, pase = null, compra = null) {
   // **El pase de reconexión viaja en la dirección** (vuelta 62), no en un
   // mensaje: el servidor tiene que decidir si esto es una butaca nueva o una que
   // ya estaba **antes** de que llegue ningún mensaje, que es cuando reparte
   // ranura y manda la bienvenida.
-  const cola = pase ? `?pase=${encodeURIComponent(pase)}` : ''
+  /**
+   * Y con él, **cuánto dura la fase de compra** (vuelta 64), por el mismo
+   * motivo y por el mismo camino: la sala se configura al crearse, antes de que
+   * llegue ningún mensaje, y sólo cuenta lo que diga quien la crea.
+   */
+  const partes = []
+  if (pase) partes.push(`pase=${encodeURIComponent(pase)}`)
+  if (compra !== null && Number.isFinite(compra)) partes.push(`compra=${compra}`)
+  const cola = partes.length ? `?${partes.join('&')}` : ''
   const enWorker = ubicacion.protocol === 'https:' || new URLSearchParams(ubicacion.search).has('worker')
   if (enWorker) {
     const esquema = ubicacion.protocol === 'https:' ? 'wss:' : 'ws:'

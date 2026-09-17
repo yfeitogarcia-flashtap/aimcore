@@ -220,6 +220,48 @@
   #panel label { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 4px 0; }
   #panel input[type=range] { width: 150px; accent-color: #2FCB82; }
 
+  /* ------------------------------------------------- la armería (vuelta 64)
+     El panel de compra, que vive **dentro de la partida** y no en una pantalla
+     de menú: se abre con la tecla de armería (B de fábrica) y el mundo sigue
+     corriendo por detrás — una pausa es parar el mundo de los dos y sólo la
+     decide el servidor (vuelta 53). Suelta el ratón, porque comprar con el
+     ratón pide poder pinchar, y es un `.control` por lo mismo: ahí un clic no
+     puede contar como el que captura. */
+  #tienda { position: fixed; inset: auto 0 0 0; z-index: 4; padding: 14px 18px 16px;
+    background: linear-gradient(180deg, rgba(10,10,10,0), rgba(10,10,10,.95) 22%);
+    cursor: auto; }
+  #tienda[hidden] { display: none !important; }
+  #tiendaCab { display: flex; align-items: baseline; gap: 14px; margin: 0 auto 10px;
+    max-width: 980px; }
+  #tiendaCab b { font-size: 12px; letter-spacing: .16em; color: #E4462B; }
+  #tiendaDinero { font-size: 20px; font-weight: 700; color: #2FCB82;
+    font-variant-numeric: tabular-nums; }
+  #tiendaFase { margin-left: auto; color: #9A9A9A; font-style: normal; }
+  #tiendaTecleado { color: #FFF; letter-spacing: .12em; }
+  #tiendaGrid { display: grid; gap: 10px; max-width: 980px; margin: 0 auto;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+  .cat { border: 1px solid #222; border-radius: 5px; padding: 8px 9px 9px;
+    background: rgba(18,18,18,.9); }
+  .cat h2 { margin: 0 0 7px; font-size: 10px; letter-spacing: .14em;
+    text-transform: uppercase; color: #8A8A8A; font-weight: 600; }
+  /* Un artículo: nombre, precio y **su combinación en una esquina**, que es lo
+     que enseña a comprarlo sin ratón. */
+  .art { position: relative; display: flex; justify-content: space-between; gap: 8px;
+    width: 100%; margin: 3px 0; padding: 7px 8px 7px 9px; text-align: left;
+    background: #141414; color: #E8E8E8; border: 1px solid #2A2A2A;
+    border-radius: 3px; font: inherit; cursor: pointer; }
+  .art:hover { border-color: #2FCB82; color: #FFF; }
+  .art .precio { color: #2FCB82; font-variant-numeric: tabular-nums; }
+  .art .codigo { position: absolute; top: 3px; right: 5px; font-size: 9px;
+    letter-spacing: .1em; color: #6A6A6A; }
+  /* Lo que no se puede comprar se ve, con su precio y su código, y no se puede
+     pulsar: esconderlo sería no poder aprenderse la combinación. */
+  .art:disabled { cursor: not-allowed; opacity: .45; }
+  .art:disabled:hover { border-color: #2A2A2A; color: #E8E8E8; }
+  .art.puesto { border-color: #2FCB82; }
+  .art.puesto .precio { color: #FFF; }
+  .art .nota { display: block; font-size: 10px; color: #8A8A8A; letter-spacing: .04em; }
+
   #finSalir { margin-top: 14px; background: #2FCB82; color: #08130D; border: 0;
     border-radius: 3px; padding: 9px 20px; font: inherit; font-weight: 700;
     letter-spacing: .06em; cursor: pointer; }
@@ -273,6 +315,15 @@
     <div class="fila"><span class="apagado">código de partida</span><span id="codigo">—</span></div>
     <div class="linea"><input id="enlace" readonly /><button id="copiar">copiar</button></div>
     <div class="linea"><input id="otro" placeholder="entrar en otro código" maxlength="9" /><button id="entrar">ir</button></div>
+    <!-- **La fase de compra es de la partida, y la elige quien la crea**
+         (vuelta 64). Viaja en la dirección —como el pase de reconexión— porque
+         la sala se configura al nacer; cambiarla aquí recarga con una partida
+         nueva, que es lo único honesto: una sala ya creada no se reconfigura.
+         Lo que se enseña debajo es lo que dice el servidor, no lo que pide el
+         selector. -->
+    <div class="fila"><span class="apagado">fase de compra</span>
+      <select id="compraSel" class="control"></select></div>
+    <div class="fila"><span class="apagado">en esta partida</span><span id="compraReal">—</span></div>
     <hr />
     <div class="fila"><span class="apagado">tú</span><span id="quien">conectando…</span></div>
     <div class="fila"><span class="apagado">rival</span><span id="hayRival">—</span></div>
@@ -297,6 +348,23 @@
        el clic que captura. Sale sólo sin pausas libres; lo decide `pintarPausa`. -->
   <p><button id="pedirVoto" class="control" hidden>Solicitar pausa por votación</button></p>
 </div></div>
+
+<!-- **La armería, dentro de la partida** (vuelta 64). No es una pantalla de
+     menú: se abre con la tecla de armería mientras la partida corre, y por eso
+     está fuera de `#aviso`. Se rellena desde el catálogo de `ECONOMY`, así que
+     añadir un arma es añadir una entrada allí y no tocar este HTML. -->
+<div id="tienda" class="control" hidden>
+  <div id="tiendaCab">
+    <b>Armería</b><span id="tiendaDinero">$0</span>
+    <span id="tiendaTecleado">&nbsp;</span>
+    <em id="tiendaFase">&nbsp;</em>
+  </div>
+  <div id="tiendaGrid"></div>
+  <p class="apagado" style="max-width:980px;margin:9px auto 0">
+    <kbd>B</kbd> cierra · clic para comprar · o teclea <b>categoría + código</b>
+    (la Rift es <kbd>4</kbd><kbd>3</kbd>) · <kbd>clic derecho</kbd> pone y quita el supresor
+  </p>
+</div>
 
 <div id="panel" class="control" hidden>
   <h1>Depuración · F3</h1>

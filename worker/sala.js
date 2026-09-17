@@ -55,6 +55,8 @@ export class Sala {
      * bancos de medida contra este huésped que contra el de Node.
      */
     this.partida = new Partida({ escenario: this.escenario, depurar: !!env.VEKTOR_DEBUG })
+    /** Si ya se configuró la fase de compra: sólo la pone quien crea la sala. */
+    this._compraPuesta = false
     this.reloj = null
     this.arranque = 0
   }
@@ -62,6 +64,17 @@ export class Sala {
   async fetch(peticion) {
     if (peticion.headers.get('Upgrade') !== 'websocket') {
       return new Response('Esto es una sala de Vektor: se entra por WebSocket.', { status: 426 })
+    }
+
+    // **La duración de la fase de compra viaja en la dirección** (vuelta 64) y
+    // sólo la pone quien crea la sala: el segundo en entrar no le reescribe la
+    // partida al primero. El acotado es de `Partida`, que es quien lo sabe.
+    if (!this._compraPuesta && this.partida.vacia) {
+      const compra = Number(new URL(peticion.url).searchParams.get('compra'))
+      if (Number.isFinite(compra)) {
+        this.partida.configurarCompra(compra)
+        this._compraPuesta = true
+      }
     }
 
     const par = new WebSocketPair()

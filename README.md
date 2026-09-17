@@ -233,6 +233,46 @@ dar la partida por abandonada cuando quiera.
 
 Recargar la página **no** es irse: es como se vuelve.
 
+## La armería del duelo: dinero, rondas y compra
+
+Entre ronda y ronda hay una **fase de compra** —quince segundos de fábrica, y
+quien crea la partida elige cuántos o si no la hay— con cada jugador encerrado
+en su zona y sin ver al otro. Ahí se abre la armería con **B** (reasignable en
+opciones): el mundo sigue corriendo, pero el ratón se suelta para poder pinchar.
+
+**Se compra de dos formas, y las dos valen igual:** pinchando el artículo, o
+tecleando su **combinación** — categoría y código, que van escritos en la esquina
+de cada ficha. La Pulse es `1 1`, la Volt `3 1` y la Rift `4 3`. Los códigos
+dejan huecos a propósito para las armas que faltan: cuando lleguen, lo que ya te
+sabes no cambiará de sitio.
+
+**Con el arma en la mano, el clic derecho pone y quita el supresor.** No cuesta
+dinero y se puede hacer en cualquier momento — es tu arma.
+
+### El dinero
+
+| | cuánto |
+|---|---|
+| Ronda 1 | 800, y **sin armas largas**: la primera se juega con pistola |
+| Ganar una ronda | +3200 |
+| Perderla | +2400, y sube si encadenas derrotas |
+| Matar | +300 |
+
+Con eso, la ronda 2 no es igual para los dos: el que ganó llega al rifle (2900) y
+poco más, o se lleva el subfusil (1600) con compra completa; el que perdió no
+llega al rifle y elige entre subfusil con algo de equipo o ahorrar para la
+siguiente. **Y morir cuesta el equipo**: quien cae empieza la ronda siguiente con
+la pistola y sin chaleco.
+
+El chaleco (500) y el casco (350) **paran balas de verdad**: el duelo usa la
+misma escalera de daño que el entrenamiento —el casco se come el primer tiro a la
+cabeza, el escudo cubre el cuerpo—. Las granadas salen en el panel con su precio
+y su combinación **y no se pueden comprar**: todavía no existen, y venderlas
+sería prometer algo que no hay.
+
+Todos los números están en `ECONOMY` (`src/config.js`) y son de partida: se
+calibran jugando.
+
 ## Cómo suena un disparo
 
 Todas las armas suenan sintetizadas en tiempo real, sin un solo fichero de audio,

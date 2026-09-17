@@ -98,6 +98,21 @@ export class ClienteRed {
     this._seqDisparo = 0
     /** Vida que dice el servidor. Con cero, abatido. */
     this.vida = 100
+    /** Escudo y casco, que desde la vuelta 64 también existen en red. */
+    this.escudo = 0
+    this.casco = false
+    /**
+     * **Lo que tienes y lo que puedes comprar**, tal como lo dice el servidor
+     * (vuelta 64). Aquí no se decide nada: el panel dibuja esto y manda
+     * `MSG.COMPRAR`; lo que cuesta y si cabe lo decide el otro extremo, igual
+     * que la cadencia del arma. `techo` es la lista de tipos comprables en la
+     * ronda 1, o `null` si no hay techo.
+     */
+    this.economia = { dinero: 0, inv: { primaria: null, supresor: {}, escudo: 0, casco: false }, techo: null, compra: 0 }
+    /** ¿La partida tiene economía? Lo dice la bienvenida. */
+    this.conEconomia = false
+    /** Aviso de que la economía ha cambiado: lo escuchan el panel y el motor. */
+    this.onEconomia = null
     /** El paso de entrada en que se vuelve a estar vivo, o 0. Lo dice el servidor. */
     this.vivoEn = 0
     /** El sitio de salida de tu ranura, para poder predecir la reaparición. */
@@ -559,6 +574,12 @@ export class ClienteRed {
        * pool de dianas. El día que haya identidades, esto es lo que cambia.
        */
       this.equipo = mensaje.equipo
+      /**
+       * **¿Hay economía en esta partida?** (vuelta 64). Lo dice el servidor en
+       * la bienvenida y de ahí sale de dónde viene el arma principal: comprada,
+       * o del ajuste del jugador (ver `engine.usarRed`).
+       */
+      this.conEconomia = !!mensaje.eco
       // **El pase es de la butaca, no de la conexión** (vuelta 62): quien vuelve
       // lo enseña y se sienta donde estaba. La página lo guarda; aquí sólo se
       // recoge, porque dónde se guarda una cosa entre visitas no es del netcode.
@@ -568,7 +589,29 @@ export class ClienteRed {
       this.onBienvenida?.(mensaje)
       return
     }
+    if (mensaje.t === MSG.ECONOMIA) {
+      this.economia = {
+        dinero: mensaje.dinero,
+        inv: mensaje.inv,
+        techo: mensaje.techo ?? null,
+        compra: mensaje.compra ?? this.economia.compra,
+      }
+      this.onEconomia?.(this.economia)
+      return
+    }
     if (mensaje.t === MSG.FOTO) this._reconciliar(mensaje)
+  }
+
+  /**
+   * **Pedir una compra.** Se manda y ya: el veredicto llega como `MSG.ECONOMIA`,
+   * con el saldo y el inventario de después. No se predice nada en local —a
+   * diferencia del movimiento y del disparo— porque comprar no tiene que sentirse
+   * instantáneo y un carrito predicho que el servidor rechace es peor que medio
+   * segundo de espera.
+   */
+  comprar(clave, arma = null) {
+    if (!this.conectado) return
+    this.transporte.send(JSON.stringify({ t: MSG.COMPRAR, q: clave, ...(arma ? { a: arma } : null) }))
   }
 
   /**
@@ -732,6 +775,8 @@ export class ClienteRed {
     if (!mio) return
     this.medidas.ack = mio.ack
     this.vida = mio.vida
+    this.escudo = mio.esc ?? 0
+    this.casco = !!mio.cas
     this.vivoEn = mio.vivoEn ?? 0
     this.bajas = mio.bajas
     this.muertes = mio.muertes

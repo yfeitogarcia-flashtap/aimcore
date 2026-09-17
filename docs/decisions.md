@@ -7215,6 +7215,120 @@ misma lección de siempre:
   mapa con muros — ahora la línea está comprobada y el propio veredicto la
   delataría.
 
+## Ronda 64b — La economía, y quién es su árbitro
+
+### El servidor lleva la cartera
+
+Dinero, inventario y catálogo viven en `net/partida.js`. El cliente dibuja el
+panel y **pide** (`MSG.COMPRAR`); lo que tiene vuelve en `MSG.ECONOMIA`. No es
+desconfianza teórica: es la misma regla con la que la vuelta 56 repartió el arma
+—el cargador y la recarga son del cliente, la cadencia la valida el servidor— y
+la que hace que el día que esto se juegue en serio no haya nada que parchear.
+
+**La economía no viaja en la foto**, y eso también es una decisión: cambia cada
+pocos minutos en vez de sesenta veces por segundo, y sobre todo **el saldo del
+rival no se enseña**. En la foto compartida llegaría a los dos; como mensaje por
+destinatario, no. Es la misma idea que la foto por destinatario de la fase de
+compra (vuelta 62): «no verlo» sólo se garantiza no mandándolo.
+
+### El techo de la ronda 1 es de tipo, no de dinero
+
+La ronda 1 se juega con pistola pase lo que pase, así que el techo se comprueba
+por **tipo** (`ECONOMY.techoRonda1`) y no por precio. Con un techo de dinero,
+bajar el precio de un rifle abriría esa puerta por detrás sin que nadie lo
+notara; y un techo por tipo se lee como lo que es: esa ronda no hay armas largas,
+hay decisión de equipo.
+
+### Ganar salta más que perder, y morir cuesta el equipo
+
+Los números de partida: 800 de salida, 3200 por ganar, 2400 por perder —con un
+suelo que sube al que encadena derrotas—, 300 por baja. Y la regla que los hace
+significar algo: **el que muere pierde lo comprado**. Sin eso, el salto de
+economía del ganador sería sólo dinero; con eso, el otro empieza desnudo.
+
+El rifle acabó costando **2900 y no 2700** por una medida, no por gusto: con
+2700, un perdedor que se hubiera guardado los 300 del chaleco llegaba **justo**
+(2400 + 300) y la asimetría de la ronda 2 se evaporaba por doscientos dólares.
+`compra64` lo enseña en una fila: «el perdedor no llega al rifle ($2700 <
+$2900), pero sí al subfusil».
+
+### Una tienda no puede vender humo
+
+El encargo pedía chaleco y casco en la compra completa de la ronda 2. En el duelo
+**no existían**: hasta esta vuelta el servidor sólo restaba vida. Vender un
+chaleco que no para balas habría sido lo contrario de lo que este proyecto hace
+con las mecánicas que faltan.
+
+Así que el duelo pasa a tener la escalera de daño entera —casco, escudo, vida— y
+**no se escribió otra vez**: se extrajo de `PlayerStatus.takeHit` a
+`encajarImpacto`, una función pura que ahora llaman el entrenamiento y el
+servidor. Es la convención de la 63 en su forma más literal: dos copias de esa
+escalera es cómo un chaleco acaba absorbiendo distinto según el modo.
+
+Lo que sigue sin existir —granada, aturdidora, cegadora— **sale en el panel con
+su precio y su combinación y no se puede comprar**. Esconderlo sería no poder
+aprenderse la combinación; venderlo, prometer una mecánica que no hay.
+
+### La fase de compra es de la sala, no de `config.js`
+
+Dos amigos que quedan diez minutos no juegan lo mismo que dos que van en serio,
+así que la duración —incluido el **cero**, que es «sin fase»— la elige quien crea
+la partida y viaja en la dirección del socket (`?compra=…`), exactamente como el
+pase de reconexión (vuelta 62) y por el mismo motivo: **la sala se configura al
+nacer**, antes de que llegue ningún mensaje. Al segundo en entrar se le ignora, o
+cualquiera que abriese el enlace le reconfiguraría la partida al que la montó.
+
+De ahí sale una decisión de interfaz que parece incómoda y es la honesta:
+**cambiar el selector recarga con una partida nueva**. Una sala ya creada no se
+reconfigura, así que dejar el selector puesto sin más enseñaría un número que el
+servidor no está usando. Debajo se pinta lo que dice el servidor.
+
+### La armería no pausa, y no comparte pantalla con el menú
+
+Abrir el panel de compra **no** puede congelarle la partida a nadie: una pausa es
+parar el mundo de los dos y sólo la decide el servidor (vuelta 53). Lo que sí
+hace es soltar el ratón, porque comprar con el ratón pide poder pinchar.
+
+Y ahí salió un choque que no se ve leyendo el código: **el menú del duelo también
+sale al soltar el ratón**. Los dos se pintaban a la vez, y el cuadro del código
+—que es un `.control`, para que teclear no capture— se comía los clics de la
+tienda **y el clic con el que se vuelve a jugar**. Con la tienda abierta el menú
+se quita; al cerrarla vuelve, salvo que ya se haya recuperado el ratón.
+
+### Los códigos de compra rápida no son correlativos
+
+`B 1 1` la Pulse, `B 3 1` la Volt, `B 4 3` la Rift. El hueco del `4 1` y del `4 2`
+está reservado a propósito: cuando lleguen más rifles no pueden mover de sitio lo
+que la gente ya tiene en los dedos. Un código de compra rápida es memoria
+muscular, y la memoria muscular no se renumera.
+
+### Los tres fallos que costaron una tanda cada uno
+
+- **Un callback tiene un dueño.** La página escuchaba `onEconomia` para repintar
+  la tienda y **se lo quitó al motor**, que lo escucha para ponerte en la mano lo
+  que has comprado. Síntoma: la Rift se compraba, el panel la daba por cobrada y
+  la tecla 1 seguía sacando la pistola. Encadenar, como ya hacía `onBienvenida`.
+- **`Number(null)` es 0, y 0 es una opción válida.** Leer el parámetro de la
+  fase de compra con `Number(...)` a secas hacía que **cualquier** página sin el
+  parámetro pidiera una partida rápida. Lo cazó el humo de la página: `compra: 0`
+  en una sala recién creada que nadie había configurado.
+- **Se puede no tener arma principal.** La ranura 1 empieza vacía, y la dotación
+  de salida ponía la mano ahí: `this.weapon` quedaba sin definir y el fallo salía
+  **lejos**, en el HUD, leyendo el cargador de un arma que no existe. Ahora la
+  dotación empieza en la ranura que de verdad tiene algo.
+
+### Y que hay economía lo dice la bienvenida
+
+Un huésped sin rondas (`VEKTOR_RONDAS=0`) no tiene economía, y allí el arma
+principal tiene que seguir saliendo del ajuste del jugador: si no, los bancos de
+netcode medirían el peso y la cadencia de una pistola. El cliente no lo deduce de
+que no le llegue un mensaje —eso es adivinar por silencio— sino de un campo de la
+bienvenida (`eco`), que es donde se dice quién manda antes del primer paso.
+
+Lo delató `motor56`, que afirma qué arma ve el rival en la ficha flotante: salía
+`pulse` donde el banco esperaba `rift`, y eso no era el banco quedándose viejo
+—era el mundo de medir quedándose sin rifles.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

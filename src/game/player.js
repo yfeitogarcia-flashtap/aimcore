@@ -45,6 +45,58 @@ const EYE_LEVEL = ZONES.head.offsetY
 
 const _toPlayer = new THREE.Vector3()
 
+/**
+ * **Cómo encaja un cuerpo un disparo: casco, escudo y vida, en ese orden.**
+ *
+ * Es una función **pura y compartida** (vuelta 64): la llaman el jugador del
+ * entrenamiento (`PlayerStatus.takeHit`, aquí debajo) y el servidor del duelo
+ * (`net/partida.js`), que hasta ahora sólo sabía restar vida. Dos copias de
+ * esta escalera es cómo un chaleco acaba absorbiendo distinto según el modo —y
+ * desde la vuelta 63 una diferencia entre modos que nadie decidió es un fallo
+ * de producto, no un detalle.
+ *
+ * Las dos reglas que están aquí y no en quien llama:
+ *
+ * - **El casco es binario y se come el disparo entero.** El primero a la cabeza
+ *   lo rompe y se para ahí; el siguiente encuentra la cabeza descubierta, y la
+ *   cabeza vale una vida en el modelo de zonas. Que mate no es un caso especial.
+ * - **El escudo cubre el cuerpo, nunca la cabeza**, y lo que absorbe sale del
+ *   **arma que dispara** (`shieldAbsorb`), fijo y sin caída por distancia.
+ *
+ * @param {{health:number, shield:number, helmet:boolean}} estado
+ * @param {{zone:string, damage:number, weaponKey:string}} tiro
+ * @returns {{health:number, shield:number, helmet:boolean, damage:number,
+ *   helmetBroken:boolean, shieldHit:boolean, killed:boolean}}
+ */
+export function encajarImpacto(estado, { zone, damage, weaponKey }) {
+  const salida = {
+    health: estado.health,
+    shield: estado.shield,
+    helmet: estado.helmet,
+    damage: 0,
+    helmetBroken: false,
+    shieldHit: false,
+    killed: false,
+  }
+  if (zone === 'head' && estado.helmet) {
+    salida.helmet = false
+    salida.helmetBroken = true
+    return salida
+  }
+  let aLaVida = damage
+  if (zone !== 'head' && estado.shield > 0) {
+    const absorbe = WEAPONS[weaponKey]?.shieldAbsorb ?? 0
+    const parado = Math.min(estado.shield, damage * absorbe)
+    salida.shield = estado.shield - parado
+    aLaVida = damage - parado
+    salida.shieldHit = parado > 0
+  }
+  salida.health = Math.max(0, estado.health - aLaVida)
+  salida.damage = damage
+  salida.killed = salida.health <= 0
+  return salida
+}
+
 export class PlayerStatus {
   constructor() {
     this.reset()
@@ -199,39 +251,27 @@ export class PlayerStatus {
 
     // Los segundos de gracia van **antes que el casco**: si no, reaparecer con
     // casco y recibir un tiro a la cabeza gastaría el casco sin quitar vida, y
-    // la invulnerabilidad habría costado el casco.
+    // la invulnerabilidad habría costado el casco. Esto es de **este** jugador
+    // —el del duelo no tiene gracia al reaparecer— y por eso se queda aquí y no
+    // en la regla compartida.
     if (this.invulnerableLeftMs > 0) {
       result.blocked = true
       return result
     }
 
-    // El casco se come el primer disparo a la cabeza entero y se rompe. El
-    // siguiente encuentra la cabeza descubierta, y la cabeza vale una vida.
-    if (zone === 'head' && this.helmet) {
-      this.helmet = false
+    const tras = encajarImpacto(this, { zone, damage, weaponKey })
+    this.helmet = tras.helmet
+    this.shield = tras.shield
+    this.health = tras.health
+    if (tras.helmetBroken) {
       result.helmetBroken = true
       return result
     }
-
-    let toHealth = damage
-    // El escudo sólo cubre el cuerpo. Lo que absorbe sale del arma que dispara,
-    // fijo y sin caída por distancia todavía.
-    if (zone !== 'head' && this.shield > 0) {
-      const absorb = WEAPONS[weaponKey]?.shieldAbsorb ?? 0
-      const taken = Math.min(this.shield, damage * absorb)
-      this.shield -= taken
-      toHealth = damage - taken
-      result.shieldHit = taken > 0
-    }
-
-    this.health -= toHealth
     this.damageTaken += damage
+    result.shieldHit = tras.shieldHit
     result.damage = damage
     result.health = this.health
-    if (this.health <= 0) {
-      this.health = 0
-      result.killed = true
-    }
+    result.killed = tras.killed
     return result
   }
 

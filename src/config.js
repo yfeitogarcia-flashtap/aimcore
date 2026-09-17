@@ -3054,6 +3054,104 @@ export const SIM_STEP_MS = 1000 / SIM.hz
  * cuentas de la *conversación* (pausa y votación) sí van por pared, y siguen
  * donde estaban: en `PAUSE`.
  */
+/**
+ * **La economía del duelo** (vuelta 64). Dinero por ronda, precios y el catálogo
+ * de la armería. Todo de partida y **para calibrar jugando**, como el resto del
+ * tuning: lo que fija la forma no son los números sino las tres reglas de abajo.
+ *
+ * **Quién manda: el servidor.** El dinero, lo que llevas y lo que puedes comprar
+ * viven en `net/partida.js` y viajan en la foto. El cliente dibuja el panel y
+ * manda `MSG.COMPRAR`; si mintiera sobre su saldo, el servidor lo tira. Es la
+ * misma regla que la cadencia (vuelta 56): el arma la lleva el cliente, lo que
+ * se puede tener lo decide el servidor.
+ *
+ * **La ronda 1 tiene techo, y no es de dinero.** Se sale con la pistola sí o sí:
+ * ninguna arma principal se puede comprar esa ronda aunque sobre el saldo. Lo
+ * que sí cabe es equipo —chaleco, casco— y, cuando exista, una granada. Con eso
+ * la primera ronda es una decisión de verdad (¿chaleco o casco?) en vez de una
+ * carrera por el rifle.
+ *
+ * **Y ganar la primera ronda da un salto mayor que perderla**, que es lo que
+ * hace que la ronda 2 no sea igual para los dos. Con los números de hoy, y
+ * suponiendo que los dos gastan los 800 de salida:
+ *
+ * | | saldo en la ronda 2 | qué da de sí |
+ * |---|---|---|
+ * | ganador | 3200 | Rift (2900) y **casi nada más**, o Volt (1600) + compra completa |
+ * | perdedor | 2400 | no llega al Rift; Volt + chaleco + granada, o ahorrar |
+ *
+ * El rifle cuesta 2900 y no 2700 por un número que salió midiendo: con 2700, un
+ * perdedor que se hubiera guardado los 300 del chaleco llegaba **justo** —2400 +
+ * 300— y la asimetría de la ronda 2 desaparecía por doscientos dólares. Ahorrar
+ * la ronda entera sí da para rifle, que es la otra mitad de la decisión.
+ *
+ * Esa asimetría es el motor del modo: el que pierde elige entre ir corto o
+ * guardar para la siguiente, y el que gana elige entre arma o utilidad.
+ */
+export const ECONOMY = {
+  /** Con lo que se empieza la ronda 1. Es justo chaleco + granada. */
+  inicial: 800,
+  /** Tope de saldo. Nadie acumula una partida entera sin gastar. */
+  maximo: 16000,
+  premios: {
+    /** Ganar la ronda. El salto grande. */
+    victoria: 3200,
+    /** Perderla. Da para un subfusil con algo de equipo, no para un rifle. */
+    derrota: 2400,
+    /**
+     * Y perder **seguidas** sube el suelo: sin esto, quien encadena tres rondas
+     * malas no vuelve nunca. Se suma a partir de la segunda derrota seguida y
+     * no pasa de `rachaMax` escalones.
+     */
+    rachaDerrota: 400,
+    rachaMax: 2,
+    /** Por matar. En un 1v1 el que mata gana la ronda, así que se acumula. */
+    baja: 300,
+  },
+  /**
+   * **El catálogo, y su combinación de compra rápida.** Cada entrada dice su
+   * categoría y su código dentro de ella, que es lo que se teclea tras la tecla
+   * de la armería: la Pulse es `B 1 1`, la Volt `B 3 1` y la Rift `B 4 3`.
+   *
+   * Los códigos **no son correlativos a propósito**: dejan el sitio de las armas
+   * que faltan (la 4 2 de otro rifle, la 2 de las escopetas), porque el día que
+   * lleguen no pueden mover de sitio lo que la gente ya tiene en los dedos.
+   *
+   * `disponible: false` es lo que todavía no existe en el juego. Sale en el
+   * panel, con su precio y su combinación, y **no se puede comprar**: prometer
+   * una granada que no vuela sería peor que no enseñarla.
+   */
+  catalogo: [
+    { clave: 'pulse', nombre: 'Pulse', tipo: 'arma', ranura: 'secondary', categoria: 1, codigo: 1, precio: 0, deSerie: true, disponible: true },
+    { clave: 'volt', nombre: 'Volt', tipo: 'arma', ranura: 'primary', categoria: 3, codigo: 1, precio: 1600, disponible: true },
+    { clave: 'rift', nombre: 'Rift', tipo: 'arma', ranura: 'primary', categoria: 4, codigo: 3, precio: 2900, disponible: true },
+    { clave: 'chaleco', nombre: 'Chaleco', tipo: 'equipo', categoria: 6, codigo: 1, precio: 500, disponible: true },
+    { clave: 'casco', nombre: 'Casco', tipo: 'equipo', categoria: 6, codigo: 2, precio: 350, disponible: true },
+    { clave: 'supresor', nombre: 'Supresor', tipo: 'accesorio', categoria: 8, codigo: 1, precio: 250, disponible: true },
+    { clave: 'granada', nombre: 'Granada', tipo: 'utilidad', categoria: 7, codigo: 1, precio: 300, disponible: false },
+    { clave: 'aturdidora', nombre: 'Aturdidora', tipo: 'utilidad', categoria: 7, codigo: 2, precio: 250, disponible: false },
+    { clave: 'cegadora', nombre: 'Cegadora', tipo: 'utilidad', categoria: 7, codigo: 3, precio: 250, disponible: false },
+  ],
+  /** Cómo se llama cada categoría en el panel. */
+  categorias: {
+    1: 'Pistolas',
+    2: 'Escopetas',
+    3: 'Subfusiles',
+    4: 'Rifles de asalto',
+    5: 'Francotirador',
+    6: 'Equipo',
+    7: 'Utilidad',
+    8: 'Accesorios',
+  },
+  /**
+   * **El techo de la ronda 1**: los tipos que se pueden comprar. Sin `arma`, así
+   * que la primera ronda se juega con la pistola pase lo que pase.
+   */
+  techoRonda1: ['equipo', 'utilidad', 'accesorio'],
+  /** Lo que da un chaleco, en puntos de escudo. Un segmento de los de siempre. */
+  escudoPorChaleco: PLAYER.shield.segment,
+}
+
 export const ROUNDS = {
   /**
    * **Par a propósito**: con un número impar no hay empate posible y la
@@ -3062,8 +3160,20 @@ export const ROUNDS = {
   maxRondas: 14,
   /** Lo que dura una ronda si nadie muere. */
   duracionSegundos: 180,
-  /** La fase de compra, entre una ronda y la siguiente. */
+  /**
+   * **La fase de compra, entre una ronda y la siguiente** — y desde la vuelta 64
+   * esto es sólo el **valor por defecto**: quien crea la partida la elige en la
+   * pantalla del duelo y viaja en la dirección del socket (`?compra=…`), como el
+   * pase de reconexión y por el mismo motivo —la sala se configura al crearse,
+   * antes de que llegue ningún mensaje—.
+   *
+   * **A cero, no hay fase de compra**: las rondas se encadenan sin pausa, que es
+   * lo que hace falta para una partida rápida (y lo que necesitaban los bancos
+   * que miden el motor, que hasta ahora se apañaban con `VEKTOR_RONDAS=0`).
+   */
   compraSegundos: 15,
+  /** Lo que ofrece el selector de la pantalla del duelo. El 0 es «sin fase». */
+  compraOpciones: [0, 5, 10, 15, 20, 30],
   /**
    * **La prórroga se juega en tandas, no a muerte súbita.** Con una sola ronda
    * de desempate, las trece anteriores valdrían lo mismo que la catorceava. Al

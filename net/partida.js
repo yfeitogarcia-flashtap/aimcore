@@ -17,8 +17,9 @@
  * Y sigue sin tener código de juego: importa `movement.js`, `scenario.js`,
  * `hitPlayer` y `hasLineOfSight` tal cual.
  */
-import { NET, PAUSE, ROUNDS, SIM, SIM_STEP_MS, WEAPONS, WEAPON_ORDER } from '../src/config.js'
+import { ECONOMY, NET, PAUSE, ROUNDS, SIM, SIM_STEP_MS, WEAPONS, WEAPON_ORDER } from '../src/config.js'
 import { MovementController } from '../src/game/movement.js'
+import { encajarImpacto } from '../src/game/player.js'
 import { crearPose, cuerpoDeJugador } from './pose.js'
 import { direccionDeMira, resolverDisparo } from './disparo.js'
 import { MSG, desempaquetarTeclas, instanteDePaso, instanteEnPaso } from './protocolo.js'
@@ -39,8 +40,23 @@ export class Partida {
    *   quince segundos de compra y la tabla no mide nada. Misma idea que
    *   `depurar`: un interruptor para poder medir, no un modo de juego.
    */
-  constructor({ escenario, colchon = NET.jitterBufferTicks, depurar = false, rondas = true }) {
+  /**
+   * @param {number} [opciones.compraSegundos] lo que dura la fase de compra en
+   *   **esta** sala (vuelta 64). Lo elige quien crea la partida y viaja en la
+   *   dirección del socket; a **cero no hay fase de compra** y las rondas se
+   *   encadenan. Es de la sala y no de `config.js` porque dos amigos que quedan
+   *   para diez minutos no juegan lo mismo que dos que van en serio.
+   */
+  constructor({
+    escenario,
+    colchon = NET.jitterBufferTicks,
+    depurar = false,
+    rondas = true,
+    compraSegundos = ROUNDS.compraSegundos,
+  }) {
     this.escenario = escenario
+    this.compraSegundos = ROUNDS.compraSegundos
+    this.configurarCompra(compraSegundos)
     this.colchon = colchon
     this.depurar = depurar
     this.conRondas = rondas
@@ -118,6 +134,16 @@ export class Partida {
    * abandonado; si aquí no contase, un tercero con el código se sentaría en su
    * silla mientras él recarga la página.
    */
+  /**
+   * **Cuánto dura la fase de compra en esta sala** (vuelta 64). Lo acota aquí y
+   * no en cada huésped: son dos —Node y el Durable Object— y un acotado copiado
+   * es un acotado que se despega. A cero, no hay fase.
+   */
+  configurarCompra(segundos) {
+    if (!Number.isFinite(segundos)) return
+    this.compraSegundos = Math.max(0, Math.min(60, Math.round(segundos)))
+  }
+
   get llena() {
     return this.jugadores.size >= 2
   }
@@ -263,6 +289,20 @@ export class Partida {
       /** Pausas que puede pedir sin permiso. No se recuperan. */
       pausasLibres: PAUSE.free,
       /**
+       * **Su dinero y lo que lleva encima** (vuelta 64). Viven aquí y no en el
+       * cliente por lo de siempre: el cliente dibuja el panel y **pide**; lo que
+       * se puede tener lo decide el servidor. Un cliente que mintiera sobre su
+       * saldo compra exactamente nada.
+       */
+      dinero: ECONOMY.inicial,
+      /** Lo comprado: el arma principal y los supresores montados. */
+      inventario: { primaria: null, supresor: {} },
+      /** Escudo y casco, que ahora existen también en red. */
+      escudo: 0,
+      casco: false,
+      /** Derrotas seguidas. De aquí sale el suelo que sube al que va perdiendo. */
+      rachaDerrotas: 0,
+      /**
        * **El pase de reconexión** (vuelta 62). Va en la bienvenida y el cliente
        * lo guarda; volver es enseñarlo. No se regenera al reconectar: es de la
        * butaca, no de la conexión.
@@ -274,6 +314,7 @@ export class Partida {
     this.jugadores.set(jugador.id, jugador)
 
     this._bienvenida(jugador)
+    this._enviarEconomia(jugador)
     this._quizaArrancar()
     return jugador.id
   }
@@ -299,6 +340,16 @@ export class Partida {
         hz: SIM.hz,
         n: this.paso,
         salida: { x: jugador.pose.position.x, z: jugador.pose.position.z },
+        /**
+         * **Si esta partida tiene economía** (vuelta 64). Va en la bienvenida
+         * porque decide algo que hay que saber **antes** del primer paso: con
+         * economía se sale con la pistola y el arma principal la pone lo que
+         * compres; sin ella —un huésped con `VEKTOR_RONDAS=0`, que es el mundo
+         * de los bancos de netcode— el arma sigue siendo la de tus ajustes,
+         * como hasta la 63. Sin este campo el cliente tendría que **deducirlo**
+         * de que no le llegue un mensaje, que es adivinar por silencio.
+         */
+        eco: this.conRondas ? 1 : 0,
       }),
     )
   }
@@ -440,6 +491,10 @@ export class Partida {
     }
     if (mensaje.t === MSG.PAUSA) {
       this._pausa(jugador, mensaje.q)
+      return
+    }
+    if (mensaje.t === MSG.COMPRAR) {
+      this._comprar(jugador, mensaje.q, mensaje.a)
       return
     }
     if (mensaje.t !== MSG.ENTRADA) return
@@ -672,6 +727,10 @@ export class Partida {
         ack: jugador.ack,
         hambre: jugador.hambre,
         vida: jugador.vida,
+        // Escudo y casco viajan con la vida porque son lo mismo: cuánto aguantas
+        // (vuelta 64). El **dinero** no, que ése es privado y va por su mensaje.
+        esc: jugador.escudo,
+        cas: jugador.casco ? 1 : 0,
         vivoEn: jugador.vivoEn,
         libres: jugador.pausasLibres,
         // Quién ha votado ya, para que su cartel se retire. Va por jugador y no
@@ -906,7 +965,7 @@ export class Partida {
       salida.lateral = +Math.abs((dx * -dir.z + dz * dir.x) / plano).toFixed(3)
     }
 
-    if (veredicto.impacto) salida.baja = this._aplicarDano(rival, veredicto.dano, tirador)
+    if (veredicto.impacto) salida.baja = this._aplicarDano(rival, veredicto.dano, tirador, veredicto.zona)
     this._anotarVeredicto(tirador, salida)
   }
 
@@ -949,16 +1008,32 @@ export class Partida {
   }
 
   /**
-   * Vida, y nada más: ni escudo, ni casco, ni reaparición escalada.
+   * **Casco, escudo y vida, en ese orden** (vuelta 64). La escalera no se
+   * escribe aquí: es `encajarImpacto`, la misma función que usa el jugador del
+   * entrenamiento (`src/game/player.js`). Hasta esta vuelta el duelo sólo
+   * restaba vida, y con la armería vendiendo chalecos eso habría sido una
+   * tienda de humo — además de la diferencia entre modos que la convención de la
+   * 63 llama fallo de producto.
+   *
    * Devuelve si el disparo ha sido **baja**, que es lo que el tirador necesita
    * saber al instante.
    */
-  _aplicarDano(victima, dano, tirador) {
+  _aplicarDano(victima, dano, tirador, zona = 'torso') {
     if (victima.vida <= 0) return false
-    victima.vida = Math.max(0, victima.vida - dano)
+    const tras = encajarImpacto(
+      { health: victima.vida, shield: victima.escudo, helmet: victima.casco },
+      { zone: zona, damage: dano, weaponKey: tirador.arma },
+    )
+    victima.escudo = tras.shield
+    victima.casco = tras.helmet
+    victima.vida = tras.health
     if (victima.vida > 0) return false
     victima.muertes += 1
     tirador.bajas += 1
+    // **Matar paga**, y se paga al instante: en un 1v1 la baja cierra la ronda,
+    // así que sumarlo aquí o al repartir sería lo mismo — salvo el día que haya
+    // más de dos, que es la razón de que vaya donde ocurre.
+    if (this.conRondas) this._pagar(tirador, ECONOMY.premios.baja)
     // **Con rondas, una muerte no se reaparece: cierra la ronda** (vuelta 62).
     // El que vuelve a poner a los dos en pie es el reinicio de ronda, y hasta
     // entonces el muerto no se mueve — que es lo que ya hacía `vivoEn`, con un
@@ -984,6 +1059,135 @@ export class Partida {
     // Reaparecer recarga, así que el reloj de cadencia vuelve a cero: arrastrar
     // el del último disparo de antes de morir castigaría el primer tiro nuevo.
     jugador.ultimoTiroEn = -Infinity
+  }
+
+  // ----------------------------------------------------------------- economía
+
+  /** Suma con tope. El saldo no crece sin fin por no gastar. */
+  _pagar(jugador, cuanto) {
+    jugador.dinero = Math.min(ECONOMY.maximo, jugador.dinero + cuanto)
+  }
+
+  /** La entrada del catálogo, por su clave. */
+  _delCatalogo(clave) {
+    return ECONOMY.catalogo.find((i) => i.clave === clave) ?? null
+  }
+
+  /**
+   * **Comprar.** Sólo durante la fase de compra, sólo lo que existe, sólo lo que
+   * se puede pagar y —en la ronda 1— sólo lo que el techo deja.
+   *
+   * El techo de la ronda 1 **no es de dinero**: aunque sobre el saldo, un arma
+   * principal no se compra esa ronda. Por eso se comprueba por `tipo` y no por
+   * precio — bajar el precio de un rifle no puede abrir esa puerta por detrás.
+   *
+   * **El supresor no cuesta**: es el mismo interruptor de siempre, y aquí sólo
+   * cambia de sitio (del ajuste del jugador al inventario de la partida, que es
+   * quien manda en red). Conmuta, como el clic derecho.
+   */
+  _comprar(jugador, clave, arma = null) {
+    if (!this.conRondas) return
+    const item = this._delCatalogo(clave)
+    if (!item || !item.disponible) return
+
+    // **El supresor no es una compra, es un interruptor** (vuelta 64): no cuesta
+    // nada y es del arma que ya llevas, así que se conmuta **en cualquier fase**
+    // — como la tecla V del entrenamiento, y como el clic derecho del que sale.
+    // Encerrarlo en la fase de compra habría sido inventarle un coste que no
+    // tiene, y dejar el clic derecho muerto durante la ronda.
+    if (item.tipo === 'accesorio') {
+      // El supresor de un arma **que se lleva**: la principal comprada o la
+      // pistola, nunca la que no está en las manos de nadie.
+      const cual = arma === 'pulse' ? 'pulse' : jugador.inventario.primaria
+      if (!cual || !WEAPONS[cual]?.supportsSuppressor) return
+      jugador.inventario.supresor[cual] = !jugador.inventario.supresor[cual]
+      this._enviarEconomia(jugador)
+      return
+    }
+    // Lo demás sí es comprar: sólo entre rondas, y con el techo de la primera.
+    if (this.rondas.fase !== 'compra') return
+    if (this.rondas.n <= 1 && !ECONOMY.techoRonda1.includes(item.tipo)) return
+    if (jugador.dinero < item.precio) return
+
+    if (item.tipo === 'arma') {
+      // La pistola va siempre puesta: comprarla no es nada.
+      if (item.ranura !== 'primary') return
+      // **Una principal cada vez.** Comprar otra sustituye a la que hubiera, y
+      // lo pagado por la anterior no vuelve: es una decisión, no un carrito.
+      jugador.inventario.primaria = item.clave
+    } else if (item.clave === 'chaleco') {
+      const tope = ECONOMY.escudoPorChaleco
+      if (jugador.escudo >= tope) return
+      jugador.escudo = tope
+    } else if (item.clave === 'casco') {
+      if (jugador.casco) return
+      jugador.casco = true
+    } else {
+      return
+    }
+    jugador.dinero -= item.precio
+    this._enviarEconomia(jugador)
+  }
+
+  /**
+   * **Lo que tiene y lo que puede**, a su dueño y a nadie más. Va como mensaje
+   * suelto y no en la foto por dos motivos: cambia cada pocos minutos —no
+   * sesenta veces por segundo— y el saldo del rival **no se enseña**, que en la
+   * foto compartida viajaría a los dos.
+   */
+  _enviarEconomia(jugador) {
+    if (!this.conRondas) return
+    jugador.enviar(
+      JSON.stringify({
+        t: MSG.ECONOMIA,
+        dinero: jugador.dinero,
+        inv: {
+          primaria: jugador.inventario.primaria,
+          supresor: { ...jugador.inventario.supresor },
+          escudo: jugador.escudo,
+          casco: jugador.casco,
+        },
+        // El techo de la ronda 1, dicho por el servidor: el panel lo pinta, no
+        // lo deduce. Si lo dedujera de su número de ronda —que llega en la foto,
+        // o sea con un viaje de retraso— enseñaría comprable lo que no lo es.
+        techo: this.rondas.n <= 1 ? ECONOMY.techoRonda1 : null,
+        compra: this.compraSegundos,
+      }),
+    )
+  }
+
+  /**
+   * **El reparto de dinero de la ronda que acaba de terminar.** Ganar da el
+   * salto grande; perder, el suelo — y perder **seguidas** lo sube, porque sin
+   * eso quien encadena tres rondas malas no vuelve nunca.
+   *
+   * Una ronda repetida (empate de vidas) no paga a nadie: no la ha ganado nadie.
+   */
+  _repartirDinero() {
+    const ultima = this.rondas.ultima
+    if (!ultima || ultima.ganador === null) return
+    for (const jugador of this.jugadores.values()) {
+      if (jugador.equipo === ultima.ganador) {
+        jugador.rachaDerrotas = 0
+        this._pagar(jugador, ECONOMY.premios.victoria)
+        continue
+      }
+      const escalones = Math.min(ECONOMY.premios.rachaMax, jugador.rachaDerrotas)
+      this._pagar(jugador, ECONOMY.premios.derrota + escalones * ECONOMY.premios.rachaDerrota)
+      jugador.rachaDerrotas += 1
+    }
+  }
+
+  /**
+   * **Morir cuesta el equipo.** Quien cae empieza la ronda siguiente con la
+   * pistola y sin chaleco; quien sobrevive conserva lo que lleve, con el escudo
+   * por donde se quedó. Es lo que hace que el salto de economía del ganador
+   * signifique algo: no es sólo dinero, es que el otro empieza desnudo.
+   */
+  _perderEquipo(jugador) {
+    jugador.inventario.primaria = null
+    jugador.escudo = 0
+    jugador.casco = false
   }
 
   // ------------------------------------------------------------------ rondas
@@ -1027,11 +1231,28 @@ export class Partida {
    */
   _empezarCompra() {
     if (this.rondas.ultima?.motivo !== 'empate') this.rondas.n += 1
-    this.rondas.fase = 'compra'
-    this.rondas.hastaPaso = this.paso + this._pasosDe(ROUNDS.compraSegundos)
+    // **Primero se paga y se cuenta el equipo perdido**, y después se abre la
+    // fase: el panel del cliente tiene que salir con el saldo de esta ronda, no
+    // con el de la anterior.
+    this._repartirDinero()
     for (const jugador of this.jugadores.values()) {
+      if (jugador.vida <= 0) this._perderEquipo(jugador)
       this._reaparecer(jugador)
       jugador.historial.fill(null)
+      this._enviarEconomia(jugador)
+    }
+
+    // **A cero no hay fase de compra** (vuelta 64): las rondas se encadenan y
+    // nadie se queda encerrado en su caja. No es un caso raro que haya que
+    // esquivar, es una partida rápida — y por eso se decide aquí, donde está la
+    // regla, y no en el reloj de fases.
+    if (this.compraSegundos <= 0) {
+      this._empezarRonda()
+      return
+    }
+    this.rondas.fase = 'compra'
+    this.rondas.hastaPaso = this.paso + this._pasosDe(this.compraSegundos)
+    for (const jugador of this.jugadores.values()) {
       jugador.movimiento.setCorralito(this._cajaDe(jugador.equipo))
     }
   }

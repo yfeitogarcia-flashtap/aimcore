@@ -1699,9 +1699,101 @@ Seis reglas que **son** el sistema:
   viajaban sacaría al jugador andando de su propia caja. Va **antes** de
   reejecutar, en `_leerRondas`.
 
-Lo que **no** trae todavía: comprar. No hay economía —sin precios y sin dinero,
-que sigue fuera de alcance— así que la fase es hoy la ventana para elegir con
-qué sales con las teclas de siempre. Cuando exista la economía, el panel va aquí.
+**Y desde la vuelta 64 se compra de verdad.** La fase de compra tiene su
+armería (tecla de armería, B de fábrica), su dinero y su catálogo, con el
+servidor de árbitro. El detalle está arriba, en las convenciones; lo que hace
+falta saber para jugar: se empieza con 800 y la pistola, la ronda 1 no deja
+comprar armas largas, ganar da 3200 y perder 2400 —con suelo que sube al que
+encadena derrotas—, morir cuesta el equipo, y el chaleco y el casco **paran
+balas de verdad** porque el duelo ya tiene la escalera de daño del
+entrenamiento. Lo que no hay todavía: granadas, y por eso salen en el panel
+marcadas y sin poder comprarse.
+
+**Hay economía, y la manda el servidor** (vuelta 64). Dinero, inventario y qué se
+puede comprar viven en `net/partida.js`; el cliente dibuja el panel y **pide**
+(`MSG.COMPRAR`), y lo que tiene vuelve por `MSG.ECONOMIA`. Es la misma regla que
+la cadencia de la vuelta 56 —el arma la lleva el cliente, lo que se puede tener
+lo decide el servidor— y por eso un cliente que mintiera sobre su saldo compra
+exactamente nada. El tuning entero está en `ECONOMY`. Ocho reglas que **son** el
+sistema:
+
+- **El techo de la ronda 1 no es de dinero, es de tipo.** Ninguna arma principal
+  se compra esa ronda aunque sobre el saldo, y se comprueba por `tipo` contra
+  `ECONOMY.techoRonda1`: bajar el precio de un rifle no puede abrir esa puerta
+  por detrás. Lo que sí cabe es equipo —y utilidad, cuando exista—, así que la
+  primera ronda es una decisión (¿chaleco o casco?) y no una carrera.
+- **Ganar salta más que perder, y morir cuesta el equipo.** Victoria 3200,
+  derrota 2400 con suelo que sube al que encadena derrotas, 300 por baja. Y el
+  que cae empieza la siguiente con la pistola y sin chaleco: sin eso, el salto de
+  economía sería sólo dinero. Medido en `compra64`: +3500 el ganador contra +2400
+  el perdedor, y con 2700 en la mano no llega al rifle (2900) pero sí al subfusil.
+- **El rifle cuesta 2900 y no 2700 por un número que salió midiendo**: con 2700,
+  un perdedor que se hubiera guardado los 300 del chaleco llegaba **justo** y la
+  asimetría de la ronda 2 desaparecía por doscientos dólares.
+- **La economía no viaja en la foto**, va por su mensaje y **por destinatario**:
+  cambia cada pocos minutos —no sesenta veces por segundo— y **el saldo del rival
+  no se enseña**, que en la foto compartida llegaría a los dos. Es la misma idea
+  que la foto por destinatario de la fase de compra (vuelta 62).
+- **El supresor no es una compra: es un interruptor.** No cuesta nada, es del
+  arma que ya llevas y se conmuta **en cualquier fase** —clic derecho, en los dos
+  modos—. Encerrarlo en la fase de compra habría sido inventarle un coste que no
+  tiene y dejar el clic derecho muerto durante la ronda.
+- **Escudo y casco existen ya en red**, porque hay una tienda que los vende: una
+  armería que cobra por un chaleco que no para balas es una tienda de humo. La
+  escalera —casco, escudo, vida— no se escribió otra vez: es `encajarImpacto`,
+  en `src/game/player.js`, la **misma función** que usa el jugador del
+  entrenamiento. Dos copias es cómo un chaleco acaba absorbiendo distinto según
+  el modo.
+- **Lo que llevas en red sale del inventario, no de tus ajustes.** `_applySettings`
+  no toca la ranura principal con `enRed`, y el supresor sale de `_invRed`. Sin
+  eso, el ajuste guardado del jugador le devolvía el rifle en cuanto se aplicaba
+  cualquier opción: un arma que no ha pagado y que el servidor no le reconoce.
+- **Y que hay economía lo dice la bienvenida** (`eco`), no el silencio. Un
+  huésped sin rondas (`VEKTOR_RONDAS=0`, el mundo de los bancos de netcode) no
+  tiene economía, y allí el arma sigue saliendo del ajuste como hasta la 63 —si
+  no, `red45` y compañía medirían el peso y la cadencia de una pistola—. Deducir
+  «no hay economía» de que no llegue un mensaje es adivinar por silencio.
+
+**La fase de compra es de la sala, y la elige quien la crea** (vuelta 64). Viaja
+en la dirección del socket (`?compra=…`), como el pase de reconexión y por el
+mismo motivo: la sala se configura **al nacer**, antes de que llegue ningún
+mensaje. Al segundo en entrar se le ignora — nadie le reconfigura la partida al
+que la montó. **A cero no hay fase**: las rondas se encadenan, que es lo que hace
+falta para una partida rápida. El acotado vive en `Partida.configurarCompra`, y
+no en cada huésped, porque huéspedes hay dos.
+
+De ahí una consecuencia de interfaz que no es un capricho: **cambiar el selector
+recarga con una partida nueva**. Una sala ya creada no se reconfigura, así que
+dejar el selector puesto sin más enseñaría un número que el servidor no está
+usando; debajo se ve **lo que dice el servidor**, que es la verdad.
+
+**La armería del duelo no pausa, y no comparte pantalla con el menú** (vuelta
+64). Se abre con la tecla de armería —la del motor, reasignable en opciones— y el
+mundo sigue corriendo: una pausa es parar el mundo de los dos y sólo la decide el
+servidor (vuelta 53). Lo que sí hace es **soltar el ratón**, porque comprar con
+el ratón pide poder pinchar, y es un `.control` para que ese clic no cuente como
+el que captura (vuelta 48).
+
+Y como el menú también sale al soltar el ratón, los dos se pintaban encima: el
+cuadro del código (`#sala`, que es un `.control`) se comía los clics de la tienda
+**y el clic con el que se vuelve a jugar**. Con la tienda abierta, el menú se
+quita; al cerrarla vuelve, salvo que ya se haya recuperado el ratón.
+
+**Dos formas de comprar, y las dos son la misma llamada**: pinchar el artículo o
+teclear su **combinación** (categoría + código), que va escrita en la esquina de
+cada uno. Los códigos **no son correlativos a propósito** —la Rift es `4 3`—:
+dejan sitio a las armas que faltan, porque el día que lleguen no pueden mover de
+sitio lo que la gente ya tiene en los dedos. Y lo que todavía no existe (granada,
+aturdidora, cegadora) **sale en el panel con su precio y su código y no se puede
+comprar**: esconderlo sería no poder aprenderse la combinación; venderlo sería
+prometer una mecánica que no hay.
+
+**Un callback tiene un dueño, y encadenarlo no es opcional.** La página del duelo
+escucha `onEconomia` para repintar la tienda **y el motor lo escucha para ponerte
+en la mano lo que has comprado**. Asignarlo sin encadenar se llevó por delante al
+motor: la Rift se compraba, el panel la daba por cobrada y la tecla 1 seguía
+sacando la pistola. Es la forma que ya tenía `onBienvenida` (vuelta 56), y vale
+para cualquier aviso del cliente que quieran dos.
 
 **Caerse no es irse, y la única forma de distinguirlo es que irse se diga**
 (vuelta 62). Es la regla del transporte de la vuelta 51 llevada hasta el final:
@@ -2133,6 +2225,15 @@ que parecía roto y no lo estaba.
 **Si un resultado te parece extraño, reinicia el servidor de desarrollo antes de
 creerte el diagnóstico.** No depures un falso negativo durante media hora.
 
+**Y comprueba que el que contesta es el que acabas de lanzar** (vuelta 64).
+Vite, si el puerto está ocupado, **arranca en el siguiente** y lo dice en una
+línea que nadie mira: el 5192 lo seguía sirviendo la instancia vieja —la del
+store duplicado— y la nueva se fue al 5193. El síntoma fue exactamente el de
+arriba: `updateSettings` escribía, el store devolvía el valor nuevo y el motor no
+se enteraba de nada, con dos suites en rojo por un cambio que no tenía nada que
+ver. Si un banco del **juego** falla justo después de tocar `config.js`, mira
+primero qué proceso tiene el puerto.
+
 **Y los dos huéspedes sirven `dist/`, no `src/`.** `npm run worker` y `npm run
 host` construyen antes por eso mismo: con cualquiera de los dos levantado,
 cambiar un fichero del juego **no se ve** —los ficheros que sirven son los que
@@ -2248,8 +2349,9 @@ Los números de red y el fantasma siguen apagados detrás de **F3**.
 **Y desde la vuelta 62 el duelo es una partida de verdad, no una escaramuza sin
 final**: 14 rondas de 3 minutos (mayoría de 8), la ronda se cierra con la primera
 muerte, el empate de vidas la repite, un 7-7 va a prórroga por tandas de dos, y
-entre ronda y ronda hay 15 s de fase de compra con cada jugador encerrado en su
-caja y sin recibir la posición del otro. Tuning en `ROUNDS`.
+entre ronda y ronda hay una fase de compra —**15 s de fábrica y elegible al crear
+la partida**, incluida la opción de no tenerla— con cada jugador encerrado en su
+caja y sin recibir la posición del otro. Tuning en `ROUNDS` y `ECONOMY`.
 
 **Y una caída ya no deja la partida colgada**: el mundo se para para el que
 queda, la butaca del que se fue se guarda entera 90 segundos con su pase de

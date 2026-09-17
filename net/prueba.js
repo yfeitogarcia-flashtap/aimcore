@@ -21,7 +21,7 @@
  * avisos de conexión, las pausas y los números de F3.
  */
 import { masterGain } from '../src/audio/sfx.js'
-import { COLORS, NET, ROUNDS, TARGET, TEAMS, WEAPONS } from '../src/config.js'
+import { COLORS, ECONOMY, NET, ROUNDS, TARGET, TEAMS, WEAPONS } from '../src/config.js'
 import { Engine } from '../src/game/engine.js'
 import { Avatar } from '../src/game/avatar.js'
 import { hasLineOfSight } from '../src/game/sight.js'
@@ -74,6 +74,11 @@ const motor = new Engine(lienzo, {
   onWeapon: (w) => pintarArma(w),
   onDamage: (fraccion, rumbo) => marcarDano(fraccion, rumbo),
   onVerdict: (v) => marcarDisparo(v),
+  // **La armería es de la página, como el menú** (vuelta 64). El motor sabe que
+  // se ha pedido —la tecla es suya, reasignable en opciones— y quién la dibuja
+  // depende de dónde se juegue: en el juego es el panel de React, aquí es la
+  // tienda de abajo. Lo que el motor no hace en red es pausar.
+  onArmoury: () => alternarTienda(),
 }, { escenario: ESCENARIO })
 
 /**
@@ -149,6 +154,46 @@ function guardarPartida(dato) {
   }
 }
 
+/**
+ * **Cuánto dura la fase de compra en la partida que se cree aquí** (vuelta 64).
+ *
+ * Sale de la dirección (`?compra=10`) si la trae —así el enlace que se manda la
+ * lleva puesta— y si no, de la preferencia guardada en este navegador. Viaja en
+ * la dirección del socket y **sólo cuenta si esta página es la que crea la
+ * sala**: al segundo en entrar se le ignora, que es lo que impide que llegue
+ * alguien y le reconfigure la partida al que la montó.
+ *
+ * Por eso el selector, al cambiar, **recarga con una partida nueva**: una sala
+ * ya creada no se reconfigura, y fingir que sí sería enseñar un número que el
+ * servidor no está usando. Lo que se ve debajo del selector es lo que dice el
+ * servidor, no lo que pide el selector.
+ */
+const CLAVE_COMPRA = 'vektor.duelo.compra'
+function compraPreferida() {
+  /**
+   * **`Number(null)` es 0, y 0 es una opción válida** — «sin fase de compra».
+   * Así que aquí se pregunta primero si el dato **está**, y sólo entonces se
+   * convierte: leerlo con `Number(...)` a secas hacía que cualquier página sin
+   * el parámetro pidiera una partida rápida sin que nadie la hubiera elegido.
+   * Lo cazó el humo de la página: `compra: 0` en una sala recién creada.
+   */
+  const valido = (crudo) => {
+    if (crudo === null || crudo === undefined || crudo === '') return null
+    const n = Number(crudo)
+    return Number.isFinite(n) && ROUNDS.compraOpciones.includes(n) ? n : null
+  }
+  const enDireccion = valido(new URLSearchParams(window.location.search).get('compra'))
+  if (enDireccion !== null) return enDireccion
+  try {
+    const guardado = valido(localStorage.getItem(CLAVE_COMPRA))
+    if (guardado !== null) return guardado
+  } catch {
+    /* sin persistencia se juega igual */
+  }
+  return ROUNDS.compraSegundos
+}
+const compraElegida = compraPreferida()
+
 const guardada = partidaGuardada()
 // **El pase sólo vale para su código.** Enseñar el de otra partida no es volver
 // a ésta: sería pedir una butaca que en esta sala no existe.
@@ -158,7 +203,10 @@ const cliente = new ClienteRed({
   camara: motor.camera,
   movimiento: motor.movement,
   oclusores: motor.scenario.occluders,
-  transporte: conRedSimulada(transporteWebSocket(urlDeSala(codigo, window.location, paseDeVuelta)), enlace),
+  transporte: conRedSimulada(
+    transporteWebSocket(urlDeSala(codigo, window.location, paseDeVuelta, compraElegida)),
+    enlace,
+  ),
 })
 cliente.onBienvenida = (m) => {
   // **La ranura la manda el servidor**, y es la misma de la que sale su sitio de
@@ -569,7 +617,9 @@ document.addEventListener('pointerlockchange', () => {
   // y lo que se enseña ahí dentro depende de las libres que queden: se repinta
   // al abrirlo, que es cuando se mira.
   if (!capturado) pintarPausa()
-  aviso.hidden = capturado
+  // Y si lo que hay abierto es la tienda, el menú no vuelve: son dos pantallas
+  // de la misma situación —el ratón suelto— y sólo cabe una.
+  aviso.hidden = capturado || !tienda.hidden
   // Mira, vida y «abatido» son de jugar; con el ratón suelto tapan el menú.
   document.body.classList.toggle('jugando', capturado)
 })
@@ -703,6 +753,12 @@ function pintarFaseDeRonda(r) {
     fin: ' ',
   }
   $('rondaFase').textContent = dice[r.fase] ?? ' '
+  // **Al acabar la compra, la tienda se cierra sola.** Dejarla abierta sería
+  // dejar al jugador con el ratón suelto justo cuando empieza la ronda; y fuera
+  // de la fase no hay nada que comprar. Se repinta en cada cambio de fase por lo
+  // mismo que se repinta el cartel de pausa: el estado ha cambiado.
+  if (r.fase !== 'compra') alternarTienda(false)
+  pintarTienda()
   const acabo = r.ganador !== null
   $('fin').classList.toggle('puesto', acabo)
   if (!acabo) return
@@ -853,6 +909,202 @@ function pintarPanel() {
       `p50 ${orden[Math.floor(orden.length * 0.5)].toFixed(3)} · p99 ${orden[Math.floor(orden.length * 0.99)].toFixed(3)} ms`
   }
 }
+
+
+// ---------------------------------------------------------------- la armería
+/**
+ * **La tienda, dentro de la partida** (vuelta 64).
+ *
+ * Se abre con la tecla de armería —del motor, reasignable en las opciones del
+ * juego— y **no pausa**: una pausa es parar el mundo de los dos y sólo la decide
+ * el servidor (vuelta 53). Lo que sí hace es soltar el ratón, porque comprar con
+ * el ratón pide poder pinchar; es un `.control`, así que un clic aquí dentro no
+ * cuenta como el clic que captura (vuelta 48).
+ *
+ * **Dos formas de comprar, y las dos son la misma llamada**: pinchar el artículo
+ * o teclear su combinación (categoría + código). La combinación va escrita en la
+ * esquina de cada uno, que es lo que enseña a comprar sin ratón — y lo que hace
+ * que quien juegue en serio no tenga que soltarlo.
+ *
+ * Y **aquí no se decide nada**: se dibuja lo que dice el servidor y se pide. El
+ * saldo, el techo de la ronda 1 y lo que ya se lleva vienen en `MSG.ECONOMIA`.
+ */
+const tienda = $('tienda')
+/** Los botones del catálogo, por clave. Se montan una vez. */
+const articulos = new Map()
+/** Lo que se lleva tecleado de una combinación: '' o la categoría. */
+let tecleado = ''
+
+function montarTienda() {
+  const porCategoria = new Map()
+  for (const item of ECONOMY.catalogo) {
+    if (!porCategoria.has(item.categoria)) porCategoria.set(item.categoria, [])
+    porCategoria.get(item.categoria).push(item)
+  }
+  const grid = $('tiendaGrid')
+  grid.innerHTML = ''
+  for (const [categoria, items] of [...porCategoria].sort((a, b) => a[0] - b[0])) {
+    const caja = document.createElement('div')
+    caja.className = 'cat'
+    const titulo = document.createElement('h2')
+    titulo.textContent = `${categoria} · ${ECONOMY.categorias[categoria] ?? '—'}`
+    caja.appendChild(titulo)
+    for (const item of items.sort((a, b) => a.codigo - b.codigo)) {
+      const boton = document.createElement('button')
+      boton.className = 'art'
+      boton.type = 'button'
+      boton.innerHTML =
+        `<span>${item.nombre}<span class="nota">&nbsp;</span></span>` +
+        `<span class="precio">${item.deSerie ? 'de serie' : `$${item.precio}`}</span>` +
+        `<span class="codigo">${item.categoria} ${item.codigo}</span>`
+      boton.addEventListener('click', () => comprar(item))
+      caja.appendChild(boton)
+      articulos.set(item.clave, { item, boton, nota: boton.querySelector('.nota') })
+    }
+    grid.appendChild(caja)
+  }
+}
+
+/** Pedir la compra. Quien dice si cabe es el servidor; esto sólo pide. */
+function comprar(item) {
+  if (!item.disponible) return
+  cliente.comprar(item.clave, item.tipo === 'accesorio' ? motor.weaponKey : null)
+}
+
+/**
+ * **Por qué no se puede comprar algo**, o null si se puede. El orden es el de la
+ * frustración: primero lo que no existe, luego lo que la ronda no deja, luego lo
+ * que ya llevas y por último el dinero — que es lo único que se arregla solo.
+ */
+function porQueNo(item, eco, fase) {
+  if (!item.disponible) return 'pronto'
+  if (item.deSerie) return 'siempre contigo'
+  // El supresor va antes de la fase: no cuesta nada y se pone cuando se quiera.
+  if (item.tipo === 'accesorio') {
+    if (!WEAPONS[motor.weaponKey]?.supportsSuppressor) return 'no lo admite'
+    return null
+  }
+  if (fase !== 'compra') return 'fuera de la compra'
+  if (eco.techo && !eco.techo.includes(item.tipo)) return 'ronda 1: sin armas'
+  if (item.clave === 'chaleco' && eco.inv.escudo >= ECONOMY.escudoPorChaleco) return 'puesto'
+  if (item.clave === 'casco' && eco.inv.casco) return 'puesto'
+  if (item.clave === eco.inv.primaria) return 'equipada'
+  if (eco.dinero < item.precio) return 'sin saldo'
+  return null
+}
+
+/** Repinta la tienda con lo que dice el servidor. */
+function pintarTienda() {
+  const eco = cliente.economia
+  const fase = cliente.rondas.fase
+  $('compraReal').textContent = eco.compra > 0 ? `${eco.compra} s` : 'sin fase'
+  if (tienda.hidden) return
+  $('tiendaDinero').textContent = `$${eco.dinero}`
+  $('tiendaFase').textContent =
+    fase === 'compra' ? `fase de compra · ronda ${cliente.rondas.n}` : 'sólo se compra entre rondas'
+  for (const { item, boton, nota } of articulos.values()) {
+    const razon = porQueNo(item, eco, fase)
+    boton.disabled = razon !== null
+    const puesto =
+      item.clave === eco.inv.primaria ||
+      (item.clave === 'chaleco' && eco.inv.escudo > 0) ||
+      (item.clave === 'casco' && eco.inv.casco) ||
+      (item.tipo === 'accesorio' && eco.inv.supresor?.[motor.weaponKey])
+    boton.classList.toggle('puesto', !!puesto)
+    // El supresor dice de qué arma habla: es del arma que llevas en la mano
+    // (vuelta 43), no del jugador.
+    const detalle =
+      item.tipo === 'accesorio' && razon === null
+        ? `${WEAPONS[motor.weaponKey]?.label ?? '—'}${eco.inv.supresor?.[motor.weaponKey] ? ' · puesto' : ''}`
+        : razon ?? ''
+    nota.textContent = detalle || ' '
+  }
+}
+
+function alternarTienda(abrir = tienda.hidden) {
+  tienda.hidden = !abrir
+  tecleado = ''
+  $('tiendaTecleado').textContent = ' '
+  /**
+   * **Con la tienda abierta, el menú se quita de en medio.** Las dos cosas salen
+   * al soltar el ratón —el menú porque es lo que se enseña sin captura, la
+   * tienda porque se ha pedido— y el menú ocupa la pantalla entera: se pintaban
+   * una encima de otra, y su cuadro del centro (`#sala`, que es un `.control`)
+   * se comía los clics de la tienda **y el clic con el que se vuelve a jugar**.
+   * Al cerrar vuelve el menú, salvo que el ratón ya esté capturado.
+   */
+  aviso.hidden = abrir || document.pointerLockElement === lienzo
+  if (abrir) pintarTienda()
+}
+
+/**
+ * **La combinación numérica**: categoría y código, dos teclas. Se escucha aquí y
+ * no en el motor porque es de la tienda — y con el ratón suelto el motor ya no
+ * mira las teclas de arma, así que un `1` no saca la pistola por detrás.
+ */
+document.addEventListener('keydown', (evento) => {
+  if (tienda.hidden) return
+  if (evento.key === 'Escape') {
+    alternarTienda(false)
+    return
+  }
+  if (!/^[0-9]$/.test(evento.key)) return
+  evento.preventDefault()
+  tecleado += evento.key
+  if (tecleado.length < 2) {
+    $('tiendaTecleado').textContent = `${tecleado} _`
+    return
+  }
+  const categoria = Number(tecleado[0])
+  const codigo = Number(tecleado[1])
+  const item = ECONOMY.catalogo.find((i) => i.categoria === categoria && i.codigo === codigo)
+  $('tiendaTecleado').textContent = item
+    ? `${categoria} ${codigo} · ${item.nombre}`
+    : `${categoria} ${codigo} · no hay nada ahí`
+  tecleado = ''
+  if (item) comprar(item)
+})
+
+montarTienda()
+/**
+ * **Se encadena con lo que el motor ya hubiera puesto**, no se sustituye. El
+ * motor escucha este mismo aviso para ponerte en la mano lo que has comprado
+ * (`_aplicarInventario`), y asignar aquí encima se lo lleva por delante: el
+ * síntoma fue comprar la Rift, verla cobrada en el panel y que la tecla 1
+ * siguiera sacando la pistola. Es la misma forma que ya tenía `onBienvenida`, y
+ * por el mismo motivo — dos dueños para un callback.
+ */
+const ecoDelMotor = cliente.onEconomia
+cliente.onEconomia = (eco) => {
+  ecoDelMotor?.(eco)
+  pintarTienda()
+}
+
+// **El selector de la fase de compra**, en la pantalla donde se crea la partida.
+const selector = $('compraSel')
+for (const segundos of ROUNDS.compraOpciones) {
+  const opcion = document.createElement('option')
+  opcion.value = String(segundos)
+  opcion.textContent = segundos === 0 ? 'sin fase (rápida)' : `${segundos} s`
+  selector.appendChild(opcion)
+}
+selector.value = String(compraElegida)
+selector.addEventListener('change', () => {
+  const segundos = Number(selector.value)
+  try {
+    localStorage.setItem(CLAVE_COMPRA, String(segundos))
+  } catch {
+    /* sin persistencia vale para esta partida y ya */
+  }
+  // **Partida nueva**: una sala ya creada no se reconfigura, así que cambiar
+  // esto empieza otra, con su código y su enlace. Fingir lo contrario sería
+  // enseñar un número que el servidor no está usando.
+  const destino = new URL(window.location.href)
+  destino.searchParams.set('compra', String(segundos))
+  destino.hash = ''
+  destino.pathname = destino.pathname.replace(/\/duelo\/[^/]+$/, '/duelo')
+  window.location.href = destino.toString()
+})
 
 // Para las sondas de medida: todo lo que hace falta, en un solo sitio.
 /**

@@ -546,6 +546,26 @@ export class Engine {
     const suyo = cliente.onBienvenida
     cliente.onBienvenida = (m) => {
       suyo?.(m)
+      /**
+       * **Con economía se sale con la pistola** (vuelta 64): la ranura principal
+       * empieza vacía y la llena lo que compres. Sin economía —el huésped de los
+       * bancos, `VEKTOR_RONDAS=0`— el arma sigue siendo la del ajuste del
+       * jugador, que es como funcionaba hasta la 63: vaciarla allí dejaría a los
+       * bancos de netcode midiendo el peso y la cadencia de una pistola.
+       *
+       * Va aquí y no en `usarRed` porque **quién manda se sabe al entrar**, no
+       * al enchufar el cliente: la bienvenida lo dice (`eco`).
+       */
+      if (m.eco) {
+        this.slots.primary = null
+        if (this.slot === 'primary') {
+          this.slot = 'secondary'
+          this.weaponKey = this.slots.secondary
+          this._cancelReload()
+          this._refillMagazine()
+        }
+        this._aplicarInventario(cliente.economia?.inv)
+      }
       if (this.phase !== PHASE.RUNNING) this._beginSession()
     }
 
@@ -563,7 +583,45 @@ export class Engine {
     cliente.onTiroLocal = (veredicto, d) => {
       if (!veredicto.impacto) this._impactoDeRed(d.yaw, d.pitch)
     }
+
+    /**
+     * **En red lo que llevas no es un ajuste tuyo: es lo que has comprado**
+     * (vuelta 64). La ranura principal sale del inventario del servidor, y con
+     * ella el supresor de cada arma. Se arranca **sin principal** —la ronda 1 se
+     * juega con la pistola— y cada `MSG.ECONOMIA` la vuelve a poner.
+     */
+    this._invRed = null
+    cliente.onEconomia = (eco) => this._aplicarInventario(eco.inv)
     return cliente
+  }
+
+  /**
+   * **Lo comprado, puesto** (vuelta 64). Es el único camino por el que cambia el
+   * arma principal en red: ni el ajuste del jugador ni la armería local pintan
+   * nada aquí, porque en una partida con economía lo que llevas lo decide el
+   * servidor.
+   *
+   * Si te quedas sin principal —morir cuesta el equipo— y la llevabas en la
+   * mano, se saca la pistola: quedarse empuñando un arma que ya no existe es la
+   * versión silenciosa del mismo fallo.
+   */
+  _aplicarInventario(inv) {
+    if (!inv) return
+    this._invRed = inv
+    const antes = this.slots.primary
+    this.slots.primary = inv.primaria ?? null
+    if (antes && antes !== this.slots.primary) delete this._stowed[antes]
+    if (this.slot === 'primary' && !this.slots.primary) {
+      this.slot = 'secondary'
+      this.weaponKey = this.slots.secondary
+      this._cancelReload()
+      this._refillMagazine()
+    } else if (this.slot === 'primary' && this.weaponKey !== this.slots.primary) {
+      this.weaponKey = this.slots.primary
+      this._cancelReload()
+      this._refillMagazine()
+    }
+    this._publishWeapon(getSettings())
   }
 
   /**
@@ -782,7 +840,11 @@ export class Engine {
     // Cambiar de arma principal cambia la ranura, no el arma vigente: si en ese
     // momento llevabas la pistola, la principal nueva te espera en la tecla 1.
     // Y espera **llena**: el cargador guardado era el de la que ya no llevas.
-    if (settings.weapon !== this.slots.primary) {
+    // **En red la principal no sale de los ajustes: sale de lo que has comprado**
+    // (vuelta 64). Sin esta condición, el ajuste guardado del jugador le
+    // devolvía el rifle en cuanto se aplicaba cualquier opción — o sea, un arma
+    // que no ha pagado y que el servidor no le reconoce.
+    if (!this.enRed && settings.weapon !== this.slots.primary) {
       delete this._stowed[this.slots.primary]
       delete this._stowed[settings.weapon]
       this.slots.primary = settings.weapon
@@ -925,8 +987,13 @@ export class Engine {
    */
   _resetLoadout() {
     this._stowed = {}
-    this.slot = 'primary'
-    this.weaponKey = this.slots.primary
+    // **Se puede no tener principal** (vuelta 64): en el duelo la ranura 1
+    // empieza vacía y se llena comprando. Poner la mano en una ranura vacía deja
+    // `weapon` sin definir, y eso se manifiesta lejos —en el HUD, leyendo el
+    // cargador de un arma que no existe— así que la dotación empieza en la
+    // ranura que de verdad tiene algo.
+    this.slot = this.slots.primary ? 'primary' : 'secondary'
+    this.weaponKey = this.slots[this.slot]
   }
 
   /**
@@ -939,8 +1006,13 @@ export class Engine {
   _publishWeapon(settings) {
     // El silenciador sólo cuenta si el arma **vigente** lo admite: la pistola lo
     // lleva y el Rift no, así que esto cambia al cambiar de ranura.
-    this.suppressorEnabled =
-      Boolean(settings.suppressor[this.weaponKey]) && this.weapon.supportsSuppressor
+    // **En red el supresor es del inventario, no del ajuste guardado**: es del
+    // arma de esta partida, y quien lleva la cuenta de lo que tienes es el
+    // servidor (vuelta 64). Fuera de la red sigue siendo el ajuste de siempre.
+    const puesto = this.enRed
+      ? Boolean(this._invRed?.supresor?.[this.weaponKey])
+      : Boolean(settings.suppressor[this.weaponKey])
+    this.suppressorEnabled = puesto && this.weapon.supportsSuppressor
     // **Y lo que pesa se nota al andar.** Va aquí y no en `_equipSlot` porque
     // éste es el único sitio por el que pasan los tres caminos que cambian el
     // arma vigente: la tecla, el ajuste de principal y la armería.
@@ -1179,7 +1251,41 @@ export class Engine {
     event.preventDefault()
   }
 
+  /**
+   * Pone o quita el supresor del arma **que se lleva en la mano**, que es la
+   * regla de la vuelta 43: el supresor es de cada arma y no del jugador. Un arma
+   * que no lo admite no hace nada — y hoy las tres lo admiten.
+   */
+  _alternarSupresor() {
+    const arma = this.weapon
+    if (!arma?.supportsSuppressor) return
+    if (this.enRed) {
+      // En red se pide: lo que tienes lo lleva el servidor.
+      this.net.comprar('supresor', this.weaponKey)
+      return
+    }
+    const settings = getSettings()
+    updateSettings({ suppressor: { ...settings.suppressor, [this.weaponKey]: !settings.suppressor[this.weaponKey] } })
+  }
+
   _onMouseDown(event) {
+    /**
+     * **El clic derecho pone y quita el supresor del arma que llevas**
+     * (vuelta 64). Es el mismo gesto en los dos modos —ahí está la convención de
+     * la 63— y lo que cambia es quién lleva la cuenta: fuera de la red, el
+     * ajuste de siempre; en red, el inventario del servidor, que contesta con
+     * `MSG.ECONOMIA` y de ahí vuelve por `_aplicarInventario`.
+     *
+     * Va antes del filtro del gatillo porque no es disparar, y pide el ratón
+     * capturado por lo mismo que lo pide disparar: con el ratón suelto estás en
+     * un menú.
+     */
+    if (event.button === 2) {
+      event.preventDefault()
+      if (!this.isLocked || this.phase !== PHASE.RUNNING) return
+      this._alternarSupresor()
+      return
+    }
     if (!this._isBind('shoot', event)) return
 
     // Sin el ratón capturado, el click sirve para capturarlo: no dispara.
@@ -1760,6 +1866,15 @@ export class Engine {
    */
   _toggleArmoury() {
     if (this.isLocked) document.exitPointerLock()
+    // **En red la armería no pausa** (vuelta 64). Una pausa es parar el mundo de
+    // los dos y sólo la decide el servidor (vuelta 53): abrir tu panel de compra
+    // no puede congelarle la partida a nadie — y durante la fase de compra el
+    // mundo ya está haciendo lo suyo, con cada uno en su caja. Lo que sí se hace
+    // es soltar el ratón, porque comprar con el ratón pide poder pinchar.
+    if (this.enRed) {
+      this.callbacks.onArmoury?.()
+      return
+    }
     // Y se pausa aquí mismo, sin esperar al evento de pointer lock: el cambio de
     // captura es asíncrono y hasta que llega seguiría corriendo el reloj —y con
     // él los muñecos—. Es el mismo `_suspend` que usa Escape, no una segunda
@@ -2719,10 +2834,14 @@ export class Engine {
     if (this.enRed) {
       stats.combat = true
       stats.health = this.net.vida
-      stats.shield = 0
-      stats.shieldSegments = 0
+      // **Escudo y casco existen en red desde la vuelta 64**, porque hay una
+      // tienda que los vende. Las cargas no: recargar el chaleco a mano es del
+      // entrenamiento, y en el duelo se compra entre rondas.
+      stats.shield = this.net.escudo ?? 0
+      stats.shieldSegments = Math.ceil((this.net.escudo ?? 0) / PLAYER.shield.segment)
+      stats.maxSegments = Math.round(PLAYER.shield.max / PLAYER.shield.segment)
       stats.charges = 0
-      stats.helmet = false
+      stats.helmet = !!this.net.casco
       stats.applying = false
       stats.applyProgress = 0
       stats.alive = this.net.vida > 0
