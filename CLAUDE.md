@@ -931,6 +931,48 @@ señales se reparten el trabajo y **cada una entra por un sitio distinto**:
 - **El fogonazo** (`muzzleFlash.js`), en cada disparo. Aditivo, una geometría y
   un material para todo el pool, ningún rayo.
 
+**Una bala que no da tiene que decir por dónde se fue** (vuelta 64). La marca de
+impacto (`src/game/impacts.js`) es el único aviso que dice **dónde acabó** un
+disparo fallado: la mira dice *que* has fallado, y sin esto tirar contra una
+pared y tirar al aire se ven exactamente igual. Cinco cosas que son el diseño:
+
+- **Vive en el motor, así que sale en los dos modos.** Es la convención de la
+  63 aplicada de verdad: se escribió una vez y la llaman el disparo de
+  entrenamiento y el del duelo. **No existía en ninguno de los dos** —contra los
+  muñecos, un tiro que se comía la Espina era un fallo y no se dibujaba nada—,
+  así que construirla en la página del duelo habría sido dejar el modo principal
+  sin ella para siempre.
+- **Un rayo por disparo, y de él salen las dos respuestas.** Antes había un
+  `_isBlockedByCover` que preguntaba «¿me tapan?»; ahora
+  `_superficieBajoElRayo()` devuelve **punto, normal y distancia** de lo primero
+  que hay delante, y de ahí se decide a la vez si la cobertura come el tiro y
+  dónde va la marca. Dos rayos para dos preguntas sobre la misma recta es cómo
+  se acaban contestando distinto.
+- **La sala no se raycastea: se resuelve en aritmética.** Sus paredes y su suelo
+  están dibujados con **líneas** (`grid.js`), no con mallas, así que no hay
+  contra qué lanzar un rayo. Con el origen dentro de la caja, por dónde sale el
+  rayo es el menor de los tres cortes contra la pareja de planos de cada eje —y
+  da la normal exacta, no la de un triángulo.
+- **En red la pone el veredicto local, no el del servidor.** El del servidor
+  llega un viaje después y contesta a otra pregunta (si le diste); el local sabe
+  **el rayo que salió** y si acabó en el rival, y las dos cosas hacen falta: a un
+  rival alcanzado no se le dibuja una marca en la pared de detrás. Va por
+  `cliente.onTiroLocal`, que es el único punto donde el cliente tiene las dos.
+- **Y es la estrella del fogonazo, encarada a la superficie.** No hay
+  calcomanías —ni texturas, ni proyección, ni recorte contra la geometría— y no
+  hay ni una luz en la escena, así que una marca oscura sobre una caja gris no se
+  vería. Los dos extremos de la misma bala se dibujan con la misma silueta a
+  propósito, y `flashStarGeometry` es una sola: el fogonazo la exporta.
+
+El pool es **un `InstancedMesh`**: una geometría, un material y una malla para
+las veinticuatro marcas. Apagarse es que el color de esa instancia baje a negro,
+que con mezcla aditiva **es** invisible — así el desvanecido no necesita un
+material por ranura. Y se apagan con el **reloj del mundo**: en pausa una marca
+se queda quieta en vez de irse a tus espaldas. Medido (`impactos64`): 92 px bajo
+la mira a tres unidades, cero píxeles pasados los 420 ms, la marca sobre la cara
+de la caja a la que se apuntó (z −19.012 contra −19) y sobre el suelo a y 0.012,
+y **ni una marca detrás de un muñeco** ni de un rival alcanzados.
+
 **Un destello en el eje del cuerpo se dibuja dentro del muñeco.** Medido: de los
 340 píxeles que tocaban a 6 u se veían 24, los de las esquinas. Por eso el
 fogonazo sale un palmo por delante del pecho (`ENEMY.muzzleForwardFactor`), que
@@ -2415,6 +2457,12 @@ visión y dentro de `ENEMY.engageRange` (24 u), un muñeco abre fuego con el
 `WEAPONS`, hoy la Rift— apuntando al centro del cuerpo del jugador con el cono
 de la dificultad. Dispara en ráfagas de cuatro con pausa, y el disparo se resuelve
 contra las **tres zonas del jugador**, que son las del hitbox.
+
+**Marca de bala en las superficies** (vuelta 64): un disparo que no da en un
+muñeco deja una estrella breve —420 ms— donde acabó, encarada a la cara que ha
+recibido el tiro: cobertura, pared o suelo. Sale igual entrenando y en el duelo,
+porque es del motor. A un cuerpo alcanzado no se le dibuja nada: ahí habla el
+anillo de la mira.
 
 **Y se nota aunque no lo estés mirando** (vuelta 40): cada disparo enciende un
 **fogonazo** blanco —estrella aditiva de 0.22 u— por delante de su pecho; una bala

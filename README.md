@@ -124,6 +124,17 @@ Cuatro reglas que el sistema no se salta:
 Las **flechas** y el **Shift derecho** siguen funcionando como alternativas
 fijas: no son binds y no se pueden perder.
 
+## Dónde ha ido a parar tu bala
+
+Un disparo que no da en nadie deja una **marca** donde acaba: en la caja, en la
+pared o en el suelo, encarada a la superficie que ha recibido el tiro y apagándose
+en menos de medio segundo. Es lo que convierte un fallo en información: sin ella,
+tirar contra una pared y tirar al aire se ven igual y no hay forma de corregir.
+
+Sale igual **entrenando contra muñecos y jugando un duelo**, porque es lo mismo:
+el efecto vive en el motor, no en un modo. Contra un cuerpo alcanzado no se
+dibuja nada — ahí ya lo dice el anillo de la mira.
+
 ## Pisadas de los demás
 
 Cuando un rival **corre** cerca, se le **oye**, con dirección y volumen según

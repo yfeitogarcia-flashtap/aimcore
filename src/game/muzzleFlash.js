@@ -35,13 +35,18 @@ const DUMMY_HEIGHT = TARGET_TYPES.hitbox.parts.reduce(
 /**
  * **La forma del destello: una estrella de cuatro puntas**, no un cuadrado.
  *
+ * Se exporta porque la comparte la **marca de impacto** (vuelta 64): los dos
+ * extremos de la misma bala —la boca del arma y la pared donde acaba— se
+ * dibujan con la misma silueta a propósito, y una segunda copia de estos nueve
+ * vértices sería la misma idea contada dos veces.
+ *
  * Cuesta lo mismo —nueve vértices y ocho triángulos, una sola vez para todo el
  * pool— y la diferencia es toda: un cuadrado blanco pegado al pecho se lee como
  * una tarjeta, y una estrella se lee como algo que se enciende. Sin luces en la
  * escena, la silueta es lo único que dice qué es una cosa; es la misma razón por
  * la que el casco del suelo lleva visera.
  */
-function flashGeometry(width) {
+export function flashStarGeometry(width) {
   const long = width / 2
   const short = long * 0.36
   const positions = [0, 0, 0]
@@ -80,7 +85,7 @@ export class MuzzleFlash {
    */
   build(count, radius) {
     this.dispose()
-    this._geometry = flashGeometry(FEEDBACK.muzzleFlashSize * DUMMY_HEIGHT * radius)
+    this._geometry = flashStarGeometry(FEEDBACK.muzzleFlashSize * DUMMY_HEIGHT * radius)
     // Aditivo y sin escribir profundidad: un destello tapado a medias por una
     // caja se vería como un recorte, y lo que hace es encenderse, no ocupar.
     this._material = new THREE.MeshBasicMaterial({

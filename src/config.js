@@ -2639,6 +2639,35 @@ export const FEEDBACK = {
   muzzleFlashOpacity: 0.85,
 }
 
+/**
+ * **La marca que deja una bala en una superficie** (vuelta 64). Un disparo que
+ * no da tiene que decir **por dónde** se ha ido, o fallar contra una pared y
+ * fallar al aire se ven igual. Lo dibuja `src/game/impacts.js`, y sale en los
+ * dos modos porque vive en el motor: contra los muñecos y contra una persona.
+ */
+export const IMPACTS = {
+  /**
+   * Ranuras del pool. Con la vida de abajo y el arma más rápida del arsenal
+   * (800 RPM, un disparo cada 75 ms) caben dieciocho balas antes de pisar la
+   * primera, así que veinticuatro sobran incluso disparando a bocajarro.
+   */
+  pool: 24,
+  /** Punta a punta, en unidades de mapa. Una bala no deja un cráter. */
+  sizeU: 0.16,
+  /** Lo que tarda en apagarse del todo, en tiempo de juego. */
+  lifeMs: 420,
+  /**
+   * El primer tramo de vida va **por encima del uno**: una bala contra una
+   * pared es un golpe y luego un rastro, y sin ese escalón las dos mitades se
+   * ven igual. `flashPart` es qué fracción de la vida dura el golpe.
+   */
+  flashPart: 0.12,
+  flashBoost: 2.4,
+  opacity: 0.9,
+  /** Separación de la cara golpeada: pegada del todo parpadea contra ella. */
+  offsetU: 0.012,
+}
+
 /** Sonido sintetizado (Web Audio API). Sin assets externos. */
 export const AUDIO = {
   /** Volumen del explosivo: pitido, desactivación y detonación. */

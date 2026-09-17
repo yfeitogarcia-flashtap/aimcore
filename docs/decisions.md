@@ -7129,6 +7129,92 @@ los modos. El hueco que queda hoy va en el sentido contrario y conviene anotarlo
 **las pisadas sólo existen en el duelo**. El día que un muñeco haga ruido al
 patrullar, sale de `playFootstep` y del emisor, que ya son genéricos.
 
+## Ronda 64 — La marca de bala, y dónde tenía que vivir
+
+### El efecto no existía en ninguno de los dos modos
+
+El encargo decía «esto ya está en el modo vs muñecos, replicadlo en el duelo».
+No estaba: un disparo que se comía la Espina entrenando era un fallo, `hit =
+null`, y no se dibujaba absolutamente nada. Lo que había era la comprobación de
+cobertura (`_isBlockedByCover`), que es la mitad invisible de lo mismo — decide
+que el muro se come el tiro y luego tira el dato.
+
+Eso cambia dónde va el código, y es justo lo que la convención de la 63 quiere
+que se pregunte antes de escribir: **construirlo en la página del duelo habría
+dejado el modo principal sin marcas para siempre**, y con dos implementaciones el
+día que alguien lo notara. Se escribe una vez, en el motor, y lo llaman los dos
+disparos.
+
+### Un rayo por disparo, y de él salen las dos respuestas
+
+`_isBlockedByCover(hit)` preguntaba «¿hay algo más cerca que el muñeco?» y
+devolvía un booleano. Ahora `_superficieBajoElRayo()` devuelve **punto, normal y
+distancia** de lo primero que hay delante, y de ahí se deciden las dos cosas: si
+la cobertura come el tiro y dónde va la marca. Dos rayos para dos preguntas sobre
+la misma recta es cómo acaban contestando distinto —y además cuesta el doble—.
+
+### La sala es aritmética, no geometría
+
+Las paredes y el suelo se dibujan con **líneas** (`grid.js`), no con mallas: no
+hay contra qué lanzar un rayo, así que un disparo a la pared del fondo no tenía
+dónde dejar marca. Con el origen dentro de la caja, por dónde sale el rayo es el
+menor de los tres cortes contra la pareja de planos de cada eje. Tres divisiones
+y una comparación, con la normal exacta de la cara —no la de un triángulo— y sin
+tener que montar seis mallas invisibles para que un rayo las encuentre.
+
+### En red la marca la pone el veredicto local
+
+Había dos candidatos y sólo uno sirve:
+
+- **El veredicto del servidor** llega un viaje después y contesta a otra
+  pregunta: si le diste. No lleva el rayo, así que no sabe dónde acabó la bala.
+- **El veredicto local** (`cliente._resolverLocal`, vuelta 46) se saca al
+  ejecutar la entrada, con el rayo delante y contra el rival que estabas
+  dibujando. Sabe las dos cosas que hacen falta: por dónde iba, y si acabó en un
+  cuerpo — porque **a un rival alcanzado no se le pinta una marca en la pared de
+  detrás**.
+
+Por eso la marca de red sale por `cliente.onTiroLocal`, un paso después de
+apretar. Son 16.7 ms que no se ven, y lo que se compra es no tener una segunda
+idea de «a quién le has dado» dentro del motor, que es la regla de la vuelta 56.
+
+### Una estrella aditiva, y un `InstancedMesh`
+
+No hay calcomanías —ni texturas, ni proyección, ni recorte contra la geometría— y
+tampoco hay una sola luz en la escena, así que **una marca oscura sobre una caja
+gris no se vería**. Lo que se dibuja es la misma estrella del fogonazo encarada a
+la superficie: los dos extremos de la misma bala, con la misma silueta y con una
+sola `flashStarGeometry` compartida.
+
+El pool es una malla instanciada: una geometría, un material y veinticuatro
+instancias. **Apagarse es que el color de la instancia baje a negro**, que con
+mezcla aditiva es invisible — sin eso habría hecho falta un material por ranura
+sólo para poder bajar una opacidad. Y se apagan con el reloj del mundo, como todo
+lo temporizado: en pausa una marca se queda quieta en vez de irse a tus espaldas.
+
+### Lo que midió el banco, y las tres premisas que estaban mal
+
+`impactos64` mide en píxeles con render target (regla de la 39) y en coordenadas
+de mundo. Verde: 92 px bajo la mira, cero pasados los 420 ms, la marca sobre la
+cara de la caja a la que se apuntó (z −19.012 contra −19 con 0.012 de
+separación), sobre el suelo a y 0.012, y ninguna detrás de un muñeco ni de un
+rival alcanzados.
+
+Las tres primeras versiones de esas filas medían otra cosa, y las tres son la
+misma lección de siempre:
+
+- **«Pegada a la pared del fondo» fallaba porque el tiro daba en una caja a 3.5
+  u.** La aserción escribía una coordenada del plano a mano; ahora la pieza
+  **se busca en los datos** (`scenario.boxes`) y lo que se exige es que la marca
+  caiga en su cara.
+- **«El disparo le dio» fallaba por cadencia**: dos bloques seguidos disparaban a
+  120 ms de distancia con un arma de 500 RPM, y el segundo tiro no salía. El
+  banco no medía la marca, medía un gatillo que no había disparado.
+- **Y en el duelo, los seis tiros salían `tapado`**: entre (0,0) y (0,−6) del
+  Plano A hay cobertura. La premisa «se están viendo» no se puede suponer en un
+  mapa con muros — ahora la línea está comprobada y el propio veredicto la
+  delataría.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

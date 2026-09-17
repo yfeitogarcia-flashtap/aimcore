@@ -56,6 +56,8 @@ export class ClienteRed {
      */
     this.onBienvenida = null
     this.onVeredicto = null
+    /** Aviso del veredicto **local** de cada disparo: lo usa la marca de bala. */
+    this.onTiroLocal = null
     /**
      * **Y por qué se ha acabado la partida para ti** (vuelta 51). Llega con un
      * motivo legible y con `deFuera` puesto si lo dijo el servidor (`ADIOS`) o
@@ -377,6 +379,15 @@ export class ClienteRed {
       // el veredicto de aquí, así que los dos extremos miran al mismo sitio.
       d.tv = local.enPaso
       this.disparosEnVuelo.set(d.seq, { mio: local.veredicto, en: performance.now() })
+      /**
+       * **Lo que el tirador vio, para quien lo dibuje** (vuelta 64). El motor
+       * pone aquí la marca de bala en la pared: es el único punto en el que se
+       * sabe a la vez el rayo que salió y si acabó en el rival, y las dos cosas
+       * hacen falta —a un rival alcanzado no se le dibuja nada detrás—. El
+       * veredicto del servidor no sirve para esto: llega un viaje después y
+       * dice si le diste, no por dónde pasó la bala.
+       */
+      this.onTiroLocal?.(local.veredicto, d)
       // Un disparo cuyo veredicto no llegó nunca —se perdieron las ocho fotos
       // que lo repetían— se suelta en vez de quedarse ocupando sitio.
       if (this.disparosEnVuelo.size > 32) {

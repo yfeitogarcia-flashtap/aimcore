@@ -24,6 +24,7 @@ import {
   OBJECTIVE,
   MOVEMENT,
   HELP,
+  IMPACTS,
   PLAYER,
   RECOIL_RESET_MS,
   RENDER,
@@ -68,6 +69,7 @@ import { Avatar } from './avatar.js'
 import { EnemyFire } from './enemyFire.js'
 import { DummyMarkers, facingDesdeCamara } from './markers.js'
 import { MuzzleFlash } from './muzzleFlash.js'
+import { Impacts } from './impacts.js'
 import { PickupField } from './pickups.js'
 import { PlayerStatus, playerBody } from './player.js'
 import { getSettings, subscribeSettings, updateSettings } from '../settings.js'
@@ -85,6 +87,13 @@ const _spreadUp = new THREE.Vector3(0, 1, 0)
 const _spreadFallback = new THREE.Vector3(1, 0, 0)
 /** Hacia dónde mira la cámara, para saber de qué lado te han disparado. */
 const _bearingForward = new THREE.Vector3()
+/**
+ * Lo que devuelve `_superficieBajoElRayo`, reutilizado: el bucle caliente no
+ * asigna, y esto se consume en el acto.
+ */
+const _impacto = { punto: new THREE.Vector3(), normal: new THREE.Vector3(), distancia: 0 }
+const _normales = new THREE.Matrix3()
+const _dir = new THREE.Vector3()
 
 /**
  * **La fase de un rival real, que hoy no existe** (vuelta 56). `markers.js`
@@ -231,6 +240,15 @@ export class Engine {
     /** Los muñecos disparando, y los recogibles que hacen falta para aguantarlo. */
     /** El fogonazo de cada disparo enemigo. Sólo dibuja: el aviso viene de fuera. */
     this.muzzleFlash = new MuzzleFlash(this.scene)
+    /**
+     * **Las marcas de bala**, que son del motor y no de un modo (vuelta 64):
+     * el mismo pool dibuja el disparo que se come la Espina entrenando y el que
+     * se la come en un duelo. El pool se monta una vez y no depende de cuántos
+     * muñecos haya, porque una marca es de la **superficie**, no de quien
+     * dispara.
+     */
+    this.impacts = new Impacts(this.scene)
+    this.impacts.build()
     this.enemyFire = new EnemyFire(
       this.scene,
       (hit) => this._onPlayerHit(hit),
@@ -535,6 +553,16 @@ export class Engine {
     // el audio: aciertos, bajas y sus dos voces. Quien lo quiera para pintar
     // una marca lo recibe por callback, igual que el daño.
     cliente.onVeredicto = (v) => this._onVerdict(v)
+    /**
+     * **Y la marca en la pared**, que la pone el veredicto **local** y no el del
+     * servidor: lo que dice dónde acabó tu bala es el rayo que tú disparaste,
+     * mientras que el del servidor llega un viaje después y dice otra cosa —si
+     * le diste—. Si le diste, no hay marca: el rival no la necesita, que para
+     * eso está el anillo de la mira.
+     */
+    cliente.onTiroLocal = (veredicto, d) => {
+      if (!veredicto.impacto) this._impactoDeRed(d.yaw, d.pitch)
+    }
     return cliente
   }
 
@@ -612,6 +640,7 @@ export class Engine {
     this.enemyFire.dispose()
     this.markers.disposeMaterials()
     this.muzzleFlash.dispose()
+    this.impacts.dispose()
     this.pickups.dispose()
     this.actionPanel.dispose()
     this.cssRenderer.domElement.remove()
@@ -718,6 +747,7 @@ export class Engine {
     this.targets.clear()
     this.pickups.clear()
     this.muzzleFlash.clear()
+    this.impacts.clear()
     this._stopShieldSound()
     if (this.isLocked) document.exitPointerLock()
     this._setPhase(PHASE.IDLE)
@@ -1048,6 +1078,7 @@ export class Engine {
     this.status.reset()
     this._stopShieldSound()
     this.muzzleFlash.clear()
+    this.impacts.clear()
     this.camera.updateMatrixWorld()
 
     // **Una sesión de red no siembra nada** (vuelta 56). Ni dianas, ni
@@ -2152,6 +2183,10 @@ export class Engine {
       this.net.disparar(instanteReal, this.camera.rotation.y, this.camera.rotation.x)
       playWeaponShot(this.weaponKey, this.suppressorEnabled)
       this.callbacks.onShot?.(false)
+      // La marca en la pared no se pone aquí: se pone cuando el cliente resuelve
+      // este disparo contra el rival que estabas viendo (`onTiroLocal`, un paso
+      // después). Si le diste, no hay marca — y quién recibió el tiro no lo
+      // decide el motor, que es la regla de la vuelta 56.
       return
     }
 
@@ -2166,11 +2201,21 @@ export class Engine {
       // desvío por movimiento, que es distinto en cada disparo.
       applySpread(this.raycaster.ray.direction, this.currentSpreadDeg)
       hit = this.targets.raycast(this.raycaster)
-      // Con cobertura por medio, el disparo se para en el muro. Sin esto se
-      // podría matar a través de la Espina y el escenario entero dejaría de
-      // significar nada. Es un raycast más por disparo, no por frame.
-      if (hit && this._isBlockedByCover(hit)) hit = null
+    } else {
+      this.camera.updateMatrixWorld()
+      this.raycaster.setFromCamera(SCREEN_CENTER, this.camera)
+      applySpread(this.raycaster.ray.direction, this.currentSpreadDeg)
     }
+
+    // **Dónde acaba la bala si no da en un muñeco**, con el rayo ya desviado
+    // por retroceso y dispersión. De aquí salen las dos cosas que antes se
+    // preguntaban por separado: si la cobertura tapa el tiro —sin esto se
+    // mataría a través de la Espina y el escenario dejaría de significar algo—
+    // y dónde poner la marca. Es **un** rayo por disparo, no dos, y nunca por
+    // frame.
+    const superficie = this._superficieBajoElRayo()
+    if (hit && superficie && superficie.distancia < hit.distance) hit = null
+    if (!hit && superficie) this.impacts.spawn(superficie.punto, superficie.normal, this.gameTime)
 
     // El sonido de disparo suena siempre; el de acierto se superpone.
     // Con muestra grabada suena la muestra; sin ella, la síntesis de siempre.
@@ -2191,18 +2236,97 @@ export class Engine {
   }
 
   /**
-   * ¿Hay geometría del escenario más cerca que el impacto? Se comprueba con el
-   * rayo ya desviado por retroceso y dispersión, así que un tiro que se va a la
-   * cobertura se come la cobertura.
+   * **Contra qué superficie acaba el rayo que hay puesto en `this.raycaster`**:
+   * una pieza de cobertura, o el suelo y las paredes de la sala. Devuelve el
+   * punto, su normal y la distancia, o `null` si no hay ninguna —que fuera de
+   * la sala no puede pasar, pero un escenario sin montar sí—.
+   *
+   * Dos mitades, y la segunda no es un rayo: **la sala es una caja y se
+   * resuelve en aritmética**. Las paredes y el suelo están dibujados con líneas
+   * (`grid.js`), no con mallas, así que no hay contra qué lanzar un rayo; y aun
+   * habiéndolas, seis planos analíticos cuestan menos que un `intersectObjects`
+   * y dan la normal exacta en vez de la de un triángulo.
+   *
+   * El objeto que devuelve es **de módulo y se reutiliza**: quien lo reciba lo
+   * consume en el acto (la regla de cero alocaciones del bucle caliente).
    */
-  _isBlockedByCover(hit) {
+  _superficieBajoElRayo() {
+    const ray = this.raycaster.ray
+    let mejor = Infinity
+    _impacto.punto.set(0, 0, 0)
+    _impacto.normal.set(0, 1, 0)
+
     const occluders = this.scenario.occluders
-    if (occluders.length === 0) return false
-    this.raycaster.near = 0
-    this.raycaster.far = hit.distance
-    const blockers = this.raycaster.intersectObjects(occluders, false)
-    this.raycaster.far = Infinity
-    return blockers.length > 0
+    if (occluders.length > 0) {
+      this.raycaster.near = 0
+      this.raycaster.far = Infinity
+      const golpes = this.raycaster.intersectObjects(occluders, false)
+      const golpe = golpes.length > 0 ? golpes[0] : null
+      if (golpe) {
+        mejor = golpe.distance
+        _impacto.punto.copy(golpe.point)
+        if (golpe.face) {
+          // De espacio de objeto a mundo. Las cajas no giran, pero las rampas
+          // sí, y una normal girada a mano es la forma de dibujar una marca
+          // atravesada dentro de la cuña.
+          _normales.getNormalMatrix(golpe.object.matrixWorld)
+          _impacto.normal.copy(golpe.face.normal).applyMatrix3(_normales).normalize()
+        } else {
+          _impacto.normal.copy(ray.direction).negate()
+        }
+      }
+    }
+
+    // La sala: el jugador está dentro de la caja, así que lo que se busca es
+    // por dónde **sale** el rayo. Con el origen dentro, eso es el menor de los
+    // tres cortes contra la pareja de planos de cada eje.
+    const room = this.scenario.room
+    const half = { x: room.width / 2, y: room.height, z: room.depth / 2 }
+    const o = ray.origin
+    const d = ray.direction
+    let salida = Infinity
+    let eje = -1
+    let signo = 1
+    const mirar = (dv, ov, min, max, cual) => {
+      if (dv === 0) return
+      const t = (dv > 0 ? max - ov : min - ov) / dv
+      if (t >= 0 && t < salida) {
+        salida = t
+        eje = cual
+        signo = dv > 0 ? -1 : 1
+      }
+    }
+    mirar(d.x, o.x, -half.x, half.x, 0)
+    mirar(d.y, o.y, 0, half.y, 1)
+    mirar(d.z, o.z, -half.z, half.z, 2)
+
+    if (salida < mejor) {
+      mejor = salida
+      _impacto.punto.copy(d).multiplyScalar(salida).add(o)
+      _impacto.normal.set(eje === 0 ? signo : 0, eje === 1 ? signo : 0, eje === 2 ? signo : 0)
+    }
+    if (!Number.isFinite(mejor)) return null
+    _impacto.distancia = mejor
+    return _impacto
+  }
+
+  /**
+   * **La marca de un disparo de red**, puesta donde el cliente ha resuelto que
+   * la bala acabó. Llega un paso después de apretar —el veredicto local se saca
+   * al ejecutar la entrada, que es donde lo hace el servidor— y eso son 16 ms
+   * que no se ven; lo que se gana es no tener una segunda idea de «a quién le
+   * has dado» dentro del motor.
+   */
+  _impactoDeRed(yaw, pitch) {
+    if (!this.impacts.mesh) return
+    // La misma dirección con la que viajó el disparo, construida igual que en
+    // `net/disparo.js`: el rayo de aquí no puede apuntar a otro sitio que el
+    // que se resolvió allí.
+    _dir.set(-Math.sin(yaw) * Math.cos(pitch), Math.sin(pitch), -Math.cos(yaw) * Math.cos(pitch))
+    this.raycaster.ray.origin.copy(this.camera.position)
+    this.raycaster.ray.direction.copy(_dir).normalize()
+    const superficie = this._superficieBajoElRayo()
+    if (superficie) this.impacts.spawn(superficie.punto, superficie.normal, this.gameTime)
   }
 
   _onPointerLockChange() {
@@ -2469,6 +2593,11 @@ export class Engine {
     if (this._triggerHeld && !this._triggerConsumedByPanel && this.weapon.mode === 'auto') {
       this._tryShoot(this.gameTime)
     }
+
+    // Las marcas de bala se apagan con el **reloj del mundo** y en los dos
+    // modos, así que van aquí y no dentro del combate —que en red vuelve antes—.
+    // En pausa una marca se queda quieta en vez de apagarse a tus espaldas.
+    this.impacts.update(this.gameTime)
 
     // Dianas y explosivo son del entrenamiento: en red no hay ni una cosa ni
     // otra, y el combate lo sustituye el estado que llega del servidor.
