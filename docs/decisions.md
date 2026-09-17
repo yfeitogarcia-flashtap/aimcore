@@ -6927,6 +6927,73 @@ de estilo y no reiniciar el huésped daba una huella **idéntica** con la págin
 vieja servida, que es justo el falso negativo que la huella existe para cerrar.
 Ahora la huella lleva además un sha1 corto de cada página.
 
+## Ronda 63 — El carril de audio, entero
+
+La vuelta 39 abrió una sola puerta a los ficheros: el **disparo**. Esta la abre
+del todo para lo que se graba de un arma —**disparo, disparo silenciado y
+recarga**— más el **cargador vacío**, que no es de ningún arma. Lo que no cambia
+es la regla que sostenía aquella puerta, y por eso esta vuelta **no toca
+`sfx.js`**: la síntesis sigue entera, la Rift incluida.
+
+### La síntesis es el suelo, y el suelo de la recarga es el silencio
+
+Un disparo sin muestra suena sintetizado. Una recarga sin muestra **no suena**,
+que es exactamente lo que hacía hasta hoy: recargar nunca ha tenido voz. La
+tentación era inventarle un chasquido de emergencia, y es peor que el silencio —
+diría «tu arma ha hecho algo» sin decir qué, y con tres armas de recargas muy
+distintas (1200, 1800 y 2300 ms) el mismo clic mentiría en dos de las tres.
+
+De ahí que `samples.js` tenga **dos voces y no una**: `playWeaponShot` cae a la
+síntesis y `_tocar` no cae a ninguna parte. Meterlas en la misma función con un
+respaldo opcional habría dejado el respaldo como un parámetro, o sea como algo
+que quien llama elige — y lo que este módulo garantiza desde la 39 es justo lo
+contrario: **quien dispara no elige ni tiene que saberlo**.
+
+### Tres formatos, con preferencia, y el aviso cuando hay dos
+
+El importador aceptaba `.mp3` y nada más. Un WAV de 48 kHz es lo que sale de una
+mesa, y pedir que se convierta antes de poder oírlo en el juego es poner un paso
+manual entre el sonido y la decisión de si vale. Ahora entran `.mp3`, `.ogg` y
+`.wav`, **en ese orden de preferencia**: si el mismo sonido está en dos
+formatos gana el comprimido y el script lo dice, porque lo que se sirve va en el
+build y nadie debería acabar sirviendo el pesado sin enterarse. Por encima de
+1.5 MB de audio servido, avisa.
+
+### Lo que no es de un arma no va en la carpeta de armas
+
+El cargador vacío suena igual lleves lo que lleves, así que vive en
+`Reference/Audio/comunes/gatillo-seco.<ext>` y sale al manifiesto en
+`COMMON_SAMPLES`, su propio espacio de nombres. Meterlo en `weapons/` habría
+pedido una clave de arma que no existe, y la validación contra `WEAPONS` —que es
+lo que caza un nombre mal escrito— habría tenido que llevar una excepción.
+Si algún día el seco es distinto por arma, su sitio es `weapons/<arma>-seco` y
+este carril se queda de respaldo.
+
+### Dos formas de volver atrás, porque son dos preguntas distintas
+
+- **«Esta muestra no encaja»**: se saca su fichero de `Reference/` y se vuelve a
+  pasar `npm run audio:weapons`. El manifiesto **es** la lista de lo que hay, así
+  que quitar el fichero es quitar la muestra, y ese sonido vuelve a su suelo sin
+  tocar una línea de código.
+- **«Las muestras no encajan»**: `AUDIO.samplesEnabled: false`. No se pide ni se
+  decodifica nada y todo suena como antes de que hubiera un fichero.
+
+Es un booleano de código y no un ajuste del panel a propósito: esto sirve para
+decidir si las muestras se quedan, no para que el jugador lo elija cada vez. Y
+las dos vueltas atrás funcionan **porque la síntesis nunca se sustituyó**. El día
+que se borre `sfx.js` para «quitar lo que ya no hace falta», estas dos puertas se
+cierran juntas.
+
+### El LEEME de la carpeta llevaba dos vueltas mintiendo
+
+Decía `scalar-2.mp3`, `axis-7.mp3` y `vertex-9.mp3` —los nombres de antes de la
+vuelta 41— y que el Axis-7 no admitía silenciador, cuando las tres lo admiten
+desde entonces. Nadie lo vio porque la carpeta estaba vacía: **una guía que no se
+usa no se corrige sola**. Un fichero con la clave vieja no habría fallado con un
+error, habría sido un aviso en la consola del script y una muestra que no suena
+nunca. Es el mismo tipo de agujero que `LEGACY_WEAPON_KEYS` cierra para los
+ajustes guardados, por la puerta de la documentación.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

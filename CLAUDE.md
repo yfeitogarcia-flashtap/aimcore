@@ -30,14 +30,19 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 
 - **Audio:** todo sintetizado en tiempo real con la Web Audio API
   (`src/audio/sfx.js`): osciladores + un buffer de ruido pregenerado. No hay ni un
-  fichero de sonido en el repositorio. **La única puerta abierta es el disparo**
-  (vuelta 39): un arma puede traer su muestra grabada en
-  `Reference/Audio/weapons/<clave-del-arma>.mp3` —y opcionalmente
-  `-suppressed.mp3`—, que `npm run audio:weapons` copia a `public/audio/weapons/`
-  y declara en `src/audio/weaponSamples.js`. **La síntesis no se sustituye, se
-  queda debajo**: sin fichero, con un fichero que no se decodifica o mientras
-  todavía viaja, suena el disparo sintetizado de siempre. Hoy no hay ninguno, así
-  que suena todo sintetizado. El resto del audio no tiene esta puerta.
+  fichero de sonido en el repositorio. **La puerta abierta es lo que hace un arma**
+  (vuelta 39 el disparo; la 63 la recarga y el cargador vacío): se dejan en
+  `Reference/Audio/weapons/<clave-del-arma>{,-suppressed,-reload}.<ext>` y
+  `Reference/Audio/comunes/gatillo-seco.<ext>`, y `npm run audio:weapons` los
+  copia a `public/audio/` y los declara en `src/audio/weaponSamples.js`. Valen
+  `.mp3`, `.ogg` y `.wav`, en ese orden de preferencia. **La síntesis no se
+  sustituye, se queda debajo**: sin fichero, con un fichero que no se decodifica o
+  mientras todavía viaja, suena el disparo —o el clic en seco— sintetizado de
+  siempre; la recarga, que nunca ha tenido síntesis, se queda en silencio como
+  hasta ahora. Hoy no hay ningún fichero, así que suena todo sintetizado. Se
+  vuelve atrás **por sonido** sacando su fichero y repasando el script, o **del
+  todo** con `AUDIO.samplesEnabled: false`. El resto del audio no tiene esta
+  puerta.
 - **Siluetas de armas, logotipo e iconos:** vectorizados con `potrace` a partir de
   `Reference/Weapons/` —donde la convención es `<arma>.png` y `ghost-<arma>.png`,
   la misma arma con silenciador—, `Reference/Logo/` y `Reference/Icons/` mediante los
@@ -1197,10 +1202,11 @@ Y estrechar el catálogo de un ajuste **borra el valor guardado**: un
 `weapon: 'pulse'` de antes de la vuelta 39 cae a fábrica en el siguiente
 saneado, que es exactamente lo que hace el saneado con cualquier clave obsoleta.
 
-**Un disparo puede venir de un fichero; todo lo demás, no.** `samples.js` es el
-único camino de audio de un disparo —del jugador y de los muñecos— y decide él
-si suena la muestra grabada o la síntesis: quien dispara no elige ni tiene que
-saberlo. Cuatro reglas que sostienen el respaldo:
+**Lo que hace un arma puede venir de un fichero; todo lo demás, no.**
+`samples.js` es el único camino de audio de un disparo —del jugador y de los
+muñecos—, de una recarga y del gatillo en seco, y decide él si suena la muestra
+grabada o lo que había antes: quien dispara no elige ni tiene que saberlo. Cinco
+reglas que sostienen el respaldo:
 
 - **La síntesis es el suelo, no el plan B de emergencia.** Sin fichero, con uno
   que no se decodifica o mientras todavía viaja, suena el disparo sintetizado.
@@ -1215,6 +1221,22 @@ saberlo. Cuatro reglas que sostienen el respaldo:
   cierra el contexto y el siguiente `initAudio()` crea otro: se guarda *sobre qué
   contexto* se decodificó. React en modo
   estricto monta, desmonta y vuelve a montar.
+- **Y el suelo de la recarga es el silencio, no un ruido de emergencia**
+  (vuelta 63). Recargar no ha sonado nunca, así que sin muestra se queda como
+  estaba: por eso hay **dos voces y no una** —`playWeaponShot`, que cae a la
+  síntesis, y `_tocar`, que no cae a ninguna parte—. Un chasquido inventado
+  diría «tu arma ha hecho algo» sin decir qué, y con recargas de 1200, 1800 y
+  2300 ms mentiría en dos de las tres. El mismo módulo lleva el **gatillo en
+  seco**, que sí tiene síntesis debajo, y vive en `Reference/Audio/comunes/`
+  porque no es de ningún arma: en `weapons/` habría necesitado una clave de arma
+  que no existe, y la validación contra `WEAPONS` —lo que caza un nombre mal
+  escrito— una excepción.
+- **Y hay dos formas de volver atrás porque son dos preguntas.** Una muestra que
+  no encaja se saca de `Reference/` y se repasa `npm run audio:weapons` (el
+  manifiesto **es** la lista de lo que hay); si no encaja ninguna,
+  `AUDIO.samplesEnabled: false` y no se pide ni se decodifica nada. Las dos
+  funcionan porque la síntesis **nunca se sustituyó**: borrar `sfx.js` «para
+  quitar lo que ya no hace falta» cierra las dos puertas a la vez.
 
 **Un arma puede tener voz propia, y la elige su clave** (vuelta 62). `playShot`
 no sabe de armas: mira `SHOT_PROFILES[<arma>]` —o `<arma>.s` con silenciador, la
@@ -2260,10 +2282,13 @@ recarga a medias no avanza en la espalda, se reanuda al volver a equiparla—.
 vuelta 62 la **Rift** tiene voz propia —seca, metálica y +11 dB sobre la de
 antes; su variante silenciada, +9.3 dB y con el cerrojo por delante del grave—;
 la Pulse y la Volt siguen con la voz clásica hasta que se calibre la suya. Un arma
-puede traer su `Reference/Audio/weapons/<clave>.mp3` (y opcionalmente
-`-suppressed.mp3`); `npm run audio:weapons` lo copia a `public/audio/weapons/` y
-lo declara en `src/audio/weaponSamples.js`. Hoy no hay ninguno, así que todas
-suenan sintetizadas — y así seguirán las que no tengan fichero.
+puede traer sus tres ficheros —`Reference/Audio/weapons/<clave>.<ext>`,
+`-suppressed` y `-reload`— y el cargador vacío el suyo, en
+`Reference/Audio/comunes/gatillo-seco.<ext>`; valen `.mp3`, `.ogg` y `.wav`.
+`npm run audio:weapons` los copia a `public/audio/` y los declara en
+`src/audio/weaponSamples.js`. Hoy no hay ninguno, así que todo suena sintetizado
+—y la recarga, que no tiene síntesis, sigue sin sonar— y así seguirá lo que no
+tenga fichero.
 
 **Panel de acciones disparable: apagado** (`ACTION_PANEL.enabled: false`). El
 código se queda entero —DOM en 3D vía `CSS3DRenderer` anclado al spawn, con

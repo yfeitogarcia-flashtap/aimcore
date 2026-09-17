@@ -49,7 +49,6 @@ import { TargetManager } from './targets.js'
 import {
   initAudio,
   playDamage,
-  playDryFire,
   playFootstep,
   playHeal,
   playHelmetCrack,
@@ -61,7 +60,7 @@ import {
   playShieldCharge,
   playUiConfirm,
 } from '../audio/sfx.js'
-import { loadWeaponSamples, playWeaponShot } from '../audio/samples.js'
+import { loadWeaponSamples, playDrySound, playWeaponReload, playWeaponShot } from '../audio/samples.js'
 import { attachListener, createEmitter, detachListener, setSpatialEnabled } from '../audio/spatial.js'
 import { ActionPanel } from './actionPanel.js'
 import { Avatar } from './avatar.js'
@@ -951,6 +950,10 @@ export class Engine {
     if (this.ammo >= this.weapon.magazine) return
     this.reloadStartedAt = now
     this.reloadEndsAt = now + this.weapon.reloadMs
+    // Suena **una vez, al empezar**, y no se corta si la recarga se cancela: lo
+    // que se grabó es un gesto entero. Sin muestra no suena nada, que es lo que
+    // hacía hasta la vuelta 63.
+    playWeaponReload(this.weaponKey)
   }
 
   _cancelReload() {
@@ -1182,7 +1185,7 @@ export class Engine {
     // Mientras esta condición pedía `!this.reloading`, el clic existía, sonaba
     // en una prueba que ponía ese estado a mano, y no se podía oír jugando.
     if (this.ammo <= 0) {
-      playDryFire()
+      playDrySound()
       // Pedir R mientras la recarga ya corre sería un mal consejo: el HUD
       // enseña su barra y no hay nada que pulsar.
       if (!this.reloading) this._showHelp('Pulsa R para recargar')

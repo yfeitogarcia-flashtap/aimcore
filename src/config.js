@@ -2667,6 +2667,25 @@ export const AUDIO = {
    * que hay que igualar es la sonoridad, y eso no se puede calibrar sin muestra.
    */
   sampleVolume: 1,
+  /**
+   * **El interruptor de vuelta atrás de las muestras** (vuelta 63). A `false` no
+   * se pide ni se decodifica ningún fichero y **todo suena como antes de que
+   * hubiera uno**: la síntesis nunca se fue, sigue siendo el suelo. Es un
+   * booleano de código y no un ajuste del panel a propósito — sirve para decidir
+   * si las muestras se quedan, no para que el jugador lo elija cada vez.
+   *
+   * Para volver atrás **sólo un sonido**, no hace falta tocar esto: se saca su
+   * fichero de `Reference/Audio/` y se vuelve a pasar `npm run audio:weapons`.
+   */
+  samplesEnabled: true,
+  /**
+   * **La recarga**, que hoy sólo existe si hay muestra: no hay síntesis debajo,
+   * así que sin fichero es silencio, exactamente como hasta ahora. Por debajo
+   * del disparo — recargar es un gesto propio y no información urgente.
+   */
+  reloadVolume: 0.7,
+  /** El gatillo en seco. Éste sí tiene síntesis debajo: el clic de siempre. */
+  dryVolume: 0.7,
   /** Daño recibido, curación y la carga eléctrica del escudo. */
   damageVolume: 0.6,
   /**

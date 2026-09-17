@@ -20,7 +20,7 @@ Abre la URL que imprime Vite, haz click en el canvas y a disparar.
 | `npm run dev` | servidor de desarrollo con HMR |
 | `npm run build` | build de producción en `dist/` |
 | `npm run preview` | sirve el build de producción |
-| `npm run audio:weapons` | importa las muestras de disparo de `Reference/Audio/weapons/` (paso manual) |
+| `npm run audio:weapons` | importa las muestras de arma (disparo, silenciado, recarga) y las comunes de `Reference/Audio/` (paso manual) |
 
 ## Controles
 
@@ -224,19 +224,28 @@ chasquido de banda ancha y se le deja el cerrojo, que suena un instante después
 
 La Pulse y la Volt conservan la voz de siempre hasta que se calibre la suya.
 
-## Muestras de disparo (sin ficheros todavía)
+## Muestras de audio (sin ficheros todavía)
 
-Todo el audio es sintetizado, y lo seguirá siendo **salvo el disparo**, que es lo
-único que no sale convincente de cuatro osciladores. El carril está hecho y
-vacío: hoy no hay ni un mp3, así que las tres armas suenan sintetizadas.
+Todo el audio es sintetizado, y lo seguirá siendo **salvo lo que hace un arma**
+—disparo, disparo con silenciador, recarga— y el **cargador vacío**, que es lo
+que no sale convincente de cuatro osciladores. El carril está hecho y vacío: hoy
+no hay ni un fichero, así que suena todo sintetizado.
 
-Para poner una muestra real:
+Para poner muestras reales:
 
-1. Deja el fichero en `Reference/Audio/weapons/` con el nombre de la **clave**
-   del arma —`rift.mp3`, `pulse.mp3`, `volt.mp3`—, y opcionalmente su
-   variante con supresor: `pulse-suppressed.mp3`.
-2. `npm run audio:weapons`. Copia lo que haya a `public/audio/weapons/` y escribe
-   el manifiesto `src/audio/weaponSamples.js`. Es un paso manual, como los tres
+1. Deja los ficheros en su carpeta, con la **clave** del arma (`pulse`, `rift`,
+   `volt`), no su etiqueta. Valen `.mp3`, `.ogg` y `.wav`, en ese orden de
+   preferencia:
+
+   | Sonido | Fichero |
+   |---|---|
+   | Disparo | `Reference/Audio/weapons/<arma>.<ext>` |
+   | Disparo con silenciador | `Reference/Audio/weapons/<arma>-suppressed.<ext>` |
+   | Recarga | `Reference/Audio/weapons/<arma>-reload.<ext>` |
+   | Cargador vacío | `Reference/Audio/comunes/gatillo-seco.<ext>` |
+
+2. `npm run audio:weapons`. Copia lo que haya a `public/audio/` y escribe el
+   manifiesto `src/audio/weaponSamples.js`. Es un paso manual, como los tres
    scripts de trazado: `Reference/` no se sirve nunca.
 
 **Lo que no hace falta hacer:** nada más. Un arma sin fichero sigue sonando
@@ -245,6 +254,15 @@ descargándose — un disparo nunca espera a su muestra. Que falte la variante
 `-suppressed` **no** hace que suene la normal: con supresor puesto sonaría un
 disparo sin supresor, que es información falsa, así que cae al perfil silenciado
 sintetizado.
+
+**La recarga es la excepción, y a propósito:** no tiene síntesis debajo porque
+nunca ha sonado de ninguna manera. Sin fichero se queda en silencio, como hasta
+ahora. Un chasquido de emergencia diría «tu arma ha hecho algo» sin decir qué.
+
+**Cómo volver atrás.** Un sonido que no encaje: se saca su fichero de
+`Reference/` y se vuelve a pasar `npm run audio:weapons` — el manifiesto es la
+lista de lo que hay. Todos a la vez: `AUDIO.samplesEnabled: false` en
+`src/config.js`. La síntesis no se sustituye nunca, así que siempre está debajo.
 
 **Qué le pasa al build.** Medido con un fichero de 7 KB: el bundle de JavaScript
 no cambia **ni un byte ni de hash** (840.370 B en los dos casos). Lo que hay en
@@ -1606,9 +1624,10 @@ cuesta ~0.1 ms por frame en p99, frente a los 4.17 ms de presupuesto a 240 Hz.
   especiales.
 - **Sin assets, con una sola puerta.** El sonido se sintetiza con osciladores y
   no hay texturas ni archivos de audio en el repositorio. La única excepción
-  prevista es el **disparo**, que puede traer su muestra grabada por su carril
+  prevista es **lo que hace un arma** —disparo, disparo silenciado y recarga— más
+  el cargador vacío, que pueden traer su muestra grabada por su carril
   (`npm run audio:weapons`) — y aun así la síntesis se queda debajo como
-  respaldo de cada arma que no tenga fichero.
+  respaldo de cada sonido que no tenga fichero.
 - **La sala vacía mide 80×80 y ya no crece; cada escenario puede traer la
   suya.** El Plano A vive en 40×40 y con ella se encogen la rejilla, las
   paredes, el límite real de movimiento, el acotado de las dianas y el tablero

@@ -37,8 +37,8 @@
  */
 
 import { AUDIO } from '../config.js'
-import { initAudio, masterGain, playShot } from './sfx.js'
-import { WEAPON_SAMPLES } from './weaponSamples.js'
+import { initAudio, masterGain, playDryFire, playShot } from './sfx.js'
+import { COMMON_SAMPLES, WEAPON_SAMPLES } from './weaponSamples.js'
 
 /** Sobre qué contexto están decodificados los buffers de `decoded`. */
 let decodedFor = null
@@ -47,7 +47,24 @@ const decoded = new Map()
 /** Lo mismo, mientras está de camino: sirve para no pedir dos veces. */
 const pending = new Set()
 
-const slotOf = (weaponKey, suppressed) => `${weaponKey}|${suppressed ? 'suppressed' : 'normal'}`
+const slotOf = (weaponKey, variante) => `${weaponKey}|${variante}`
+const slotDeDisparo = (weaponKey, suppressed) => slotOf(weaponKey, suppressed ? 'suppressed' : 'normal')
+/** Los comunes van en su propio espacio de nombres: no son de ningún arma. */
+const slotComun = (nombre) => `comun|${nombre}`
+
+/**
+ * **El interruptor de vuelta atrás** (vuelta 63). Con `AUDIO.samplesEnabled` a
+ * `false` no se pide ni se decodifica nada y **todo suena como antes de que
+ * hubiera un solo fichero**: la síntesis no se ha ido a ninguna parte, sigue
+ * siendo el suelo. Es un booleano en `config.js` y no un ajuste del panel a
+ * propósito — esto es para decidir si las muestras se quedan, no algo que el
+ * jugador tenga que elegir cada vez.
+ *
+ * Y para volver atrás **sólo una**: se saca su fichero de `Reference/Audio/` y
+ * se vuelve a pasar `npm run audio:weapons`. El manifiesto es la lista de lo
+ * que hay, así que quitar el fichero es quitar la muestra.
+ */
+const conMuestras = () => AUDIO.samplesEnabled !== false
 
 /**
  * Pide y decodifica todas las muestras declaradas. Idempotente y sin espera:
@@ -57,6 +74,7 @@ const slotOf = (weaponKey, suppressed) => `${weaponKey}|${suppressed ? 'suppress
  * Con el manifiesto vacío —hoy— no hace absolutamente nada: ni una petición.
  */
 export function loadWeaponSamples() {
+  if (!conMuestras()) return
   const ctx = initAudio()
   if (!ctx) return
   if (decodedFor !== ctx) {
@@ -65,36 +83,37 @@ export function loadWeaponSamples() {
     pending.clear()
     decodedFor = ctx
   }
-  for (const [weaponKey, variants] of Object.entries(WEAPON_SAMPLES)) {
-    for (const variant of Object.keys(variants)) {
-      const slot = `${weaponKey}|${variant}`
-      if (decoded.has(slot) || pending.has(slot)) continue
-      pending.add(slot)
-      fetch(variants[variant].url)
-        .then((response) => {
-          if (!response.ok) throw new Error(`${response.status} ${variants[variant].url}`)
-          return response.arrayBuffer()
-        })
-        .then((data) => ctx.decodeAudioData(data))
-        .then((buffer) => {
-          // Mientras se descargaba pueden haber cerrado el contexto: el buffer
-          // decodificado con el viejo no sirve, y meterlo sería un disparo mudo.
-          if (decodedFor === ctx) decoded.set(slot, buffer)
-        })
-        .catch((error) => {
-          // Un fichero que no está o que no se decodifica **no es un fallo del
-          // juego**: es un arma que suena sintetizada. Se avisa una vez y no se
-          // vuelve a pedir.
-          console.warn(`[audio] muestra no disponible (${slot}):`, error.message)
-        })
-        .finally(() => pending.delete(slot))
-    }
+  const pedir = (slot, url) => {
+    if (decoded.has(slot) || pending.has(slot)) return
+    pending.add(slot)
+    fetch(url)
+      .then((response) => {
+        if (!response.ok) throw new Error(`${response.status} ${url}`)
+        return response.arrayBuffer()
+      })
+      .then((data) => ctx.decodeAudioData(data))
+      .then((buffer) => {
+        // Mientras se descargaba pueden haber cerrado el contexto: el buffer
+        // decodificado con el viejo no sirve, y meterlo sería un disparo mudo.
+        if (decodedFor === ctx) decoded.set(slot, buffer)
+      })
+      .catch((error) => {
+        // Un fichero que no está o que no se decodifica **no es un fallo del
+        // juego**: es un sonido que suena como sonaba antes. Se avisa una vez y
+        // no se vuelve a pedir.
+        console.warn(`[audio] muestra no disponible (${slot}):`, error.message)
+      })
+      .finally(() => pending.delete(slot))
   }
+  for (const [weaponKey, variants] of Object.entries(WEAPON_SAMPLES)) {
+    for (const [variant, { url }] of Object.entries(variants)) pedir(slotOf(weaponKey, variant), url)
+  }
+  for (const [nombre, { url }] of Object.entries(COMMON_SAMPLES)) pedir(slotComun(nombre), url)
 }
 
 /** ¿Hay muestra lista para este disparo, ahora mismo? */
 export function hasWeaponSample(weaponKey, suppressed = false) {
-  return decodedFor === initAudio() && decoded.has(slotOf(weaponKey, suppressed))
+  return decodedFor === initAudio() && decoded.has(slotDeDisparo(weaponKey, suppressed))
 }
 
 /**
@@ -109,7 +128,7 @@ export function hasWeaponSample(weaponKey, suppressed = false) {
  * @param {number} [volume] volumen base; por defecto, el del jugador
  */
 export function playWeaponShot(weaponKey, suppressed = false, emitter = null, volume = AUDIO.shotVolume) {
-  const buffer = decoded.get(slotOf(weaponKey, suppressed))
+  const buffer = conMuestras() ? decoded.get(slotDeDisparo(weaponKey, suppressed)) : null
   const ctx = initAudio()
   const master = masterGain()
   if (!buffer || !ctx || !master || decodedFor !== ctx) {
@@ -132,6 +151,60 @@ export function playWeaponShot(weaponKey, suppressed = false, emitter = null, vo
     gain.disconnect()
   }
   return true
+}
+
+/**
+ * **Reproduce una muestra ya decodificada, o no hace nada.** Es el trozo que
+ * comparten las voces que **no tienen síntesis debajo**: sin fichero, silencio,
+ * que es exactamente lo que había antes de que existiera el fichero.
+ */
+function _tocar(slot, volume, emitter = null) {
+  if (!conMuestras()) return false
+  const buffer = decoded.get(slot)
+  const ctx = initAudio()
+  const master = masterGain()
+  if (!buffer || !ctx || !master || decodedFor !== ctx) return false
+  const out = emitter?.input ?? master
+  const source = ctx.createBufferSource()
+  source.buffer = buffer
+  const gain = ctx.createGain()
+  gain.gain.value = volume * AUDIO.sampleVolume
+  source.connect(gain).connect(out)
+  source.start(ctx.currentTime)
+  source.onended = () => {
+    source.disconnect()
+    gain.disconnect()
+  }
+  return true
+}
+
+/**
+ * **La recarga de un arma** (vuelta 63). A diferencia del disparo, aquí **no
+ * hay síntesis debajo**: hasta ahora recargar no sonaba de ninguna manera, así
+ * que sin fichero se queda como estaba. No es un respaldo peor, es el estado
+ * anterior — y por eso no se inventa un ruido de emergencia: un chasquido
+ * cualquiera diría «tu arma ha hecho algo» sin decir qué.
+ *
+ * Suena **una vez, al empezar**, y no se corta si la recarga se cancela: lo que
+ * se grabó es un gesto completo, y cortarlo a la mitad suena a fallo del juego.
+ *
+ * @param {string} weaponKey clave de `WEAPONS`
+ * @param {{input: AudioNode|null}} [emitter] emisor posicionado, si lo hay
+ * @param {number} [volume] volumen base
+ */
+export function playWeaponReload(weaponKey, emitter = null, volume = AUDIO.reloadVolume) {
+  return _tocar(slotOf(weaponKey, 'reload'), volume, emitter)
+}
+
+/**
+ * **El gatillo en seco.** Aquí sí hay síntesis debajo —el clic de siempre— así
+ * que esto es la misma regla que el disparo: con muestra, la muestra; sin ella,
+ * lo que ya sonaba. Quien llama no elige.
+ */
+export function playDrySound(volume = AUDIO.dryVolume) {
+  if (_tocar(slotComun('dry'), volume)) return true
+  playDryFire()
+  return false
 }
 
 /** Qué hay cargado y qué no. Para las pruebas y para la consola. */
