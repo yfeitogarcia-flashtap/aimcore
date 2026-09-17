@@ -131,6 +131,26 @@ export class Scenario {
   }
 
   /**
+   * **Las dos salidas de un duelo**, que es lo único que el servidor le pide a
+   * un escenario además de su geometría (vuelta 66).
+   *
+   * Un mapa pensado para 1v1 las declara (`duelo.salidas`); cualquier otro cae
+   * al reparto de antes —el spawn del jugador con 2.5 u a cada lado—, que no era
+   * un reparto de sitios sino la forma de que dos jugadores no aparecieran uno
+   * dentro del otro. Se queda como respaldo porque los bancos de netcode siguen
+   * midiendo sobre el Plano A.
+   */
+  get salidasDeDuelo() {
+    const suyas = this.definition.duelo?.salidas
+    if (Array.isArray(suyas) && suyas.length >= 2) return suyas
+    const spawn = this.definition.spawn
+    return [
+      { x: spawn.x - 2.5, z: spawn.z, yaw: 0 },
+      { x: spawn.x + 2.5, z: spawn.z, yaw: 0 },
+    ]
+  }
+
+  /**
    * Sala de este escenario: la de `ROOM` salvo que traiga la suya. Es la
    * medida que consumen la grilla, los límites de movimiento, el acotado de
    * dianas y el tablero de acciones, así que **no hay dos versiones** del
@@ -234,7 +254,17 @@ export class Scenario {
      * exclusión no depende de que alguien se acuerde de comprobar una distancia
      * al sembrar. Un escenario sin `spawnZone` no pierde nada.
      */
-    this.spawnZone = definition.spawnZone ?? null
+    /**
+     * **Y pueden ser varias** (vuelta 66): un mapa de duelo tiene dos salidas y
+     * por tanto dos bandas. Se normaliza a lista aquí, que es lo único que
+     * cambia — el resto del sistema sigue preguntando `isInSpawnZone`.
+     */
+    this.spawnZone =
+      definition.spawnZone == null
+        ? []
+        : Array.isArray(definition.spawnZone)
+          ? definition.spawnZone
+          : [definition.spawnZone]
     /** Cuántos puntos se han quedado fuera por caer en la zona de aparición. */
     this.excludedBySpawnZone = 0
 
@@ -289,14 +319,13 @@ export class Scenario {
    * muñeco medio dentro.
    */
   isInSpawnZone(x, z) {
-    const zone = this.spawnZone
-    if (zone === null) return false
     const margin = COVER.playerRadius
-    return (
-      x >= zone.x - margin &&
-      x <= zone.x + zone.w + margin &&
-      z >= zone.z - margin &&
-      z <= zone.z + zone.d + margin
+    return this.spawnZone.some(
+      (zone) =>
+        x >= zone.x - margin &&
+        x <= zone.x + zone.w + margin &&
+        z >= zone.z - margin &&
+        z <= zone.z + zone.d + margin,
     )
   }
 

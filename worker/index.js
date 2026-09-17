@@ -18,6 +18,7 @@
  * que configurar, ni que recordar, ni que cambiar el día que el despliegue se
  * mueva. La página y el mundo viajan juntos o no viajan.
  */
+import { NET } from '../src/config.js'
 import { normalizarCodigo } from '../net/codigo.js'
 
 export { Sala } from './sala.js'
@@ -46,7 +47,7 @@ export default {
     // de assets de Cloudflare: pedir `/net/prueba.html` devuelve un 307 a
     // `/net/prueba`, y un redirección aquí dentro se convierte en una página en
     // blanco —un `fetch` interno no sigue el 307, devuelve el 307—.
-    if (url.pathname.startsWith('/duelo')) {
+    if (url.pathname.startsWith(NET.rutaDuelo.replace(/\/$/, ''))) {
       return env.ASSETS.fetch(new URL('/net/prueba', url))
     }
 

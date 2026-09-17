@@ -165,11 +165,19 @@ npm install          # una vez
 npm run host         # construye y levanta el juego y las partidas en el 5199
 ```
 
-Luego, en el navegador:
+Luego, en el navegador: **http://localhost:5199/**, y el botón **Duelo 1v1** del
+menú lleva al 1v1 —crea un código y te da el enlace para pasárselo al otro—. Si
+prefieres ir directo, `/duelo/` hace lo mismo.
 
-- El aim trainer: **http://localhost:5199/**
-- Un duelo: **http://localhost:5199/duelo/** (crea un código) y pásale el enlace
-  al otro jugador.
+**Para jugar con alguien de tu casa, `localhost` no vale.** Apunta siempre al
+equipo que lo escribe, así que si le pasas ese enlace, el otro abre su propio PC
+y no pasa nada —ni siquiera da error—. Lo que hay que pasarle es la dirección de
+red de tu equipo, y **`npm run host` la imprime al arrancar**:
+
+```
+  en este equipo   http://localhost:5199/
+  desde tu red     http://192.168.1.42:5199/   (Ethernet)
+```
 
 Para probar un 1v1 tú solo hacen falta **dos navegadores distintos** —o uno
 normal y otro de incógnito—, no dos pestañas: el navegador frena la pestaña que
@@ -200,6 +208,32 @@ ven, sin un solo error en pantalla—. El paso a paso completo está en
 `docs/despliegue-fly.md`.
 
 ## El duelo 1v1: rondas y reconexión
+
+Se entra por el botón **Duelo 1v1** de la pantalla de inicio. Lleva a la página
+del duelo, que crea una partida sola y enseña su código, el enlace para copiar,
+un campo para entrar en el código de otro y el selector de fase de compra.
+
+### El mapa: El Espejo
+
+El duelo tiene su propio mapa, distinto del del aim trainer. Es **simétrico**
+—media vuelta, no un espejo: lo que ve uno es exactamente lo que ve el otro— con
+las dos salidas en **extremos opuestos**, a 32 unidades y sin verse entre ellas.
+Cada uno sale detrás de su propia pantalla y con dos salidas, una por lado: una
+estrecha, pegada a la pared y con una puerta de paso, y otra abierta con
+cobertura suelta. Con el giro, a cada jugador le tocan cambiadas, así que rotar
+significa algo.
+
+Cruzarlo de una salida a la otra son **7 segundos** a marcha de carrera, y lo
+antes que dos jugadores pueden encontrarse corriendo el uno hacia el otro son
+**3 segundos y medio**: da tiempo a elegir carril y no a aburrirse. Es plano, sin
+plataformas ni rampas — la altura es donde un 1v1 se desequilibra primero, y eso
+se añade midiendo, no de entrada.
+
+El Plano A («Largo y Puerta») se queda para el aim trainer y los muñecos, y por
+eso el mapa del duelo **no sale en el selector de escenarios**: no tiene
+explosivo, ni recogibles, ni nada que buscar.
+
+### Las rondas
 
 Un duelo se juega **a 14 rondas** (mayoría de 8). Cada ronda dura **3 minutos** o
 hasta que uno mate al otro; si se acaba el tiempo sin muertes, gana la ronda quien

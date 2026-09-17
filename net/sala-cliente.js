@@ -17,12 +17,20 @@
  * 3. **Qué enlace se manda.** El de esta misma página con el código puesto,
  *    tal cual, para copiar y pegar.
  *
- * Lo de «en local es distinto» se decide por el protocolo de la página, no por
- * el nombre del host: lo que de verdad cambia es que en `http://` no se puede
- * abrir un `wss://`, y que un despliegue siempre es `https://`. Y así
- * `wrangler dev`, que sirve el Worker de verdad en `http://localhost:8787`,
- * entra por el camino de Cloudflare sin ningún caso especial —hay que hacerlo
- * a mano con `?worker=1`, que es lo que usa el banco—.
+ * **Y lo de «en local es distinto» se decide por quién sirve la página, no por
+ * su protocolo** (vuelta 66). Hasta aquí la pregunta era «¿es `https:`?», y eso
+ * es cierto del despliegue y falso de la misma aplicación servida por el huésped
+ * de Node en `http://` — que es exactamente lo que hace `npm run host`, y lo que
+ * pasa cuando alguien abre el juego desde otro PC de su casa por la IP de red.
+ * Ahí la página se iba a buscar el socket al 5199, donde no hay nadie, y se
+ * quedaba conectando para siempre sin un solo error.
+ *
+ * La pregunta buena la contesta el propio empaquetado: `import.meta.env.DEV` es
+ * cierto **sólo mientras sirve Vite**, y Vite es el único caso en que la página
+ * y las salas viven en procesos distintos. Se resuelve al construir, así que no
+ * hay nada que adivinar en tiempo de ejecución. `?worker=1` se queda como
+ * palanca manual para hablar con el huésped desde la página de desarrollo, que
+ * es lo que usan los bancos.
  */
 import { NET } from '../src/config.js'
 import { generarCodigo, normalizarCodigo, rutaDeSala } from './codigo.js'
@@ -58,8 +66,7 @@ export function urlDeSala(codigo, ubicacion = window.location, pase = null, comp
   if (pase) partes.push(`pase=${encodeURIComponent(pase)}`)
   if (compra !== null && Number.isFinite(compra)) partes.push(`compra=${compra}`)
   const cola = partes.length ? `?${partes.join('&')}` : ''
-  const enWorker = ubicacion.protocol === 'https:' || new URLSearchParams(ubicacion.search).has('worker')
-  if (enWorker) {
+  if (sirveElHuesped(ubicacion)) {
     const esquema = ubicacion.protocol === 'https:' ? 'wss:' : 'ws:'
     return `${esquema}//${ubicacion.host}${rutaDeSala(codigo)}${cola}`
   }
@@ -72,9 +79,27 @@ export function urlDeSala(codigo, ubicacion = window.location, pase = null, comp
   return `ws://${ubicacion.hostname}:${NET.port}${rutaDeSala(codigo)}${cola}`
 }
 
-/** El enlace que se le manda al otro. Limpio: sólo la sala. */
+/**
+ * **¿La página la sirve el huésped —y por tanto las salas están en su mismo
+ * origen— o la sirve Vite?** Es la única pregunta que separa los dos montajes,
+ * y la contesta el empaquetado: `import.meta.env.DEV` sólo es cierto con Vite
+ * delante. Se lee con cuidado porque este módulo también se importa desde Node
+ * en algún banco, donde `import.meta.env` no existe.
+ */
+export function sirveElHuesped(ubicacion = window.location) {
+  const enVite = Boolean(import.meta.env && import.meta.env.DEV)
+  return !enVite || new URLSearchParams(ubicacion.search).has('worker')
+}
+
+/**
+ * El enlace que se le manda al otro. Limpio: sólo la sala.
+ *
+ * Con el huésped delante existe `/duelo/<código>`, que es el que se puede
+ * dictar; con Vite esa ruta la inventa su servidor de desarrollo pero el enlace
+ * sigue saliendo con almohadilla, que es lo que valía hasta ahora.
+ */
 export function enlaceDeSala(codigo, ubicacion = window.location) {
-  if (ubicacion.protocol === 'https:') return `${ubicacion.origin}/duelo/${codigo}`
+  if (sirveElHuesped(ubicacion)) return `${ubicacion.origin}/duelo/${codigo}`
   return `${ubicacion.origin}${ubicacion.pathname}#${codigo}`
 }
 

@@ -1563,6 +1563,35 @@ export const TRANSITION = {
  * boca de paso—, y eso no lo da un cono. Cada uno lleva `y` (el suelo sobre el
  * que se apoya), `peek` (si exige asomarse a descubierto) y `zone`.
  */
+/**
+ * **La simetría de un mapa de duelo sale por construcción, no por revisión**
+ * (vuelta 66). Un 1v1 sólo es justo si los dos ven exactamente lo mismo, y
+ * escribir dos veces cada caja —una por mitad— es escribir la ocasión de que
+ * una se quede a media unidad de su pareja. Lo que se declara es **media
+ * sala**, y esto añade la otra girada media vuelta.
+ *
+ * Es **giro de 180°, no espejo**, y la diferencia importa: un espejo cambia
+ * izquierda por derecha, así que a un jugador le queda la esquina estrecha a la
+ * izquierda y al otro a la derecha, y eso es un mapa distinto para cada uno. Con
+ * el giro, la vista de uno **es** la del otro.
+ *
+ * Una caja se lee como esquina mínima más ancho y fondo, así que girarla es
+ * mandar su esquina máxima al otro lado del origen.
+ *
+ * Una pieza **centrada en el origen se declara aparte**, en `centro`: girarla
+ * daría una copia encima de sí misma.
+ */
+export function giro180(piezas) {
+  return [
+    ...piezas,
+    ...piezas.map((pieza) => ({
+      ...pieza,
+      x: -(pieza.x + pieza.w),
+      z: -(pieza.z + pieza.d),
+    })),
+  ]
+}
+
 export const SCENARIOS = {
   empty: {
     label: 'Sala vacía',
@@ -1571,6 +1600,147 @@ export const SCENARIOS = {
     boxes: [],
     ramps: [],
     anchors: [],
+  },
+
+  /**
+   * **El Espejo — el mapa del duelo** (vuelta 66).
+   *
+   * Hasta aquí el 1v1 se jugaba en el Plano A, que es un mapa de
+   * **entrenamiento**: un punto de aparición, un muro delante y todo lo demás
+   * repartido para que haya a quién disparar. Puesto a servir de 1v1 daba dos
+   * cosas mal: los dos jugadores salían **a 5 u uno del otro** —el duelo
+   * empezaba resuelto— y la mitad del mapa (el Balcón, las troneras, el
+   * parapeto) es ventaja para quien sepa llegar antes, que es justo lo que un
+   * duelo no puede tener.
+   *
+   * Éste es lo contrario en las tres cosas que importan:
+   *
+   * - **Simétrico por giro de 180°**, y por construcción (ver `giro180`): la
+   *   vista de uno es la del otro. No es un espejo —eso le daría a cada uno la
+   *   esquina estrecha por un lado distinto—, es media vuelta.
+   * - **Las salidas, en extremos opuestos**: (0, 16) y (0, −16), 32 u en línea
+   *   recta, con el centro tapado por medio. Primer contacto a los tres o
+   *   cuatro segundos, que es lo que da tiempo a elegir carril.
+   * - **Plano, sin altura y sin rampas**, a propósito. Una plataforma simétrica
+   *   se puede hacer, pero la altura es donde un 1v1 se desequilibra primero
+   *   —quien llega antes arriba gana el intercambio— y eso pide medirlo jugando
+   *   antes de construirlo. Lo que hay es cobertura a tres alturas y dos
+   *   carriles por lado.
+   *
+   * **No sale en el selector de escenarios** (`soloDuelo`), y no es un olvido:
+   * no tiene explosivo, ni recogibles, ni nada que buscar. Es el mapa de un modo,
+   * no una variante del entrenamiento.
+   */
+  duelo: {
+    label: 'El Espejo',
+    soloDuelo: true,
+    /** La misma sala que el Plano A: la escala está medida y el juego calibrado. */
+    room: { width: 40, depth: 40, height: 10 },
+    /**
+     * El punto de aparición «del jugador» es la salida del primer equipo. En una
+     * partida de verdad no se usa —el servidor reparte ranura y el cliente
+     * empieza en la suya (vuelta 56)—, pero el motor necesita uno para montar la
+     * escena fuera de red, y que sea uno de los dos evita inventar un tercero.
+     */
+    spawn: { x: 0, z: 16 },
+    /**
+     * **Las dos salidas del duelo.** Las lee `net/partida.js` y son lo único de
+     * este escenario que el servidor mira. Antes las derivaba del spawn del
+     * escenario con ±2.5 en x, que es lo que ponía a los dos jugadores a cinco
+     * unidades: una regla que valía para no aparecer uno dentro del otro y que
+     * nunca fue un reparto de sitios.
+     */
+    duelo: {
+      /**
+       * **Y cada una con su rumbo**, que en un mapa de dos extremos deja de ser
+       * un detalle: una cámara mira a −Z con yaw 0 (la convención del
+       * movimiento, `forward = (−sin, −cos)`), así que sin esto el que sale en
+       * el sur aparece **mirando a la pared del fondo**. En el Plano A no se
+       * notaba porque los dos salían del mismo sitio mirando al mismo lado.
+       */
+      salidas: [
+        { x: 0, z: 16, yaw: 0 },
+        { x: 0, z: -16, yaw: Math.PI },
+      ],
+    },
+    /**
+     * **Media sala, y la otra media la pone el giro.** Lo que va aquí es el lado
+     * del jugador que sale en (0, 16); `giro180` añade el del otro.
+     *
+     * `centro` es aparte porque está centrado en el origen: girarlo daría una
+     * copia encima de sí mismo.
+     */
+    boxes: [
+      ...giro180([
+        // **La pantalla de aparición.** Misma idea que el muro del Plano A y por
+        // el mismo motivo: nadie tiene que poder disparar al punto donde el otro
+        // acaba de aparecer. `media` (1.9) y no `alta`, que a metro y medio de la
+        // cara una pieza alta es una pared gris (vuelta 43).
+        //
+        // A z 12.4 y no más cerca: la caja de la fase de compra son 4 u
+        // centradas en la salida (z 14..18), y una pared dentro del corralito
+        // sería comprar dentro de un armario.
+        { x: -7, z: 12.4, w: 14, d: 1, kind: 'media' },
+
+        // **La espina del carril oeste.** Separa el corredor de la pared de todo
+        // lo demás, así que ir por ahí es una decisión y no un atajo: se entra
+        // por el norte —pasada la puerta— y se sale al centro por el sur.
+        { x: -12.2, z: 1.5, w: 1.2, d: 9.5, kind: 'alta' },
+        // Y su puerta: el tapón va **pegado a la pared**, que es lo que evita
+        // una rendija de una unidad por la que el cuerpo no cabe. Lo que queda
+        // libre entre él y la espina son 2.5 u, el mismo paso que La Puerta del
+        // Plano A.
+        { x: -20, z: 5.5, w: 5.3, d: 2, kind: 'media' },
+
+        // El lado este es el abierto: tres piezas sueltas y ninguna pared. Cada
+        // jugador tiene un lado estrecho y uno ancho, y con el giro le tocan
+        // cambiados — que es lo que hace que rotar signifique algo.
+        { x: 11.5, z: 8.5, w: 4.5, d: 2, kind: 'media' },
+        { x: 5.5, z: 4.5, w: 3, d: 3, kind: 'baja' },
+        { x: 15.5, z: -1.5, w: 4.5, d: 3, kind: 'baja' },
+
+        // Bordillo delante del centro: se salta, y desde encima se ve por encima
+        // de la cobertura baja de al lado.
+        { x: -4.5, z: 5, w: 4, d: 1.5, kind: 'bordillo' },
+
+        // **El ala del centro.** Pegada a la cara este del bloque central; con su
+        // pareja girada forman una barra de 15 u que hay que rodear, y los dos
+        // huecos caen en lados opuestos.
+        { x: 2.5, z: -0.6, w: 5, d: 1.2, kind: 'media' },
+      ]),
+      // **El bloque central**, centrado en el origen y por eso fuera del giro.
+      // `alta` (3.6) porque es lo único que corta la línea recta entre las dos
+      // salidas — y la corta dos veces contando las pantallas.
+      { x: -2.5, z: -2.5, w: 5, d: 5, kind: 'alta' },
+    ],
+
+    ramps: [],
+
+    /**
+     * **Dos bandas de aparición, una por salida**, de la cara de cada pantalla
+     * hacia atrás. Es la regla de la vuelta 43 —una banda que cruza la sala, no
+     * una bolsa alrededor del punto— aplicada dos veces, que es lo que pide un
+     * mapa con dos salidas.
+     */
+    spawnZone: [
+      { x: -20, z: 12.4, w: 40, d: 7.6 },
+      { x: -20, z: -20, w: 40, d: 7.6 },
+    ],
+
+    /** Ni explosivo ni recogibles: el duelo no tiene objetivo ni suelo que recoger. */
+    objectiveSites: [],
+    pickups: [],
+
+    /**
+     * **Rutas.** El duelo no las usa —no hay muñecos— y aun así están, por dos
+     * motivos: son el vocabulario con el que los bancos eligen dos puestos que
+     * se ven entre sí sin escribir una coordenada a mano (vuelta 39), y son lo
+     * que haría falta el día que este mapa quiera muñecos.
+     *
+     * Salen del mismo barrido que las del Plano A (`rutas-buscar.mjs`), con las
+     * dos bandas de aparición excluidas.
+     */
+    routes: [],
   },
 
   largoYPuerta: {
@@ -1976,6 +2146,18 @@ export const SCENARIOS = {
  * saber si el segundo botón es Deathmatch o práctica libre, y montar un
  * escenario para preguntárselo sería montar el mundo entero por un rótulo.
  */
+/**
+ * **Los escenarios que ofrece el entrenamiento**, que no son todos (vuelta 66).
+ * Un mapa con `soloDuelo` es el de un modo, no una variante: no tiene explosivo,
+ * ni recogibles, ni nada que buscar, y en el selector sería una sala vacía con
+ * cajas. Se deriva del propio dato, como `PRIMARY_WEAPONS` de la ranura del
+ * arma: no hay una segunda lista que mantener, y el día que un mapa cambie de
+ * bando cambia en los tres sitios a la vez —el selector, el saneado y esto—.
+ */
+export const TRAINER_SCENARIOS = Object.fromEntries(
+  Object.entries(SCENARIOS).filter(([, definition]) => !definition.soloDuelo),
+)
+
 export function scenarioHasCover(key) {
   const definition = SCENARIOS[key] ?? SCENARIOS.empty
   return (definition.boxes?.length ?? 0) > 0 || (definition.ramps?.length ?? 0) > 0
@@ -3209,6 +3391,29 @@ export const ROUNDS = {
 export const NET = {
   /** Puerto del servidor de pruebas local (`npm run net`). */
   port: 5199,
+  /**
+   * **Por dónde se entra al duelo** (vuelta 66). Una ruta que no es un fichero:
+   * la sirven los dos huéspedes y —desde esta vuelta— también el servidor de
+   * desarrollo, así que `/duelo/` lleva a la página del 1v1 **en los tres
+   * sitios**. Hasta aquí en local había que escribir `/net/prueba.html`, que es
+   * una diferencia entre desarrollo y despliegue que no decidió nadie.
+   *
+   * Está aquí porque la miran cuatro: el botón del menú, `vite.config.js`, el
+   * huésped de Node y el Worker. Cuatro literales iguales es como uno se queda
+   * atrás el día que cambie.
+   */
+  rutaDuelo: '/duelo/',
+  /**
+   * **El escenario del duelo, y es uno solo** (vuelta 66). Lo miran los dos
+   * extremos —la página monta el motor con él y el huésped monta la partida— y
+   * tienen que coincidir: el cliente predice su propio movimiento contra la
+   * geometría que tiene montada, así que dos escenarios distintos son una
+   * corrección por paso contra paredes que sólo existen en un lado.
+   *
+   * Hasta la 65 estaba escrito dos veces —una constante en `net/prueba.js` y
+   * otra en `net/servidor.mjs`— y funcionaba porque decían lo mismo.
+   */
+  escenario: 'duelo',
   /**
    * **Cuánto sobrevive una sala vacía en el huésped de Node** (vuelta 58).
    *

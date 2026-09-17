@@ -11,6 +11,7 @@ import {
   DEATHMATCH_DURATIONS,
   FEEDBACK,
   MOVEMENT,
+  NET,
   SESSION_DURATION_S,
   SESSION_MODES,
   scenarioHasCover,
@@ -201,6 +202,29 @@ export default function App() {
     </button>
   )
 
+  /**
+   * **El botón del duelo es un enlace, y eso es todo lo que sabe de la red**
+   * (vuelta 66). `App.jsx` no monta una fase de duelo ni habla con ningún
+   * socket: el 1v1 sigue siendo una página aparte (vuelta 45) con su menú, su
+   * código de partida y su botón de reconectar. Lo único que faltaba era la
+   * puerta — hasta aquí había que escribir `/duelo/` a mano en la barra.
+   *
+   * La ruta sale de `NET.rutaDuelo`, que es la misma que sirven los dos
+   * huéspedes y el servidor de desarrollo, así que es una sola en los tres
+   * sitios. Y va con `assign` y no como un `<a>` para que el `onMouseDown` que
+   * se traga el clic —el que evita que capture el ratón— siga valiendo aquí.
+   */
+  const duelButton = (
+    <button
+      type="button"
+      className="button"
+      onMouseDown={swallowClick}
+      onClick={() => window.location.assign(NET.rutaDuelo)}
+    >
+      Duelo 1v1
+    </button>
+  )
+
   /** Con cualquier panel abierto el overlay deja de capturar el ratón. */
   const panelOpen = optionsOpen || armouryOpen
 
@@ -284,6 +308,9 @@ export default function App() {
                 >
                   {deathmatchLabel}
                 </button>
+                {/* **El duelo va con los modos, no con los paneles**: es a lo
+                    que se juega, aunque lo que haga sea salir de esta página. */}
+                {duelButton}
                 {armouryButton}
                 {optionsButton}
               </div>

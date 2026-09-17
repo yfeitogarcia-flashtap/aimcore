@@ -32,6 +32,7 @@ import { readFile } from 'node:fs/promises'
 import { readdirSync, readFileSync } from 'node:fs'
 import { gzipSync } from 'node:zlib'
 import { createHash } from 'node:crypto'
+import os from 'node:os'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as THREE from 'three'
@@ -45,7 +46,7 @@ import { normalizarCodigo, rutaDeSala } from './codigo.js'
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const PUBLICO = path.join(RAIZ, 'dist')
 
-const ESCENARIO = process.env.VEKTOR_ESCENARIO || 'largoYPuerta'
+const ESCENARIO = process.env.VEKTOR_ESCENARIO || NET.escenario
 /**
  * El colchón contra el jitter, ajustable desde fuera para poder barrerlo sin
  * tocar `config.js`. El valor de casa es `NET.jitterBufferTicks`.
@@ -483,7 +484,7 @@ const servidor = http.createServer(async (peticion, respuesta) => {
   // no existe como fichero: se sirve la página del duelo y el código lo lee el
   // cliente de la propia dirección. Así el enlace se puede dictar y no lleva ni
   // interrogante ni almohadilla.
-  const ruta = url.pathname.startsWith('/duelo')
+  const ruta = url.pathname.startsWith(NET.rutaDuelo.replace(/\/$/, ''))
     ? 'net/prueba.html'
     : url.pathname.replace(/^\/+/, '') || 'index.html'
 
@@ -522,11 +523,49 @@ servidor.on('upgrade', (peticion, socket, cabeza) => {
   })
 })
 
+/**
+ * **Las direcciones por las que se llega a esto desde otro PC de la casa.**
+ *
+ * `localhost` apunta siempre al equipo que lo escribe, así que un enlace de
+ * `http://localhost:8787/duelo/ABC` **no vale para pasárselo a nadie** aunque
+ * los dos estén en la misma red. Lo que vale es la IP de red del equipo que
+ * sirve, y buscarla a mano —`ipconfig`, `ip a`, las cuatro tarjetas virtuales
+ * que hay que descartar— es justo el tipo de trabajo que el arranque puede
+ * hacer una vez.
+ *
+ * Se filtran las internas (el propio `127.0.0.1`) y se dejan las dos familias:
+ * una red doméstica puede tener sólo IPv6 y ahí es la que sirve.
+ */
+function direccionesDeRed() {
+  const salida = []
+  for (const [nombre, tarjetas] of Object.entries(os.networkInterfaces())) {
+    for (const t of tarjetas ?? []) {
+      if (t.internal) continue
+      if (t.family !== 'IPv4' && t.family !== 4) continue
+      salida.push({ nombre, direccion: t.address })
+    }
+  }
+  return salida
+}
+
 servidor.listen(PUERTO, () => {
   console.log(`Vektor · huésped en el puerto ${PUERTO}`)
   console.log(`escenario ${ESCENARIO} · ${SIM.hz} Hz · colchón ${COLCHON} pasos · ` +
     `rondas ${RONDAS ? 'SÍ' : 'no'} · depurar ${DEPURAR ? 'SÍ' : 'no'}`)
-  console.log(`la página en /  ·  el duelo en /duelo/<código>  ·  las salas en ${rutaDeSala('<código>')}`)
+  console.log(`la página en /  ·  el duelo en ${NET.rutaDuelo}<código>  ·  las salas en ${rutaDeSala('<código>')}`)
+  console.log('')
+  console.log(`  en este equipo   http://localhost:${PUERTO}/`)
+  const red = direccionesDeRed()
+  for (const { nombre, direccion } of red) {
+    console.log(`  desde tu red     http://${direccion}:${PUERTO}/   (${nombre})`)
+  }
+  if (red.length === 0) {
+    console.log('  desde tu red     (ninguna tarjeta de red con IPv4: sólo se puede jugar en este equipo)')
+  } else {
+    console.log('')
+    console.log('  Ojo: `localhost` apunta siempre al equipo que lo escribe. Para jugar con')
+    console.log('  alguien de tu casa, pásale una de las direcciones de arriba, no la de localhost.')
+  }
 })
 
 // Un informe cada cinco segundos, que es lo que se mira mientras se juega.

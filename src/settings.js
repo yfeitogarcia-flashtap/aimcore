@@ -15,7 +15,7 @@ import {
   ENEMY_DIFFICULTIES,
   LEGACY_WEAPON_KEYS,
   FRAME_LIMITS,
-  SCENARIOS,
+  TRAINER_SCENARIOS,
   PRIMARY_WEAPONS,
   SETTINGS,
   SIMULTANEOUS_TARGETS,
@@ -33,7 +33,10 @@ const NUMERIC_KEYS = Object.keys(SETTINGS).filter((key) => SETTINGS[key].min !==
  * comprueba contra él: cualquier otra cosa cae al valor por defecto.
  */
 const CATALOGS = {
-  scenario: SCENARIOS,
+  // **Y el del escenario es el del entrenamiento, no el de todos los mapas.**
+  // El del duelo no se elige aquí (vuelta 66): es de un modo que ni siquiera
+  // pasa por este store. Misma idea que el arma y su ranura.
+  scenario: TRAINER_SCENARIOS,
   deathmatchDuration: DEATHMATCH_DURATIONS,
   enemyDifficulty: ENEMY_DIFFICULTIES,
   targetType: TARGET_TYPES,

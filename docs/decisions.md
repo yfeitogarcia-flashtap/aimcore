@@ -7490,6 +7490,161 @@ deja fuera las armas largas a propósito y sin saldo el rifle no es comprable, a
 que las dos veces el banco estaba leyendo una regla correcta y llamándola fallo.
 Se mide en la ronda 2 y con el saldo entero.
 
+## Ronda 66 — La puerta del duelo, y un mapa que sea suyo
+
+### El botón: una puerta, no una fase
+
+El 1v1 llevaba tres vueltas jugándose de verdad y sólo se llegaba a él
+escribiendo `/duelo/` en la barra. Lo que faltaba era un botón, y lo que había
+que decidir era **qué hace ese botón**, porque la regla de la vuelta 45 sigue en
+pie: la red no entra en el juego, el duelo es una página aparte y `App.jsx` no
+sabe que existen los sockets.
+
+La respuesta corta: el botón **es un enlace**. Va a `NET.rutaDuelo` y ahí acaba
+todo lo que la pantalla de inicio sabe del 1v1. El flujo de crear partida, el
+código, el enlace para copiar, el campo para unirse y el botón de reconectar
+siguen donde estaban, que es donde tienen que estar.
+
+Lo que sí hubo que arreglar es que `/duelo/` **existiera en los tres montajes**.
+La servían los dos huéspedes y no el servidor de desarrollo, así que en local
+había que escribir `/net/prueba.html`: una diferencia entre desarrollo y
+despliegue que no decidió nadie, y que con un botón apuntando ahí pasa de rareza
+a fallo. Se arregla con un middleware de seis líneas en `vite.config.js` que
+reescribe **la petición** y no la dirección del navegador —`location.pathname`
+sigue diciendo `/duelo/ABC123`, que es de donde la página saca el código—.
+
+Y de ahí salió el primero de los dos fallos que este cambio destapó: la página
+pedía su script con `./prueba.js`, que en `/duelo/` es `/duelo/prueba.js`. La
+página cargaba entera y **muda**, sin un solo error visible salvo un 404 en la
+pestaña de red. Ahora lo pide por ruta absoluta.
+
+### El segundo fallo: «¿es https?» no era la pregunta
+
+Con el botón puesto, la página del duelo servida por el huésped de Node en
+`http://` se quedaba **conectando para siempre**. La causa llevaba ahí desde la
+vuelta 47: para decidir si las salas están en el mismo origen o en un proceso
+aparte, `urlDeSala` preguntaba `¿ubicacion.protocol === 'https:'?`. Eso es cierto
+del despliegue y **falso de la misma aplicación servida por `npm run host`**, que
+es http. La página se iba a buscar el socket al 5199, donde no hay nadie.
+
+Y no es un caso de laboratorio: es exactamente lo que le pasa a quien abre el
+juego desde otro PC de su casa por la IP de red.
+
+La pregunta buena no es por el protocolo sino por **quién sirve la página**, y la
+contesta el propio empaquetado: `import.meta.env.DEV` es cierto sólo mientras
+sirve Vite, que es el único montaje en que la página y las salas viven en
+procesos distintos. Se resuelve al construir —el bundle ni siquiera contiene ya
+la rama del 5199— así que no hay nada que adivinar en tiempo de ejecución.
+`?worker=1` se queda como palanca manual para los bancos.
+
+De paso, el mismo predicado arregla el enlace que se copia: desde
+`http://192.168.1.42:5199/duelo/ABC` ahora sale `.../duelo/XYZ` y no
+`...#XYZ`.
+
+## Ronda 66b — El Espejo: un mapa para el 1v1
+
+### Por qué el Plano A no servía
+
+El duelo se jugaba en «Largo y Puerta», que es un mapa de **entrenamiento**. Dos
+cosas lo hacían mal duelo, y ninguna se arregla moviendo una caja:
+
+- **Los dos jugadores salían a 5 u uno del otro.** Las salidas se derivaban del
+  spawn del escenario con ±2.5 en x, y esa regla nunca fue un reparto de sitios:
+  era la forma de que dos jugadores no aparecieran uno dentro del otro. La ronda
+  empezaba resuelta.
+- **No es simétrico, y no puede serlo.** El Balcón, las troneras y el parapeto
+  son ventaja para quien sepa llegar antes. En un aim trainer eso es el mapa; en
+  un duelo es un jugador que gana por dónde le tocó salir.
+
+### Las cuatro reglas del mapa nuevo
+
+- **Giro de 180°, y por construcción.** Se declara **media sala** y `giro180`
+  añade la otra girada media vuelta. Que sea giro y no espejo es la decisión que
+  importa: un espejo le deja a cada jugador la esquina estrecha por un lado
+  distinto, o sea un mapa distinto para cada uno; con el giro, la vista de uno
+  **es** la del otro. Y que salga por construcción es lo que evita el fallo real
+  de un mapa simétrico escrito a mano —una caja a media unidad de su pareja, que
+  nadie ve y que decide intercambios—. Lo centrado en el origen se declara
+  aparte: girarlo daría una copia encima de sí mismo.
+- **Las salidas las declara el mapa, con su rumbo.** `duelo.salidas`, leído por
+  `net/partida.js`, con un respaldo que es la regla vieja para cualquier otro
+  escenario (los bancos de netcode siguen pudiendo medir sobre el Plano A).
+- **Fuera del selector de escenarios.** `soloDuelo` en el dato, y de ahí se
+  deriva `TRAINER_SCENARIOS`, que es lo que ofrece el selector y contra lo que
+  valida el saneado. Misma idea que `PRIMARY_WEAPONS` y la ranura del arma: no
+  hay una segunda lista que mantener.
+- **Plano, sin rampas ni plataformas.** No por dificultad técnica: la altura es
+  donde un 1v1 se desequilibra primero, y eso se añade midiendo jugando, no de
+  entrada.
+
+### El rumbo de aparición, y a quién pertenece
+
+Con las dos salidas en extremos opuestos apareció algo que en el Plano A no se
+podía ver: una cámara mira a **−Z** con yaw 0, así que el jugador del extremo sur
+aparecía **mirando a la pared del fondo**. Lo cazó el banco por la puerta de al
+lado —pulsando W, uno se acercaba al centro y el otro se metía contra el muro—.
+
+Lo primero que se probó fue escribir `camara.rotation.y` desde el cliente de red,
+y **no funciona**: el rumbo tiene dueño (`LookControls`) y su dueño lo reescribe
+en el siguiente movimiento de ratón. El jugador salía mirando bien hasta que
+tocaba el ratón, o sea nunca. La forma correcta es `controls.lookAt(yaw)`, y que
+el cliente reciba los controles como ya recibía la cámara y el movimiento. Es la
+regla de la pose interpolada de la vuelta 44 por otra puerta: sobre un campo
+manda uno solo.
+
+### Lo que se midió
+
+`mapa66.mjs` no mira el plano: lo mide sobre el `Scenario` montado.
+
+| | |
+|---|---|
+| piezas | 17, **todas con su pareja girada**, ninguna solapada |
+| salidas | 32.0 u, **sin línea de visión** entre ellas ni entre las 16 líneas que unen las esquinas de sus cajas de compra |
+| caja de compra | 4×4 dentro de los límites de movimiento y **sin una sola pieza dentro ni rozándola** |
+| cruzar | 45.61 u, **7.02 s**, idéntico en los dos sentidos (45.607 / 45.607) |
+| primer contacto | **22.80 u, 3.51 s** |
+| asomarse | 20 y 32 puestos de 154, **los mismos números por los dos lados** |
+
+Dos premisas del banco estuvieron mal antes de salir bien, y las dos de la misma
+familia —medir la simetría con una rejilla que no era simétrica—:
+
+- «Llegar al centro» daba `Infinity`, porque el centro es un **bloque macizo**.
+  Lo que se quería medir no era el centro sino **cuándo se encuentran**, que es
+  el mínimo sobre todo el suelo del peor de los dos caminos. Ése es el número que
+  dice si el mapa da tiempo a elegir carril.
+- El barrido de «qué se ve asomándose» iba de −18.5 a 18.5 de dos en dos, y el
+  último paso no tiene pareja al otro lado: las dos mitades salían con distinto
+  número de puestos (151 contra 136) **sin que el mapa tuviera nada**. Con la
+  rejilla centrada, los dos lados dan el mismo número dígito a dígito, y esa
+  igualdad es ahora la comprobación de simetría que de verdad importa —sobre lo
+  que se ve, no sobre la lista de cajas—.
+
+### Y lo que se llevó por delante en los bancos
+
+Cambiar el mapa del duelo rompió cuatro suites, y **ninguna por una regresión del
+juego**: todas por saberse una coordenada del Plano A.
+
+- `duelo62` y `abatido52` comprobaban la reaparición contra `z 17.5` escrito a
+  mano. Ahora la comparan contra `cliente.salida`, que es lo que dice el
+  servidor.
+- `abatido52` daba por hecho que dos jugadores que salen y andan acaban
+  viéndose. Con 32 u y el centro tapado, no: se les coloca en un carril
+  despejado con `MSG.COLOCAR`.
+- `tiro46` elegía sus dos puestos entre los **puntos de ruta**, y el mapa del
+  duelo no tiene rutas —existen para que nazcan muñecos, y aquí no hay—. Ahora
+  barre el suelo cuando no las hay, que además es lo que este banco necesita: dos
+  sitios con suelo libre que se vean.
+- `impactos64` disparaba **en la fase de compra**, donde un disparo no cuenta.
+  Pasaba por casualidad, según lo que hubiera tardado la parte de entrenamiento
+  que va antes. Eso no es una premisa, es una moneda al aire: ahora espera a la
+  ronda.
+
+Y una que llevaba rota desde la vuelta 64 sin que nadie lo notara: `live.mjs`
+llamaba a `_isBlockedByCover`, que dejó de existir cuando el disparo pasó a
+resolverse con un solo rayo (`_superficieBajoElRayo`). La regla que guardaba
+—que la cobertura para los disparos— sigue siendo la misma; lo que cambió es a
+quién se le pregunta.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

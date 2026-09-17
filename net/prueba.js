@@ -58,7 +58,7 @@ document.documentElement.style.setProperty('--crosshair-color', COLORS.crosshair
  * cualquier ajuste en mitad de un duelo reconstruía el escenario en caliente. El
  * escenario de una partida no es una preferencia de nadie.
  */
-const ESCENARIO = 'largoYPuerta'
+const ESCENARIO = NET.escenario
 
 /**
  * **El motor completo, con la red enchufada** (vuelta 56). Hasta aquí esta
@@ -203,6 +203,7 @@ const paseDeVuelta = guardada?.codigo === codigo ? guardada.pase : null
 const cliente = new ClienteRed({
   camara: motor.camera,
   movimiento: motor.movement,
+  controles: motor.controls,
   oclusores: motor.scenario.occluders,
   transporte: conRedSimulada(
     transporteWebSocket(urlDeSala(codigo, window.location, paseDeVuelta, compraElegida)),

@@ -26,13 +26,17 @@
  * Es la misma decisión que ya se tomó en la vuelta 44 y el mismo número.
  */
 import * as THREE from 'three'
-import { SIM, SIM_STEP_MS } from '../src/config.js'
+import { NET, SIM, SIM_STEP_MS } from '../src/config.js'
 import { Scenario } from '../src/game/scenario.js'
 import { MSG } from '../net/protocolo.js'
 import { Partida } from '../net/partida.js'
 
-/** Hoy sólo hay un mapa jugable con cobertura. Cuando haya más, vendrá del código. */
-const ESCENARIO = 'largoYPuerta'
+/**
+ * **El mapa del duelo, y lo dice `config.js`** (vuelta 66). Lo miran los dos
+ * extremos —la página monta el motor con él y esto monta la partida—, así que
+ * escrito aquí sería una segunda copia que el día que cambie se queda atrás.
+ */
+const ESCENARIO = NET.escenario
 
 /** Pasos de atraso que se admiten antes de re-anclar el reloj en vez de correr. */
 const MAX_ATRASO = Math.max(1, Math.round(SIM.maxFrameDeltaMs / SIM_STEP_MS))

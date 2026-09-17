@@ -424,4 +424,9 @@
   <label>pérdida <input id="per" type="range" min="0" max="20" step="1" value="0" /><b id="perV">0</b></label>
   <label>fantasma <input id="gho" type="checkbox" /></label>
 </div>
-<script type="module" src="./prueba.js"></script>
+<!-- **Absoluto, no relativo** (vuelta 66). Esta página se sirve además en
+     `/duelo/<código>`, que no es la carpeta donde vive: con `./prueba.js` el
+     navegador lo pedía a `/duelo/prueba.js` y la página cargaba entera y muda.
+     En el build no cambia nada —Vite reescribe el `src` al bundle— y en
+     desarrollo es lo que hace que las dos direcciones sirvan lo mismo. -->
+<script type="module" src="/net/prueba.js"></script>

@@ -30,9 +30,17 @@ export class ClienteRed {
    *   guarda la posición, así que predecir es moverla.
    * @param {import('../src/game/movement.js').MovementController} opciones.movimiento
    */
-  constructor({ camara, movimiento, transporte, oclusores = [] }) {
+  constructor({ camara, movimiento, transporte, oclusores = [], controles = null }) {
     this.camara = camara
     this.movimiento = movimiento
+    /**
+     * **Quien manda sobre el rumbo de la cámara** (vuelta 66). Se recibe como se
+     * recibe la cámara —la página lo ensambla con las piezas del motor— porque
+     * aparecer mirando a un sitio concreto es escribir el rumbo, y el rumbo
+     * tiene dueño: escribir `camara.rotation.y` a mano se lo lleva por delante
+     * el siguiente movimiento de ratón.
+     */
+    this.controles = controles
     /** El cable, detrás de `send` / `onMessage` / `close` y nada más. */
     this.transporte = transporte
     /**
@@ -552,6 +560,11 @@ export class ClienteRed {
     if (this.salida) {
       this.camara.position.x = this.salida.x
       this.camara.position.z = this.salida.z
+      // **Y mirando hacia el mapa** (vuelta 66). Con las dos salidas en extremos
+      // opuestos, el rumbo deja de ser un detalle: sin esto el que aparece en el
+      // extremo sur lo hace mirando a la pared del fondo. Es lo mismo que hace
+      // el servidor, así que no hay nada que corregir después.
+      this.controles?.lookAt(this.salida.yaw)
     }
   }
 
@@ -566,7 +579,7 @@ export class ClienteRed {
       this.paso = mensaje.n + NET.leadTicks
       // El sitio de salida de su ranura. Se guarda porque la reaparición vuelve
       // aquí, y predecirla necesita saberlo.
-      this.salida = { x: mensaje.salida.x, z: mensaje.salida.z }
+      this.salida = { x: mensaje.salida.x, z: mensaje.salida.z, yaw: mensaje.salida.yaw ?? 0 }
       /**
        * **Tu ranura**, que es tu sitio de salida y tu color (vuelta 49). En un
        * 1v1 la del rival es la otra, y de ahí sale también su nick provisional:
@@ -586,6 +599,7 @@ export class ClienteRed {
       this.pase = mensaje.pase ?? this.pase
       this.camara.position.x = mensaje.salida.x
       this.camara.position.z = mensaje.salida.z
+      this.controles?.lookAt(this.salida.yaw)
       this.onBienvenida?.(mensaje)
       return
     }

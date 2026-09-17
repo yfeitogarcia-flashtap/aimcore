@@ -7,7 +7,7 @@ import {
   ENEMY_DIFFICULTIES,
   FRAME_LIMITS,
   MOVEMENT,
-  SCENARIOS,
+  TRAINER_SCENARIOS,
   SETTINGS,
   scenarioHasCover,
   SIMULTANEOUS_TARGETS,
@@ -186,14 +186,14 @@ function scenarioHint(scenario) {
  * texto, y el panel ya iba justo de alto.
  */
 function ScenarioRow({ value, onChange }) {
-  const card = SCENARIOS[value]?.card
+  const card = TRAINER_SCENARIOS[value]?.card
 
   return (
     <div className="field">
       <FieldHead setting="scenario" value={value} onChange={onChange} />
 
       <div className="scenarios">
-        {Object.keys(SCENARIOS).map((key) => (
+        {Object.keys(TRAINER_SCENARIOS).map((key) => (
           <button
             key={key}
             type="button"
@@ -202,7 +202,7 @@ function ScenarioRow({ value, onChange }) {
             onClick={() => onChange({ scenario: key })}
           >
             <ScenarioThumbnail scenarioKey={key} />
-            <span className="scenarios__name">{SCENARIOS[key].label}</span>
+            <span className="scenarios__name">{TRAINER_SCENARIOS[key].label}</span>
           </button>
         ))}
       </div>

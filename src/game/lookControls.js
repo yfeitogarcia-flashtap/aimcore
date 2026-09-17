@@ -43,6 +43,23 @@ export class LookControls {
     this._apply()
   }
 
+  /**
+   * **Apunta a un rumbo, conservando el cabeceo** (vuelta 66). Lo pide el duelo
+   * al aparecer: con las dos salidas en extremos opuestos del mapa, el rumbo de
+   * aparición decide si se sale mirando al mapa o a la pared del fondo.
+   *
+   * Y va por aquí y no escribiendo `camera.rotation.y` desde fuera, que fue lo
+   * primero que se probó: **el rumbo tiene dueño**, y su dueño lo reescribe en
+   * el siguiente movimiento de ratón. Con la escritura de fuera el jugador salía
+   * mirando bien hasta que tocaba el ratón, o sea nunca. Misma regla que la pose
+   * interpolada de la vuelta 44: quien manda sobre un campo es uno solo.
+   */
+  lookAt(yaw) {
+    if (!Number.isFinite(yaw)) return
+    this.yaw = yaw
+    this._apply()
+  }
+
   /** Cambia la sensibilidad en caliente (lo usará el menú de opciones). */
   setSensitivity(sensitivity) {
     this.radiansPerCount = sensitivity * LOOK.degreesPerCount * DEG_TO_RAD

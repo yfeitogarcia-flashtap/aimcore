@@ -84,7 +84,7 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Huésped de Cloudflare | `worker/sala.js` | El Durable Object. Lo mismo, con las piezas de Cloudflare. **Respaldo** desde la 58; ya no es donde se juega. |
 | Portero | `worker/index.js` | `/sala/<código>` → `idFromName(código)`; todo lo demás, los ficheros del juego. |
 | Código de sala | `net/codigo.js` | Alfabeto, normalización y forma de la ruta. **Lo usan el cliente y el Worker.** |
-| Duelo (pantalla) | `net/prueba.html`, `net/prueba.js` | La página del 1v1. **Hospeda el motor completo** (vuelta 56) y se queda con lo suyo: código de partida, menú, avisos, pausas y los números detrás de **F3**. |
+| Duelo (pantalla) | `net/prueba.html`, `net/prueba.js` | La página del 1v1. **Hospeda el motor completo** (vuelta 56) y se queda con lo suyo: código de partida, menú, avisos, pausas y los números detrás de **F3**. Se llega por `/duelo/`, en los tres montajes. |
 | Red (cliente) | `net/cliente.js`, `net/transporte.js` | Predicción, reconciliación, interpolación del rival y disparo. El transporte, detrás de tres funciones. |
 | Transporte | `net/transporte.js` | `send` / `onMessage` / `close`, y nada más. La red simulada es un transporte que envuelve a otro. |
 | Disparo en red | `net/disparo.js` | `hitPlayer` + `hasLineOfSight` en el orden que cuesta menos. **Lo llaman los dos extremos.** |
@@ -230,6 +230,79 @@ Y una cuarta que es aritmética y no se ve: **hay que adelantarse el RTT entero,
 no la mitad.** La foto que dice en qué paso va el servidor ya salió hace un viaje
 de ida, y la entrada que mandes ahora tardará otro. Con la mitad, el servidor se
 queda sin entrada en un tercio de los pasos.
+
+**El duelo tiene su mapa, y la simetría sale por construcción** (vuelta 66).
+Hasta aquí el 1v1 se jugaba en el Plano A, que es un mapa de **entrenamiento**:
+un punto de aparición, un muro delante y todo lo demás repartido para que haya a
+quién disparar. Puesto a servir de duelo daba dos cosas mal —los dos salían **a
+5 u uno del otro**, así que la ronda empezaba resuelta, y media sala (el Balcón,
+las troneras) es ventaja para quien llegue antes—. El del duelo es **El
+Espejo**, y tiene cuatro reglas:
+
+- **Giro de 180°, no espejo.** Lo que se declara es media sala y `giro180` añade
+  la otra girada media vuelta. Con un espejo cada jugador tendría la esquina
+  estrecha por un lado distinto, o sea un mapa distinto para cada uno; con el
+  giro, **la vista de uno es la del otro**. Y sale por construcción porque
+  escribir dos veces cada caja es escribir la ocasión de que una se quede a media
+  unidad de su pareja. Lo que va centrado en el origen se declara aparte: girarlo
+  daría una copia encima de sí mismo.
+- **Las salidas las declara el mapa** (`duelo.salidas`), y con su **rumbo**. Lo
+  segundo no es un detalle en un mapa de dos extremos: una cámara mira a −Z con
+  yaw 0, así que sin rumbo el que sale en el sur aparece **mirando a la pared del
+  fondo**. En el Plano A no se veía porque los dos salían del mismo sitio.
+- **No sale en el selector de escenarios** (`soloDuelo`, de donde se deriva
+  `TRAINER_SCENARIOS`). No tiene explosivo, ni recogibles, ni rutas: es el mapa
+  de un modo, no una variante del entrenamiento. La lista se deriva del propio
+  dato, como `PRIMARY_WEAPONS` de la ranura del arma — no hay una segunda lista.
+- **Plano, sin rampas ni plataformas, a propósito.** Una plataforma simétrica se
+  puede hacer; la altura es donde un 1v1 se desequilibra primero y eso pide
+  medirlo jugando antes de construirlo.
+
+Medido (`mapa66`): 17 piezas, **todas con su pareja girada**; las salidas a
+**32 u** y sin línea de visión entre ellas ni entre las esquinas de sus cajas de
+compra; el camino de una a otra son **45.6 u (7.0 s)**, idéntico en los dos
+sentidos, y el **primer contacto posible cae a los 3.5 s**; asomándose por el
+mismo extremo los dos ven exactamente lo mismo (20 y 32 puestos de 154).
+
+**Y el escenario del duelo es uno, y lo dice `config.js`** (`NET.escenario`).
+Lo miran los dos extremos —la página monta el motor con él y el huésped monta la
+partida—: el cliente predice su propio movimiento contra la geometría que tiene
+montada, así que dos escenarios distintos serían una corrección por paso contra
+paredes que sólo existen en un lado. Hasta la 65 estaba escrito dos veces y
+funcionaba porque decían lo mismo.
+
+**Al duelo se entra por un botón, y ese botón es un enlace** (vuelta 66). El
+menú principal tiene **Duelo 1v1** al lado de los otros modos y lo único que hace
+es ir a `NET.rutaDuelo`. `App.jsx` **sigue sin saber que existe la red**: no monta
+una fase de duelo ni habla con ningún socket, y el código de partida, el enlace,
+el campo para unirse y el botón de reconectar siguen viviendo en la página del
+1v1 (vuelta 45). Lo único que faltaba era la puerta.
+
+Y `/duelo/` es **la misma ruta en los tres montajes**: la sirven los dos
+huéspedes y, desde esta vuelta, también el servidor de desarrollo (un middleware
+en `vite.config.js`). De ahí una consecuencia que costó un rato: la página del
+duelo pide su script **por ruta absoluta** (`/net/prueba.js`). Con `./prueba.js`
+el navegador lo buscaba en `/duelo/prueba.js` y la página cargaba entera y muda.
+
+**Quién sirve la página decide dónde están las salas, y no su protocolo**
+(vuelta 66). La pregunta era «¿es `https:`?», y eso es cierto del despliegue y
+**falso de la misma aplicación servida por el huésped de Node en `http://`** —que
+es lo que hace `npm run host`, y lo que pasa cuando alguien abre el juego desde
+otro PC de su casa por la IP de red—. Ahí la página se iba a buscar el socket al
+5199, donde no hay nadie, y se quedaba conectando para siempre **sin un solo
+error**. La pregunta buena la contesta el empaquetado: `import.meta.env.DEV` es
+cierto **sólo mientras sirve Vite**, que es el único caso en que la página y las
+salas viven en procesos distintos. Se resuelve al construir, así que no hay nada
+que adivinar. `?worker=1` se queda como palanca manual, que es lo que usan los
+bancos.
+
+**El rumbo de la cámara tiene dueño, y es `LookControls`** (vuelta 66). Aparecer
+mirando a un sitio concreto es escribir el rumbo, y escribir `camera.rotation.y`
+desde fuera **no vale**: su dueño lo reescribe en el siguiente movimiento de
+ratón, así que el jugador salía mirando bien hasta que tocaba el ratón, o sea
+nunca. Va por `controls.lookAt(yaw)`, y el cliente de red recibe los controles
+como ya recibía la cámara y el movimiento. Es la regla de la pose interpolada de
+la vuelta 44 por otra puerta: sobre un campo manda uno solo.
 
 **El transporte son cuatro funciones: `send`, `onMessage`, `close`, `onClose`**
 (vuelta 46; la cuarta, en la 51). La regla de la 46 sigue en pie en lo que decía
@@ -2327,6 +2400,13 @@ se enteraba de nada, con dos suites en rojo por un cambio que no tenía nada que
 ver. Si un banco del **juego** falla justo después de tocar `config.js`, mira
 primero qué proceso tiene el puerto.
 
+**Y `npm run host` dice por dónde se llega desde otro PC** (vuelta 66).
+`localhost` apunta siempre al equipo que lo escribe, así que un enlace de
+`http://localhost:8787/duelo/ABC` no vale para pasárselo a nadie aunque los dos
+estén en la misma red — y no da ningún error, simplemente el otro abre su propio
+equipo. El arranque imprime ahora las IPv4 de red de la máquina, que es lo que sí
+se puede pasar, y lo dice con todas las letras.
+
 **Y los dos huéspedes sirven `dist/`, no `src/`.** `npm run worker` y `npm run
 host` construyen antes por eso mismo: con cualquiera de los dos levantado,
 cambiar un fichero del juego **no se ve** —los ficheros que sirven son los que
@@ -2425,6 +2505,19 @@ reloj y cable:
 **Partida por código:** quien abre la página crea una —seis caracteres de un
 alfabeto que no se confunde al dictarlo— y pasa el enlace. Quien lo abre entra en
 la misma. Es `idFromName(código)`: no hay lista de partidas ni matchmaking.
+
+**Y se entra por el menú** (vuelta 66): la pantalla de inicio tiene **Duelo 1v1**
+junto a los otros modos, y lleva a `/duelo/` —la misma ruta en desarrollo, en
+`npm run host` y en el despliegue—, donde ya está el flujo de siempre: el código
+creado, el enlace para copiar, el campo para entrar en otro y el selector de fase
+de compra. Antes había que escribir la dirección a mano.
+
+**El duelo tiene su propio mapa desde la vuelta 66: El Espejo.** Simétrico por
+giro de 180°, con las dos salidas en extremos opuestos —**32 u**, con el centro
+tapado por medio— y cada una con su rumbo, así que nadie aparece mirando a una
+pared. Cruzarlo son 45.6 u (7.0 s) y el primer contacto posible cae a los **3.5
+s**. Sin altura y sin rampas a propósito. No sale en el selector de escenarios: el
+Plano A se queda para el entrenamiento y los muñecos.
 
 **Y desde la vuelta 56 el duelo lo lleva el motor completo** (la «Opción B»).
 La página del duelo ya no monta una escena mínima: instancia `engine.js` y le

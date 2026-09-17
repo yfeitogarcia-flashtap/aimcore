@@ -1,9 +1,32 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { resolve } from 'node:path'
+import { NET } from './src/config.js'
+
+/**
+ * **`/duelo/` también en desarrollo** (vuelta 66). Los dos huéspedes sirven la
+ * página del 1v1 en esa ruta —que no es un fichero: el código va dentro— y el
+ * servidor de Vite no, así que en local había que escribir `/net/prueba.html`.
+ * Es una diferencia entre desarrollo y despliegue que no decidió nadie, y desde
+ * que hay un botón en el menú que apunta ahí, una que se nota.
+ *
+ * Se reescribe **la petición**, no la dirección del navegador: `location.pathname`
+ * sigue diciendo `/duelo/ABC123`, que es de donde la página saca el código.
+ */
+const duelo = {
+  name: 'vektor-duelo',
+  configureServer(servidor) {
+    servidor.middlewares.use((peticion, respuesta, siguiente) => {
+      if (peticion.url && peticion.url.startsWith(NET.rutaDuelo.replace(/\/$/, ''))) {
+        peticion.url = '/net/prueba.html'
+      }
+      siguiente()
+    })
+  },
+}
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [react(), duelo],
   server: {
     host: true,
     port: 5173,

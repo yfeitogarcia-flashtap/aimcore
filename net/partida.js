@@ -121,11 +121,15 @@ export class Partida {
       /** Rondas jugadas al entrar en prórroga, para contar las tandas. */
       prorrogaDesde: 0,
     }
-    /** Dos sitios de salida separados, para no aparecer uno dentro del otro. */
-    this.salidas = [
-      { x: escenario.spawn.x - 2.5, z: escenario.spawn.z },
-      { x: escenario.spawn.x + 2.5, z: escenario.spawn.z },
-    ]
+    /**
+     * **Las salidas las declara el mapa** (vuelta 66). En el de duelo están en
+     * extremos opuestos —32 u y el centro tapado por medio—; en cualquier otro,
+     * `salidasDeDuelo` cae al reparto de antes, que era el spawn del escenario
+     * con 2.5 u a cada lado. Eso nunca fue un reparto de sitios: era la forma de
+     * que dos jugadores no aparecieran uno dentro del otro, y puesto a servir de
+     * 1v1 empezaba la ronda con los dos a cinco unidades.
+     */
+    this.salidas = escenario.salidasDeDuelo
   }
 
   /**
@@ -339,7 +343,14 @@ export class Partida {
         escenario: this.escenario.key,
         hz: SIM.hz,
         n: this.paso,
-        salida: { x: jugador.pose.position.x, z: jugador.pose.position.z },
+        salida: {
+          x: jugador.pose.position.x,
+          z: jugador.pose.position.z,
+          // **Hacia dónde se mira al aparecer.** Lo decide el mapa y lo dice el
+          // servidor: el cliente no puede deducirlo de su ranura sin llevar una
+          // segunda copia de las salidas.
+          yaw: this.salidas[jugador.equipo]?.yaw ?? 0,
+        },
         /**
          * **Si esta partida tiene economía** (vuelta 64). Va en la bienvenida
          * porque decide algo que hay que saber **antes** del primer paso: con
@@ -1053,6 +1064,10 @@ export class Partida {
     jugador.movimiento.reset()
     jugador.pose.position.x = salida.x
     jugador.pose.position.z = salida.z
+    // **Y mirando a donde mira su salida.** Dura un paso —la entrada siguiente
+    // trae el rumbo del jugador y manda ella—, pero ese paso es el que decide
+    // hacia dónde sale andando quien tenía W pulsada al reaparecer.
+    jugador.pose.rotation.y = salida.yaw ?? 0
     jugador.vida = 100
     jugador.vivoEn = 0
     jugador.hambre = 0
