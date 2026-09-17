@@ -22,35 +22,50 @@
   body.jugando #mira, body.jugando #vital, body.jugando #armaHud { display: block; }
   body.jugando #dano { display: block; }
 
-  #mira { position: fixed; left: 50%; top: 50%; width: 22px; height: 22px;
-    transform: translate(-50%, -50%); pointer-events: none; }
-  /* Cuatro trazos y un punto, en el gris de la mira del juego
-     (`COLORS.crosshair`, que lo publica el JS como variable CSS: punto único
-     de cambio, igual que en `src/ui/Crosshair.jsx`). */
+  /* **La mira es la del entrenamiento** (vuelta 67), no una escrita aquí: los
+     tres números salen de `CROSSHAIR` y los publica el JS como variables CSS,
+     igual que el color. Hasta aquí el duelo llevaba trazos de un píxel y un
+     punto en el centro, y el juego dos píxeles y sin punto — dos miras
+     distintas en el mismo juego, que es la definición de fallo de producto de
+     la vuelta 63. Los valores de aquí son el respaldo por si el JS no llega. */
+  #mira { position: fixed; left: 50%; top: 50%; width: 0; height: 0;
+    pointer-events: none; }
   #mira i { position: absolute; background: var(--crosshair-color, #EAEAEA); }
-  #mira i:nth-child(1) { left: 50%; top: 0; width: 1px; height: 7px; margin-left: -.5px; }
-  #mira i:nth-child(2) { left: 50%; bottom: 0; width: 1px; height: 7px; margin-left: -.5px; }
-  #mira i:nth-child(3) { top: 50%; left: 0; height: 1px; width: 7px; margin-top: -.5px; }
-  #mira i:nth-child(4) { top: 50%; right: 0; height: 1px; width: 7px; margin-top: -.5px; }
-  #mira i:nth-child(5) { left: 50%; top: 50%; width: 2px; height: 2px; margin: -1px 0 0 -1px; }
-  /* La marca de impacto: cuatro trazos **en diagonal**, blancos. La forma es lo
-     que la distingue de la mira —no el color— porque en la paleta todos los
-     tonos ya significan algo y el rojo es «te están disparando a ti». */
-  #mira.dado i:nth-child(1) { transform: rotate(45deg) translateY(-3px); }
-  #mira.dado i:nth-child(2) { transform: rotate(45deg) translateY(3px); }
-  #mira.dado i:nth-child(3) { transform: rotate(45deg) translateX(-3px); }
-  #mira.dado i:nth-child(4) { transform: rotate(45deg) translateX(3px); }
-  #mira.dado i { background: #FFF; }
-  /* **La baja**: los mismos trazos, más largos y abiertos, y el punto del centro
-     se convierte en anillo. Se distingue por **forma**, no por color: en esta
-     paleta todos los tonos significan ya algo, y el rojo es «te están
-     disparando a ti». Misma regla que la visera del casco. */
-  #mira.mato i:nth-child(1) { transform: rotate(45deg) translateY(-7px) scaleY(1.7); }
-  #mira.mato i:nth-child(2) { transform: rotate(45deg) translateY(7px) scaleY(1.7); }
-  #mira.mato i:nth-child(3) { transform: rotate(45deg) translateX(-7px) scaleX(1.7); }
-  #mira.mato i:nth-child(4) { transform: rotate(45deg) translateX(7px) scaleX(1.7); }
-  #mira.mato i:nth-child(5) { width: 9px; height: 9px; margin: -4.5px 0 0 -4.5px;
-    background: transparent; border: 1.5px solid #FFF; border-radius: 50%; }
+  #mira i:nth-child(1), #mira i:nth-child(2) {
+    width: var(--crosshair-thickness, 2px); height: var(--crosshair-length, 7px);
+    left: calc(var(--crosshair-thickness, 2px) / -2); }
+  #mira i:nth-child(1) { top: calc((var(--crosshair-gap, 3px) + var(--crosshair-length, 7px)) * -1); }
+  #mira i:nth-child(2) { top: var(--crosshair-gap, 3px); }
+  #mira i:nth-child(3), #mira i:nth-child(4) {
+    height: var(--crosshair-thickness, 2px); width: var(--crosshair-length, 7px);
+    top: calc(var(--crosshair-thickness, 2px) / -2); }
+  #mira i:nth-child(3) { left: calc((var(--crosshair-gap, 3px) + var(--crosshair-length, 7px)) * -1); }
+  #mira i:nth-child(4) { left: var(--crosshair-gap, 3px); }
+
+  /* **Y la marca de impacto es otro elemento, no la mira moviéndose** (vuelta
+     67). Antes eran los mismos cuatro trazos girando 45°, así que acertar
+     **animaba la mira**: la referencia contra la que se apunta se movía justo
+     en el momento en que más falta hace quieta. Ahora se dibuja encima, con la
+     misma forma de siempre —una X blanca, y la baja más larga y con anillo—,
+     porque lo que distingue las dos cosas es la forma y no el color: en esta
+     paleta todos los tonos significan ya algo y el rojo es «te disparan a ti». */
+  #marca { position: fixed; left: 50%; top: 50%; width: 0; height: 0;
+    pointer-events: none; display: none; }
+  body.jugando #marca.puesto { display: block; }
+  #marca i { position: absolute; background: #FFF; width: 2px; height: 7px;
+    left: -1px; }
+  #marca i:nth-child(1) { transform: rotate(45deg) translateY(-6px); }
+  #marca i:nth-child(2) { transform: rotate(45deg) translateY(6px); }
+  #marca i:nth-child(3) { transform: rotate(-45deg) translateY(-6px); }
+  #marca i:nth-child(4) { transform: rotate(-45deg) translateY(6px); }
+  #marca.baja i { height: 11px; }
+  #marca.baja i:nth-child(1) { transform: rotate(45deg) translateY(-10px); }
+  #marca.baja i:nth-child(2) { transform: rotate(45deg) translateY(10px); }
+  #marca.baja i:nth-child(3) { transform: rotate(-45deg) translateY(-10px); }
+  #marca.baja i:nth-child(4) { transform: rotate(-45deg) translateY(10px); }
+  #marca u { display: none; }
+  #marca.baja u { display: block; position: absolute; width: 9px; height: 9px;
+    margin: -4.5px 0 0 -4.5px; border: 1.5px solid #FFF; border-radius: 50%; }
 
   /* **El aviso de que la partida ya no está.** Va arriba y centrado, por encima
      de todo: es lo único que explica por qué el juego no responde, y hasta la
@@ -120,15 +135,27 @@
   #vitalB { width: 132px; height: 3px; margin-top: 5px; background: #242424; }
   #vitalB i { display: block; height: 100%; background: #2FCB82; transition: width .12s linear; }
 
-  /* **El bloque de arma**, bajo la mira y centrado. Cifras de ancho fijo: la
-     munición cambia disparo a disparo y con ancho variable el bloque baila. */
-  #armaHud { position: fixed; left: 50%; bottom: 74px; transform: translateX(-50%);
-    text-align: center; pointer-events: none; }
-  #municion { font-size: 22px; line-height: 1; color: #FFF; letter-spacing: .08em;
+  /* **El bloque de arma: abajo a la derecha, grande y con su silueta** (vuelta
+     67). Es el mismo sitio, el mismo tamaño y la misma forma que el del
+     entrenamiento, y la silueta sale del mismo trazado (`weaponSilhouette.js`)
+     — hasta aquí el duelo no tenía ninguna, que es justo la clase de diferencia
+     entre modos que la vuelta 63 llama fallo de producto.
+     Cifras de ancho fijo: la munición cambia disparo a disparo y con ancho
+     variable el bloque baila. */
+  #armaHud { position: fixed; right: 28px; bottom: 26px; pointer-events: none;
+    display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
+    text-align: right; }
+  #armaFila { display: flex; align-items: baseline; gap: 16px; }
+  .weapon__svg { width: 208px; height: 90px; flex: none; fill: none;
+    stroke: #E8E8E8; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round;
+    filter: drop-shadow(0 1px 2px rgba(10,10,10,.9)); }
+  #municion { font-size: 34px; line-height: 1; color: #FFF; letter-spacing: .04em;
     font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgba(10,10,10,.9); }
   #municion.mal { color: #E4462B; }
-  #arma { margin-top: 4px; font-size: 11px; letter-spacing: .18em; color: #8A8A8A;
+  #arma { display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
+    font-size: 12px; line-height: 1.35; letter-spacing: .18em; color: #C8C8C8;
     text-transform: uppercase; text-shadow: 0 1px 2px rgba(10,10,10,.9); }
+  #armaModo { font-size: 9px; line-height: 1.35; letter-spacing: .22em; color: #8A8A8A; }
 
   /* **La cuña de daño.** El hueco del centro es una máscara radial y no una
      opacidad afinada: así la regla de no tapar la mira queda garantizada por
@@ -315,12 +342,16 @@
 <div id="pausa" hidden></div>
 <div id="votacion"></div>
 
-<div id="mira"><i></i><i></i><i></i><i></i><i></i></div>
+<div id="mira"><i></i><i></i><i></i><i></i></div>
+<div id="marca"><i></i><i></i><i></i><i></i><u></u></div>
 <div id="vital"><div id="vitalN">100</div><div id="vitalB"><i style="width:100%"></i></div>
   <div id="libres">pausas 3 · rival 3</div></div>
 <!-- El bloque de arma va **bajo la mira y centrado**, como en el HUD del juego:
      munición a un lado, nombre del arma como rótulo secundario debajo. -->
-<div id="armaHud"><div id="municion">—</div><div id="arma">—</div></div>
+<div id="armaHud">
+  <div id="armaSil"></div>
+  <div id="armaFila"><div id="arma">—<span id="armaModo"></span></div><div id="municion">—</div></div>
+</div>
 <!-- Y la cuña de daño, que dice **de dónde** te han disparado. El ángulo lo
      calcula el motor; esto sólo lo pinta. El centro va libre por construcción:
      es una máscara radial, no una opacidad afinada (vuelta 40). -->

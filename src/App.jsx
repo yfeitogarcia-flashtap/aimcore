@@ -8,6 +8,7 @@ import {
 } from 'react'
 import {
   COLORS,
+  CROSSHAIR,
   DEATHMATCH_DURATIONS,
   FEEDBACK,
   MOVEMENT,
@@ -70,6 +71,12 @@ export default function App() {
   useLayoutEffect(() => {
     const root = document.documentElement.style
     root.setProperty('--crosshair-color', COLORS.crosshair)
+    // **Y su forma, que desde la vuelta 67 es la misma en los dos modos.** Los
+    // tres números viven en `CROSSHAIR` y los publican las dos páginas: el CSS
+    // sigue teniendo un valor de partida por si esto no llega a correr.
+    root.setProperty('--crosshair-gap', `${CROSSHAIR.gapPx}px`)
+    root.setProperty('--crosshair-length', `${CROSSHAIR.lengthPx}px`)
+    root.setProperty('--crosshair-thickness', `${CROSSHAIR.thicknessPx}px`)
     root.setProperty('--background-color', COLORS.background)
     root.setProperty('--accent-color', COLORS.target)
     root.setProperty('--action-color', COLORS.action)
@@ -92,7 +99,6 @@ export default function App() {
           if (next === PHASE.RUNNING) setSummary(null)
         },
         onFrame: (stats) => hudRef.current?.update(stats),
-        onShot: () => crosshairRef.current?.flash(),
         onDamage: (severity, bearing) => {
           // Dos avisos y no uno: el anillo dice **cuánto** te han dado y la cuña
           // del borde **de dónde**. El primero está en la mira porque hay que

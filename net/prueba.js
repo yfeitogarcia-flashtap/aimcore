@@ -21,7 +21,7 @@
  * avisos de conexión, las pausas y los números de F3.
  */
 import { masterGain } from '../src/audio/sfx.js'
-import { COLORS, ECONOMY, NET, ROUNDS, TARGET, TEAMS, WEAPONS } from '../src/config.js'
+import { COLORS, CROSSHAIR, ECONOMY, NET, ROUNDS, TARGET, TEAMS, WEAPONS } from '../src/config.js'
 import { Engine } from '../src/game/engine.js'
 import { Avatar } from '../src/game/avatar.js'
 import { hasLineOfSight } from '../src/game/sight.js'
@@ -29,6 +29,7 @@ import { cuerpoDeJugador } from './pose.js'
 import { resolverDisparo } from './disparo.js'
 import { ClienteRed } from './cliente.js'
 import { conRedSimulada, transporteWebSocket } from './transporte.js'
+import { weaponSilhouetteSvg } from '../src/ui/weaponSilhouette.js'
 import { normalizarCodigo } from './codigo.js'
 import { compraAbierta } from './protocolo.js'
 import { codigoDeLaDireccion, direccionDeLaBarra, enlaceDeSala, urlDeSala } from './sala-cliente.js'
@@ -39,13 +40,23 @@ const panel = document.getElementById('panel')
 const avisoRed = document.getElementById('aviso-red')
 const panelPausa = document.getElementById('pausa')
 const panelVoto = document.getElementById('votacion')
-const mira = document.getElementById('mira')
+
+const marca = document.getElementById('marca')
 const $ = (id) => document.getElementById(id)
 
 // El color de la mira sale de `config.js` y de ningún otro sitio, igual que en
 // `src/ui/Crosshair.jsx`: se publica como variable CSS y la hoja de estilos la
 // lee. Dos literales del mismo gris es cómo acaban siendo dos grises distintos.
 document.documentElement.style.setProperty('--crosshair-color', COLORS.crosshair)
+// **La mira es la misma que la del entrenamiento** (vuelta 67): los tres números
+// salen de `CROSSHAIR` y los publican las dos páginas. Antes el duelo llevaba la
+// suya escrita a mano —trazos de un píxel y un punto en el centro—, que es una
+// diferencia entre modos que no decidió nadie.
+for (const [nombre, valor] of [
+  ['--crosshair-gap', `${CROSSHAIR.gapPx}px`],
+  ['--crosshair-length', `${CROSSHAIR.lengthPx}px`],
+  ['--crosshair-thickness', `${CROSSHAIR.thicknessPx}px`],
+]) document.documentElement.style.setProperty(nombre, valor)
 
 /**
  * **El escenario de la partida lo manda el servidor**, y hoy es uno solo. Se le
@@ -243,10 +254,12 @@ function marcarDisparo(v) {
   // pinta. Baja y acierto **se distinguen por forma**, no por intensidad: la
   // baja cierra un intercambio y hay que poder saberlo sin mirar.
   if (!v.impacto) return
-  mira.classList.add('dado')
-  mira.classList.toggle('mato', !!v.baja)
+  // **Y se pinta encima de la mira, no con la mira** (vuelta 67): la referencia
+  // contra la que se apunta no se mueve ni cuando aciertas.
+  marca.classList.add('puesto')
+  marca.classList.toggle('baja', !!v.baja)
   clearTimeout(apagarMarca)
-  apagarMarca = setTimeout(() => mira.classList.remove('dado', 'mato'),
+  apagarMarca = setTimeout(() => marca.classList.remove('puesto', 'baja'),
                            v.baja ? NET.killMarkerMs : NET.hitMarkerMs)
 }
 /**
@@ -885,7 +898,15 @@ function pintarArmaEnVivo(stats) {
  */
 function pintarArma({ weaponKey, suppressed }) {
   const arma = WEAPONS[weaponKey]
-  $('arma').textContent = arma ? arma.label + (suppressed ? ' · SUPR' : '') : ''
+  // **Y su silueta** (vuelta 67), la misma del entrenamiento y por el mismo
+  // trazado: `weaponSilhouette.js` decide cuál toca —con supresor es otra foto,
+  // no la misma con un tubo pegado— y aquí sólo se coloca. Se escribe al cambiar
+  // de arma, que es una pulsación y no un valor por frame.
+  $('armaSil').innerHTML = weaponSilhouetteSvg(weaponKey, suppressed)
+  $('arma').firstChild.textContent = arma ? arma.label : '—'
+  $('armaModo').textContent = arma
+    ? `${arma.mode === 'auto' ? 'AUTO' : 'SEMI'}${suppressed ? ' · SIL' : ''}`
+    : ''
 }
 
 /**

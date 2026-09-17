@@ -620,6 +620,23 @@ export class Engine {
       this.weaponKey = this.slots.primary
       this._cancelReload()
       this._refillMagazine()
+    } else if (this.slots.primary && this.slots.primary !== antes) {
+      /**
+       * **Lo que acabas de comprar se te pone en la mano** (vuelta 67). Hasta
+       * aquí la compra entraba en el inventario y el jugador seguía con la
+       * pistola hasta que se acordaba de pulsar el 1 — y en una fase de compra
+       * de quince segundos eso es salir a la ronda con el arma de antes.
+       *
+       * **La condición es que la principal haya cambiado**, no que llegue un
+       * mensaje de economía: llegan también al cobrar la ronda y al conmutar el
+       * supresor, y arrancarle el arma de la mano a alguien que acaba de
+       * cambiar a la pistola a propósito sería el mismo fallo por el otro lado.
+       * Comprar es la única forma de que esa clave cambie.
+       */
+      this.slot = 'primary'
+      this.weaponKey = this.slots.primary
+      this._cancelReload()
+      this._refillMagazine()
     }
     this._publishWeapon(getSettings())
   }

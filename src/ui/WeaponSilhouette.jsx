@@ -1,5 +1,5 @@
 import { WEAPONS } from '../config.js'
-import { WEAPON_PATHS } from './weaponPaths.js'
+import { weaponShape } from './weaponSilhouette.js'
 
 /**
  * Silueta del arma para el HUD: perfil lateral, sólo contorno, sin relleno.
@@ -13,29 +13,17 @@ import { WEAPON_PATHS } from './weaponPaths.js'
  * `scripts/trace-weapons.mjs`). Aquí sólo se elige cuál toca y se le da el
  * color y el grosor del resto del HUD; las imágenes no se importan ni llegan
  * al navegador.
- */
-
-/**
- * **Con silenciador se dibuja otra arma, no la misma con un tubo pegado.**
- * Cada arma tiene sus dos referencias fotografiadas aparte —`<arma>` y
- * `ghost-<arma>`— y el trazado sale de la que toque. La regla es de una línea y
- * vale para las tres desde la vuelta 41; antes sólo la pistola tenía las dos, y
- * había que declarar a mano cuál era cuál.
  *
- * Si algún día un arma no trae su variante, se cae a la normal en vez de no
- * dibujar nada: perder la silueta entera por no tener la foto silenciada sería
- * quitar información en vez de matizarla.
+ * **Elegir cuál toca vive fuera** (vuelta 67, `weaponSilhouette.js`): la página
+ * del duelo no tiene React y necesitaba la misma silueta, así que lo compartido
+ * salió a un módulo y esto se quedó con lo suyo, que es el JSX.
  */
-function resolvePathKey(weaponKey, suppressed) {
-  if (!suppressed) return weaponKey
-  return WEAPON_PATHS[`ghost-${weaponKey}`] ? `ghost-${weaponKey}` : weaponKey
-}
 
 /**
  * @param {{ weaponKey: string, suppressed?: boolean }} props
  */
 export default function WeaponSilhouette({ weaponKey, suppressed = false }) {
-  const shape = WEAPON_PATHS[resolvePathKey(weaponKey, suppressed)]
+  const shape = weaponShape(weaponKey, suppressed)
   if (!shape) return null
 
   return (

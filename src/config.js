@@ -2745,6 +2745,26 @@ export const SCORING = {
   starThresholds: [0.9, 0.75, 0.55, 0.35],
 }
 
+/**
+ * **La mira, y es una sola para los dos modos** (vuelta 67). Hasta aquí el
+ * entrenamiento tenía la suya en CSS (`src/styles.css`) y el duelo otra escrita
+ * a mano en su página: trazos de un píxel contra dos, con punto central en una
+ * y sin él en la otra. Dos miras distintas en el mismo juego es una diferencia
+ * que nadie decidió, que es la definición de fallo de producto de la vuelta 63.
+ *
+ * Los tres números salen de aquí y los publican **las dos páginas** como
+ * variables CSS, igual que el color: el día que haya una pantalla para
+ * diseñarse la mira, lo que toca es esto y nada más.
+ */
+export const CROSSHAIR = {
+  /** Hueco central, en píxeles: lo que se deja ver de lo que hay debajo. */
+  gapPx: 3,
+  /** Largo de cada trazo. */
+  lengthPx: 7,
+  /** Grosor. El del duelo era 1 y se leía peor sobre el gris del mapa. */
+  thicknessPx: 2,
+}
+
 export const FEEDBACK = {
   /** Duración del pop de la diana acertada. */
   targetPopMs: 130,
@@ -2759,9 +2779,12 @@ export const FEEDBACK = {
    * mata. Es el único aviso de "le has dado pero sigue en pie".
    */
   zoneFlashMs: 110,
-  /** Flash del crosshair al disparar. */
-  crosshairFlashMs: 90,
-  crosshairFlashOpacity: 0.9,
+  /**
+   * **El destello de la mira al disparar se retiró en la vuelta 67**, y con él
+   * sus dos números: la mira es la referencia contra la que se apunta y no se
+   * anima nunca. Lo que sí sigue vivo es el anillo de daño de aquí abajo, que
+   * no es la mira sino un aviso dibujado alrededor de ella.
+   */
   /**
    * **Anillo de daño** alrededor de la mira. Es el único aviso en pantalla de
    * que te han dado, y va suave a propósito: un tinte rojo de pantalla completa

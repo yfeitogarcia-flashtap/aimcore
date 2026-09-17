@@ -7723,6 +7723,99 @@ Lo que se quitó fue ayuda repetida —las teclas están en las opciones del jue
 una nota para probar en dos pestañas que dejó de hacer falta el día que hubo un
 botón en el menú y una dirección de red que pasar. 505 → 445 px.
 
+## Ronda 67b — El HUD del arma, la mira y lo que compras
+
+### Dos miras en el mismo juego
+
+El entrenamiento tenía la suya en `src/styles.css` —trazos de dos píxeles, sin
+punto central— y el duelo otra escrita a mano en su página —un píxel, con punto—.
+Ninguna de las dos estaba mal; lo que estaba mal es que fueran dos, que es la
+definición de fallo de producto de la vuelta 63. Los tres números viven ahora en
+`CROSSHAIR` y los publican las dos páginas como variables CSS, igual que el
+color, que es lo que tocará una pantalla para diseñarse la propia.
+
+Y no se anima. Dos cosas se quitaron y una se quedó, y la diferencia importa:
+
+- **El destello del disparo, fuera.** La mira es la referencia contra la que se
+  apunta; con fuego automático parpadeaba diez veces por segundo.
+- **La marca de impacto pasa a ser otro elemento.** En el duelo eran los mismos
+  cuatro trazos girando 45°: acertar **animaba la mira** justo en el momento en
+  que más falta hace quieta. La forma es la de siempre —X blanca, y la baja más
+  larga y con anillo—, porque lo que distingue las dos cosas es la forma y no el
+  color (en esta paleta todos los tonos significan ya algo).
+- **El anillo de daño se queda**, porque no es la mira: es el aviso de que te han
+  dado a ti, uno de los tres canales de la vuelta 40, y quitarlo sería quitar
+  información y no animación.
+
+### La silueta que el duelo no podía pedir
+
+El trazado del arma ya era uno solo (`weaponPaths.js`). Lo que no se podía
+compartir era **elegir cuál toca** —con supresor es otra foto, no la misma con un
+tubo pegado—, porque esa decisión vivía dentro del componente de React. Así que
+la página del duelo no tenía forma de pedir la silueta y llevaba sin ella desde
+que existe.
+
+Sale a `src/ui/weaponSilhouette.js`, que no sabe de React y devuelve el trazado o
+el SVG como texto. Es la convención de la 63 por la puerta de al lado: lo que ya
+funciona en un modo no se reescribe para el otro, se saca a donde lo puedan
+llamar los dos.
+
+### Y el bloque entero se muda a la esquina
+
+Estaba centrado bajo la mira, que es justo debajo de lo único que hay que mirar,
+con la silueta a 136 px de ancho: a ese tamaño las tres armas se distinguen por
+el largo y poco más, y la silueta existe para identificar el arma de un vistazo.
+
+La esquina inferior derecha era además **la que estaba vacía** —arriba los
+contadores, arriba a la derecha los FPS, abajo a la izquierda la vida— y es donde
+la busca cualquiera que haya jugado a otra cosa. Debajo va una ficha corta:
+nombre, `AUTO`/`SEMI` y `SIL`. Es lo único que se añadió: con tres armas y un
+supresor que se conmuta con el clic derecho, «cuál llevo y cómo va» era una
+pregunta sin respuesta en pantalla, y la silueta sólo contesta la primera mitad.
+El hueco se llena con el tamaño, no con más cosas.
+
+Los mensajes de ayuda se quedan centrados: iban dentro del bloque de arma y se
+habrían ido con él a la esquina, y una frase se lee en el centro.
+
+Medido (`hud67`), contra el producto y en píxeles: silueta 208×90 en los dos
+modos, bloque anclado en la misma esquina a 2 px de diferencia, y la mira con el
+mismo trazo —2×7— saliendo de `CROSSHAIR` en los dos.
+
+### Lo que compras se te pone en la mano
+
+La compra entraba en el inventario y el jugador seguía con la pistola hasta que
+se acordaba de pulsar el 1. Con una fase de compra de quince segundos, eso es
+salir a la ronda con el arma de antes.
+
+La condición es que **la principal haya cambiado**, no que llegue un mensaje de
+economía: llegan también al cobrar la ronda y al conmutar el supresor, y
+arrancarle el arma de la mano a alguien que acaba de cambiar a la pistola a
+propósito sería el mismo fallo por el otro lado. Comprar es la única forma de que
+esa clave cambie.
+
+### Y las pisadas no estaban rotas: lo estaba su banco
+
+Se dieron por perdidas jugando entre dos PCs, y la medida dice que no. Lo que
+estaba roto era `pisadas63`, por dos premisas que el mapa nuevo y las rondas se
+habían llevado por delante:
+
+- **Medía en la fase de compra.** Cada uno encerrado en su caja de 4 u: el que
+  «corre» rebota contra su corralito, suma ocho unidades de trayecto y no da una
+  zancada. Cero pisadas con todo funcionando — una premisa rota disfrazada de
+  silencio, que es justo lo que ese banco existe para no hacer.
+- **Y corría por coordenadas del Plano A.** En El Espejo esa línea cae dentro de
+  la pantalla de aparición, y las tandas siguientes arrancaban donde había
+  acabado la anterior: la primera ya deja al corredor contra la espina y las
+  otras tres miden «no anduvo» y lo llaman silencio. Ahora cada tanda vuelve al
+  principio del mismo carril, que además es lo que hace comparables sus filas.
+
+Arreglado el banco: **6 pisadas corriendo**, 0 andando con SHIFT, 0 agachado,
+−15.1 dB por debajo de un disparo y el volumen escalando con la distancia. La
+explicación de lo que se oyó jugando es otra y hay que decirla como hipótesis: en
+El Espejo las salidas están a 32 u y el radio son 16, así que sólo se oye al
+rival en la mitad final de la aproximación — y los quince segundos de compra son
+silencio por construcción.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

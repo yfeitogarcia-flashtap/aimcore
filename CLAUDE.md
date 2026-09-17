@@ -68,6 +68,7 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Puntuación | `src/game/scoring.js` | Variables normalizadas, media ponderada y estrellas. |
 | Transición | `src/game/transition.js` | **Módulo sustituible entero.** Contrato único: `run(build)` tapa la escena, llama a `build()` y destapa. Nada más del motor sabe qué forma tiene. |
 | React | `src/App.jsx`, `src/ui/` | Sólo conoce la *fase* (inicio / juego / pausa / resumen) y el resumen final. |
+| Silueta del arma | `src/ui/weaponSilhouette.js` | Qué trazado toca —con supresor es otra foto— y el SVG como texto. **Sin React, para que lo usen los dos modos.** |
 | Armería | `src/ui/Armoury.jsx` | Panel de equipo (tecla B): silueta, ficha y «Equipar» por arma. Escribe en el store de ajustes, como opciones. |
 | HUD | `src/ui/Hud.jsx` | Se actualiza **imperativamente por refs** desde el bucle. Cero `setState` por frame. |
 | Cuerpo | `src/game/body.js` | **La única forma de figura humana**: la usan las dianas, el avatar **y el hitbox**. Lo alto, lo ancho a cada altura y dónde cortan sus tres zonas. |
@@ -1195,6 +1196,50 @@ altura de ojos que el movimiento ya ha resuelto: sin esqueleto, sin animación y
 sin tocar el ancho. Es el mismo dato del que salen las zonas de disparo al
 agacharse, así que no hay dos ideas de «estar agachado».
 
+**El bloque de arma va abajo a la derecha, y es el mismo en los dos modos**
+(vuelta 67). Estaba centrado bajo la mira —justo debajo de lo único que hay que
+mirar— con la silueta a 136 px, en la que las tres armas se distinguían por el
+largo y poco más; y **en el duelo no había silueta ninguna**. Tres cosas:
+
+- **La esquina inferior derecha era la que estaba vacía**: arriba los
+  contadores, arriba a la derecha los FPS, abajo a la izquierda la vida. Y es
+  donde la busca cualquiera que haya jugado a otra cosa.
+- **Elegir qué trazado toca salió de React** a `src/ui/weaponSilhouette.js`. El
+  trazado ya era uno solo (`weaponPaths.js`); lo que no se podía compartir era la
+  decisión, así que la página del duelo no tenía forma de pedir la silueta y se
+  quedó sin ella desde que existe. Es la convención de la 63 por la puerta de al
+  lado: lo que ya funciona en un modo no se reescribe, se saca a donde lo puedan
+  llamar los dos.
+- **Y debajo va una ficha corta**: nombre, cómo dispara (`AUTO`/`SEMI`) y si
+  lleva supresor. Con tres armas y un supresor que se conmuta con el clic
+  derecho, «cuál llevo y cómo va» era una pregunta sin respuesta en pantalla — la
+  silueta contesta la primera mitad y no la segunda. Es lo único que se añadió:
+  el hueco se llena con el tamaño, no con más cosas.
+
+Medido (`hud67`): silueta 208×90 en los dos modos, anclada en la misma esquina
+—a 2 px— y la mira con el mismo trazo.
+
+**La mira no se anima nunca, y es la misma en los dos modos** (vuelta 67). Eran
+dos: el entrenamiento con trazos de dos píxeles y sin punto central, el duelo con
+uno y con punto — dos miras distintas en el mismo juego, que es la definición de
+fallo de producto de la vuelta 63. Los tres números viven en `CROSSHAIR` y los
+publican **las dos páginas** como variables CSS, igual que el color: el día que
+haya una pantalla para diseñarse la propia, lo que se toca es eso y nada más.
+
+Y no se anima:
+
+- **Fuera el destello del disparo.** La mira es la referencia contra la que se
+  apunta, y una referencia que brilla es peor referencia; con fuego automático
+  parpadeaba diez veces por segundo.
+- **Y la marca de impacto es otro elemento, no la mira moviéndose.** En el duelo
+  eran los mismos cuatro trazos girando 45°, así que acertar **animaba la mira**
+  justo en el momento en que más falta hace quieta. La forma es la de siempre —X
+  blanca, y la baja más larga y con anillo—, porque lo que distingue las dos
+  cosas es la forma y no el color.
+- **Lo que sí se queda es el anillo de daño**, que no es la mira: es el aviso de
+  que te han dado a ti, dibujado alrededor de ella, y es uno de los tres canales
+  de la vuelta 40. Quitarlo sería quitar información, no animación.
+
 **Sin arma visible, en ninguna parte.** Ni en tercera persona ni en primera. Lo
 que se dibuja de un arma es su silueta —en el HUD y en la ficha flotante—, no un
 modelo en la mano.
@@ -2014,6 +2059,15 @@ vistazo no se distinguía *hoy no te llega* de *esto no existe*. Ahora:
   lo que devuelve la opacidad que el `disabled` quita, y mover el bloque apaga el
   precinto — misma trampa que `#abatido` y su `.puesto`.
 
+**Lo que compras se te pone en la mano** (vuelta 67). La compra entraba en el
+inventario y el jugador seguía con la pistola hasta que se acordaba de pulsar el
+1 — y en una fase de compra de quince segundos eso es salir a la ronda con el
+arma de antes. **La condición es que la principal haya cambiado**, no que llegue
+un `MSG.ECONOMIA`: llegan también al cobrar la ronda y al conmutar el supresor, y
+arrancarle el arma de la mano a alguien que acaba de cambiar a la pistola a
+propósito sería el mismo fallo por el otro lado. Comprar es la única forma de que
+esa clave cambie.
+
 **Un callback tiene un dueño, y encadenarlo no es opcional.** La página del duelo
 escucha `onEconomia` para repintar la tienda **y el motor lo escucha para ponerte
 en la mano lo que has comprado**. Asignarlo sin encadenar se llevó por delante al
@@ -2781,8 +2835,11 @@ planos WebGL invisibles para el raycast, y botones Pausa / Reiniciar / Cambiar
 arma / Silenciador / Opciones—, pero no hay tablero en la sala: disparar hacia
 su sitio es un disparo normal. Su hueco reservado se sigue auditando.
 
-**HUD:** **abajo a la izquierda**, y sólo donde hay quien dispare, el bloque de
-vida: cruz en CSS, barra fina, escudo de tres segmentos recortado en silueta,
+**HUD:** **abajo a la derecha** el bloque de arma —silueta grande (208 px), el
+nombre con su ficha corta (`AUTO`/`SEMI` y `SIL` si lleva supresor) y la munición
+en grande—, **el mismo en el duelo desde la vuelta 67**, que hasta entonces no
+tenía silueta. **Abajo a la izquierda**, y sólo donde hay quien dispare, el
+bloque de vida: cruz en CSS, barra fina, escudo de tres segmentos recortado en silueta,
 contador de cargas y **casco trazado con potrace** (silueta y visera con
 `evenodd`, que es lo que lo hace reconocible), con parpadeo rojo por debajo de 45
 de vida **y sin escudo**. Al recibir un disparo se enciende un anillo alrededor de la
@@ -2794,10 +2851,8 @@ texto, en el mismo gris apagado que el contador—; aciertos, fallos, precisión
 tiempo arriba; contador de FPS en la esquina de enfrente y, **justo debajo, un
 engranaje con la palabra ESC** —contorno gris sin relleno, calculado como la estrella y no pegado como un
 `d` a mano— que es la única pista en pantalla de dónde están las opciones ahora
-que no hay tablero; y **bajo la mira**, centrado, el bloque de arma en
-**una sola fila** —silueta a un lado, munición actual/máximo al otro, con
-parpadeo en reserva baja—, con el nombre del arma como rótulo secundario debajo,
-más el indicador de recarga y los mensajes de ayuda.
+que no hay tablero; y **bajo la mira**, centrados, los mensajes de ayuda. El
+indicador de recarga va con el arma, en su esquina.
 
 **Pisadas del rival** (vuelta 60; sus reglas, de la 63): cuando alguien **corre**
 a menos de 16 u se le oye, con dirección y con el volumen subiendo de verdad

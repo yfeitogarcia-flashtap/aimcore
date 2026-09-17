@@ -1210,6 +1210,16 @@ práctica libre, gridshot— el respawn es el de siempre.
 
 ## HUD
 
+**El bloque de arma va abajo a la derecha**, en los dos modos: la silueta grande,
+el nombre con su ficha corta —`AUTO` o `SEMI`, y `SIL` si llevas supresor— y la
+munición en grande. Antes estaba centrado bajo la mira, que es justo debajo de lo
+único que hay que mirar, y en el duelo no salía la silueta.
+
+**La mira no se anima nunca**, ni al disparar ni al matar: es la referencia contra
+la que apuntas. Lo que aparece al acertar es una marca dibujada **encima** —una X
+blanca, más larga y con anillo si has matado—, y el anillo rojo de cuando te dan a
+ti sigue donde estaba. Y es la misma mira en los dos modos.
+
 Arriba a la izquierda, la **marca de Vektor**: un icono discreto, sin texto, en
 el mismo gris apagado que el contador de FPS de la esquina de enfrente. Es una
 firma, no información — ver *Logotipo*.

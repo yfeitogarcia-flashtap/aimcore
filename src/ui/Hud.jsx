@@ -569,11 +569,34 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
         </div>
       </div>
 
+      {/**
+        * **El bloque de arma, abajo a la derecha y grande** (vuelta 67).
+        *
+        * Estaba centrado bajo la mira, que es donde más estorba —justo debajo de
+        * lo único que hay que mirar— y a un tamaño en el que la silueta no se
+        * leía. La esquina inferior derecha es donde la busca cualquiera que haya
+        * jugado a otra cosa, y es la esquina que estaba vacía: el HUD tenía
+        * arriba los contadores, arriba a la derecha los FPS y abajo a la
+        * izquierda la vida, y ahí no había nada.
+        *
+        * La silueta manda —es lo que identifica el arma de un vistazo— y debajo
+        * va una fila con lo que hay que saber sin abrir nada: **qué arma, cómo
+        * dispara y si lleva supresor**, y la munición. Esa ficha corta es lo
+        * único que se añade: con tres armas y un supresor que se conmuta con el
+        * clic derecho, «cuál llevo y cómo va» era una pregunta sin respuesta en
+        * pantalla.
+        */}
       <div className="hud__weapon">
-        {/* Silueta y munición en una sola fila: la silueta ya identifica el
-            arma, así que el nombre sale de la fila y baja a rótulo secundario. */}
+        <WeaponSilhouette weaponKey={weaponKey} suppressed={suppressed} />
+
         <div className="hud__weapon-row">
-          <WeaponSilhouette weaponKey={weaponKey} suppressed={suppressed} />
+          <span className="hud__weapon-name">
+            {WEAPONS[weaponKey]?.label}
+            <span className="hud__weapon-tag">
+              {WEAPONS[weaponKey]?.mode === 'auto' ? 'AUTO' : 'SEMI'}
+              {suppressed ? ' · SIL' : ''}
+            </span>
+          </span>
 
           <div className="hud__ammo" ref={ammoBlockRef}>
             <span className="hud__ammo-current" ref={ammoRef}>
@@ -586,17 +609,17 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
           </div>
         </div>
 
-        <span className="hud__weapon-name">{WEAPONS[weaponKey]?.label}</span>
-
         <div className="hud__reload" ref={reloadRef} hidden>
           <span className="hud__reload-label">recargando</span>
           <span className="hud__reload-track">
             <span className="hud__reload-bar" ref={reloadBarRef} />
           </span>
         </div>
-
-        <p className="hud__help" ref={helpRef} hidden />
       </div>
+
+      {/* **La ayuda se queda en el centro**, que es donde se lee una frase. Iba
+          dentro del bloque de arma y se habría ido con él a la esquina. */}
+      <p className="hud__help" ref={helpRef} hidden />
     </>
   )
 })

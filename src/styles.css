@@ -501,37 +501,62 @@ body {
  * Va fuera de `.hud` —que se centra con un transform— y se centra por su cuenta,
  * por el mismo motivo que el bloque de FPS y el de estrellas.
  */
+/**
+ * **Abajo a la derecha, y grande** (vuelta 67). Estaba centrado bajo la mira, que
+ * es justo debajo de lo único que hay que mirar, y a un tamaño en el que la
+ * silueta no se leía. Ésta era además la esquina vacía del HUD: arriba los
+ * contadores, arriba a la derecha los FPS, abajo a la izquierda la vida.
+ */
 .hud__weapon {
   z-index: 2;
   position: absolute;
-  left: 50%;
-  bottom: 24px;
-  transform: translateX(-50%);
+  right: 28px;
+  bottom: 26px;
   display: flex;
   flex-direction: column;
-  align-items: center;
+  align-items: flex-end;
   gap: 6px;
   pointer-events: none;
 }
 
 .hud__weapon-row {
   display: flex;
-  align-items: center;
-  gap: 20px;
+  align-items: baseline;
+  gap: 16px;
 }
 
 .hud__weapon-name {
-  font-size: 9px;
-  letter-spacing: 0.2em;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  font-size: 12px;
+  line-height: 1.35;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+/**
+ * **La ficha corta del arma**: cómo dispara y si lleva supresor. Con tres armas
+ * y un supresor que se conmuta con el clic derecho, «cuál llevo y cómo va» era
+ * una pregunta que no tenía respuesta en pantalla — y la silueta contesta la
+ * primera mitad, no la segunda.
+ */
+.hud__weapon-tag {
+  font-size: 9px;
+  line-height: 1.35;
+  letter-spacing: 0.22em;
   color: var(--text-muted);
 }
 
 /* Sólo contorno: mismo gris y mismo grosor que el resto del HUD. */
 .weapon__svg {
-  /* Proporción del encuadre común que genera scripts/trace-weapons.mjs. */
-  width: 136px;
-  height: 59px;
+  /* Proporción del encuadre común que genera scripts/trace-weapons.mjs.
+     **Más grande desde la vuelta 67**: a 136 px de ancho las tres siluetas se
+     distinguían por el largo y poco más, y es lo que identifica el arma. */
+  width: 208px;
+  height: 90px;
   flex: none;
   fill: none;
   /* Mismo blanco que los contadores del HUD: con el gris apagado el trazo se
@@ -610,7 +635,14 @@ body {
   transform-origin: left center;
 }
 
+/* **Centrada y por su cuenta** desde la vuelta 67: el bloque de arma, que era
+   quien la colocaba, se fue a la esquina. */
 .hud__help {
+  z-index: 2;
+  position: absolute;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
   margin: 0;
   max-width: 260px;
   text-align: center;
@@ -664,18 +696,6 @@ body {
 
 .crosshair__bar--right {
   left: var(--crosshair-gap);
-}
-
-/* Destello de disparo: parte del centro y se apaga en ~90 ms. */
-.crosshair__flash {
-  position: absolute;
-  left: -8px;
-  top: -8px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  background: var(--crosshair-color);
-  opacity: 0;
 }
 
 /* ---------- Overlays ---------- */
