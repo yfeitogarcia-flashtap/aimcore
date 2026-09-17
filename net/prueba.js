@@ -578,6 +578,14 @@ $('salir').addEventListener('click', () => {
   guardarPartida(null)
   cliente.abandonar()
 })
+// Y la salida del cartel de fin: suelta la butaca —la partida ya está decidida,
+// no hay nada que reservar— y deja a la vista el menú, que es donde se teclea
+// otro código. Sin esto el cartel es una pantalla sin salida.
+$('finSalir').addEventListener('click', () => {
+  guardarPartida(null)
+  cliente.abandonar()
+  $('fin').classList.remove('puesto')
+})
 // **Y cerrar la pestaña no manda nada, a propósito.** La primera versión mandaba
 // el adiós en `pagehide`, y estaba mal por una razón que sólo se ve al probarlo:
 // el navegador dispara ese evento **igual al recargar**, y recargar es justo

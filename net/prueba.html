@@ -213,6 +213,9 @@
   #panel label { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 4px 0; }
   #panel input[type=range] { width: 150px; accent-color: #2FCB82; }
 
+  #finSalir { margin-top: 14px; background: #2FCB82; color: #08130D; border: 0;
+    border-radius: 3px; padding: 9px 20px; font: inherit; font-weight: 700;
+    letter-spacing: .06em; cursor: pointer; }
   #pausar, #pedirVoto, #salir, #reconectar { background: #1A1A1A; color: #E8E8E8;
     border: 1px solid #3A3A3A; border-radius: 3px; padding: 8px 16px; font: inherit;
     letter-spacing: .06em; cursor: pointer; }
@@ -246,7 +249,10 @@
      frame; el resto sólo cuando cambia de fase — la regla del HUD de siempre. -->
 <div id="ronda"><b id="rondaN">—</b><em id="rondaTiempo">&nbsp;</em><span id="rondaMarcador">0 – 0</span>
   <small id="rondaFase">&nbsp;</small></div>
-<div id="fin"><div><b id="finQuien">—</b><p id="finDetalle" class="apagado">&nbsp;</p></div></div>
+<div id="fin"><div><b id="finQuien">—</b><p id="finDetalle" class="apagado">&nbsp;</p>
+  <!-- **Y una salida.** El cartel tapa la pantalla entera, así que sin un botón
+       el jugador se queda mirándolo sin nada que pulsar: el menú está debajo. -->
+  <p><button id="finSalir">Salir al menú</button></p></div></div>
 
 <div id="aviso"><div>
   <div id="sala" class="control">
