@@ -1988,12 +1988,17 @@ segunda, de la vuelta 62):
   jugadores cara a cara sin depender de que sepan rodear una caja.
 - `VEKTOR_RONDAS=0` deja el duelo **como estaba hasta la 61**: un mundo que no se
   reinicia, con la reaparición por reloj de las entradas y sin fase de compra. Es
-  lo que necesitan los bancos de netcode —`red45`, `tiro46`, `ux60`,
-  `reaparecer50`, las tres de pausas— que **matan al mismo blanco una y otra
-  vez**: con rondas, cada muerte abre quince segundos en los que no se dispara y
-  la tabla sale vacía. Lo que sí se juega a rondas se mide en `rondas62`
-  (conduce `Partida` directamente, sin navegador) y `duelo62` (dos navegadores,
-  desde el producto), y `motor56` y `abatido52` corren **con** rondas.
+  lo que necesitan los bancos que miden el **motor y la red** —`red45`, `tiro46`,
+  `motor56`, `ux60`, `reaparecer50`, `conexion51`, `jugable48`, `recoil61` y las
+  tres de pausas— porque casi todos **matan al mismo blanco una y otra vez**: con
+  rondas, cada muerte abre quince segundos en los que no se dispara y la tabla no
+  sale mal, sale **vacía**.
+
+  Lo que sí se juega a rondas se mide en **`rondas62`** —que conduce `Partida`
+  directamente, sin navegador, porque ahí no hay una línea de red— y en
+  **`duelo62`** y **`abatido52`**, con navegadores y contra el producto. Medir las
+  dos cosas en la misma tanda no se puede, y no es una preferencia: la primera
+  baja cierra la ronda y todo lo que venga detrás cae en la fase de compra.
 
 `/salud` dice los dos, así que un banco puede comprobar contra qué está midiendo
 en vez de suponerlo.
