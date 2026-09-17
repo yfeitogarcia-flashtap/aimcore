@@ -1724,6 +1724,23 @@ que viaja en la foto es **cuánto queda**, no hasta cuándo: los relojes de las 
 pantallas y el del servidor no coinciden, así que el número lo calcula el
 servidor y el cliente lo ancla al suyo al recibirlo.
 
+**Y soltar el ratón es del instante en que llega la pausa, no del repintado**
+(vuelta 62). La regla de abajo estaba escrita como «si la pausa es mía y tengo el
+ratón, suéltalo», y eso corre **cada vez que cambia algo del bloque de pausa** —la
+cuenta de libres, por ejemplo, que llega una foto después—. El efecto: el jugador
+**no podía recuperar el ratón**. Pinchaba, el navegador le daba la captura, y la
+foto siguiente se la quitaba otra vez, con la pausa todavía puesta porque
+levantarla cuesta un viaje. Medido: cinco clics en diez segundos, ninguno se
+queda — y como el clic es justo el gesto con el que se reanuda, la pausa tampoco
+se levantaba. Ahora se suelta **en la transición**, que es lo que la 55 quería
+decir.
+
+Y lo mismo por debajo: **`unadjustedMovement` no está en todas las plataformas**,
+y su rechazo llega en una promesa —o sea un turno después, con el gesto del
+usuario ya gastado—, así que el reintento de dentro del `catch` sale rechazado
+sin decir nada. Se recuerda que no está (`Engine._sinMovimientoCrudo`) y se deja
+de pedir: cuesta un clic la primera vez y ninguno después.
+
 **Y una pausa tuya te suelta el ratón** (vuelta 55). Con las libres el orden era
 el contrario —Escape suelta y luego llega la pausa—, pero una votada llega
 jugando, y quedarse capturado en un mundo parado es no tener con qué reanudarlo.

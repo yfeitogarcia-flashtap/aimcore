@@ -6888,6 +6888,36 @@ la 61 —un vano no es un área— convertida en banco (`menu62.mjs`), a cuatro
 tamaños de ventana y con una quinta a 700×300 que comprueba que, cuando de
 verdad no cabe, se puede desplazar.
 
+### El ratón que no se dejaba recuperar
+
+`pausa55` se quedó en rojo en una sola aserción —«volver a pinchar la levanta»—
+y detrás había **dos fallos del producto**, ninguno de esta vuelta.
+
+El primero: `requestPointerLock({ unadjustedMovement: true })` se **rechaza** en
+las plataformas que no lo admiten —este contenedor, sin ir más lejos— y el
+rechazo llega en una promesa, un turno después. Para entonces el gesto del
+usuario ya se ha gastado, así que el reintento de dentro del `catch` sale
+denegado **sin decir nada**. Se arregla recordando que no está y no volviendo a
+pedirlo: un clic perdido la primera vez y ninguno después.
+
+El segundo, y el de verdad: `pintarPausa` soltaba el ratón con «si la pausa es
+mía y lo tengo, suéltalo», y eso corre **cada vez que cambia algo del bloque de
+pausa**. La cuenta de pausas libres llega una foto *después* de la pausa, así que
+el repintado volvía a soltar el ratón que el jugador acababa de recuperar, con la
+pausa todavía puesta —levantarla cuesta un viaje—. Resultado: **el jugador no
+podía recuperar el ratón**, y como el clic es justo el gesto con el que se
+reanuda, tampoco podía reanudar. Medido con la sonda: cinco clics en diez
+segundos, ninguno se queda.
+
+Lo que lo delató no fue leer el código sino **preguntarle al navegador quién
+soltaba el ratón**: envolver `exitPointerLock` y pedir la pila. La respuesta cabía
+en una línea —`at onPausa ... at _leerPausa`— y hasta ahí todas las hipótesis
+—el enfriamiento de Chrome, el punto donde caía el clic, el cartel de la pausa
+tapando— eran razonables y las tres estaban equivocadas.
+
+La regla, que es la de la vuelta 55 escrita con más cuidado: **una pausa tuya te
+suelta el ratón al llegar**, no mientras dure.
+
 ### Y el sello del build no miraba las páginas
 
 La huella que `/salud` publica desde la 61 listaba `dist/assets`, donde Vite

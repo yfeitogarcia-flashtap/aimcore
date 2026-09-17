@@ -249,6 +249,22 @@ function reloj(ms) {
  * en su propio nodo. Rehacer el `innerHTML` sesenta veces por segundo se
  * llevaría por delante el botón de reanudar en mitad de un clic.
  */
+/**
+ * **Soltar el ratón es cosa del instante en que llega la pausa, no del
+ * repintado** (vuelta 62). La regla de la 55 —una pausa tuya te suelta el
+ * ratón— estaba escrita como «si la pausa es mía y tengo el ratón, suéltalo», y
+ * eso se ejecuta **cada vez que cambia algo del bloque de pausa**: la cuenta de
+ * libres, por ejemplo, que llega una foto después de la pausa.
+ *
+ * El efecto era que el jugador no podía recuperar el ratón: pinchaba, el
+ * navegador le daba la captura, y la foto siguiente se la quitaba otra vez —con
+ * la pausa todavía puesta, porque levantarla cuesta un viaje—. Cinco clics en
+ * diez segundos, ninguno se queda. Y el clic es justo el gesto con el que se
+ * reanuda, así que la pausa tampoco se levantaba.
+ */
+let pausaMiaAntes = false
+let caidaAntes = false
+
 function pintarPausa() {
   const p = cliente.pausa
   $('libres').textContent = `pausas ${p.libres} · rival ${p.rivalLibres}`
@@ -271,7 +287,8 @@ function pintarPausa() {
       '<small>la partida se reanuda si vuelve · si no, se da por abandonada</small>' +
       '<button id="reclamar" hidden>dar la partida por abandonada</button>'
     $('reclamar').addEventListener('click', () => cliente.reclamar())
-    if (document.pointerLockElement === lienzo) document.exitPointerLock()
+    // Sólo al llegar: ver la nota de arriba.
+    if (!caidaAntes && document.pointerLockElement === lienzo) document.exitPointerLock()
   } else if (p.pausada) {
     panelPausa.hidden = false
     panelPausa.innerHTML = '<b>PARTIDA EN PAUSA</b><em id="pausaResta">&nbsp;</em>' +
@@ -285,10 +302,14 @@ function pintarPausa() {
     // llega jugando, y quedarse capturado en un mundo parado es no tener con qué
     // reanudarlo. Al rival no se le toca: él no ha pedido nada, y devolverle al
     // menú sería castigarle por haber dicho que sí.
-    if (p.mia && document.pointerLockElement === lienzo) document.exitPointerLock()
+    if (p.mia && !pausaMiaAntes && document.pointerLockElement === lienzo) {
+      document.exitPointerLock()
+    }
   } else {
     panelPausa.hidden = true
   }
+  pausaMiaAntes = p.pausada && p.mia
+  caidaAntes = p.pausada && p.motivo === 'caida'
   medirCartel()
   pintarVotacion()
 }

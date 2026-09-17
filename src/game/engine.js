@@ -132,6 +132,13 @@ export const PHASE = {
 
 export class Engine {
   /**
+   * **¿Admite esta plataforma el movimiento sin ajustar?** Se descubre al
+   * primer intento y se recuerda para todos: es una propiedad del navegador, no
+   * de una partida. Ver `requestLock`.
+   */
+  static _sinMovimientoCrudo = false
+
+  /**
    * @param {HTMLCanvasElement} canvas
    * @param {{
    *   onPhaseChange?: (phase: string) => void,
@@ -644,10 +651,32 @@ export class Engine {
         /* El navegador puede rechazarlo (p. ej. cooldown tras Escape). */
       }
     }
+    // **Y si esta plataforma no admite la opción, no se vuelve a pedir**
+    // (vuelta 62). `unadjustedMovement` es de Chromium y en algunos sistemas
+    // —este contenedor, sin ir más lejos— se rechaza con `NotSupportedError`.
+    // El rechazo llega **en una promesa**, o sea un turno después, y para
+    // entonces el gesto del usuario ya se ha gastado: el reintento de dentro del
+    // `catch` sale rechazado **sin decir nada**, y el jugador se queda sin poder
+    // recuperar el ratón por más que pinche. Medido: cinco clics en diez
+    // segundos, ninguno captura.
+    //
+    // Preguntar antes no se puede —no hay detección de característica— así que
+    // se pregunta **una vez** y se recuerda. Se paga un clic la primera vez y
+    // ninguno después.
+    if (Engine._sinMovimientoCrudo) {
+      fallback()
+      return
+    }
     try {
       const result = element.requestPointerLock({ unadjustedMovement: true })
-      if (result && typeof result.catch === 'function') result.catch(fallback)
+      if (result && typeof result.catch === 'function') {
+        result.catch((error) => {
+          if (error?.name === 'NotSupportedError') Engine._sinMovimientoCrudo = true
+          fallback()
+        })
+      }
     } catch {
+      Engine._sinMovimientoCrudo = true
       fallback()
     }
   }
