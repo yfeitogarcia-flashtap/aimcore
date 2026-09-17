@@ -75,7 +75,22 @@ export const MSG = {
   BIENVENIDA: 'b',
   ENTRADA: 'e',
   FOTO: 'f',
+  /**
+   * **Adiós, y desde la vuelta 62 va en los dos sentidos.** Del servidor al
+   * cliente es «te echo, por esto». Del cliente al servidor es **«me voy»**, que
+   * es la única forma de distinguir un abandono de una caída: un cable que se
+   * corta no manda ningún mensaje (vuelta 51), así que el abandono se dice y la
+   * caída es el silencio. Todo cierre sin este mensaje delante es una caída.
+   */
   ADIOS: 'x',
+  /**
+   * **«El otro no vuelve»** (vuelta 62). Lo manda el que sigue conectado para
+   * no esperar los noventa segundos enteros de la ventana de reconexión. El
+   * servidor lo atiende sólo si hay una pausa por caída y ya han pasado los
+   * primeros segundos: es un botón para el que espera, no una forma de echar a
+   * alguien que acaba de parpadear.
+   */
+  RECLAMAR: 'r',
   /**
    * **Colocar a un jugador donde diga, para medir.** El servidor **sólo** lo
    * atiende con `VEKTOR_DEBUG=1`, y por eso no es una vía para hacer trampas:

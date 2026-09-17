@@ -18,7 +18,7 @@
      capturado (`body.jugando`); con el ratón suelto estorba al aviso, que es la
      pantalla de menú. El bloque de arma y la cuña de daño entran con la vuelta
      56, que es cuando el motor completo pasa a llevar la partida. */
-  #mira, #vital, #abatido, #armaHud, #dano { display: none; }
+  #mira, #vital, #abatido, #armaHud, #dano, #ronda { display: none; }
   body.jugando #mira, body.jugando #vital, body.jugando #armaHud { display: block; }
   body.jugando #dano { display: block; }
 
@@ -151,6 +151,31 @@
      tiene la misma especificidad —un id—, así que un `display: grid` puesto
      aquí gana por ir después y el cartel de ABATIDO se queda encendido con la
      vida a 100. Pasó, y no lo cazó ninguna aserción: lo cazó mirar la captura. */
+  /* El marcador de ronda. Va arriba y centrado, con la cuenta en grande: es lo
+     único del HUD que se mira cuando no se está disparando. */
+  #ronda { position: fixed; top: 10px; left: 50%; transform: translateX(-50%); z-index: 3;
+    text-align: center; font-size: 12px; letter-spacing: .12em; color: #9A9A9A;
+    pointer-events: none; text-shadow: 0 1px 3px #000; }
+  body.jugando #ronda { display: block; }
+  #ronda b { color: #EDEDED; font-size: 13px; }
+  #ronda em { display: block; font-style: normal; font-size: 26px; font-weight: 700;
+    color: #FFF; letter-spacing: .04em; line-height: 1.1; }
+  #ronda span { font-size: 17px; font-weight: 700; color: #EDEDED; letter-spacing: .18em; }
+  #ronda small { display: block; margin-top: 2px; font-size: 10px; letter-spacing: .22em; }
+  #ronda.compra em { color: #2FCB82; }
+  #ronda.poco em { color: #E4462B; }
+  /* El cartel de fin de partida tapa la pantalla entera: la partida se acabó, no
+     hay nada debajo que mirar. **Y por eso tiene que apagarse de verdad**: sin
+     el `display: none` de aquí queda en `block`, invisible pero por encima de
+     todo, y se come el clic que captura el ratón — `jugable48` lo cazó a la
+     primera. No vale meterlo en el grupo de capas de `body.jugando`, que se
+     apagan sin ratón capturado: este cartel sale justo cuando se ha soltado. La
+     regla con `.puesto` gana porque suma una clase al mismo id. */
+  #fin { display: none; position: fixed; inset: 0; place-items: center; z-index: 8;
+    background: rgba(10,10,10,.86); text-align: center; }
+  #fin.puesto { display: grid; }
+  #fin b { font-size: 40px; letter-spacing: .12em; }
+  #fin p { margin-top: 8px; letter-spacing: .1em; }
   #abatido { position: fixed; inset: 0; place-items: center; pointer-events: none;
     background: radial-gradient(ellipse at center, rgba(10,10,10,.25) 35%, rgba(10,10,10,.88) 100%);
     text-align: center; letter-spacing: .3em; }
@@ -188,10 +213,16 @@
   #panel label { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin: 4px 0; }
   #panel input[type=range] { width: 150px; accent-color: #2FCB82; }
 
-  #pausar, #pedirVoto { background: #1A1A1A; color: #E8E8E8; border: 1px solid #3A3A3A;
-    border-radius: 3px; padding: 8px 16px; font: inherit; letter-spacing: .06em;
-    cursor: pointer; }
+  #pausar, #pedirVoto, #salir, #reconectar { background: #1A1A1A; color: #E8E8E8;
+    border: 1px solid #3A3A3A; border-radius: 3px; padding: 8px 16px; font: inherit;
+    letter-spacing: .06em; cursor: pointer; }
   #pausar:hover, #pedirVoto:hover { border-color: #2FCB82; color: #FFF; }
+  /* Salir no es la acción de esta pantalla: se ve, no se invita. En rojo, que es
+     el color que en esta paleta significa «esto te lo están haciendo a ti». */
+  #salir:hover { border-color: #E4462B; color: #FFF; }
+  /* Reconectar sí lo es, mientras exista: verde de acción, como el de copiar. */
+  #reconectar { background: #2FCB82; color: #08130D; border: 0; font-weight: 700; }
+  #reconectar[hidden] { display: none !important; }
   #pausar[hidden], #pedirVoto[hidden] { display: none !important; }
 </style>
 <canvas id="lienzo"></canvas>
@@ -210,10 +241,21 @@
      es una máscara radial, no una opacidad afinada (vuelta 40). -->
 <div id="dano"></div>
 <div id="abatido"><div><b>ABATIDO</b><p class="apagado" id="reaparece">&nbsp;</p></div></div>
+<!-- **El marcador de ronda** (vuelta 62): arriba y centrado, porque es lo que se
+     mira entre ronda y ronda. La cuenta va en su propio nodo y se escribe por
+     frame; el resto sólo cuando cambia de fase — la regla del HUD de siempre. -->
+<div id="ronda"><b id="rondaN">—</b><em id="rondaTiempo">&nbsp;</em><span id="rondaMarcador">0 – 0</span>
+  <small id="rondaFase">&nbsp;</small></div>
+<div id="fin"><div><b id="finQuien">—</b><p id="finDetalle" class="apagado">&nbsp;</p></div></div>
 
 <div id="aviso"><div>
   <div id="sala" class="control">
     <h1>Vektor · Duelo 1v1</h1>
+    <!-- **Reconectar** (vuelta 62): sale sólo si en este navegador hay una
+         partida a medias, y lleva su código escrito para que no haya que
+         creerse nada. Vive aquí y no en la pantalla de inicio del juego: la red
+         no entra en `App.jsx` (vuelta 45). -->
+    <p style="margin:0 0 10px"><button id="reconectar" hidden>Reconectar</button></p>
     <div class="fila"><span class="apagado">código de partida</span><span id="codigo">—</span></div>
     <div class="linea"><input id="enlace" readonly /><button id="copiar">copiar</button></div>
     <div class="linea"><input id="otro" placeholder="entrar en otro código" maxlength="9" /><button id="entrar">ir</button></div>
@@ -236,6 +278,9 @@
   <!-- Es un `.control`: se pincha con el ratón suelto y su clic no cuenta como
        el clic que captura. Sale sólo sin pausas libres; lo decide `pintarPausa`. -->
   <p><button id="pedirVoto" class="control" hidden>Solicitar pausa por votación</button></p>
+  <!-- **Irse se dice** (vuelta 62): este botón es la única diferencia entre un
+       abandono y una caída, porque un cable que se corta no manda nada. -->
+  <p><button id="salir" class="control salir">Salir de la partida</button></p>
 </div></div>
 
 <div id="panel" class="control" hidden>

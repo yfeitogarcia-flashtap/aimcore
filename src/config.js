@@ -2970,6 +2970,64 @@ export const SIM_STEP_MS = 1000 / SIM.hz
  * parábola en el servidor y la pulsación de salto que se selló en el cliente
  * estarían en relojes distintos y la ventana de encadenado no significaría nada.
  */
+/**
+ * **Las rondas del duelo** (vuelta 62). Quién gana una ronda y quién gana la
+ * partida son **dos condiciones distintas**, y por eso son dos cosas aquí: una
+ * ronda se gana matando o llegando al final con más vida; la partida, con la
+ * mayoría de las rondas.
+ *
+ * Todo esto lo decide el servidor (`net/partida.js`) y nada de ello vive en el
+ * motor: es una regla de juego del 1v1, no del aim trainer.
+ *
+ * **El reloj de una ronda es el número de paso**, como todo lo demás de la red,
+ * y por eso los segundos de aquí se convierten a pasos al arrancar cada fase.
+ * Con el reloj de pared, una pausa de dos minutos se comería una ronda entera
+ * —el mismo agujero que ya se cerró en la cuenta atrás del explosivo—. Las
+ * cuentas de la *conversación* (pausa y votación) sí van por pared, y siguen
+ * donde estaban: en `PAUSE`.
+ */
+export const ROUNDS = {
+  /**
+   * **Par a propósito**: con un número impar no hay empate posible y la
+   * prórroga no llegaría nunca. La mayoría son ocho.
+   */
+  maxRondas: 14,
+  /** Lo que dura una ronda si nadie muere. */
+  duracionSegundos: 180,
+  /** La fase de compra, entre una ronda y la siguiente. */
+  compraSegundos: 15,
+  /**
+   * **La prórroga se juega en tandas, no a muerte súbita.** Con una sola ronda
+   * de desempate, las trece anteriores valdrían lo mismo que la catorceava. Al
+   * final de cada tanda gana quien vaya por delante; si la tanda queda igualada,
+   * otra tanda. A 1 es muerte súbita, que es lo que hay que poner si algún día
+   * se decide lo contrario.
+   */
+  prorrogaTanda: 2,
+  /**
+   * **El corralito de la compra**, centrado en la salida de cada jugador. Es la
+   * caja dentro de la que se puede andar mientras se compra: 4 u de lado, que
+   * con las dos salidas a 5 u una de otra **no se solapan**.
+   */
+  cajaCompra: { ancho: 4, fondo: 4 },
+  /**
+   * **Cuánto se espera a que alguien vuelva de una caída** antes de dar la
+   * partida por abandonada (vuelta 62). Noventa segundos: por encima de lo que
+   * cuesta recargar la página y volver —de diez a veinte— y de desbloquear un
+   * PC —de treinta a sesenta—, y por debajo de los 120 de una pausa libre, que
+   * es el otro extremo de la misma escala. Ninguna pausa que no se elige puede
+   * durar lo que una que sí.
+   */
+  reconexionSegundos: 90,
+  /**
+   * **Y el que espera no queda secuestrado.** Pasados estos segundos le sale el
+   * botón de dar la partida por abandonada, que cierra la ventana cuando él
+   * quiera. Es la otra mitad de la regla de la vuelta 55: parar el mundo de
+   * alguien no puede ser un efecto secundario de lo que le pase a otro.
+   */
+  abandonoDesdeSegundos: 15,
+}
+
 export const NET = {
   /** Puerto del servidor de pruebas local (`npm run net`). */
   port: 5199,
@@ -2988,6 +3046,16 @@ export const NET = {
    * partida, y corto para que la memoria no crezca sola.
    */
   salaOlvidadaMs: 600000,
+  /**
+   * **Cada cuánto el huésped comprueba que el cable sigue vivo** (vuelta 62).
+   * Un portátil que se duerme o un cable arrancado no producen cierre hasta que
+   * TCP se rinde —minutos—, así que sin esto el rival se quedaría mirando a un
+   * jugador congelado sin que nadie diga nada. Dos intervalos sin contestar y el
+   * huésped cierra el socket; de ahí en adelante es una caída como cualquier
+   * otra. Cinco segundos: el peor caso son diez para enterarse, muy por debajo
+   * de los noventa de la ventana de reconexión.
+   */
+  pingMs: 5000,
   /**
    * Cuántas entradas acumula el servidor antes de empezar a consumir. Es el
    * colchón contra el jitter: con menos, una entrada que llega tarde deja al

@@ -21,7 +21,7 @@
  * avisos de conexión, las pausas y los números de F3.
  */
 import { masterGain } from '../src/audio/sfx.js'
-import { COLORS, NET, TARGET, TEAMS, WEAPONS } from '../src/config.js'
+import { COLORS, NET, ROUNDS, TARGET, TEAMS, WEAPONS } from '../src/config.js'
 import { Engine } from '../src/game/engine.js'
 import { Avatar } from '../src/game/avatar.js'
 import { hasLineOfSight } from '../src/game/sight.js'
@@ -122,11 +122,43 @@ $('enlace').value = enlaceDeSala(codigo)
  * de arrancar. La regla de la vuelta 45 sigue en pie: `engine.js` no sabe de
  * sockets ni de códigos de sala.
  */
+/**
+ * **La partida a medias que tenga este navegador** (vuelta 62).
+ *
+ * Es lo único que se guarda entre visitas: el código y el pase de la butaca.
+ * Vive aquí y no en el netcode porque *dónde* se guarda algo entre dos visitas
+ * no es del cliente de red; y en `localStorage` con su `try/catch`, como los
+ * ajustes — sin persistencia se juega igual, pero **es por origen**: mudar el
+ * despliegue de dominio deja atrás la partida a medias, una vez.
+ */
+const CLAVE_PARTIDA = 'vektor.duelo.v1'
+function partidaGuardada() {
+  try {
+    const crudo = localStorage.getItem(CLAVE_PARTIDA)
+    return crudo ? JSON.parse(crudo) : null
+  } catch {
+    return null
+  }
+}
+function guardarPartida(dato) {
+  try {
+    if (dato) localStorage.setItem(CLAVE_PARTIDA, JSON.stringify(dato))
+    else localStorage.removeItem(CLAVE_PARTIDA)
+  } catch {
+    /* sin persistencia se juega igual; lo que se pierde es poder reconectar */
+  }
+}
+
+const guardada = partidaGuardada()
+// **El pase sólo vale para su código.** Enseñar el de otra partida no es volver
+// a ésta: sería pedir una butaca que en esta sala no existe.
+const paseDeVuelta = guardada?.codigo === codigo ? guardada.pase : null
+
 const cliente = new ClienteRed({
   camara: motor.camera,
   movimiento: motor.movement,
   oclusores: motor.scenario.occluders,
-  transporte: conRedSimulada(transporteWebSocket(urlDeSala(codigo)), enlace),
+  transporte: conRedSimulada(transporteWebSocket(urlDeSala(codigo, window.location, paseDeVuelta)), enlace),
 })
 cliente.onBienvenida = (m) => {
   // **La ranura la manda el servidor**, y es la misma de la que sale su sitio de
@@ -141,6 +173,8 @@ cliente.onBienvenida = (m) => {
   $('quien').innerHTML = `${m.id} · <span style="color:${TEAMS[mio].color}">${TEAMS[mio].label}</span>`
   $('quienDbg').textContent = `${m.id} · ${mio} · ${m.escenario}`
   document.title = `Vektor · ${codigo} · ${m.id}`
+  // La butaca, para poder volver a ella si se cae el cable.
+  if (m.pase) guardarPartida({ codigo, pase: m.pase, cuando: Date.now() })
 }
 // **Después de poner lo suyo**: `usarRed` encadena sobre la bienvenida para
 // arrancar la sesión en el mismo turno, y encadenar sobre algo que todavía no
@@ -226,7 +260,19 @@ function pintarPausa() {
   // distinto precio, y dos botones juntos obligan a leerlos para saber cuál.
   $('pausar').hidden = p.libres <= 0 || p.pausada || cliente.votacion.activa
   $('pedirVoto').hidden = p.libres > 0 || p.pausada || cliente.votacion.activa
-  if (p.pausada) {
+  if (p.pausada && p.motivo === 'caida') {
+    // **La pausa por caída no la ha puesto nadie**, así que no lleva botón de
+    // reanudar: la levanta que el otro vuelva. Lo que sí lleva —pasados los
+    // primeros segundos— es la salida del que espera, para no tener que aguantar
+    // la ventana entera mirando un mundo parado (vuelta 62).
+    panelPausa.hidden = false
+    panelPausa.innerHTML =
+      '<b>RIVAL DESCONECTADO</b><em id="pausaResta">&nbsp;</em>' +
+      '<small>la partida se reanuda si vuelve · si no, se da por abandonada</small>' +
+      '<button id="reclamar" hidden>dar la partida por abandonada</button>'
+    $('reclamar').addEventListener('click', () => cliente.reclamar())
+    if (document.pointerLockElement === lienzo) document.exitPointerLock()
+  } else if (p.pausada) {
     panelPausa.hidden = false
     panelPausa.innerHTML = '<b>PARTIDA EN PAUSA</b><em id="pausaResta">&nbsp;</em>' +
       (p.mia
@@ -310,6 +356,14 @@ function pintarRestas(ahora) {
   if (dePausa) {
     const resta = cliente.restaPausaMs(ahora)
     dePausa.textContent = resta === null ? '' : reloj(resta)
+    // **El botón de dar por abandonada aparece solo**, pasados los primeros
+    // segundos de la caída. Se enseña aquí —que es lo que corre por frame— y no
+    // al pintar el cartel, porque el cartel se pinta una vez y esto es una
+    // cuenta atrás. Rehacer el cartel por frame se llevaría el clic por delante.
+    const reclamar = document.getElementById('reclamar')
+    if (reclamar && resta !== null) {
+      reclamar.hidden = resta > (ROUNDS.reconexionSegundos - ROUNDS.abandonoDesdeSegundos) * 1000
+    }
   }
   const deVoto = document.getElementById('votoResta')
   if (deVoto && panelVoto.classList.contains('puesto')) {
@@ -515,6 +569,34 @@ $('gho').addEventListener('change', (e) => { fantasma.group.visible = e.target.c
  * `engine._advanceNet()`, que es donde puede haber **uno solo**. Esta página se
  * engancha por `onFrame`, que el motor publica una vez por fotograma.
  */
+// **Lo que cambia de fase se pinta al cambiar, no por frame.**
+cliente.onRonda = (r) => pintarFaseDeRonda(r)
+
+// **Irse se dice.** Es lo único que distingue un abandono de una caída: sin este
+// mensaje, cerrar la pestaña y que se caiga el wifi llegan por la misma puerta.
+$('salir').addEventListener('click', () => {
+  guardarPartida(null)
+  cliente.abandonar()
+})
+// **Y cerrar la pestaña no manda nada, a propósito.** La primera versión mandaba
+// el adiós en `pagehide`, y estaba mal por una razón que sólo se ve al probarlo:
+// el navegador dispara ese evento **igual al recargar**, y recargar es justo
+// como se vuelve a una partida. Con eso puesto, reconectar era abandonar.
+// Cerrar la pestaña es una caída como cualquier otra: quedan noventa segundos
+// para volver y, si no se vuelve, acaba en abandono igual. Es el lado seguro del
+// error, que es la regla de esta vuelta entera.
+
+// **Reconectar**: sólo si este navegador tiene una partida a medias que no es
+// ésta. Si es ésta, ya se ha entrado con el pase y no hay nada que pulsar.
+if (guardada && guardada.codigo !== codigo) {
+  const boton = $('reconectar')
+  boton.hidden = false
+  boton.textContent = `Reconectar a ${guardada.codigo}`
+  boton.addEventListener('click', () => {
+    window.location.href = `/duelo/${guardada.codigo}${window.location.search}`
+  })
+}
+
 motor.start()
 
 const costes = []
@@ -532,8 +614,76 @@ function pintarHud(stats) {
     fantasma.group.visible = false
   }
   pintarRestas(ahora)
+  pintarRonda()
   pintarRed(ahora)
   pintarPanel()
+}
+
+/**
+ * **El marcador de ronda.** Se reparte como el cartel de la pausa: lo que cambia
+ * de fase se escribe **al cambiar** (`onRonda`) y la cuenta, que baja sesenta
+ * veces por segundo, va en su propio nodo y sólo cuando cambia el segundo.
+ * Rehacer el bloque por frame es la regla del HUD rota por la puerta de atrás.
+ */
+let restaPintada = ''
+function pintarRonda() {
+  const r = cliente.rondas
+  if (r.fase === 'espera' || r.fase === 'fin') {
+    if (restaPintada !== '') {
+      restaPintada = ''
+      $('rondaTiempo').textContent = ' '
+    }
+    return
+  }
+  // **La cuenta la calcula el servidor y aquí sólo se enseña.** Viaja *cuánto
+  // queda*, no hasta cuándo: los relojes de las dos pantallas y el del servidor
+  // no coinciden. Y como el reloj de la ronda es el número de paso, en pausa no
+  // baja sola: deja de bajar porque el mundo deja de avanzar.
+  const seg = Math.ceil(Math.max(0, r.resta) / 1000)
+  const texto = `${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, '0')}`
+  if (texto === restaPintada) return
+  restaPintada = texto
+  $('rondaTiempo').textContent = texto
+  $('ronda').classList.toggle('poco', r.fase === 'ronda' && seg <= 20)
+}
+
+/**
+ * **Lo que sólo cambia al cambiar de fase.** Incluye el cartel de fin de
+ * partida, que es lo último que pinta esta página: con la partida acabada no hay
+ * nada debajo que mirar.
+ */
+function pintarFaseDeRonda(r) {
+  $('rondaN').textContent = r.prorroga ? `PRÓRROGA · RONDA ${r.n}` : `RONDA ${r.n} de ${ROUNDS.maxRondas}`
+  $('rondaMarcador').textContent = `${r.marcador[cliente.equipo ?? 0]} – ${r.marcador[1 - (cliente.equipo ?? 0)]}`
+  $('ronda').classList.toggle('compra', r.fase === 'compra')
+  const anterior = r.ultima
+  const dice = {
+    compra: anterior
+      ? anterior.motivo === 'empate'
+        ? 'RONDA EMPATADA · SE REPITE'
+        : anterior.ganador === cliente.equipo ? 'RONDA GANADA · COMPRA' : 'RONDA PERDIDA · COMPRA'
+      : 'FASE DE COMPRA',
+    ronda: ' ',
+    espera: 'ESPERANDO AL RIVAL',
+    fin: ' ',
+  }
+  $('rondaFase').textContent = dice[r.fase] ?? ' '
+  const acabo = r.ganador !== null
+  $('fin').classList.toggle('puesto', acabo)
+  if (!acabo) return
+  const gane = r.ganador === cliente.equipo
+  $('finQuien').textContent = gane ? 'PARTIDA GANADA' : 'PARTIDA PERDIDA'
+  $('finQuien').style.color = gane ? '#2FCB82' : '#E4462B'
+  const porque = {
+    mayoria: 'por mayoría de rondas',
+    prorroga: 'en la prórroga',
+    abandono: gane ? 'el rival ha abandonado' : 'has abandonado la partida',
+  }
+  $('finDetalle').textContent =
+    `${r.marcador[cliente.equipo ?? 0]} – ${r.marcador[1 - (cliente.equipo ?? 0)]} · ${porque[r.motivo] ?? ''}`
+  // Se acabó: ya no hay butaca a la que volver.
+  guardarPartida(null)
+  if (document.pointerLockElement === lienzo) document.exitPointerLock()
 }
 
 /**

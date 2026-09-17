@@ -17,7 +17,7 @@
  * Y sigue sin tener código de juego: importa `movement.js`, `scenario.js`,
  * `hitPlayer` y `hasLineOfSight` tal cual.
  */
-import { NET, PAUSE, SIM, SIM_STEP_MS, WEAPONS, WEAPON_ORDER } from '../src/config.js'
+import { NET, PAUSE, ROUNDS, SIM, SIM_STEP_MS, WEAPONS, WEAPON_ORDER } from '../src/config.js'
 import { MovementController } from '../src/game/movement.js'
 import { crearPose, cuerpoDeJugador } from './pose.js'
 import { direccionDeMira, resolverDisparo } from './disparo.js'
@@ -30,10 +30,20 @@ export class Partida {
    * @param {number} [opciones.colchon] pasos de amortiguador contra el jitter
    * @param {boolean} [opciones.depurar] atiende `MSG.COLOCAR` (bancos de prueba)
    */
-  constructor({ escenario, colchon = NET.jitterBufferTicks, depurar = false }) {
+  /**
+   * @param {boolean} [opciones.rondas] juega a rondas (vuelta 62). Apagado, el
+   *   duelo es lo que era hasta la 61: un mundo que no se reinicia, con la
+   *   reaparición por reloj de la vuelta 52. **Es lo que usan los bancos de
+   *   netcode**, que miden reconciliación y compensación de retraso a base de
+   *   matar al mismo blanco veinte veces seguidas: con rondas, cada muerte abre
+   *   quince segundos de compra y la tabla no mide nada. Misma idea que
+   *   `depurar`: un interruptor para poder medir, no un modo de juego.
+   */
+  constructor({ escenario, colchon = NET.jitterBufferTicks, depurar = false, rondas = true }) {
     this.escenario = escenario
     this.colchon = colchon
     this.depurar = depurar
+    this.conRondas = rondas
     this.paso = 0
     /**
      * **La pausa, que es del mundo y no de quien la pide** (vuelta 53). Null, o
@@ -65,6 +75,36 @@ export class Partida {
     this.votacion = null
     this.jugadores = new Map()
     this._siguienteId = 0
+    /**
+     * **Cuántas butacas están sin cable.** Es un contador y no un recuento sobre
+     * el mapa porque esto se mira **en cada paso**: `conectados` construye un
+     * array, y el bucle caliente del servidor no asigna memoria, igual que el del
+     * motor.
+     */
+    this._caidos = 0
+    /**
+     * **Las rondas** (vuelta 62). Dos condiciones de victoria, no una: `marcador`
+     * cuenta rondas ganadas **por ranura** —no por id, que cambia y no es la
+     * silla— y `ganador` es de la partida entera.
+     *
+     * `hastaPaso` es el final de la fase en **número de paso**, que es el reloj
+     * del mundo: en pausa no corre, igual que no corre nada. Lo que viaja en la
+     * foto es *cuánto queda*, calculado aquí, por la misma razón que la cuenta
+     * de la pausa (vuelta 54): los relojes de las dos pantallas no coinciden.
+     */
+    this.rondas = {
+      n: 0,
+      fase: 'espera',
+      hastaPaso: 0,
+      marcador: [0, 0],
+      ganador: null,
+      motivo: null,
+      /** Cómo acabó la última ronda, para el cartel de la fase de compra. */
+      ultima: null,
+      prorroga: false,
+      /** Rondas jugadas al entrar en prórroga, para contar las tandas. */
+      prorrogaDesde: 0,
+    }
     /** Dos sitios de salida separados, para no aparecer uno dentro del otro. */
     this.salidas = [
       { x: escenario.spawn.x - 2.5, z: escenario.spawn.z },
@@ -72,12 +112,28 @@ export class Partida {
     ]
   }
 
+  /**
+   * **Una butaca reservada sigue ocupada** (vuelta 62). Quien se cae sigue en el
+   * mapa con su vida, sus rondas y su ranura hasta que vuelva o se le dé por
+   * abandonado; si aquí no contase, un tercero con el código se sentaría en su
+   * silla mientras él recarga la página.
+   */
   get llena() {
     return this.jugadores.size >= 2
   }
 
+  /**
+   * **Vacía es «no hay nadie conectado»**, y es lo que mira el huésped para
+   * parar el reloj. Una sala con dos butacas reservadas y nadie dentro no puede
+   * gastar sesenta pasos por segundo esperando.
+   */
   get vacia() {
-    return this.jugadores.size === 0
+    return this.conectados.length === 0
+  }
+
+  /** Los que tienen cable. Los desconectados siguen en `jugadores`. */
+  get conectados() {
+    return [...this.jugadores.values()].filter((j) => !j.desconectado)
   }
 
   /**
@@ -89,10 +145,44 @@ export class Partida {
   }
 
   /**
-   * Un jugador entra. Devuelve su id, o null si la partida está llena.
-   * @param {(texto: string) => void} enviar
+   * **Una butaca no se reserva para siempre** (vuelta 62). La pausa por caída ya
+   * caduca sola, pero sólo corre mientras hay un paso que la mire: si se van los
+   * **dos**, el huésped para el reloj y las dos butacas se quedan congeladas
+   * hasta que la sala se olvide —diez minutos— con la partida diciendo que está
+   * llena. Pasó nada más construirlo, y el síntoma es de los que no dan error:
+   * la página carga, el código coincide y el servidor contesta «la partida está
+   * llena (1v1)» a los dos.
+   *
+   * Por eso se mira además **al entrar**, que es el momento en que a alguien le
+   * importa, y con el reloj de pared: es el mismo reloj de la ventana de
+   * reconexión, y por la misma razón —tiene que correr con el mundo parado—.
    */
-  entra(enviar) {
+  _caducarButacas() {
+    if (this._caidos === 0) return
+    const tope = ROUNDS.reconexionSegundos * 1000
+    const ahora = Date.now()
+    for (const jugador of [...this.jugadores.values()]) {
+      if (jugador.desconectado && ahora - jugador.desconectado.desde >= tope) {
+        this.abandona(jugador.id)
+      }
+    }
+  }
+
+  /**
+   * **Un jugador entra, o vuelve.** Devuelve su id, o null si no hay sitio.
+   *
+   * El `pase` es lo que distingue volver de llegar: es un secreto que se dio en
+   * la bienvenida y que sólo tiene quien ya estaba sentado ahí. Sin él, la
+   * butaca de quien se ha caído —con su vida, sus rondas y su ranura— se la
+   * quedaría cualquiera que tenga el enlace, **empezando por su rival**.
+   *
+   * @param {(texto: string) => void} enviar
+   * @param {string|null} [pase] pase de reconexión, si dice volver
+   */
+  entra(enviar, pase = null) {
+    this._caducarButacas()
+    const vuelve = pase ? this._butacaDe(pase) : null
+    if (vuelve) return this._reconectar(vuelve, enviar)
     if (this.llena) return null
     // **La ranura libre, no el número de jugadores** (vuelta 49). Con
     // `jugadores.size` bastaba para dos que entran seguidos y fallaba en cuanto
@@ -172,25 +262,148 @@ export class Partida {
       muertes: 0,
       /** Pausas que puede pedir sin permiso. No se recuperan. */
       pausasLibres: PAUSE.free,
+      /**
+       * **El pase de reconexión** (vuelta 62). Va en la bienvenida y el cliente
+       * lo guarda; volver es enseñarlo. No se regenera al reconectar: es de la
+       * butaca, no de la conexión.
+       */
+      pase: this._nuevoPase(),
+      /** `{ desde }` mientras esté sin cable, o null. */
+      desconectado: null,
     }
     this.jugadores.set(jugador.id, jugador)
 
-    enviar(
-      JSON.stringify({
-        t: MSG.BIENVENIDA,
-        id: jugador.id,
-        equipo,
-        escenario: this.escenario.key,
-        hz: SIM.hz,
-        n: this.paso,
-        salida: { x: pose.position.x, z: pose.position.z },
-      }),
-    )
+    this._bienvenida(jugador)
+    this._quizaArrancar()
     return jugador.id
   }
 
+  /** Un pase: lo bastante largo para que no se adivine, y nada más. */
+  _nuevoPase() {
+    return `${Math.random().toString(36).slice(2, 10)}${Math.random().toString(36).slice(2, 10)}`
+  }
+
+  _butacaDe(pase) {
+    for (const j of this.jugadores.values()) if (j.pase === pase) return j
+    return null
+  }
+
+  _bienvenida(jugador) {
+    jugador.enviar(
+      JSON.stringify({
+        t: MSG.BIENVENIDA,
+        id: jugador.id,
+        equipo: jugador.equipo,
+        pase: jugador.pase,
+        escenario: this.escenario.key,
+        hz: SIM.hz,
+        n: this.paso,
+        salida: { x: jugador.pose.position.x, z: jugador.pose.position.z },
+      }),
+    )
+  }
+
+  /**
+   * **Volver a la misma butaca.** No se crea nada: se le vuelve a colgar el
+   * cable al jugador que ya estaba, con su ranura, su vida, su arma y su
+   * historial. Y se le manda la bienvenida otra vez, que es como se entera de
+   * en qué paso va el mundo — que no es en el que lo dejó.
+   */
+  _reconectar(jugador, enviar) {
+    jugador.enviar = enviar
+    if (jugador.desconectado) this._caidos -= 1
+    jugador.desconectado = null
+    // Su cola es de antes de la caída: esas entradas son de un mundo que ya no
+    // existe, y ejecutarlas sería moverlo por donde no ha estado.
+    jugador.cola.length = 0
+    jugador.cebado = false
+    jugador.ack = -1
+    this._bienvenida(jugador)
+    // **La pausa por caída la levanta volver, no un botón.** Se va en cuanto no
+    // queda ninguna butaca sin cable: es del mundo, no de nadie, así que nadie
+    // la puede levantar a mano —y por eso tampoco gasta una de las tres libres—.
+    if (this.pausa?.motivo === 'caida' && this.conectados.length === this.jugadores.size) {
+      this.pausa = null
+    }
+    return jugador.id
+  }
+
+  /**
+   * **Se ha cortado el cable, que no es lo mismo que irse** (vuelta 62). Un
+   * cable que se corta **no manda ningún mensaje** —es la regla del transporte
+   * de la vuelta 51— así que las dos cosas llegan por la misma puerta y la
+   * única forma de distinguirlas es que el abandono **se diga**: `MSG.ADIOS` del
+   * cliente. Todo cierre sin ese mensaje delante es una caída.
+   *
+   * Y el valor por defecto es el que menos duele si nos equivocamos, porque la
+   * asimetría es clara: dar por abandonado a quien se le fue el wifi le quita
+   * una partida que no había perdido; dar por caído a quien cerró la pestaña
+   * sólo hace esperar al rival lo que dure la ventana —y ni eso, porque puede
+   * cerrarla él—.
+   */
+  sedesconecta(id) {
+    const jugador = this.jugadores.get(id)
+    if (!jugador || jugador.desconectado) return
+    // **Con la partida acabada no hay a qué volver**, así que la butaca se
+    // suelta entera: reservarla sería dejar la sala llena para nadie.
+    if (this.rondas.fase === 'fin' || this.rondas.fase === 'espera') {
+      this.sale(id)
+      return
+    }
+    jugador.desconectado = { desde: Date.now() }
+    jugador.enviar = () => {}
+    this._caidos += 1
+    // Su cola no se ejecuta: el servidor no adivina (vuelta 45). Se tira aquí
+    // para que al volver no le caiga encima un segundo de entradas viejas.
+    jugador.cola.length = 0
+    this._soltarLoSuyo(id)
+    // **El mundo se para para el que sigue**, y esta pausa no es de nadie: no
+    // gasta libres, no la levanta un botón y tiene su propio tope, que es la
+    // ventana de reconexión.
+    if (this.rondas.fase === 'compra' || this.rondas.fase === 'ronda') {
+      this.pausa = {
+        por: null,
+        motivo: 'caida',
+        quien: jugador.equipo,
+        expiraEn: Date.now() + ROUNDS.reconexionSegundos * 1000,
+      }
+    }
+  }
+
+  /**
+   * **Se va, y lo ha dicho.** La butaca se libera entera: no hay a quién
+   * esperar. Con rondas en marcha, el rival gana la ronda —y con ella la
+   * partida, porque un duelo no se juega solo—.
+   */
+  abandona(id) {
+    const jugador = this.jugadores.get(id)
+    if (!jugador) return
+    const rival = [...this.jugadores.values()].find((j) => j !== jugador)
+    this.sale(id)
+    if (rival && this.rondas.fase !== 'espera' && !this.rondas.ganador) {
+      this._terminarRonda(rival.equipo, 'abandono')
+      if (!this.rondas.ganador) this._terminarPartida(rival.equipo, 'abandono')
+    }
+  }
+
   sale(id) {
+    if (this.jugadores.get(id)?.desconectado) this._caidos -= 1
     this.jugadores.delete(id)
+    this._soltarLoSuyo(id)
+    // **Sin butacas, la partida vuelve a empezar.** El número de paso se
+    // conserva —eso es del mundo, y volver con el mismo código no es empezar
+    // otra partida (vueltas 47 y 58)— pero el marcador no: si no, dos amigos que
+    // vuelven a ese código se encontrarían una partida acabada y sin forma de
+    // jugar otra.
+    if (this.jugadores.size === 0) this._reiniciarRondas()
+    // Y si la pausa era por la caída de éste, ya no hay a quién esperar.
+    if (this.pausa?.motivo === 'caida' && this.conectados.length === this.jugadores.size) {
+      this.pausa = null
+    }
+  }
+
+  /** Lo que deja de tener sentido en cuanto alguien deja de estar. */
+  _soltarLoSuyo(id) {
     // **Irse levanta lo que uno tuviera puesto.** Una pausa de alguien que ya no
     // está deja el mundo parado para siempre.
     if (this.pausa?.por === id) this.pausa = null
@@ -330,7 +543,8 @@ export class Partida {
     let aFavor = 1
     let enContra = 0
     for (const si of v.votos.values()) si ? (aFavor += 1) : (enContra += 1)
-    const faltan = Math.max(0, this.jugadores.size - 1 - v.votos.size)
+    // Los caídos no votan: contarlos dejaría la ventana esperando a nadie.
+    const faltan = Math.max(0, this.conectados.length - 1 - v.votos.size)
     if (faltan > 0 && !porTiempo) return
     if (aFavor > enContra) aFavor += faltan
     else enContra += faltan
@@ -340,13 +554,48 @@ export class Partida {
     if (aFavor > enContra) this.pausa = this._conCuenta(v.por, PAUSE.votedMaxSeconds)
   }
 
+  /**
+   * **Se acabó el tiempo de una pausa.** Una normal se levanta y ya. Una de
+   * caída significa que el que se fue no ha vuelto: **eso es un abandono**, con
+   * la misma consecuencia que decirlo, porque esperar más sería dejar al que
+   * está delante de la pantalla mirando un mundo parado sin final.
+   */
+  _caducarPausa() {
+    const caida = this.pausa?.motivo === 'caida'
+    this.pausa = null
+    if (!caida) return
+    for (const jugador of [...this.jugadores.values()]) {
+      if (jugador.desconectado) this.abandona(jugador.id)
+    }
+  }
+
+  /**
+   * **El que espera no queda secuestrado** (vuelta 62). Pasados
+   * `ROUNDS.abandonoDesdeSegundos` de la caída, el que sigue conectado puede dar
+   * la partida por abandonada sin esperar los noventa. Es la otra mitad de la
+   * regla de la vuelta 55: el mundo parado de uno no puede ser un efecto
+   * secundario de lo que le pase a otro.
+   */
+  reclama(id) {
+    if (this.pausa?.motivo !== 'caida') return false
+    const quien = this.jugadores.get(id)
+    if (!quien || quien.desconectado) return false
+    const esperado = ROUNDS.reconexionSegundos - ROUNDS.abandonoDesdeSegundos
+    if (this.pausa.expiraEn - Date.now() > esperado * 1000) return false
+    this._caducarPausa()
+    return true
+  }
+
   /** Un paso del mundo. Lo llama el huésped a 60 Hz. */
   tick() {
     // **Toda pausa tiene su final** (vuelta 54): se reanuda sola al agotar su
     // tope, porque sin tope el único límite de un mundo parado era que el otro
     // se dignara a volver. Y va **antes** del corte de abajo, para que el paso
     // en que caduca sea ya un paso normal en vez de uno más de pausa.
-    if (this.pausa && Date.now() >= this.pausa.expiraEn) this.pausa = null
+    if (this.pausa && Date.now() >= this.pausa.expiraEn) this._caducarPausa()
+    // Y las butacas reservadas fuera de una ronda —en la espera o con la partida
+    // ya acabada—, que no tienen pausa que las caduque.
+    if (this._caidos > 0) this._caducarButacas()
     // Y toda votación también (vuelta 55). Va fuera del corte a propósito: el
     // mundo no se para por una votación, así que su ventana corre en los pasos
     // normales — y aun así se comprueba aquí arriba, porque una pausa recién
@@ -390,6 +639,11 @@ export class Partida {
       this._anotarCuerpo(jugador, this.paso)
     }
 
+    // **Y el reloj de las rondas, al final del paso**: con el mundo ya movido y
+    // los veredictos de este paso anotados. Cerrar una ronda a mitad de un
+    // disparo sería dejar el tiro que la cierra sin contestar.
+    this._rondasTick()
+
     if (this.paso % NET.snapshotEvery !== 0) return
     this._enviarFoto()
   }
@@ -402,7 +656,13 @@ export class Partida {
     // cuenta atrás que cada pantalla calculase por su cuenta acabaría diciendo
     // dos cosas distintas del mismo cartel.
     if (this.pausa) {
-      foto.pa = { por: this.pausa.por, resta: Math.max(0, this.pausa.expiraEn - Date.now()) }
+      foto.pa = {
+        por: this.pausa.por,
+        resta: Math.max(0, this.pausa.expiraEn - Date.now()),
+        // Y por qué: una pausa por caída no tiene dueño, así que el cartel del
+        // que espera no puede ser el mismo que el de una pausa pedida.
+        ...(this.pausa.motivo ? { motivo: this.pausa.motivo, quien: this.pausa.quien } : null),
+      }
     }
     if (this.votacion) {
       foto.vo = { por: this.votacion.por, resta: Math.max(0, this.votacion.expiraEn - Date.now()) }
@@ -434,6 +694,36 @@ export class Partida {
         jugador.disparos = jugador.disparos.filter((d) => d.ttl > 0)
       }
     }
+    // **Las rondas, que son del mundo y las ven los dos igual.** Lo que viaja es
+    // *cuánto queda* de la fase —calculado aquí, sobre el reloj de pasos— y no
+    // hasta cuándo: el cliente no tiene ese reloj. Misma regla que la cuenta de
+    // la pausa (vuelta 54).
+    const r = this.rondas
+    foto.rd = {
+      n: r.n,
+      f: r.fase,
+      resta: r.hastaPaso ? Math.max(0, (r.hastaPaso - this.paso) * SIM_STEP_MS) : 0,
+      m: r.marcador,
+      ...(r.ganador !== null ? { g: r.ganador, mot: r.motivo } : null),
+      ...(r.ultima ? { u: r.ultima } : null),
+      ...(r.prorroga ? { pr: 1 } : null),
+    }
+
+    // **En la fase de compra nadie ve al otro, y eso lo garantiza el servidor**
+    // (vuelta 62). No es que el cliente no lo dibuje: es que **no le llega** su
+    // posición. Cuesta una foto por destinatario durante quince segundos de cada
+    // ronda, y a cambio «no pueden verse» deja de depender de que el cliente
+    // colabore, que es el único sitio donde esa promesa se puede romper.
+    if (r.fase === 'compra') {
+      for (const jugador of this.conectados) {
+        const suya = { ...foto, p: { [jugador.id]: foto.p[jugador.id] } }
+        const texto = JSON.stringify(suya)
+        jugador.enviar(texto)
+        jugador.bytesSalida += texto.length
+      }
+      return
+    }
+
     const texto = JSON.stringify(foto)
     for (const jugador of this.jugadores.values()) {
       jugador.enviar(texto)
@@ -564,6 +854,15 @@ export class Partida {
       this._anotarVeredicto(tirador, salida)
       return
     }
+    // **En la compra no se dispara.** Es una fase para elegir con qué salir, no
+    // un sitio desde donde tirar a ciegas a un rival al que ni siquiera se le
+    // manda la posición. Se contesta igual —el cliente espera un veredicto por
+    // `seq`— pero como rechazado: ni daño ni baja.
+    if (this.rondas.fase !== 'ronda' && this.rondas.fase !== 'espera') {
+      salida.rechazado = true
+      this._anotarVeredicto(tirador, salida)
+      return
+    }
     if (!rival || !tirador.vida) {
       this._anotarVeredicto(tirador, salida)
       return
@@ -660,10 +959,15 @@ export class Partida {
     if (victima.vida > 0) return false
     victima.muertes += 1
     tirador.bajas += 1
-    // **En el reloj de la víctima**, que es el único que ella y su cliente
-    // comparten: dentro de tantas entradas suyas vuelve. Como produce una por
-    // paso, son los `respawnMs` de siempre.
-    victima.vivoEn = victima.ack + Math.round(NET.respawnMs / SIM_STEP_MS)
+    // **Con rondas, una muerte no se reaparece: cierra la ronda** (vuelta 62).
+    // El que vuelve a poner a los dos en pie es el reinicio de ronda, y hasta
+    // entonces el muerto no se mueve — que es lo que ya hacía `vivoEn`, con un
+    // número al que no se llega. Sin rondas en marcha sigue valiendo lo de
+    // siempre: la reaparición en el reloj de las entradas de la víctima.
+    victima.vivoEn =
+      this.rondas.fase === 'ronda'
+        ? Number.MAX_SAFE_INTEGER
+        : victima.ack + Math.round(NET.respawnMs / SIM_STEP_MS)
     return true
   }
 
@@ -676,8 +980,166 @@ export class Partida {
     jugador.pose.position.z = salida.z
     jugador.vida = 100
     jugador.vivoEn = 0
+    jugador.hambre = 0
     // Reaparecer recarga, así que el reloj de cadencia vuelve a cero: arrastrar
     // el del último disparo de antes de morir castigaría el primer tiro nuevo.
     jugador.ultimoTiroEn = -Infinity
+  }
+
+  // ------------------------------------------------------------------ rondas
+
+  /**
+   * **La partida empieza cuando hay dos, no cuando llega el primero.** Un duelo
+   * con una silla vacía no es la ronda 1 corriendo sola: es la sala de espera.
+   */
+  _quizaArrancar() {
+    if (!this.conRondas) return
+    if (this.rondas.fase !== 'espera') return
+    if (this.conectados.length < 2) return
+    this._reiniciarRondas()
+    this._empezarCompra()
+  }
+
+  /** El marcador a cero y la fase a la espera. No toca el reloj del mundo. */
+  _reiniciarRondas() {
+    const r = this.rondas
+    r.n = 0
+    r.fase = 'espera'
+    r.hastaPaso = 0
+    r.marcador = [0, 0]
+    r.ganador = null
+    r.motivo = null
+    r.ultima = null
+    r.prorroga = false
+    r.prorrogaDesde = 0
+  }
+
+  /** Pasos que caben en unos segundos del mundo. */
+  _pasosDe(segundos) {
+    return Math.max(1, Math.round((segundos * 1000) / SIM_STEP_MS))
+  }
+
+  /**
+   * **La fase de compra**: todos a su sitio, la caja puesta y quince segundos.
+   *
+   * Una ronda repetida —las dos vidas iguales al acabar el tiempo— **no gasta
+   * número**: vuelve a ser la misma ronda, que es lo que quiere decir repetirla.
+   */
+  _empezarCompra() {
+    if (this.rondas.ultima?.motivo !== 'empate') this.rondas.n += 1
+    this.rondas.fase = 'compra'
+    this.rondas.hastaPaso = this.paso + this._pasosDe(ROUNDS.compraSegundos)
+    for (const jugador of this.jugadores.values()) {
+      this._reaparecer(jugador)
+      jugador.historial.fill(null)
+      jugador.movimiento.setCorralito(this._cajaDe(jugador.equipo))
+    }
+  }
+
+  /**
+   * **El corralito de un jugador**, centrado en su salida. Las dos salidas están
+   * a 5 u una de otra y la caja mide 4, así que **no se solapan**: dentro de la
+   * fase de compra no hay forma de acabar encima del otro.
+   */
+  _cajaDe(equipo) {
+    const salida = this.salidas[equipo] ?? this.salidas[0]
+    const mx = ROUNDS.cajaCompra.ancho / 2
+    const mz = ROUNDS.cajaCompra.fondo / 2
+    return { minX: salida.x - mx, maxX: salida.x + mx, minZ: salida.z - mz, maxZ: salida.z + mz }
+  }
+
+  /** Se abre la caja y empieza a contar la ronda. */
+  _empezarRonda() {
+    this.rondas.fase = 'ronda'
+    this.rondas.hastaPaso = this.paso + this._pasosDe(ROUNDS.duracionSegundos)
+    for (const jugador of this.jugadores.values()) jugador.movimiento.setCorralito(null)
+  }
+
+  /**
+   * **Se acabó el tiempo sin muerte: gana quien tenga más vida.** Y con las dos
+   * vidas exactamente iguales la ronda **no cuenta para nadie y se repite**, que
+   * es distinto de un empate a medias: nadie ha hecho más que el otro.
+   */
+  _rondaPorTiempo() {
+    const vivos = [...this.jugadores.values()]
+    const a = vivos.find((j) => j.equipo === 0)
+    const b = vivos.find((j) => j.equipo === 1)
+    if (!a || !b) return { ganador: a?.equipo ?? b?.equipo ?? null, motivo: 'vida' }
+    if (a.vida === b.vida) return { ganador: null, motivo: 'empate' }
+    return { ganador: a.vida > b.vida ? 0 : 1, motivo: 'vida' }
+  }
+
+  /**
+   * Cierra la ronda en curso. `ganador` es una ranura, o null si la ronda se
+   * repite. De aquí sale siempre o una partida terminada o una fase de compra.
+   */
+  _terminarRonda(ganador, motivo) {
+    if (this.rondas.fase !== 'ronda' && this.rondas.fase !== 'compra') return
+    this.rondas.ultima = { ganador, motivo, n: this.rondas.n }
+    if (ganador !== null) this.rondas.marcador[ganador] += 1
+    this._comprobarFinDePartida()
+    // Y no se abre una compra para uno solo: si el otro se ha ido, lo que viene
+    // detrás es el final de la partida, no la ronda siguiente.
+    if (this.rondas.ganador === null && this.jugadores.size >= 2) this._empezarCompra()
+  }
+
+  /**
+   * **La otra condición de victoria, que no es la de la ronda.**
+   *
+   * Antes de la prórroga basta la mayoría —ocho de catorce—. Al llegar a
+   * catorce empatados se entra en prórroga, y allí **no vale la mayoría**: se
+   * juega por tandas y gana quien vaya por delante al acabar una. Con muerte
+   * súbita, las trece rondas anteriores valdrían lo mismo que la catorceava.
+   */
+  _comprobarFinDePartida() {
+    const [a, b] = this.rondas.marcador
+    const jugadas = a + b
+    if (!this.rondas.prorroga) {
+      const objetivo = Math.floor(ROUNDS.maxRondas / 2) + 1
+      if (a >= objetivo) return this._terminarPartida(0, 'mayoria')
+      if (b >= objetivo) return this._terminarPartida(1, 'mayoria')
+      if (jugadas >= ROUNDS.maxRondas) {
+        this.rondas.prorroga = true
+        this.rondas.prorrogaDesde = jugadas
+      }
+      return
+    }
+    const deTanda = jugadas - this.rondas.prorrogaDesde
+    if (deTanda > 0 && deTanda % ROUNDS.prorrogaTanda === 0 && a !== b) {
+      this._terminarPartida(a > b ? 0 : 1, 'prorroga')
+    }
+  }
+
+  _terminarPartida(ganador, motivo) {
+    this.rondas.ganador = ganador
+    this.rondas.motivo = motivo
+    this.rondas.fase = 'fin'
+    this.rondas.hastaPaso = 0
+    for (const jugador of this.jugadores.values()) jugador.movimiento.setCorralito(null)
+  }
+
+  /**
+   * **El reloj de las fases y el final de una ronda por muerte.** Se mira al
+   * final del paso y no dentro del disparo a propósito: así el veredicto del
+   * tiro que mata se anota como cualquier otro y la ronda se cierra después,
+   * con el mundo ya consistente.
+   */
+  _rondasTick() {
+    const r = this.rondas
+    if (r.fase === 'espera' || r.fase === 'fin') return
+    if (r.fase === 'ronda') {
+      const muerto = [...this.jugadores.values()].find((j) => j.vida <= 0)
+      if (muerto) {
+        const rival = [...this.jugadores.values()].find((j) => j !== muerto)
+        this._terminarRonda(rival ? rival.equipo : null, 'muerte')
+        return
+      }
+    }
+    if (this.paso < r.hastaPaso) return
+    if (r.fase === 'compra') this._empezarRonda()
+    else {
+      const fin = this._rondaPorTiempo()
+      this._terminarRonda(fin.ganador, fin.motivo)
+    }
   }
 }

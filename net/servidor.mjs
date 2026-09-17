@@ -29,8 +29,9 @@
  */
 import http from 'node:http'
 import { readFile } from 'node:fs/promises'
-import { readdirSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { gzipSync } from 'node:zlib'
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as THREE from 'three'
@@ -50,6 +51,14 @@ const ESCENARIO = process.env.VEKTOR_ESCENARIO || 'largoYPuerta'
  * tocar `config.js`. El valor de casa es `NET.jitterBufferTicks`.
  */
 const COLCHON = Number(process.env.VEKTOR_BUFFER) || NET.jitterBufferTicks
+/**
+ * **A rondas, salvo que se diga lo contrario** (vuelta 62). `VEKTOR_RONDAS=0`
+ * deja el duelo como estaba hasta la 61 —un mundo que no se reinicia— y es lo
+ * que usan los bancos que miden netcode: matan al mismo blanco una y otra vez, y
+ * con rondas cada muerte abre quince segundos de compra en los que no se
+ * dispara. Es la hermana de `VEKTOR_DEBUG`: existe para poder medir.
+ */
+const RONDAS = process.env.VEKTOR_RONDAS !== '0'
 /** Sólo con esto encendido se atiende la colocación de pruebas (ver `MSG.COLOCAR`). */
 const DEPURAR = !!process.env.VEKTOR_DEBUG
 /** El puerto lo pone el entorno en un despliegue; en local, el de siempre. */
@@ -81,7 +90,7 @@ class Sala {
      * distintos con los mismos datos.
      */
     this.escenario = new Scenario(new THREE.Scene(), ESCENARIO)
-    this.partida = new Partida({ escenario: this.escenario, colchon: COLCHON, depurar: DEPURAR })
+    this.partida = new Partida({ escenario: this.escenario, colchon: COLCHON, depurar: DEPURAR, rondas: RONDAS })
     this.reloj = null
     this.arranque = 0
     this.vaciaDesde = Date.now()
@@ -91,8 +100,11 @@ class Sala {
     return this.partida.vacia
   }
 
-  /** Conecta un socket a la partida. Devuelve el id, o null si está llena. */
-  entra(socket) {
+  /**
+   * Conecta un socket a la partida. Devuelve el id, o null si está llena.
+   * `pase` es el de reconexión, si el cliente dice volver (vuelta 62).
+   */
+  entra(socket, pase = null) {
     // `enviar` es lo único que la partida sabe de un socket, y el estado del
     // socket es cosa del huésped: escribir en uno que se está cerrando tira y se
     // llevaría por delante el paso entero, o sea al otro jugador.
@@ -103,7 +115,7 @@ class Sala {
       } catch {
         /* el socket se está cerrando; la desconexión llega enseguida */
       }
-    })
+    }, pase)
     if (!id) {
       socket.send(JSON.stringify({ t: MSG.ADIOS, razon: 'la partida está llena (1v1)' }))
       socket.close()
@@ -111,22 +123,75 @@ class Sala {
     }
 
     socket.on('message', (datos) => this.partida.recibe(id, datos))
+    // **Irse se dice, y el huésped es quien lo oye** (vuelta 62). El mensaje es
+    // del protocolo pero lo que hace es cerrar el cable, que es de aquí: marca
+    // el socket como despedido **antes** de cerrarlo, para que el `close` que
+    // viene detrás no lo vuelva a contar como una caída.
+    socket.on('message', (datos) => {
+      let mensaje
+      try {
+        mensaje = JSON.parse(datos)
+      } catch {
+        return
+      }
+      if (mensaje.t === MSG.ADIOS) {
+        socket.vektorFuera = true
+        this.partida.abandona(id)
+        this._trasSalida(id)
+        try {
+          socket.close()
+        } catch {
+          /* ya se estaba cerrando */
+        }
+      } else if (mensaje.t === MSG.RECLAMAR) {
+        this.partida.reclama(id)
+      }
+    })
+    // **Un cable mudo no se cierra solo.** Un portátil que se duerme o un cable
+    // arrancado no producen `close` hasta que TCP se rinde, que son minutos: el
+    // que sigue delante de la pantalla vería un rival congelado sin que nadie
+    // diga nada. El ping es del huésped, no del protocolo — la partida no
+    // pregunta por el estado del cable, se entera de que se cerró.
+    socket.vektorVivo = true
+    socket.on('pong', () => { socket.vektorVivo = true })
+    const latido = setInterval(() => {
+      if (!socket.vektorVivo) {
+        clearInterval(latido)
+        socket.terminate()
+        return
+      }
+      socket.vektorVivo = false
+      try {
+        socket.ping()
+      } catch {
+        /* se está cerrando; el close llega enseguida */
+      }
+    }, NET.pingMs)
+
     const salir = () => {
+      clearInterval(latido)
       if (socket.vektorFuera) return
       socket.vektorFuera = true
-      this.partida.sale(id)
-      if (this.vacia) {
-        this._pararReloj()
-        this.vaciaDesde = Date.now()
-      }
-      console.log(`- ${this.codigo}/${id} (${this.partida.jugadores.size}/2)`)
+      // **Sin adiós delante, es una caída**: la butaca se guarda y el mundo se
+      // para para el que queda, hasta que vuelva o se le dé por abandonado.
+      this.partida.sedesconecta(id)
+      this._trasSalida(id)
     }
     socket.on('close', salir)
     socket.on('error', salir)
 
     this._arrancarReloj()
-    console.log(`+ ${this.codigo}/${id} (${this.partida.jugadores.size}/2)`)
+    console.log(`+ ${this.codigo}/${id} (${this.partida.conectados.length}/2)`)
     return id
+  }
+
+  /** Lo que hay que mirar cada vez que alguien deja de estar. */
+  _trasSalida(id) {
+    if (this.vacia) {
+      this._pararReloj()
+      this.vaciaDesde = Date.now()
+    }
+    console.log(`- ${this.codigo}/${id} (${this.partida.conectados.length}/2)`)
   }
 
   /**
@@ -308,7 +373,25 @@ function servir(respuesta, peticion, fichero) {
  */
 const HUELLA = (() => {
   try {
-    return readdirSync(path.join(PUBLICO, 'assets')).sort().join(' ')
+    const assets = readdirSync(path.join(PUBLICO, 'assets')).sort().join(' ')
+    // **Y las páginas, que no llevan hash en el nombre** (vuelta 62). Vite le
+    // pone al nombre de cada `asset` un hash de su contenido, así que listarlos
+    // basta para saber qué JS se sirve; los `.html` se llaman siempre igual y
+    // **llevan dentro el CSS del duelo**. Sin esto, arreglar una regla de estilo
+    // y no reiniciar el huésped daba una huella idéntica con la página vieja
+    // servida — que es justo el falso negativo que esta huella existe para
+    // cerrar. Pasó, y costó un banco en rojo.
+    const paginas = ['index.html', path.join('net', 'prueba.html')]
+      .map((rel) => {
+        try {
+          const crudo = readFileSync(path.join(PUBLICO, rel))
+          return `${rel}:${createHash('sha1').update(crudo).digest('hex').slice(0, 8)}`
+        } catch {
+          return `${rel}:—`
+        }
+      })
+      .join(' ')
+    return `${assets} · ${paginas}`
   } catch {
     return 'sin dist'
   }
@@ -373,6 +456,7 @@ const servidor = http.createServer(async (peticion, respuesta) => {
       maquina: process.env.FLY_MACHINE_ID || 'local',
       region: process.env.FLY_REGION || 'local',
       escenario: ESCENARIO,
+      rondas: RONDAS,
       hz: SIM.hz,
       salas: salas.size,
       ocupadas: ocupadas.length,
@@ -413,13 +497,17 @@ servidor.on('upgrade', (peticion, socket, cabeza) => {
     return socket.destroy()
   }
   wss.handleUpgrade(peticion, socket, cabeza, (ws) => {
-    salaDe(codigo).entra(ws)
+    // **El pase viaja en la dirección**, no en un mensaje: la partida lo
+    // necesita para decidir si esto es una butaca nueva o una que ya estaba, y
+    // eso se decide en `entra`, antes de que haya llegado ningún mensaje.
+    salaDe(codigo).entra(ws, url.searchParams.get('pase'))
   })
 })
 
 servidor.listen(PUERTO, () => {
   console.log(`Vektor · huésped en el puerto ${PUERTO}`)
-  console.log(`escenario ${ESCENARIO} · ${SIM.hz} Hz · colchón ${COLCHON} pasos · depurar ${DEPURAR ? 'SÍ' : 'no'}`)
+  console.log(`escenario ${ESCENARIO} · ${SIM.hz} Hz · colchón ${COLCHON} pasos · ` +
+    `rondas ${RONDAS ? 'SÍ' : 'no'} · depurar ${DEPURAR ? 'SÍ' : 'no'}`)
   console.log(`la página en /  ·  el duelo en /duelo/<código>  ·  las salas en ${rutaDeSala('<código>')}`)
 })
 

@@ -44,11 +44,16 @@ export function codigoDeLaDireccion(ubicacion = window.location) {
  * @param {string} codigo
  * @param {Location} [ubicacion]
  */
-export function urlDeSala(codigo, ubicacion = window.location) {
+export function urlDeSala(codigo, ubicacion = window.location, pase = null) {
+  // **El pase de reconexión viaja en la dirección** (vuelta 62), no en un
+  // mensaje: el servidor tiene que decidir si esto es una butaca nueva o una que
+  // ya estaba **antes** de que llegue ningún mensaje, que es cuando reparte
+  // ranura y manda la bienvenida.
+  const cola = pase ? `?pase=${encodeURIComponent(pase)}` : ''
   const enWorker = ubicacion.protocol === 'https:' || new URLSearchParams(ubicacion.search).has('worker')
   if (enWorker) {
     const esquema = ubicacion.protocol === 'https:' ? 'wss:' : 'ws:'
-    return `${esquema}//${ubicacion.host}${rutaDeSala(codigo)}`
+    return `${esquema}//${ubicacion.host}${rutaDeSala(codigo)}${cola}`
   }
   // **Ojo desde la vuelta 58: el huésped de Node ya encamina por código**, igual
   // que el Durable Object. Hasta la 57 era una sola partida y el código se
@@ -56,7 +61,7 @@ export function urlDeSala(codigo, ubicacion = window.location) {
   // con el suyo, recién generado— acababan juntas de todos modos. Ahora no: cada
   // una entra en su sala y no se ven. Si abres dos a mano, pásales el código
   // (`...#MQXTUV`) o entra por `/duelo/<código>`.
-  return `ws://${ubicacion.hostname}:${NET.port}${rutaDeSala(codigo)}`
+  return `ws://${ubicacion.hostname}:${NET.port}${rutaDeSala(codigo)}${cola}`
 }
 
 /** El enlace que se le manda al otro. Limpio: sólo la sala. */

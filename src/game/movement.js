@@ -199,6 +199,8 @@ export class MovementController {
 
     /** Sala vigente. La marca el escenario; la vacía usa la de siempre. */
     this.room = ROOM
+    /** Caja de la fase de compra, o null. Ver `setCorralito`. */
+    this._corralito = null
 
     /**
      * Último estado sano conocido, para la red de seguridad de `_guardState`.
@@ -974,6 +976,32 @@ export class MovementController {
     else if (position.x < -limitX) position.x = -limitX
     if (position.z > limitZ) position.z = limitZ
     else if (position.z < -limitZ) position.z = -limitZ
+
+    // **Y el corralito, si lo hay** (vuelta 62): la caja de la fase de compra.
+    // Va **aquí y no en el servidor** por la razón de siempre: el cliente
+    // predice su propio movimiento, así que un límite que sólo conociera un
+    // lado sería una corrección en cada paso contra la pared invisible.
+    const c = this._corralito
+    if (c) {
+      if (position.x > c.maxX) position.x = c.maxX
+      else if (position.x < c.minX) position.x = c.minX
+      if (position.z > c.maxZ) position.z = c.maxZ
+      else if (position.z < c.minZ) position.z = c.minZ
+      this._wallClampedX = this._wallClampedX || position.x === c.maxX || position.x === c.minX
+      this._wallClampedZ = this._wallClampedZ || position.z === c.maxZ || position.z === c.minZ
+    }
+  }
+
+  /**
+   * **La caja dentro de la que se puede andar**, o `null` para la sala entera.
+   * Hoy la pone la fase de compra del duelo; es deliberadamente tonta —cuatro
+   * números y un acotado— porque lo que decide cuándo hay corralito es una regla
+   * de juego, y ésa vive en `net/partida.js`.
+   */
+  setCorralito(caja) {
+    this._corralito = caja
+      ? { minX: caja.minX, maxX: caja.maxX, minZ: caja.minZ, maxZ: caja.maxZ }
+      : null
   }
 
   /**

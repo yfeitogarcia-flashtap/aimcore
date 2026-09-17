@@ -1527,6 +1527,117 @@ De ahí, tres cosas que hay que respetar al tocar esto:
   pausa no hay pasos: sería una bala guardada, apuntada a donde el rival estaba
   parado.
 
+**El duelo se juega a rondas, y hay dos condiciones de victoria, no una**
+(vuelta 62). Una **ronda** se gana matando al rival o llegando al final de sus
+tres minutos con más vida; la **partida**, con la mayoría de las rondas. Son dos
+cosas distintas y por eso están separadas en el código (`_terminarRonda` y
+`_terminarPartida`) y en la foto. Todo vive en `net/partida.js` y nada en el
+motor: es una regla del 1v1, no del aim trainer. El tuning, en `ROUNDS`.
+
+Seis reglas que **son** el sistema:
+
+- **El reloj de una ronda es el número de paso**, como todo lo demás de la red.
+  En pausa no corre porque no corre nada, que es justo lo que hace falta: con el
+  reloj de pared, una pausa de dos minutos se comería una ronda entera. Lo que
+  viaja en la foto es **cuánto queda**, calculado por el servidor — los relojes
+  de las dos pantallas y el suyo no coinciden (misma regla que la vuelta 54).
+  Las cuentas de la *conversación* —pausa y votación— siguen por pared y siguen
+  en `PAUSE`: son del jugador, no del mundo.
+- **Un número par de rondas a propósito.** Con impar no hay empate posible y la
+  prórroga no llegaría nunca. Catorce, mayoría de ocho.
+- **Empate real de vidas: la ronda no cuenta y se repite.** No es medio punto
+  para cada uno: nadie ha hecho más que el otro. Consecuencia deliberada que no
+  es un fallo: **una ronda repetida no gasta número**, así que dos jugadores que
+  no hagan nada pueden repetir para siempre. El final lo pone jugar.
+- **La prórroga va por tandas, no a muerte súbita** (`ROUNDS.prorrogaTanda`, 2).
+  Con una sola ronda de desempate, las trece anteriores valdrían lo mismo que la
+  catorceava. A 1 es muerte súbita, que es lo que hay que poner si algún día se
+  decide lo contrario.
+- **Con rondas, una muerte no se reaparece: cierra la ronda.** `vivoEn` se pone
+  a un número al que no se llega, y el que levanta a los dos es el reinicio de
+  ronda. Fuera de una ronda sigue valiendo la reaparición de la vuelta 52, en el
+  reloj de las entradas de la víctima.
+- **Y abandonar es perder la ronda.** Encaja sin ningún caso especial: el rival
+  gana la ronda y, como un duelo no se juega solo, la partida.
+
+**La fase de compra aísla de verdad, y eso lo garantiza el servidor** (vuelta
+62). Quince segundos entre ronda y ronda, con dos mecanismos que no son el mismo:
+
+- **El corralito** es una caja de 4 u centrada en la salida de cada uno
+  (`ROUNDS.cajaCompra`). Las dos salidas están a 5 u, así que **no se solapan**.
+  Vive en `movement.js` (`setCorralito`) y no en el servidor **porque el cliente
+  predice su propio movimiento**: un límite que sólo conociera un lado sería una
+  corrección por paso contra una pared que sólo existe en un sitio. El módulo es
+  deliberadamente tonto —cuatro números y un acotado—; cuándo hay corralito lo
+  decide `partida.js`, que es donde viven las reglas.
+- **No verse no es no dibujar: es no recibir.** Durante la compra la foto sale
+  **por destinatario** y sólo lleva al que la recibe. Cuesta un `stringify` de
+  más durante quince segundos de cada ronda, y a cambio «no pueden verse» deja
+  de depender de que el cliente colabore, que es el único sitio donde esa promesa
+  se puede romper. El cliente, además, vacía el buffer del rival al cambiar de
+  fase: si no, al empezar la ronda interpolaría desde donde estaba hace quince
+  segundos.
+- **Y un cambio de fase tira la cola sin confirmar.** Un reinicio de ronda es un
+  teletransporte que decide el servidor; reejecutar encima las entradas que
+  viajaban sacaría al jugador andando de su propia caja. Va **antes** de
+  reejecutar, en `_leerRondas`.
+
+Lo que **no** trae todavía: comprar. No hay economía —sin precios y sin dinero,
+que sigue fuera de alcance— así que la fase es hoy la ventana para elegir con
+qué sales con las teclas de siempre. Cuando exista la economía, el panel va aquí.
+
+**Caerse no es irse, y la única forma de distinguirlo es que irse se diga**
+(vuelta 62). Es la regla del transporte de la vuelta 51 llevada hasta el final:
+un cable que se corta **no manda ningún mensaje**, así que las dos cosas llegan
+por la misma puerta —`close`— y ninguna pista del socket las separa. Por eso
+`MSG.ADIOS` pasa a ser **bidireccional**: del cliente significa «me voy», y lo
+manda **sólo el botón «Salir de la partida»**.
+
+**Y cerrar la pestaña no lo manda, a propósito.** La primera versión lo soltaba
+también en `pagehide`, y está mal por algo que sólo se ve al probarlo: el
+navegador dispara ese evento **igual al recargar**, y recargar es justo como se
+vuelve a una partida. Con eso puesto, reconectar era abandonar.
+
+**Todo cierre sin ese mensaje delante es una caída**, y ése es el lado seguro del
+error: dar por abandonado a quien se le fue el wifi le quita una partida que no
+había perdido; dar por caído a quien cerró la pestaña sólo hace esperar al rival
+—y ni eso, porque puede cerrar la ventana él—.
+
+De ahí, cinco piezas:
+
+- **`sale()` se parte en dos verbos**: `abandona(id)` libera la butaca entera;
+  `sedesconecta(id)` la **conserva** con su vida, sus rondas, su ranura y su
+  arma. `llena` cuenta butacas reservadas —si no, un tercero con el código se
+  sienta en la silla de quien está recargando la página— y `vacia`, que es lo
+  que mira el huésped para parar el reloj, cuenta **conectados**.
+- **El pase de reconexión.** Un secreto que da la bienvenida y que sólo tiene
+  quien ya estaba sentado ahí. Viaja **en la dirección del socket**
+  (`?pase=…`) y no en un mensaje, porque la butaca se decide en `entra()`, antes
+  de que llegue ninguno. Sin él, la butaca de quien se cae se la queda cualquiera
+  que tenga el enlace, empezando por su rival.
+- **La pausa por caída es un tercer tipo de pausa**: no la pone nadie
+  (`por: null`), **no gasta ninguna de las tres libres**, no la levanta un botón
+  —la levanta que el otro vuelva— y su tope es la ventana de reconexión.
+- **Un cable mudo no se cierra solo**, así que el huésped lleva **ping/pong**
+  (`NET.pingMs`, 5 s): dos intervalos sin contestar y cierra el socket. Es del
+  huésped y no del protocolo —la partida no pregunta por el estado del cable, se
+  entera de que se cerró—. Sin esto, un portátil que se duerme deja al rival
+  mirando un muñeco congelado durante los minutos que tarda TCP en rendirse.
+- **Noventa segundos de ventana** (`ROUNDS.reconexionSegundos`), y **el que
+  espera puede cerrarla a los quince** (`abandonoDesdeSegundos`, `MSG.RECLAMAR`).
+  El número sale de la escala que ya existía: por encima de lo que cuesta
+  recargar la página o desbloquear un PC, y por debajo de los 120 de una pausa
+  libre — ninguna pausa que no se elige puede durar lo que una que sí. Y lo
+  segundo es la regla de la vuelta 55 por el otro lado: el mundo parado de uno no
+  puede ser un efecto secundario de lo que le pase a otro.
+
+**Y la partida a medias se guarda en el navegador, no en el netcode.** El código
+y el pase viven en `localStorage` bajo `vektor.duelo.v1`, los guarda la página
+del duelo y el botón «Reconectar» sale ahí — **no** en la pantalla de inicio del
+juego, que no sabe que existe la red (vuelta 45). Ojo con lo de siempre:
+`localStorage` es por origen, así que mudar de dominio deja atrás la partida a
+medias, una vez.
+
 **Tres pausas libres por jugador y partida** (`PAUSE.free`); de la cuarta en
 adelante decide el rival, votando. Sólo la levanta quien la puso —si no, pedirla no serviría—, e irse levanta la
 propia, o el otro se queda en un mundo parado para siempre. Se contesta con
@@ -1861,6 +1972,23 @@ Y el de Node además **cachea en memoria lo que sirve, comprimido**, así que ni
 siquiera reconstruir `dist/` por debajo le cambia nada: hay que reiniciar el
 proceso.
 
+**Y el huésped tiene dos interruptores para poder medir, no para jugar** (la
+segunda, de la vuelta 62):
+
+- `VEKTOR_DEBUG=1` atiende `MSG.COLOCAR`, que es como un banco pone a los dos
+  jugadores cara a cara sin depender de que sepan rodear una caja.
+- `VEKTOR_RONDAS=0` deja el duelo **como estaba hasta la 61**: un mundo que no se
+  reinicia, con la reaparición por reloj de las entradas y sin fase de compra. Es
+  lo que necesitan los bancos de netcode —`red45`, `tiro46`, `ux60`,
+  `reaparecer50`, las tres de pausas— que **matan al mismo blanco una y otra
+  vez**: con rondas, cada muerte abre quince segundos en los que no se dispara y
+  la tabla sale vacía. Lo que sí se juega a rondas se mide en `rondas62`
+  (conduce `Partida` directamente, sin navegador) y `duelo62` (dos navegadores,
+  desde el producto), y `motor56` y `abatido52` corren **con** rondas.
+
+`/salud` dice los dos, así que un banco puede comprobar contra qué está midiendo
+en vez de suponerlo.
+
 **Y esto no se deja a la memoria** (vuelta 61): ha costado dos vueltas, la
 segunda en forma de banco en rojo con los números exactos de antes del arreglo,
 que parecía una regresión del juego. `/salud` dice **qué build sirve** —los
@@ -1941,6 +2069,18 @@ y esa máquina de estados hoy sólo existe para los muñecos.
 
 Hasta la 55 en pantalla había **mira, vida y el cartel de abatido**, y nada más.
 Los números de red y el fantasma siguen apagados detrás de **F3**.
+
+**Y desde la vuelta 62 el duelo es una partida de verdad, no una escaramuza sin
+final**: 14 rondas de 3 minutos (mayoría de 8), la ronda se cierra con la primera
+muerte, el empate de vidas la repite, un 7-7 va a prórroga por tandas de dos, y
+entre ronda y ronda hay 15 s de fase de compra con cada jugador encerrado en su
+caja y sin recibir la posición del otro. Tuning en `ROUNDS`.
+
+**Y una caída ya no deja la partida colgada**: el mundo se para para el que
+queda, la butaca del que se fue se guarda entera 90 segundos con su pase de
+reconexión, y volver es abrir el enlace otra vez. Irse —que es pulsar el botón—
+le da la ronda y la partida al rival. El huésped lleva ping/pong para enterarse
+de un cable mudo.
 
 Desde la vuelta 53 se puede **pausar la partida de los dos**, con tres pausas
 libres por jugador y permiso del rival a partir de la cuarta — y desde la 60

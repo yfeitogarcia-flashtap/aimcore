@@ -6685,6 +6685,199 @@ propia fila. Con eso los cinco picos salen 0.409 clavados. Es la regla de la
 vuelta 46 aplicada al audio —una medida necesita que se vea de cuántas sale— y la
 de la 57 —una suite verde no está verificada por estar verde—.
 
+## Ronda 62b — Rondas, condición de victoria y reconexión
+
+### Dos condiciones de victoria, y por eso dos funciones
+
+Una **ronda** se gana matando o llegando al final con más vida. Una **partida**,
+con la mayoría de las rondas. Meterlas en la misma función habría sido el error
+clásico: la ronda que da la octava victoria es *a la vez* un final de ronda y un
+final de partida, y con una sola salida acaba habiendo un `if` que decide de qué
+tipo es el final. Son `_terminarRonda` y `_terminarPartida`, y la primera llama a
+la segunda a través de `_comprobarFinDePartida` — que es donde vive la única
+pregunta que hay que hacerse después de cada ronda.
+
+### El reloj de una ronda es el número de paso
+
+No es un detalle de implementación: es la diferencia entre que una pausa de dos
+minutos se coma una ronda entera o no se note. `hastaPaso` es un número de paso,
+y en pausa el paso no sube (regla de la vuelta 53), así que la cuenta se para
+sola sin que nadie la pare. Lo que viaja en la foto es **cuánto queda**,
+calculado por el servidor, por lo mismo que la cuenta de la pausa desde la 54:
+los relojes de las dos pantallas y el suyo no coinciden.
+
+Las dos cuentas que **sí** van por reloj de pared siguen yendo: la pausa y la
+votación, que son de la conversación y no del mundo. Y ahora una tercera, por la
+misma razón: la ventana de reconexión, que tiene que correr justo mientras el
+mundo está parado.
+
+### El empate que se repite, y lo que acepta
+
+«Si están exactamente igualados, la ronda no cuenta para nadie y se repite» tiene
+una consecuencia que no es un fallo: **una ronda repetida no gasta número**, así
+que dos jugadores que no hagan nada pueden repetirla indefinidamente. Se acepta a
+propósito. La alternativa —medio punto para cada uno, o darla por perdida a
+alguien— inventa un resultado donde no lo hubo, que es peor que un bucle que sólo
+se produce si nadie juega.
+
+### La prórroga va por tandas
+
+`ROUNDS.prorrogaTanda` es 2. Con muerte súbita, las trece rondas anteriores
+valdrían exactamente lo mismo que la catorceava, y una partida de tres cuartos de
+hora se decidiría en un intercambio. A 1 queda muerte súbita, que es el único
+cambio que hay que hacer si algún día se decide lo contrario.
+
+### La fase de compra: dos mecanismos, no uno
+
+«Confinados a una zona delimitada y en ningún momento pueden verse» son dos
+cosas distintas y se resuelven por separado.
+
+**El confinamiento vive en `movement.js`**, que es el módulo que ejecutan los dos
+extremos. Ponerlo sólo en el servidor habría sido una corrección por paso contra
+una pared invisible: el cliente predice su propio movimiento, así que si no
+conoce el límite, cruza y el servidor lo devuelve. Es la convención de siempre
+—una sola fuente de verdad para lógica compartida— aplicada a un límite nuevo. El
+módulo no sabe qué es una fase de compra: recibe cuatro números.
+
+**Y no verse no es no dibujar: es no recibir.** Durante la compra la foto sale
+por destinatario y sólo lleva al que la recibe. La alternativa —mandar las dos
+posiciones y que el cliente no pinte la del rival— deja la promesa en manos del
+cliente, que es el único sitio donde se puede romper. Cuesta un `stringify` de
+más durante quince segundos de cada ronda.
+
+**Lo que no trae es comprar.** No hay economía —sigue fuera de alcance, sin
+precios ni dinero— así que hoy la fase es la ventana para elegir con qué sales
+con las teclas de siempre. Está anotado aquí para que quede claro que es una
+pieza que falta y no una que se olvidó.
+
+### Un cambio de fase tira la cola sin confirmar
+
+Un reinicio de ronda es un teletransporte que decide el servidor. La
+reconciliación, después de colocar la pose autoritativa, **reejecuta las entradas
+que el servidor todavía no ha visto**; esas entradas son de antes del reinicio, y
+reejecutarlas encima del sitio de salida saca al jugador andando de su propia
+caja. Se tiran en `_leerRondas`, que por eso corre **antes** de reejecutar nada.
+
+Es la otra cara de la vuelta 52: una reaparición individual **sí** se predice
+—cuelga del reloj de entradas de su víctima— pero un reinicio de ronda es un
+evento compartido y no puede vivir en el reloj de nadie en particular.
+
+### Caerse no es irse, y sólo se distinguen si irse se dice
+
+Es la regla de la vuelta 51 llevada hasta el final: **un cable que se corta no
+manda ningún mensaje**. `close` es `close` venga de un wifi que se va o de una
+pestaña que se cierra, y ninguna propiedad del socket los separa. Así que el
+abandono se **dice** (`MSG.ADIOS` del cliente) y la caída es el silencio.
+
+**El valor por defecto es el que menos duele si nos equivocamos**, y la asimetría
+es clara: dar por abandonado a quien se le fue el wifi le quita una partida que
+no había perdido; dar por caído a quien cerró la pestaña sólo hace esperar al
+rival — y ni eso, porque puede cerrar la ventana él.
+
+De ahí salió un error que sólo se ve probándolo: la primera versión mandaba el
+adiós también en `pagehide`, para cubrir «cerrar la pestaña». Pero el navegador
+dispara ese evento **igual al recargar**, y recargar es exactamente como se
+vuelve a una partida: con eso puesto, **reconectar era abandonar**. Se quitó. Una
+pestaña cerrada es una caída como cualquier otra, y si no se vuelve acaba en
+abandono igual, noventa segundos después.
+
+### El ping es del huésped, no del protocolo
+
+Un portátil que se duerme no produce `close` hasta que TCP se rinde, que son
+minutos. El `ws` del huésped lleva ping/pong cada `NET.pingMs` y cierra el socket
+tras dos intervalos mudos. Va ahí y no en `partida.js` por la regla de la vuelta
+47 —el huésped pone el reloj y el cable— y encaja con la de la 46: la partida no
+pregunta por el estado del cable, se entera de que se cerró. El Durable Object de
+Cloudflare no lo tiene; es respaldo desde la 58 y se anota como deuda.
+
+### Noventa segundos, y un botón a los quince
+
+El número sale de la escala que ya existía en `PAUSE`: una pausa libre dura 120 s
+y una votada 60, y esa diferencia está puesta porque *el que dice que sí paga un
+rato parado que no ha elegido*. Una caída no la elige nadie, así que va por
+debajo de la libre; y recargar la página son diez o veinte segundos, desbloquear
+un PC entre treinta y sesenta. Noventa cubre lo segundo con margen.
+
+Y el que espera no queda secuestrado: a los quince segundos le sale el botón de
+dar la partida por abandonada. Es la regla de la vuelta 55 por el otro lado —el
+mundo parado de uno no puede ser efecto secundario de lo que le pase a otro—.
+
+### El pase, y por qué va en la dirección
+
+La butaca guarda vida, rondas, ranura y arma. Sin un secreto, la de quien se cae
+se la queda cualquiera que tenga el enlace, **empezando por su rival**. El pase
+lo da la bienvenida y viaja en la dirección del socket (`?pase=…`) y no en un
+mensaje, porque la butaca se decide en `entra()` — antes de que haya llegado
+ninguno.
+
+Lo guarda **la página**, no el netcode: dónde se guarda algo entre dos visitas no
+es del cliente de red. Y el botón «Reconectar» sale en la página del duelo y no
+en la pantalla de inicio del juego, que no sabe que existe la red (vuelta 45).
+
+### El cartel que tapaba la pantalla entera sin verse
+
+El cartel de fin de partida se escribió como el de abatido —sin `display` en su
+regla base, sólo en la de `.puesto`— y ahí está la trampa: el de abatido está
+**además** en el grupo de capas que se apagan sin ratón capturado, y éste no
+puede estarlo, porque sale justo cuando se ha soltado el ratón. Sin ese
+`display: none`, el cartel se queda en `block` a pantalla completa: invisible
+—no tiene contenido que pintar— y por encima de todo, comiéndose el clic que
+captura el ratón.
+
+Lo cazó `jugable48` a la primera, y con un mensaje que lo decía entero:
+`<div id="fin">…</div> intercepts pointer events`. Es la misma familia que la
+nota de la vuelta 48 sobre las dos reglas con un id cada una.
+
+### La butaca que dejaba la sala llena para nadie
+
+Reservar la butaca de quien se cae tiene un final que no es evidente: **la pausa
+que la caduca sólo corre mientras hay un paso que la mire**. Si se van los dos,
+el huésped para el reloj —una sala vacía no gasta reloj, regla de la 47— y las
+dos butacas se quedan congeladas hasta que la sala se olvide, diez minutos
+después. Mientras tanto la partida dice que está llena y contesta «la partida
+está llena (1v1)» a quien entre, incluidos los mismos que acaban de salir.
+
+Lo cazó el depurador antes que ningún banco: dos ejecuciones seguidas del mismo
+probador, y la segunda no conseguía entrar. Se arregla por tres sitios, y los
+tres hacen falta:
+
+- **Al entrar se caducan las butacas**, con el reloj de pared. Es el momento en
+  que a alguien le importa, y funciona con la sala parada.
+- **Sin partida en marcha no se reserva nada.** Caerse con la partida acabada o
+  sin empezar suelta la butaca entera: no hay a qué volver.
+- **Y una sala sin butacas reinicia el marcador** —no el número de paso, que es
+  del mundo—, o dos amigos que vuelven a su código se encontrarían una partida
+  terminada y sin forma de jugar otra.
+
+De paso se vio lo que costaba de verdad: **casi todos los rojos de la regresión
+salían de aquí**, no de las rondas. Los bancos corren seguidos sobre el mismo
+código de sala, así que el segundo entraba con una silla ocupada por un fantasma
+y medía un duelo de uno — «sin rival», «2 de 2 disparos», doce fallos de doce.
+
+### Y los bancos de netcode necesitan un mundo que no se reinicie
+
+`red45`, `tiro46`, `ux60`, `reaparecer50` y las tres de pausas miden
+reconciliación, compensación de retraso y marcadores **matando al mismo blanco
+una y otra vez**. Con rondas, cada muerte abre quince segundos en los que no se
+dispara: la tabla no sale mal, sale **vacía**, que es peor.
+
+Así que el huésped tiene un interruptor más, hermano de `VEKTOR_DEBUG`:
+`VEKTOR_RONDAS=0` deja el duelo como estaba hasta la 61. No es un modo de juego,
+es lo mismo que `MSG.COLOCAR`: una puerta para poder medir. Lo que sí se juega a
+rondas se mide con `rondas62` —que conduce `Partida` directamente, sin navegador,
+porque ahí no hay una línea de red— y `duelo62`, dos navegadores contra el
+producto. Y `/salud` publica los dos interruptores, así que un banco puede
+comprobar contra qué mundo mide en vez de suponerlo.
+
+### Y el sello del build no miraba las páginas
+
+La huella que `/salud` publica desde la 61 listaba `dist/assets`, donde Vite
+pone un hash del contenido en cada nombre. Pero **los `.html` se llaman siempre
+igual**, y el CSS del duelo vive dentro de `net/prueba.html`: arreglar una regla
+de estilo y no reiniciar el huésped daba una huella **idéntica** con la página
+vieja servida, que es justo el falso negativo que la huella existe para cerrar.
+Ahora la huella lleva además un sha1 corto de cada página.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

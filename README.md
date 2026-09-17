@@ -139,6 +139,81 @@ con SHIFT bajan el ritmo solos además de sonar más flojo. Agachado se oye poco
 pero se oye: un sigilo perfecto convertiría agacharse en la única forma de
 moverse, y lo que tiene que costar es la velocidad.
 
+## Probarlo en local, y publicarlo
+
+```bash
+npm install          # una vez
+npm run host         # construye y levanta el juego y las partidas en el 5199
+```
+
+Luego, en el navegador:
+
+- El aim trainer: **http://localhost:5199/**
+- Un duelo: **http://localhost:5199/duelo/** (crea un código) y pásale el enlace
+  al otro jugador.
+
+Para probar un 1v1 tú solo hacen falta **dos navegadores distintos** —o uno
+normal y otro de incógnito—, no dos pestañas: el navegador frena la pestaña que
+no está delante y el duelo se ve a tirones sin que nada esté roto.
+
+**Ojo:** `npm run host` construye **al arrancar** y sirve lo que había en ese
+momento, cacheado en memoria. Si cambias código, **párala y vuelve a lanzarla**.
+Para saber si lo que se está sirviendo es lo de ahora, `http://localhost:5199/salud`
+dice qué build tiene cargado.
+
+Y para desarrollar con recarga en caliente, `npm run dev` (Vite en el 5173) con
+`npm run net` aparte para las partidas.
+
+### Publicar en Fly.io
+
+**El despliegue no se actualiza solo al hacer push.** No hay ninguna acción
+automática: subir a GitHub guarda el código y nada más. Publicar es, desde el
+repositorio ya actualizado (`git pull`):
+
+```bash
+fly deploy --ha=false
+```
+
+El `--ha=false` no es opcional: por defecto Fly crea **dos** máquinas, y como las
+salas viven en la memoria del proceso, dos máquinas son **dos mundos** para el
+mismo código de partida —los dos jugadores entran, cada uno en la suya, y no se
+ven, sin un solo error en pantalla—. El paso a paso completo está en
+`docs/despliegue-fly.md`.
+
+## El duelo 1v1: rondas y reconexión
+
+Un duelo se juega **a 14 rondas** (mayoría de 8). Cada ronda dura **3 minutos** o
+hasta que uno mate al otro; si se acaba el tiempo sin muertes, gana la ronda quien
+llegue con más vida, y si las dos vidas están exactamente igualadas la ronda **no
+cuenta para nadie y se repite**. Un 7-7 lleva a **prórroga**, que se juega en
+tandas de dos rondas hasta que alguien acabe una tanda por delante.
+
+Entre ronda y ronda hay **15 segundos de fase de compra**: cada jugador vuelve a
+su salida, se queda encerrado en una caja de 4 u alrededor de ella y **no recibe
+la posición del rival**, así que no hay forma de verse ni de dispararse. Todavía
+no hay tienda —no hay economía— así que de momento es la ventana para elegir con
+qué sales.
+
+Todo es configurable en `ROUNDS` (`src/config.js`).
+
+### Si se corta la conexión
+
+Irse y caerse son dos cosas distintas:
+
+- **Irse** es pulsar «Salir de la partida». El rival gana esa ronda y la partida.
+- **Caerse** —wifi, portátil dormido, pestaña cerrada— no manda ningún aviso, así
+  que el juego lo trata como lo que es: la partida **se pausa** para el que sigue
+  conectado, con un cartel que lo dice, y se guarda la butaca entera (vida,
+  rondas, ranura y arma).
+
+Quien se cayó tiene **90 segundos** para volver: al abrir de nuevo el enlace del
+duelo se reconecta solo a la misma partida, o le sale un botón **Reconectar** si
+abre otro. Si no vuelve, la partida se da por abandonada y la gana el rival. Y el
+que está esperando no queda atrapado: a los 15 segundos le aparece un botón para
+dar la partida por abandonada cuando quiera.
+
+Recargar la página **no** es irse: es como se vuelve.
+
 ## Cómo suena un disparo
 
 Todas las armas suenan sintetizadas en tiempo real, sin un solo fichero de audio.

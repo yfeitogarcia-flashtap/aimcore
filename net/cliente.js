@@ -18,7 +18,7 @@
  * El reloj de la simulación es **el número de paso**, no el de nadie: ver
  * `protocolo.js`.
  */
-import { NET, PAUSE, SIM_STEP_MS, WEAPONS, WEAPON_ORDER } from '../src/config.js'
+import { NET, PAUSE, ROUNDS, SIM_STEP_MS, WEAPONS, WEAPON_ORDER } from '../src/config.js'
 import { resolverDisparo } from './disparo.js'
 import { cuerpoDeJugador } from './pose.js'
 import { MSG, desempaquetarTeclas, empaquetarTeclas, instanteDePaso, instanteEnPaso } from './protocolo.js'
@@ -107,7 +107,18 @@ export class ClienteRed {
      * abierto con el mundo corriendo por detrás.
      */
     this.pausa = { pausada: false, por: null, mia: false,
-                   libres: PAUSE.free, rivalLibres: PAUSE.free }
+                   libres: PAUSE.free, rivalLibres: PAUSE.free,
+                   /** `'caida'` cuando la puso el servidor porque alguien se fue. */
+                   motivo: null }
+    /**
+     * **Las rondas, tal como las cuenta el servidor** (vuelta 62). Aquí no se
+     * decide nada —ni cuándo empieza una fase, ni quién gana—: se lee de la foto
+     * y se dibuja. La misma regla que la pausa, y por el mismo motivo.
+     */
+    this.rondas = { n: 0, fase: 'espera', resta: 0, marcador: [0, 0], ganador: null,
+                    motivo: null, ultima: null, prorroga: false }
+    /** El pase de reconexión, que da la bienvenida. Lo guarda la página. */
+    this.pase = null
     /**
      * **La votación, que no para el mundo** (vuelta 55). `mia` es la de uno
      * mismo —a quien la pide no se le pregunta nada— y `votado` dice si ya se
@@ -401,6 +412,12 @@ export class ClienteRed {
     // una bala guardada durante la pausa, apuntada a donde el rival estaba
     // parado. Es justo lo que la pausa no puede permitir.
     if (this.pausa.pausada) return
+    // **Y en la fase de compra tampoco** (vuelta 62). El servidor lo rechaza de
+    // todos modos, pero anotarlo aquí haría que el cliente predijera un impacto
+    // —con su sonido y su marca en la mira— contra un rival del que ni siquiera
+    // le están mandando la posición. Un disparo que sólo existe en una pantalla
+    // es peor que un disparo que no sale.
+    if (this.rondas.fase === 'compra' || this.rondas.fase === 'fin') return
     this._disparo = { ts: ahoraMs, yaw, pitch }
   }
 
@@ -531,12 +548,84 @@ export class ClienteRed {
        * pool de dianas. El día que haya identidades, esto es lo que cambia.
        */
       this.equipo = mensaje.equipo
+      // **El pase es de la butaca, no de la conexión** (vuelta 62): quien vuelve
+      // lo enseña y se sienta donde estaba. La página lo guarda; aquí sólo se
+      // recoge, porque dónde se guarda una cosa entre visitas no es del netcode.
+      this.pase = mensaje.pase ?? this.pase
       this.camara.position.x = mensaje.salida.x
       this.camara.position.z = mensaje.salida.z
       this.onBienvenida?.(mensaje)
       return
     }
     if (mensaje.t === MSG.FOTO) this._reconciliar(mensaje)
+  }
+
+  /**
+   * **Las rondas salen enteras de la foto**, como la pausa. Lo único que hace
+   * el cliente con ellas es obedecer:
+   *
+   * - **Al cambiar de fase se tira la cola sin confirmar.** Un reinicio de ronda
+   *   es un teletransporte que decide el servidor, y las entradas que viajaban
+   *   son de un mundo que ya no existe.
+   * - **El corralito se pone y se quita aquí**, con la misma caja que calcula el
+   *   servidor: el cliente predice su propio movimiento, así que un límite que
+   *   sólo conociera un lado sería una corrección por paso contra una pared que
+   *   sólo existe en un sitio.
+   * - **Y en la compra no hay rival que dibujar.** No es que no se dibuje: es
+   *   que el servidor no manda su posición. Se vacía el buffer para que al
+   *   empezar la ronda no se interpole desde donde estaba hace quince segundos.
+   */
+  _leerRondas(foto) {
+    const r = foto.rd
+    if (!r) return
+    const antes = this.rondas.fase
+    const cambia = antes !== r.f || this.rondas.n !== r.n
+    this.rondas = {
+      n: r.n,
+      fase: r.f,
+      resta: r.resta ?? 0,
+      marcador: r.m ?? [0, 0],
+      ganador: r.g ?? null,
+      motivo: r.mot ?? null,
+      ultima: r.u ?? null,
+      prorroga: !!r.pr,
+    }
+    if (!cambia) return
+    this.pendientes.length = 0
+    this.rival.buffer.length = 0
+    this.movimiento.setCorralito(r.f === 'compra' ? this._cajaDeCompra() : null)
+    this.onRonda?.(this.rondas)
+  }
+
+  /** La caja de la compra, centrada en la salida de esta ranura. */
+  _cajaDeCompra() {
+    if (!this.salida) return null
+    const mx = ROUNDS.cajaCompra.ancho / 2
+    const mz = ROUNDS.cajaCompra.fondo / 2
+    return {
+      minX: this.salida.x - mx, maxX: this.salida.x + mx,
+      minZ: this.salida.z - mz, maxZ: this.salida.z + mz,
+    }
+  }
+
+  /**
+   * **Irse se dice** (vuelta 62). Es la única forma de que el servidor
+   * distinguga un abandono de una caída, porque un cable que se corta no manda
+   * ningún mensaje. Se manda y se cierra: el `close` que llega detrás ya no
+   * cuenta como caída porque el servidor lo ha marcado al oír esto.
+   */
+  abandonar() {
+    try {
+      this.transporte.send(JSON.stringify({ t: MSG.ADIOS, razon: 'el jugador se ha ido' }))
+    } catch {
+      /* si el cable ya no está, el servidor lo verá como caída; es lo correcto */
+    }
+    this.cerrar()
+  }
+
+  /** «El otro no vuelve»: cierra la ventana de reconexión antes de tiempo. */
+  reclamar() {
+    this.transporte.send(JSON.stringify({ t: MSG.RECLAMAR }))
   }
 
   /**
@@ -547,10 +636,14 @@ export class ClienteRed {
   _leerPausa(foto) {
     const p = this.pausa
     const v = this.votacion
-    const antes = `${p.pausada}${p.por}${p.libres}${p.rivalLibres}${v.activa}${v.por}${v.votado}`
+    const antes = `${p.pausada}${p.por}${p.motivo}${p.libres}${p.rivalLibres}${v.activa}${v.por}${v.votado}`
     const estaba = p.pausada
     p.pausada = !!foto.pa
     p.por = foto.pa?.por ?? null
+    // **Por qué está parado el mundo**, que no es lo mismo que quién lo paró: una
+    // pausa por caída no la puso nadie, así que no hay a quién devolverle el
+    // botón de reanudar (vuelta 62).
+    p.motivo = foto.pa?.motivo ?? null
     p.mia = p.por !== null && p.por === this.id
     this._pausaHasta = foto.pa ? performance.now() + foto.pa.resta : null
 
@@ -602,6 +695,10 @@ export class ClienteRed {
     this.medidas.sinFotosMs = 0
     this.medidas.pasoServidor = foto.n
     this._leerPausa(foto)
+    // **Antes de reejecutar nada**: si ha cambiado de fase, las entradas que
+    // están sin confirmar son de antes del reinicio de ronda, y reejecutarlas
+    // encima del sitio de salida sacaría al jugador andando de su propia caja.
+    this._leerRondas(foto)
 
     // El rival, a su cola de interpolación.
     for (const id of Object.keys(foto.p)) {
