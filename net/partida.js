@@ -22,7 +22,7 @@ import { MovementController } from '../src/game/movement.js'
 import { encajarImpacto } from '../src/game/player.js'
 import { crearPose, cuerpoDeJugador } from './pose.js'
 import { direccionDeMira, resolverDisparo } from './disparo.js'
-import { MSG, desempaquetarTeclas, instanteDePaso, instanteEnPaso } from './protocolo.js'
+import { MSG, compraAbierta, desempaquetarTeclas, instanteDePaso, instanteEnPaso } from './protocolo.js'
 
 export class Partida {
   /**
@@ -1104,8 +1104,11 @@ export class Partida {
       this._enviarEconomia(jugador)
       return
     }
-    // Lo demás sí es comprar: sólo entre rondas, y con el techo de la primera.
-    if (this.rondas.fase !== 'compra') return
+    // Lo demás sí es comprar, y **cuándo lo dice `compraAbierta`**, que es la
+    // misma función que mira el panel del cliente (vuelta 65). Con fase, la
+    // ventana es la fase; sin ella, la ronda entera — a cero se pidió una
+    // partida rápida, no una partida sin tienda.
+    if (!compraAbierta(this.rondas.fase, this.compraSegundos)) return
     if (this.rondas.n <= 1 && !ECONOMY.techoRonda1.includes(item.tipo)) return
     if (jugador.dinero < item.precio) return
 

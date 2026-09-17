@@ -22,10 +22,75 @@
  */
 
 import * as THREE from 'three'
-import { AVATAR } from '../config.js'
+import { AVATAR, MOVEMENT, TARGET, TARGET_TYPES } from '../config.js'
 
 /** El perfil, ya ordenado de pies a coronilla. */
 const PROFILE = AVATAR.body.profile
+
+/** Las tres zonas del hitbox, indexadas por nombre. */
+const ZONES = {}
+for (const part of TARGET_TYPES.hitbox.parts) ZONES[part.zone] = part
+
+/** Altura total de la figura en unidades de radio: de los pies a la coronilla. */
+export const BODY_TOP = ZONES.head.offsetY + ZONES.head.radius
+
+/**
+ * **La banda que ocupa cada zona**, en fracciones de la altura total. Sale de
+ * las piezas del hitbox y no de tres números escritos a mano: la cabeza empieza
+ * exactamente donde acaba el torso, así que no hay ni junta visible ni franja
+ * en la que un disparo no dé en ninguna zona.
+ *
+ * **Vive aquí y no en quien dibuja** (vuelta 65): las usan el avatar —para
+ * cortar las tres mallas— y el hitbox del jugador —para decidir en qué zona
+ * entra un disparo—. Dos copias de este corte son la silueta y el volumen de
+ * impacto separándose, que es justo el fallo que la vuelta 65 vino a cerrar.
+ */
+export const ZONE_BANDS = {}
+for (const part of TARGET_TYPES.hitbox.parts) {
+  const half = (part.height ?? part.radius * 2) / 2
+  ZONE_BANDS[part.zone] = [
+    (part.offsetY - half) / BODY_TOP,
+    (part.offsetY + half) / BODY_TOP,
+  ]
+}
+
+/** Altura a la que se dibuja la figura, que es la de una diana de serie. */
+export const BODY_HEIGHT = BODY_TOP * TARGET.radius
+
+/**
+ * **Dónde caen los ojos dentro de la figura**, en fracción de su altura. No es
+ * un número elegido: es el que hace que un jugador de pie —ojos a
+ * `MOVEMENT.standHeight`— mida exactamente lo que mide el cuerpo que se dibuja.
+ *
+ * De aquí sale `bodyHeightFor`, y de ahí el hitbox. Hasta la vuelta 65 el
+ * hitbox escalaba por su cuenta poniendo los ojos en **el centro de la cabeza**
+ * (la convención de un muñeco, `head.offsetY`) y salía un cuerpo de 1.827
+ * contra los 1.800 que se dibujaban: 2.7 cm de hitbox por encima de la
+ * coronilla, o sea disparos al aire que mataban de un tiro.
+ */
+export const EYE_LEVEL = MOVEMENT.standHeight / BODY_HEIGHT
+
+/** Altura total de un cuerpo cuyos ojos están a `eyeHeight` del suelo. */
+export function bodyHeightFor(eyeHeight) {
+  return eyeHeight / EYE_LEVEL
+}
+
+/**
+ * **Lo que la figura encoge para que el volumen de impacto quepa dentro de la
+ * silueta.** La malla es un prisma de `AVATAR.body.sides` caras, así que su
+ * ancho aparente va del radio entero —mirándola de vértice— a su apotema
+ * —mirándola de cara—. Un sólido de revolución del radio entero asomaría hasta
+ * un 4.9% por fuera de lo que se ve; con el apotema queda contenido **desde
+ * cualquier ángulo**, que es la única forma de garantizar que ningún disparo
+ * que visualmente no toque cuente como impacto.
+ *
+ * Lo que se paga está medido y es el mismo orden por el otro lado: 1.4 cm en la
+ * cintura, 7 mm en la cabeza.
+ */
+export const HIT_INSET = Math.cos(Math.PI / AVATAR.body.sides)
+
+/** El radio mayor del perfil, en fracciones de la altura. Acota, no decide. */
+export const MAX_RADIUS = PROFILE.reduce((m, [, r]) => Math.max(m, r), 0)
 
 /**
  * Radio del cuerpo a una altura dada, interpolando entre los dos puntos del
@@ -43,6 +108,16 @@ export function bodyRadiusAt(level) {
     return r0 + (r1 - r0) * t
   }
   return last[1]
+}
+
+/**
+ * **El radio que recibe disparos a una altura dada**, en fracciones de la
+ * altura total: el del perfil metido hacia dentro por `HIT_INSET`. Es el único
+ * sitio del que sale el ancho del hitbox, y sale del mismo perfil que dibuja la
+ * silueta.
+ */
+export function hitRadiusAt(level) {
+  return bodyRadiusAt(level) * HIT_INSET
 }
 
 /**

@@ -240,6 +240,11 @@ quien crea la partida elige cuántos o si no la hay— con cada jugador encerrad
 en su zona y sin ver al otro. Ahí se abre la armería con **B** (reasignable en
 opciones): el mundo sigue corriendo, pero el ratón se suelta para poder pinchar.
 
+**Y si eliges partida sin fase de compra, la tienda no cierra:** se compra
+durante la ronda entera, cuando puedas. No hay ventana entre rondas donde meterla,
+así que la ventana es la ronda — con el mundo corriendo, que es el precio: con el
+panel abierto eres un blanco.
+
 **Se compra de dos formas, y las dos valen igual:** pinchando el artículo, o
 tecleando su **combinación** — categoría y código, que van escritos en la esquina
 de cada ficha. La Pulse es `1 1`, la Volt `3 1` y la Rift `4 3`. Los códigos
@@ -267,8 +272,10 @@ la pistola y sin chaleco.
 El chaleco (500) y el casco (350) **paran balas de verdad**: el duelo usa la
 misma escalera de daño que el entrenamiento —el casco se come el primer tiro a la
 cabeza, el escudo cubre el cuerpo—. Las granadas salen en el panel con su precio
-y su combinación **y no se pueden comprar**: todavía no existen, y venderlas
-sería prometer algo que no hay.
+y su combinación, **precintadas con «Próximamente»**: todavía no existen, y
+venderlas sería prometer algo que no hay. Lo que sí se puede comprar ahora mismo
+va marcado en verde, para que no haya que leer letra pequeña para saber cuál es
+cuál.
 
 Todos los números están en `ECONOMY` (`src/config.js`) y son de partida: se
 calibran jugando.
@@ -690,6 +697,9 @@ Tres cosas más que conviene saber:
   asomarse y volver a cubrirse reinicia su tiempo de reacción.
 - **Te dan por zonas**, y son tus tres zonas: cabeza, torso y piernas, las mismas
   del hitbox con el que tú les disparas a ellos.
+- **Y te dan donde se te ve.** Lo que recibe los disparos es exactamente la
+  silueta que se dibuja de un jugador — un tiro que pasa al lado de la cabeza o
+  por encima de ella no cuenta, ni contra ti ni contra un rival.
 
 ## Vida, escudo y casco
 

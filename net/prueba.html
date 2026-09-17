@@ -261,6 +261,34 @@
   .art.puesto { border-color: #2FCB82; }
   .art.puesto .precio { color: #FFF; }
   .art .nota { display: block; font-size: 10px; color: #8A8A8A; letter-spacing: .04em; }
+  /* **Lo que se puede comprar ahora mismo se ve desde lejos** (vuelta 65). Verde
+     de acción y un filo grueso a la izquierda: un artículo con saldo y con la
+     ventana abierta no puede leerse igual que uno que no existe todavía. Va con
+     `padding-left` compensado para que el texto no baile al encenderse. */
+  .art.puedo { border-color: #2FCB82; border-left: 3px solid #2FCB82;
+    padding-left: 7px; background: #101C17; color: #FFF; }
+  .art.puedo .precio { font-weight: 700; }
+  /* **Lo que todavía no existe lleva precinto** (vuelta 65). Antes lo decía una
+     nota de diez píxeles («pronto») al lado del precio, y de un vistazo no se
+     distinguía de un artículo sin saldo: una cosa es que hoy no te llegue y otra
+     que la mecánica no exista. La franja cruza el artículo en el naranja de la
+     marca y **deja leer el precio y la combinación** por debajo, que es lo que
+     hay que poder aprenderse para el día que llegue.
+     Ojo al orden: `.art:disabled` y `.art.proximamente` tienen la misma
+     especificidad, así que ésta gana **por ir después** — es lo que devuelve la
+     opacidad que el disabled quita, y mover el bloque la apaga. */
+  .art.proximamente { overflow: hidden; opacity: 1;
+    border-style: dashed; border-color: #3A211A; color: #6E6259; }
+  .art.proximamente:hover { border-color: #3A211A; color: #6E6259; }
+  .art.proximamente .precio { color: #7A5B4E; }
+  .art.proximamente .codigo { color: #5C4A41; }
+  .art .sello { position: absolute; left: -14%; right: -14%; top: 72%;
+    transform: translateY(-50%) rotate(-7deg); pointer-events: none;
+    padding: 2px 0; text-align: center; text-transform: uppercase;
+    font-size: 9px; font-weight: 700; letter-spacing: .2em; color: #0A0A0A;
+    background: repeating-linear-gradient(135deg,
+      #E4462B 0 10px, #C2371F 10px 20px);
+    box-shadow: 0 0 0 1px rgba(10,10,10,.8); }
 
   #finSalir { margin-top: 14px; background: #2FCB82; color: #08130D; border: 0;
     border-radius: 3px; padding: 9px 20px; font: inherit; font-weight: 700;

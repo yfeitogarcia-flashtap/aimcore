@@ -30,6 +30,7 @@ import { resolverDisparo } from './disparo.js'
 import { ClienteRed } from './cliente.js'
 import { conRedSimulada, transporteWebSocket } from './transporte.js'
 import { normalizarCodigo } from './codigo.js'
+import { compraAbierta } from './protocolo.js'
 import { codigoDeLaDireccion, direccionDeLaBarra, enlaceDeSala, urlDeSala } from './sala-cliente.js'
 
 const lienzo = document.getElementById('lienzo')
@@ -647,7 +648,14 @@ $('gho').addEventListener('change', (e) => { fantasma.group.visible = e.target.c
  * engancha por `onFrame`, que el motor publica una vez por fotograma.
  */
 // **Lo que cambia de fase se pinta al cambiar, no por frame.**
-cliente.onRonda = (r) => pintarFaseDeRonda(r)
+cliente.onRonda = (r) => {
+  pintarFaseDeRonda(r)
+  // **La tienda se entera del cambio de fase por aquí**, no por la economía: un
+  // cambio de fase abre o cierra la ventana y no manda un `MSG.ECONOMIA` (nada
+  // ha cambiado de lo que tienes). Sin esto, el panel abierto se quedaba con el
+  // rótulo y los botones de la fase anterior.
+  if (!tienda.hidden) pintarTienda()
+}
 
 // **Irse se dice.** Es lo único que distingue un abandono de una caída: sin este
 // mensaje, cerrar la pestaña y que se caiga el wifi llegan por la misma puerta.
@@ -956,7 +964,12 @@ function montarTienda() {
       boton.innerHTML =
         `<span>${item.nombre}<span class="nota">&nbsp;</span></span>` +
         `<span class="precio">${item.deSerie ? 'de serie' : `$${item.precio}`}</span>` +
-        `<span class="codigo">${item.categoria} ${item.codigo}</span>`
+        `<span class="codigo">${item.categoria} ${item.codigo}</span>` +
+        // **El precinto de lo que no existe** (vuelta 65). Va en el montaje y no
+        // en el repintado porque no depende de nada: una granada no existe hoy y
+        // no existirá a mitad de partida. Lo que sí se repinta es lo demás.
+        (item.disponible ? '' : '<span class="sello">Próximamente</span>')
+      if (!item.disponible) boton.classList.add('proximamente')
       boton.addEventListener('click', () => comprar(item))
       caja.appendChild(boton)
       articulos.set(item.clave, { item, boton, nota: boton.querySelector('.nota') })
@@ -977,14 +990,20 @@ function comprar(item) {
  * que ya llevas y por último el dinero — que es lo único que se arregla solo.
  */
 function porQueNo(item, eco, fase) {
-  if (!item.disponible) return 'pronto'
+  // Lo que no existe no da razón escrita: lo dice su precinto, que se ve de un
+  // vistazo y no compite con «sin saldo» por el mismo hueco de diez píxeles.
+  if (!item.disponible) return ''
   if (item.deSerie) return 'siempre contigo'
   // El supresor va antes de la fase: no cuesta nada y se pone cuando se quiera.
   if (item.tipo === 'accesorio') {
     if (!WEAPONS[motor.weaponKey]?.supportsSuppressor) return 'no lo admite'
     return null
   }
-  if (fase !== 'compra') return 'fuera de la compra'
+  // **Cuándo está abierta la tienda lo dice `compraAbierta`**, la misma función
+  // que el servidor mira para aceptar la compra (vuelta 65). Sin fase de compra
+  // configurada no hay ventana entre rondas donde meterla, así que la ventana es
+  // la ronda entera — y hasta la 65 eso era no poder comprar en toda la partida.
+  if (!compraAbierta(fase, eco.compra)) return 'fuera de la compra'
   if (eco.techo && !eco.techo.includes(item.tipo)) return 'ronda 1: sin armas'
   if (item.clave === 'chaleco' && eco.inv.escudo >= ECONOMY.escudoPorChaleco) return 'puesto'
   if (item.clave === 'casco' && eco.inv.casco) return 'puesto'
@@ -1000,11 +1019,17 @@ function pintarTienda() {
   $('compraReal').textContent = eco.compra > 0 ? `${eco.compra} s` : 'sin fase'
   if (tienda.hidden) return
   $('tiendaDinero').textContent = `$${eco.dinero}`
-  $('tiendaFase').textContent =
-    fase === 'compra' ? `fase de compra · ronda ${cliente.rondas.n}` : 'sólo se compra entre rondas'
+  $('tiendaFase').textContent = !compraAbierta(fase, eco.compra)
+    ? 'sólo se compra entre rondas'
+    : fase === 'compra'
+      ? `fase de compra · ronda ${cliente.rondas.n}`
+      : `tienda abierta · ronda ${cliente.rondas.n}`
   for (const { item, boton, nota } of articulos.values()) {
     const razon = porQueNo(item, eco, fase)
     boton.disabled = razon !== null
+    // **Lo que se puede comprar ahora mismo se marca**, que es lo que separa un
+    // artículo de verdad de uno precintado sin tener que leer la nota.
+    boton.classList.toggle('puedo', razon === null && item.tipo !== 'accesorio')
     const puesto =
       item.clave === eco.inv.primaria ||
       (item.clave === 'chaleco' && eco.inv.escudo > 0) ||

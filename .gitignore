@@ -13,6 +13,9 @@ dist-ssr
 # solo con `wrangler dev` y no es del proyecto.
 .wrangler
 
-# Capturas que algunos bancos escriben en la raíz (r45-A.png y compañía). Son
-# material de medida, no del proyecto: viven en el scratchpad de la sesión.
-/r??-*.png
+# Capturas que algunos bancos escriben en la raíz (r45-A.png, av38-*.png y
+# compañía). Son material de medida, no del proyecto: su sitio es el scratchpad
+# de la sesión. El patrón es la raíz entera y no una lista de prefijos, que es
+# como se coló media docena en la vuelta 65: el proyecto no tiene ni una imagen
+# suelta en la raíz —las de verdad están en `Reference/` y en `public/`—.
+/*.png

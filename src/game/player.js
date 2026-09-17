@@ -26,22 +26,15 @@
  */
 
 import * as THREE from 'three'
-import { COVER, PLAYER, TARGET_TYPES, WEAPONS } from '../config.js'
+import { AVATAR, PLAYER, TARGET_TYPES, WEAPONS } from '../config.js'
+import { BODY_HEIGHT, MAX_RADIUS, ZONE_BANDS, bodyHeightFor, hitRadiusAt } from './body.js'
 
 /** Las tres zonas del hitbox, indexadas por nombre. */
 const ZONES = {}
 for (const part of TARGET_TYPES.hitbox.parts) ZONES[part.zone] = part
 
-/**
- * Cortes de altura del muñeco, en sus propias unidades (múltiplos del radio),
- * y la altura de los ojos con la que se escalan. Salen de las piezas, no de
- * números escritos aquí: la cabeza empieza donde acaba el torso.
- */
-const LEGS_TOP = ZONES.legs.offsetY + ZONES.legs.height / 2
-const TORSO_TOP = ZONES.torso.offsetY + ZONES.torso.height / 2
-const BODY_TOP = ZONES.head.offsetY + ZONES.head.radius
-/** Los «ojos» del muñeco son el centro de su cabeza. Es la referencia de escala. */
-const EYE_LEVEL = ZONES.head.offsetY
+/** El perfil de la figura, que es de donde sale el ancho del hitbox. */
+const PROFILE = AVATAR.body.profile
 
 const _toPlayer = new THREE.Vector3()
 
@@ -315,6 +308,12 @@ export class PlayerStatus {
  * proporciones del hitbox escaladas por la altura de ojos: agachado el cuerpo
  * mide menos y las tres zonas bajan con él, sin una segunda tabla de alturas.
  *
+ * **Y la altura total es la que se dibuja** (vuelta 65), no una escala propia:
+ * sale de `bodyHeightFor`, que es exactamente lo que mide el avatar con esos
+ * ojos. Hasta la 65 esto escalaba poniendo los ojos en el centro de la cabeza
+ * —la convención de un muñeco— y salía un cuerpo 2.7 cm más alto que la
+ * coronilla dibujada.
+ *
  * @param {THREE.Camera} camera
  * @param {number} eyeHeight altura de los ojos sobre los pies
  * @param {number} feetY altura de los pies. Llega del movimiento y no se deduce
@@ -322,26 +321,55 @@ export class PlayerStatus {
  *   centímetros bastan para cambiar de zona un disparo que roza la cintura.
  */
 export function playerBody(camera, eyeHeight, feetY) {
-  const k = eyeHeight / EYE_LEVEL
+  const height = bodyHeightFor(eyeHeight)
   return {
     x: camera.position.x,
     z: camera.position.z,
     feetY,
-    radius: COVER.playerRadius,
-    legsTop: feetY + LEGS_TOP * k,
-    torsoTop: feetY + TORSO_TOP * k,
-    top: feetY + BODY_TOP * k,
+    /**
+     * **El radio mayor de la figura, que acota y no decide.** Es el cilindro
+     * que la envuelve —para descartar barato y para acotar distancias—, no el
+     * ancho del hitbox: ése lo pone el perfil a cada altura.
+     *
+     * **Y no encoge al agacharse**, porque el cuerpo tampoco: `setEyeHeight`
+     * achata el avatar **sólo en Y** y lo deja igual de ancho. Escalar el ancho
+     * con la altura dejaba al agachado un 38% más estrecho de lo que se ve
+     * —medido en `hitbox65`: 12.533 rayos de silueta sin hitbox detrás—. De
+     * aquí sale también el ancho de dentro de `hitPlayer`, que es la única
+     * forma de que un cuerpo rebobinado —que llega interpolado, sin altura de
+     * ojos— sepa lo ancho que era.
+     */
+    radius: MAX_RADIUS * BODY_HEIGHT,
+    legsTop: feetY + ZONE_BANDS.legs[1] * height,
+    torsoTop: feetY + ZONE_BANDS.torso[1] * height,
+    top: feetY + height,
   }
 }
 
 /**
  * ¿Ese disparo entra, y por dónde?
  *
- * El cuerpo es el **mismo cilindro que usa la colisión** (`COVER.playerRadius`),
- * acotado arriba y abajo por la altura de las zonas. Se resuelve analíticamente
- * y no con un raycast contra una malla porque no hay malla: el jugador es una
- * cámara, y montarle un cuerpo invisible sólo para que le disparen sería tener
- * dos cuerpos que se pueden desincronizar.
+ * **El volumen que recibe disparos es la silueta que se dibuja** (vuelta 65).
+ * Hasta entonces era el cilindro de la colisión (`COVER.playerRadius`, 0.4) a
+ * todas las alturas, y eso son dos cuerpos distintos: la figura mide 0.293 en
+ * su punto más ancho y **0.137 en la cabeza**, así que había un anillo de aire
+ * de 26 cm alrededor del cráneo que contaba como impacto en la cabeza —o sea
+ * cien de daño, o sea muerto de un tiro apuntando visiblemente fuera—.
+ *
+ * Ahora se resuelve contra **el mismo perfil que dibuja `body.js`**: la figura
+ * es un sólido de revolución, así que su silueta es el perfil desde cualquier
+ * ángulo, y un corte contra el sólido es un corte contra lo que se ve. El
+ * perfil es una poligonal, así que cada tramo es un tronco de cono y el corte
+ * es una cuadrática por tramo — veintiuna, y sólo para el disparo que pasa el
+ * descarte del cilindro envolvente. No hay malla contra la que lanzar un rayo:
+ * el jugador es una cámara, y montarle un cuerpo invisible sólo para que le
+ * disparen serían dos cuerpos que se desincronizan.
+ *
+ * Y el perfil se mete hacia dentro por `HIT_INSET`, el apotema de la sección:
+ * la malla tiene diez caras y de canto es más estrecha que su radio, así que
+ * sin ese margen el volumen asomaría un 4.9% por fuera de lo que se ve. La
+ * garantía va **en un solo sentido a propósito**: lo que no se ve no se puede
+ * acertar.
  *
  * @param {{x:number,y:number,z:number}} origin
  * @param {THREE.Vector3} direction unitaria
@@ -350,27 +378,103 @@ export function playerBody(camera, eyeHeight, feetY) {
  * @returns {{ zone: string, distance: number } | null}
  */
 export function hitPlayer(origin, direction, body, maxDistance) {
-  // Cilindro vertical: el problema se resuelve en el plano XZ.
+  const height = body.top - body.feetY
+  if (!(height > 0)) return null
+  // La altura la pone la postura; el ancho, no. Sale del radio envolvente, que
+  // es lo único que un cuerpo rebobinado trae del ancho que tenía.
+  const ancho = body.radius / MAX_RADIUS
+
   const dx = origin.x - body.x
   const dz = origin.z - body.z
   const a = direction.x * direction.x + direction.z * direction.z
-  if (a <= 1e-9) return null
   const b = 2 * (dx * direction.x + dz * direction.z)
-  const c = dx * dx + dz * dz - body.radius * body.radius
-  const disc = b * b - 4 * a * c
-  if (disc < 0) return null
+  const c = dx * dx + dz * dz
 
-  const root = Math.sqrt(disc)
-  let t = (-b - root) / (2 * a)
-  // Dentro del cilindro (a bocajarro), el corte de entrada queda detrás.
-  if (t < 0) t = (-b + root) / (2 * a)
-  if (t < 0 || t > maxDistance) return null
+  // Descarte contra el cilindro envolvente: la inmensa mayoría de los disparos
+  // se van por aquí sin tocar un solo tronco de cono. Con un rayo vertical la
+  // cuadrática degenera y no descarta nada, así que se salta.
+  //
+  // Y de paso sale **la franja de alturas que el rayo puede llegar a tocar**,
+  // que es lo que deja no mirar los veintiún tramos: un disparo horizontal a la
+  // cabeza sólo cruza los dos o tres de arriba.
+  let yLo = -Infinity
+  let yHi = Infinity
+  if (a > 1e-9) {
+    const disc = b * b - 4 * a * (c - body.radius * body.radius)
+    if (disc < 0) return null
+    const root = Math.sqrt(disc)
+    const tEntra = Math.max(0, (-b - root) / (2 * a))
+    const tSale = Math.min(maxDistance, (-b + root) / (2 * a))
+    if (tSale < tEntra) return null
+    const yA = origin.y + direction.y * tEntra
+    const yB = origin.y + direction.y * tSale
+    yLo = Math.min(yA, yB)
+    yHi = Math.max(yA, yB)
+    if (yHi < body.feetY || yLo > body.top) return null
+  }
 
-  const y = origin.y + direction.y * t
-  if (y < body.feetY || y > body.top) return null
+  let mejor = Infinity
+  // Los tramos del perfil, cada uno un tronco de cono.
+  for (let i = 0; i < PROFILE.length - 1; i++) {
+    const nivel0 = PROFILE[i][0]
+    const nivel1 = PROFILE[i + 1][0]
+    const y0 = body.feetY + nivel0 * height
+    const y1 = body.feetY + nivel1 * height
+    if (y1 < yLo || y0 > yHi) continue
+    const r0 = hitRadiusAt(nivel0) * ancho
+    const r1 = hitRadiusAt(nivel1) * ancho
+    // Radio del tronco en función de la altura: r(y) = k0 + m·(y − y0).
+    const m = (r1 - r0) / (y1 - y0)
+    const k0 = r0 + m * (origin.y - y0)
+    const k1 = m * direction.y
+    // |p(t) − eje|² = r(y(t))², que es otra cuadrática en t.
+    const qa = a - k1 * k1
+    const qb = b - 2 * k0 * k1
+    const qc = c - k0 * k0
+    if (Math.abs(qa) < 1e-12) {
+      if (Math.abs(qb) < 1e-12) continue
+      mejor = _mejorCorte(-qc / qb, origin, direction, k0, k1, y0, y1, maxDistance, mejor)
+      continue
+    }
+    const disc = qb * qb - 4 * qa * qc
+    if (disc < 0) continue
+    const root = Math.sqrt(disc)
+    mejor = _mejorCorte((-qb - root) / (2 * qa), origin, direction, k0, k1, y0, y1, maxDistance, mejor)
+    mejor = _mejorCorte((-qb + root) / (2 * qa), origin, direction, k0, k1, y0, y1, maxDistance, mejor)
+  }
 
+  // Las dos tapas. Un disparo desde arriba justo en la vertical de la coronilla
+  // —o desde abajo, por una tronera— entra por un disco y por ningún cono.
+  if (Math.abs(direction.y) > 1e-9) {
+    mejor = _mejorTapa(body.feetY, hitRadiusAt(0) * ancho, origin, direction, dx, dz, maxDistance, mejor)
+    mejor = _mejorTapa(body.top, hitRadiusAt(1) * ancho, origin, direction, dx, dz, maxDistance, mejor)
+  }
+
+  if (!Number.isFinite(mejor)) return null
+  const y = origin.y + direction.y * mejor
   const zone = y <= body.legsTop ? 'legs' : y <= body.torsoTop ? 'torso' : 'head'
-  return { zone, distance: t }
+  return { zone, distance: mejor }
+}
+
+/** ¿Ese corte con el cono vale, y mejora al que ya había? Sin asignar nada. */
+function _mejorCorte(t, origin, direction, k0, k1, y0, y1, maxDistance, mejor) {
+  if (!(t >= 0) || t > maxDistance || t >= mejor) return mejor
+  // El cono es infinito: sólo vale el trozo que ocupa este tramo del perfil…
+  const y = origin.y + direction.y * t
+  if (y < y0 - 1e-9 || y > y1 + 1e-9) return mejor
+  // …y la hoja de radio positivo, no su reflejo por debajo del vértice.
+  if (k0 + k1 * t < 0) return mejor
+  return t
+}
+
+/** Lo mismo con una tapa: el disco de un extremo. */
+function _mejorTapa(yTapa, radio, origin, direction, dx, dz, maxDistance, mejor) {
+  const t = (yTapa - origin.y) / direction.y
+  if (!(t >= 0) || t > maxDistance || t >= mejor) return mejor
+  const px = dx + direction.x * t
+  const pz = dz + direction.z * t
+  if (px * px + pz * pz > radio * radio) return mejor
+  return t
 }
 
 /** Punto al que apunta quien dispara al jugador: el pecho, no los pies. */

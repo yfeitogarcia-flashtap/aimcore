@@ -70,7 +70,7 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | React | `src/App.jsx`, `src/ui/` | Sólo conoce la *fase* (inicio / juego / pausa / resumen) y el resumen final. |
 | Armería | `src/ui/Armoury.jsx` | Panel de equipo (tecla B): silueta, ficha y «Equipar» por arma. Escribe en el store de ajustes, como opciones. |
 | HUD | `src/ui/Hud.jsx` | Se actualiza **imperativamente por refs** desde el bucle. Cero `setState` por frame. |
-| Cuerpo | `src/game/body.js` | **La única forma de figura humana**: la usan las dianas y el avatar. |
+| Cuerpo | `src/game/body.js` | **La única forma de figura humana**: la usan las dianas, el avatar **y el hitbox**. Lo alto, lo ancho a cada altura y dónde cortan sus tres zonas. |
 | Avatar | `src/game/avatar.js` | El cuerpo del jugador, tintado con su equipo. Geometría, sin lógica. |
 | Grilla | `src/game/grid.js` | Generador de líneas. Lo usan la sala **y** la piel del avatar. |
 | Jugador | `src/game/player.js` | Vida, escudo, casco, reaparición y **dónde te han dado**. |
@@ -716,10 +716,52 @@ la silueta, y una visera metida dentro de la cúpula no cambia la silueta.
 los muñecos disparan, un disparo recibido tiene que caer en algún sitio, y ese
 sitio sale de `TARGET_TYPES.hitbox.parts` escalado a la altura de ojos del
 momento (`playerBody`, en `player.js`): agacharse baja las tres zonas sin una
-segunda tabla de alturas. El cuerpo es **el mismo cilindro que usa la
-colisión** (`COVER.playerRadius`) y el corte se resuelve analíticamente, sin
-malla: el jugador es una cámara, y montarle un cuerpo invisible sólo para que le
-disparen serían dos cuerpos que se desincronizan.
+segunda tabla de alturas. El corte se resuelve analíticamente, sin malla: el
+jugador es una cámara, y montarle un cuerpo invisible sólo para que le disparen
+serían dos cuerpos que se desincronizan.
+
+**Y el volumen que recibe disparos es la silueta que se dibuja, no el cilindro
+de la colisión** (vuelta 65). Hasta entonces `hitPlayer` cortaba contra
+`COVER.playerRadius` —0.4, el radio con el que el jugador choca contra una
+caja— a **todas** las alturas, y el cuerpo que se ve mide 0.293 en su punto más
+ancho y **0.137 en la cabeza**. O sea: un anillo de aire de 26 cm alrededor del
+cráneo contando como impacto **en la zona que vale 100 y mata de un tiro**. Se
+notó jugando —apuntando visiblemente por encima de la cabeza del rival— y
+medido contra las mallas de verdad era **la mitad de todo lo que el hitbox
+aceptaba**: 710.268 de 1.420.008 rayos daban impacto sin tocar la silueta, y
+150.546 de ellos a la cabeza (`hitbox65`). Cuatro cosas que **son** el arreglo:
+
+- **Se corta contra el mismo perfil que dibuja `body.js`.** La figura es un
+  sólido de revolución, así que su silueta **es** el perfil desde cualquier
+  ángulo: cortar contra el sólido es cortar contra lo que se ve. El perfil es
+  una poligonal, o sea veintiún troncos de cono y una cuadrática por tramo, y
+  sólo para el disparo que pasa el descarte del cilindro envolvente — que de
+  paso da la franja de alturas que el rayo puede tocar, y con ella la mayoría de
+  los tramos ni se miran. Medido: **0.509 µs por disparo que entra**, 0.033 µs
+  el que pasa de largo, y es por bala, no por frame.
+- **El margen va en un solo sentido, a propósito.** La malla tiene diez caras y
+  de canto es más estrecha que su radio, así que el perfil se mete hacia dentro
+  por su apotema (`HIT_INSET`). Lo que se paga está medido —1.4 cm en la
+  cintura, 7 mm en la cabeza, el 2.25% de la silueta— y lo que se compra es la
+  garantía entera: **lo que no se ve no se puede acertar**, desde cualquier
+  ángulo.
+- **La altura la pone la postura; el ancho, no.** `setEyeHeight` achata el
+  avatar **sólo en Y** y lo deja igual de ancho, así que escalar el ancho con la
+  altura dejaba al agachado un 38% más estrecho de lo que se ve (medido: 12.533
+  rayos de silueta sin hitbox detrás). El ancho sale de `body.radius`, que es lo
+  único que un cuerpo **rebobinado** —que llega interpolado, sin altura de
+  ojos— trae del ancho que tenía.
+- **Y la altura total es la que se dibuja.** `bodyHeightFor` (en `body.js`) es
+  la única regla, y la usan el avatar y el hitbox. Antes el hitbox escalaba por
+  su cuenta poniendo los ojos en **el centro de la cabeza** —la convención de un
+  muñeco, `head.offsetY`— y salía un cuerpo de 1.827 contra los 1.800 que se
+  dibujan: 2.7 cm de hitbox por encima de la coronilla.
+
+Consecuencia que **no** es un fallo y hay que tener presente al calibrar: los
+muñecos aciertan **la mitad**, porque el jugador ha dejado de ser una columna de
+0.4 y es un cuerpo. Medido en `enemigos.mjs`, a la misma distancia y sin nada en
+medio: 14 de 54 disparos, contra los 29 de 54 de antes. Los tres niveles de
+`ENEMY_DIFFICULTIES` siguen siendo puntos de partida a calibrar jugando.
 
 **La dificultad de los muñecos es un nivel, no dos sliders.** Precisión
 (`spreadDeg`) y reacción (`reactionMs`) van juntas en `ENEMY_DIFFICULTIES` y las
@@ -1021,7 +1063,8 @@ Y como la vista se recomprueba cada 180 ms, **el disparo que acierta se comprueb
 además contra la cobertura**, igual que el del jugador (`_isBlockedByCover`): sin
 eso, meterse detrás de la Espina no libraba de las balas que ya venían de camino.
 Es un rayo por disparo **que entra**, no por disparo. Medido: 0 de 292 disparos
-atraviesan la Espina, y 29 de 54 aciertan a la misma distancia sin nada en medio.
+atraviesan la Espina, y 14 de 54 aciertan a la misma distancia sin nada en medio
+(29 de 54 hasta la vuelta 65, cuando el jugador era una columna de 0.4).
 
 **La fatiga de salto se mide en velocidad, no en desplazamiento.** Saltar parado
 se desgasta (`MOVEMENT.jumpFatigue`), y lo que decide si un vuelo contó como
@@ -1060,6 +1103,14 @@ una banda es el trozo de perfil entre esas dos alturas, y dos bandas contiguas
 comparten el mismo anillo, así que la junta no se ve. De ahí sale lo que importa:
 **la silueta que ves es exactamente la que recibe los disparos**, y la suite lo
 comprueba vértice a vértice contra la del pool de dianas.
+
+**Y desde la vuelta 65 el corte de las bandas vive aquí** (`ZONE_BANDS`), no en
+quien dibuja: lo usan el avatar —para cortar las tres mallas— y el hitbox del
+jugador —para decidir en qué zona entra un disparo—. Con `bodyHeightFor` y
+`hitRadiusAt` al lado, este módulo pasa a ser **la única definición del cuerpo
+humano del juego**: lo alto que es, lo ancho que es a cada altura y dónde están
+sus tres zonas. Dos copias de cualquiera de esas tres cosas son la silueta y el
+volumen de impacto separándose, que es exactamente lo que había pasado.
 
 **En el boceto la cabeza está separada del cuerpo; en el modelo, no.** Un hueco
 entre la banda de la cabeza y la del torso serían disparos que no dan en ninguna
@@ -1706,8 +1757,10 @@ falta saber para jugar: se empieza con 800 y la pistola, la ronda 1 no deja
 comprar armas largas, ganar da 3200 y perder 2400 —con suelo que sube al que
 encadena derrotas—, morir cuesta el equipo, y el chaleco y el casco **paran
 balas de verdad** porque el duelo ya tiene la escalera de daño del
-entrenamiento. Lo que no hay todavía: granadas, y por eso salen en el panel
-marcadas y sin poder comprarse.
+entrenamiento. Y con la fase a cero —partida rápida— **la tienda no cierra**: se
+compra durante la ronda entera (vuelta 65). Lo que no hay todavía: granadas, y
+por eso salen en el panel **precintadas** con «Próximamente» y sin poder
+comprarse.
 
 **Hay economía, y la manda el servidor** (vuelta 64). Dinero, inventario y qué se
 puede comprar viven en `net/partida.js`; el cliente dibuja el panel y **pide**
@@ -1762,6 +1815,27 @@ que la montó. **A cero no hay fase**: las rondas se encadenan, que es lo que ha
 falta para una partida rápida. El acotado vive en `Partida.configurarCompra`, y
 no en cada huésped, porque huéspedes hay dos.
 
+**Y a cero la tienda no cierra: se compra jugando** (vuelta 65). Que no haya
+fase de confinamiento no es que no haya economía — es que **no hay ventana entre
+rondas donde meter la tienda**, así que la ventana es la ronda entera. Hasta la
+65 «sólo se compra en fase de compra» y «no hay fase de compra» se multiplicaban
+y dejaban una partida entera con la pistola de serie de principio a fin, sin un
+solo aviso: el panel abría, el artículo salía apagado y el servidor rechazaba en
+silencio.
+
+Cuándo está abierta lo dice **una sola función, `compraAbierta`, y vive en
+`net/protocolo.js`** porque la miran los dos extremos: el servidor para aceptar
+la compra y el cliente para pintar el panel. Escrita en cada lado se despega, y
+el síntoma sería el peor de los dos —un artículo que el panel enseña comprable y
+el servidor rechaza sin decir por qué—. Es la misma idea que `net/codigo.js` con
+la normalización del código.
+
+Ojo con lo que **no** cambia: el techo de la ronda 1 sigue siendo de tipo, así
+que en una partida rápida la primera ronda tampoco vende armas largas por mucho
+que la tienda esté abierta. Y **quien compra jugando no se para**: el mundo sigue
+corriendo con el panel puesto, igual que con el menú desde la vuelta 60 — ahí
+eres un blanco, y eso es parte del precio de comprar en mitad de la ronda.
+
 De ahí una consecuencia de interfaz que no es un capricho: **cambiar el selector
 recarga con una partida nueva**. Una sala ya creada no se reconfigura, así que
 dejar el selector puesto sin más enseñaría un número que el servidor no está
@@ -1787,6 +1861,25 @@ sitio lo que la gente ya tiene en los dedos. Y lo que todavía no existe (granad
 aturdidora, cegadora) **sale en el panel con su precio y su código y no se puede
 comprar**: esconderlo sería no poder aprenderse la combinación; venderlo sería
 prometer una mecánica que no hay.
+
+**Y lo que no existe lleva precinto; lo que sí, marca** (vuelta 65). Son dos
+cosas distintas y hasta la 65 se decían igual —una nota de diez píxeles al lado
+del precio: «pronto» para la granada, «sin saldo» para el rifle—, así que de un
+vistazo no se distinguía *hoy no te llega* de *esto no existe*. Ahora:
+
+- **Lo que no existe** lleva una franja roja cruzada con «Próximamente»
+  (`.art.proximamente` + `.sello`), que se pone **en el montaje** y no en el
+  repintado: una granada no existe hoy y no va a existir a mitad de partida. La
+  franja va a la altura de la nota y **deja leer el nombre, el precio y la
+  combinación**, que es justo lo que hay que poder aprenderse.
+- **Lo que se puede comprar ahora mismo** lleva el verde de acción y un filo
+  grueso a la izquierda (`.art.puedo`), y esa clase sale de `porQueNo` —la misma
+  razón que decide si el botón está apagado—, no de una segunda lista de
+  condiciones.
+- **Ojo al orden de las dos reglas CSS**: `.art:disabled` y `.art.proximamente`
+  tienen la misma especificidad, así que la segunda gana **por ir después**. Es
+  lo que devuelve la opacidad que el `disabled` quita, y mover el bloque apaga el
+  precinto — misma trampa que `#abatido` y su `.puesto`.
 
 **Un callback tiene un dueño, y encadenarlo no es opcional.** La página del duelo
 escucha `onEconomia` para repintar la tienda **y el motor lo escucha para ponerte
@@ -2352,6 +2445,19 @@ muerte, el empate de vidas la repite, un 7-7 va a prórroga por tandas de dos, y
 entre ronda y ronda hay una fase de compra —**15 s de fábrica y elegible al crear
 la partida**, incluida la opción de no tenerla— con cada jugador encerrado en su
 caja y sin recibir la posición del otro. Tuning en `ROUNDS` y `ECONOMY`.
+**Sin fase** (la opción de partida rápida) la tienda no cierra: se compra durante
+la ronda entera, con el mundo corriendo (vuelta 65).
+
+**Y desde la vuelta 65 el hitbox del rival es su silueta.** Lo que recibe
+disparos era el cilindro de la colisión —0.4 de radio a cualquier altura— y lo
+que se dibuja mide 0.293 en la cintura y 0.137 en la cabeza: apuntando
+visiblemente por encima de la cabeza del rival se le mataba de un tiro. Ahora se
+corta contra el mismo perfil que dibuja el cuerpo, metido hacia dentro por el
+apotema de la sección, así que **lo que no se ve no se puede acertar** desde
+ningún ángulo. Medido contra las mallas de verdad: **0 de 693.792 impactos caen
+fuera de la silueta**, contra 710.268 de 1.420.008 (el 50%, y 150.546 de ellos a
+la cabeza) con el hitbox de antes. Vale igual contra los muñecos, que aciertan
+la mitad que antes por la misma razón — se calibra jugando.
 
 **Y una caída ya no deja la partida colgada**: el mundo se para para el que
 queda, la butaca del que se fue se guarda entera 90 segundos con su pase de

@@ -21,20 +21,7 @@
 
 import * as THREE from 'three'
 import { AVATAR, MOVEMENT, TARGET_TYPES, TEAMS } from '../config.js'
-import { bodySection, zoneColors } from './body.js'
-
-/** Las medidas de las tres zonas, tal como las declara el hitbox. */
-const ZONES = {}
-for (const part of TARGET_TYPES.hitbox.parts) ZONES[part.zone] = part
-
-/** Altura total en unidades de radio: de los pies a la coronilla. */
-const BODY_TOP = ZONES.head.offsetY + ZONES.head.radius
-
-/** La banda que ocupa una zona, en fracciones de la altura total. */
-function band(part) {
-  const half = (part.height ?? part.radius * 2) / 2
-  return [(part.offsetY - half) / BODY_TOP, (part.offsetY + half) / BODY_TOP]
-}
+import { BODY_TOP, ZONE_BANDS, bodySection, zoneColors } from './body.js'
 
 export class Avatar {
   /**
@@ -53,7 +40,7 @@ export class Avatar {
     this._materials = []
 
     for (const part of TARGET_TYPES.hitbox.parts) {
-      const [from, to] = band(part)
+      const [from, to] = ZONE_BANDS[part.zone]
       const geometry = bodySection(from, to, this.height)
       const material = new THREE.MeshBasicMaterial({ color: new THREE.Color(color) })
       const mesh = new THREE.Mesh(geometry, material)

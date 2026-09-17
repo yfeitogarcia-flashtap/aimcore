@@ -133,3 +133,26 @@ export const MSG = {
    */
   PAUSA: 'p',
 }
+
+/**
+ * **¿Está abierta la tienda?** Es la regla que decide si una compra se atiende,
+ * y vive aquí porque **la miran los dos extremos**: el servidor para aceptarla
+ * y el cliente para pintar el panel. Escrita en cada lado se despega, y el
+ * síntoma sería el peor de los dos: un artículo que el panel enseña comprable y
+ * el servidor rechaza sin decir por qué.
+ *
+ * Con fase de compra configurada, la ventana **es** la fase: quince segundos
+ * entre ronda y ronda, cada uno en su caja. **Sin ella (a cero) no hay ventana
+ * donde meter la tienda**, así que la ventana es la ronda entera y se compra
+ * jugando (vuelta 65). No es un caso raro que haya que esquivar: a cero se
+ * eligió *partida rápida*, y una partida rápida sin poder comprar nunca deja el
+ * duelo con la pistola de serie de principio a fin — que fue exactamente lo que
+ * pasó.
+ *
+ * @param {string} fase la de `rondas.fase`: `espera`, `compra`, `ronda` o `fin`
+ * @param {number} compraSegundos lo que dura la fase en esta sala
+ */
+export function compraAbierta(fase, compraSegundos) {
+  if (fase === 'compra') return true
+  return compraSegundos <= 0 && fase === 'ronda'
+}

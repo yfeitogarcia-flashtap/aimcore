@@ -24,7 +24,7 @@
  */
 
 import * as THREE from 'three'
-import { bodySection } from './body.js'
+import { BODY_TOP, ZONE_BANDS, bodySection } from './body.js'
 import { hasLineOfSight } from './sight.js'
 import {
   COLORS,
@@ -40,16 +40,6 @@ import {
 } from '../config.js'
 
 const DEG_TO_RAD = Math.PI / 180
-
-/**
- * Altura del muñeco en unidades de su radio: de los pies a la coronilla. La
- * misma cuenta que hacen `player.js` y `enemyFire.js`, y por el mismo motivo —
- * la altura no se escribe, sale de las piezas.
- */
-const BODY_TOP = TARGET_TYPES.hitbox.parts.reduce(
-  (top, part) => Math.max(top, part.offsetY + (part.height ?? part.radius * 2) / 2),
-  0,
-)
 
 /** Huecos extra sobre el tope de dianas vivas, para las que se están apagando. */
 const DYING_SLOTS = 6
@@ -93,11 +83,11 @@ function createPartGeometry(part, radius) {
   switch (part.shape) {
     case 'body': {
       // La banda del cuerpo simple que le toca a esta zona. Sale del mismo
-      // módulo que el avatar del jugador (`body.js`): una sola forma, y el
-      // color es lo único que cambia entre una diana y un rival.
-      const half = (part.height ?? part.radius * 2) / 2
-      const top = BODY_TOP
-      return bodySection((part.offsetY - half) / top, (part.offsetY + half) / top, top * radius)
+      // módulo que el avatar del jugador y que el hitbox (`body.js`): una sola
+      // forma, un solo corte de zonas, y el color es lo único que cambia entre
+      // una diana y un rival.
+      const [from, to] = ZONE_BANDS[part.zone]
+      return bodySection(from, to, BODY_TOP * radius)
     }
     case 'cone':
       return new THREE.ConeGeometry(r, part.height * radius, segments)

@@ -7329,6 +7329,167 @@ Lo delató `motor56`, que afirma qué arma ve el rival en la ficha flotante: sal
 `pulse` donde el banco esperaba `rift`, y eso no era el banco quedándose viejo
 —era el mundo de medir quedándose sin rifles.
 
+## Ronda 65 — El hitbox era el cilindro de la colisión, no el cuerpo
+
+### El síntoma: matar de un tiro apuntando al aire
+
+Probando la compra en juego, apuntando **visiblemente por encima de la cabeza**
+del rival —el punto de mira claramente en el aire, fuera de su silueta— el
+disparo registró impacto y mató de un tiro. No era un problema de red ni de
+compensación de retraso: los dos extremos estaban de acuerdo. Estaban de acuerdo
+**en algo equivocado**.
+
+### La causa: dos cuerpos, y sólo uno se ve
+
+`hitPlayer` cortaba contra un cilindro vertical de `COVER.playerRadius` (0.4), el
+radio con el que el jugador choca contra una caja, acotado por las alturas de las
+tres zonas. La figura que se dibuja no es un cilindro: es el perfil de
+`AVATAR.body`, que mide **0.293 en la cintura y 0.137 en la cabeza**. Medido:
+
+| nivel | y | radio dibujado | cilindro | veces más ancho |
+|---|---|---|---|---|
+| 0.00 | 0.000 | 0.149 | 0.4 | ×2.68 |
+| 0.50 | 0.900 | 0.291 | 0.4 | ×1.37 |
+| 0.86 | 1.548 | 0.099 | 0.4 | ×4.02 |
+| 0.905 | 1.629 | 0.137 | 0.4 | ×2.92 |
+| 1.00 | 1.800 | 0.022 | 0.4 | ×18.5 |
+
+O sea: un anillo de aire de 26 cm alrededor del cráneo, y **ese anillo estaba en
+la banda de la cabeza**, que vale 100 de 100 en el modelo de zonas. De ahí el
+«muerto de un tiro apuntando fuera».
+
+Y había un segundo desajuste, más pequeño y de la misma familia: el hitbox
+escalaba la altura poniendo los ojos en **el centro de la cabeza**
+(`head.offsetY`, la convención con la que se mide un muñeco) y salía un cuerpo de
+**1.827** contra los **1.800** que se dibujan. Dos reglas de escala para la misma
+figura.
+
+### El arreglo: el volumen de impacto **es** la silueta
+
+La figura es un sólido de revolución, así que su silueta es el perfil **desde
+cualquier ángulo**: cortar contra el sólido es cortar contra lo que se ve. El
+perfil es una poligonal de 22 puntos, o sea 21 troncos de cono, y el corte de un
+rayo contra un tronco es una cuadrática. `hitPlayer` resuelve esas cuadráticas y
+se queda con el corte más cercano; las dos tapas se miran aparte, porque un
+disparo vertical justo sobre la coronilla entra por un disco y por ningún cono.
+
+Tres decisiones dentro del arreglo:
+
+- **El margen va en un solo sentido.** La malla tiene diez caras, así que su
+  ancho aparente va del radio entero (de vértice) a su apotema (de cara): un
+  sólido de revolución del radio entero asomaría hasta un **4.9%** por fuera de
+  lo que se ve. El perfil se mete hacia dentro por ese apotema (`HIT_INSET`), y
+  lo que se paga —1.4 cm en la cintura, 7 mm en la cabeza, el 2.25% de la
+  silueta— compra la garantía entera: **lo que no se ve no se puede acertar**.
+- **La altura la pone la postura; el ancho, no.** `setEyeHeight` achata el avatar
+  **sólo en Y**. Escalar el ancho con la altura —que fue la primera versión—
+  dejaba al agachado un 38% más estrecho de lo que se ve, y lo cazó el banco a la
+  primera: 12.533 rayos de silueta sin hitbox detrás. El ancho sale de
+  `body.radius`, que es además lo único que un cuerpo **rebobinado** trae del
+  ancho que tenía, porque llega interpolado y sin altura de ojos.
+- **Una sola definición del cuerpo humano, y está en `body.js`.** `ZONE_BANDS`
+  (dónde cortan las tres zonas), `bodyHeightFor` (lo alto que es) y `hitRadiusAt`
+  (lo ancho a cada altura). El avatar y el hitbox las leen de ahí. Es la
+  convención de siempre, y este fallo es lo que pasa cuando no se aplica: la
+  silueta y el volumen de impacto eran dos cosas escritas en dos sitios, y se
+  separaron.
+
+### Lo que midió el banco, y por qué no es una fórmula contra otra
+
+`hitbox65.mjs` no compara `hitPlayer` con una fórmula paralela —eso sería medir
+dos copias del mismo error—: lanza 3.7 millones de rayos contra el avatar y
+compara el veredicto de `hitPlayer` con el de un `THREE.Raycaster` **contra los
+triángulos que se dibujan**.
+
+| | rayos | silueta | impactos | fuera de la silueta | perdidos | zona distinta |
+|---|---|---|---|---|---|---|
+| antes | 3.708.000 | 709.740 | 1.420.008 | **710.268 (50.0%)**, 150.546 a la cabeza | — | — |
+| ahora | 3.708.000 | 709.740 | 693.792 | **0** | 15.948 (2.25%) | 555 (0.08%) |
+
+La mitad de lo que el hitbox aceptaba no tocaba al rival. Y el denominador está
+al lado a propósito (regla de la vuelta 46): «0 fantasmas» no dice nada sin los
+693.792 impactos que sí hubo.
+
+Coste: **0.509 µs** por disparo que entra y 0.033 µs por el que pasa de largo, y
+es por bala, no por frame. La primera versión costaba 6.164 µs porque miraba los
+veintiún tramos siempre; el descarte contra el cilindro envolvente ya da la
+franja de alturas que el rayo puede tocar, y con ella un disparo horizontal a la
+cabeza sólo cruza dos o tres.
+
+`duelo65.mjs` lo mide además **contra el producto**, que es donde apareció: dos
+navegadores, el disparo del juego, y la vida que publica el servidor. Al pecho
+entra (−50); justo por encima de la coronilla, un palmo por encima y a 0.22 y
+0.30 u de lado de la cabeza, la vida no se mueve.
+
+### Lo que se paga, y no es un fallo
+
+Los muñecos aciertan **la mitad**: el jugador ha dejado de ser una columna de 0.4
+y es un cuerpo. Medido en `enemigos.mjs` a la misma distancia y sin nada en
+medio, **14 de 54** disparos contra los 29 de 54 de antes. No se ha tocado
+`ENEMY_DIFFICULTIES`: los tres niveles siguen siendo puntos de partida a calibrar
+jugando, y ahora se calibran contra un blanco que es el que se ve.
+
+### Y una suite verde que guardaba la regla equivocada
+
+`vida.mjs` afirmaba *«el cuerpo es el mismo cilindro que usa la colisión»* y
+llevaba vueltas en verde. No estaba rota: guardaba fielmente la decisión de
+entonces, que era la que había que cambiar. Un banco en rojo después de un
+arreglo no siempre es una regresión — a veces es la convención vieja diciendo
+adiós, y hay que mirar cuál de las dos tiene razón antes de tocar nada.
+
+## Ronda 65b — Sin fase de compra no es sin tienda
+
+Con la fase a cero —la opción de *partida rápida* de la vuelta 64— no se podía
+comprar **nada en toda la partida**. La regla del servidor era «sólo en fase de
+compra» y la de la sala era «a cero no hay fase de compra»: las dos correctas por
+separado, y multiplicadas, una partida entera con la pistola de serie.
+
+Lo que faltaba era decidir qué significa *no tener fase*. No es que no haya
+economía: es que **no hay ventana entre rondas donde meter la tienda**, así que
+la ventana es la ronda entera. Se compra jugando, con el mundo corriendo — que
+es el precio, porque con el panel puesto eres un blanco (misma regla que el menú
+desde la vuelta 60).
+
+Y cuándo está abierta lo dice **una sola función**, `compraAbierta`, en
+`net/protocolo.js`, porque la miran los dos extremos: el servidor para aceptar la
+compra y el cliente para pintar el panel. Escrita en cada lado se despega, y el
+síntoma sería el peor de los dos —un artículo que el panel enseña comprable y el
+servidor rechaza sin decir por qué—. Es la misma idea que `net/codigo.js` con la
+normalización del código de sala.
+
+Lo que **no** cambia: el techo de la ronda 1 sigue siendo de tipo, así que en una
+partida rápida la primera ronda tampoco vende armas largas.
+
+## Ronda 65c — Un «pronto» de diez píxeles no dice que algo no existe
+
+En el panel, la granada decía «pronto» y el rifle sin saldo decía «sin saldo», en
+la misma nota, del mismo tamaño y del mismo color. Son dos cosas distintas —*hoy
+no te llega* y *esto no existe*— y de un vistazo se leían igual.
+
+Ahora lo que no existe lleva **una franja roja cruzada con «Próximamente»**, en
+el naranja de la marca, y lo que se puede comprar ahora mismo lleva el **verde de
+acción** y un filo grueso a la izquierda. Cuatro cosas:
+
+- **El precinto se pone en el montaje, no en el repintado.** Una granada no
+  existe hoy y no va a empezar a existir a mitad de partida.
+- **Y deja leer el nombre, el precio y la combinación.** La primera versión
+  cruzaba el artículo por el medio y se comía el precio; se bajó al 72% de la
+  altura. Esconder lo que no existe sería no poder aprenderse la combinación
+  —que es justo lo que la vuelta 64 no quiso hacer—, y taparla con el precinto
+  era lo mismo por otra puerta.
+- **La marca de comprable sale de `porQueNo`**, la misma función que decide si el
+  botón está apagado, no de una segunda lista de condiciones que se despegaría.
+- **Ojo al orden de las dos reglas CSS.** `.art:disabled` y `.art.proximamente`
+  tienen la misma especificidad, así que la segunda gana **por ir después** — es
+  lo que devuelve la opacidad que el `disabled` quita. Mover el bloque apaga el
+  precinto. Misma trampa que `#abatido` y su `.puesto` (vuelta 48).
+
+Y una premisa que el banco tuvo mal dos veces: medir «¿sale marcado como
+comprable?» **en la ronda 1** y con el saldo ya gastado. En la ronda 1 el techo
+deja fuera las armas largas a propósito y sin saldo el rifle no es comprable, así
+que las dos veces el banco estaba leyendo una regla correcta y llamándola fallo.
+Se mide en la ronda 2 y con el saldo entero.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
