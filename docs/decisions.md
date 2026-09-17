@@ -7904,7 +7904,7 @@ mis entradas. Por la red la marca la pone `pressJump`, que es su sitio. Medido e
   rebota), `fatiga`, `baja` (12/12), `colision`, `estabilidad`, `tick44`,
   `airstrafe`, `fixes`, `live`, `binds`, `red45` y `motor56`.
 
-### Dos premisas de banco que estaban rotas y no lo decían
+### Diez premisas de banco que estaban rotas y no lo decían
 
 - **`red45` abría dos pestañas sin código de sala**, o sea **dos salas**. Desde la
   vuelta 58 el huésped de Node encamina por código igual que el Durable Object, y
@@ -7915,6 +7915,33 @@ mis entradas. Por la red la marca la pone `pressJump`, que es su sitio. Medido e
 - **`motor56` apunta a `VEKTOR_BASE`**, y contra el huésped con rondas la primera
   baja abre quince segundos de fase de compra: la tabla no sale mal, sale vacía.
   Va contra el de `VEKTOR_RONDAS=0`, como dice su propia cabecera.
+
+Y al pasar la batería entera salieron ocho más, **todas de vueltas anteriores y
+ninguna del juego**. Van anotadas porque el patrón se repite: lo que se rompe al
+cambiar algo no es el código, es lo que el banco daba por sabido.
+
+- **`spawnZone` es una lista desde la vuelta 66** y `spawn43` y `spawner` la
+  leían como una caja: `undefined..NaN` en una y cero ciegos en la otra.
+- **El rótulo del arma lleva dentro su etiqueta desde la 67b**
+  (`.hud__weapon-tag`), así que `textContent` devuelve «RiftAUTO · SIL» y no
+  «Rift»: `vuelta41` y `slots39`. Lo que se lee ahora es el texto propio del
+  nodo.
+- **El bloque de arma se mudó a la esquina inferior derecha en la 67b** y
+  `hudpos` seguía exigiendo que estuviera centrado y **lejos** de esa esquina.
+- **El clic seco ya no es el único sonido con un pasa-altos** (vuelta 62: el
+  crack de la voz seca es uno), así que contar pasa-altos contaba también los
+  disparos. `round28` cuenta ahora los que cortan a 3200 Hz —la frecuencia del
+  clic— y **mide su premisa**: imprime a qué frecuencia corta el disparo (2600
+  con la Rift) en vez de darla por buena.
+- **El carril de muestras está apagado desde la 63**, así que `audio39` medía el
+  interruptor y no el sistema. Lo enciende para medir y afirma aparte que de
+  serie está apagado y que apagado no decodifica nada.
+- **`hz`, `vector`, `baja`, `live` y `fixes` saltaban poniendo `keys.jump`**, que
+  desde esta vuelta ya no despega. Ahora sellan la pulsación, que es lo que hace
+  un jugador.
+- **`musica` se retira.** El ambiente de menús se quitó entero en la vuelta 60 y
+  su banco importaba un módulo que ya no existe: salía con **0 pass**, o sea sin
+  medir nada, y eso en una batería se lee como verde.
 
 ### El deslizamiento: diseñado, no construido
 
