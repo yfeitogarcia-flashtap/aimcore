@@ -139,6 +139,16 @@ con SHIFT bajan el ritmo solos además de sonar más flojo. Agachado se oye poco
 pero se oye: un sigilo perfecto convertiría agacharse en la única forma de
 moverse, y lo que tiene que costar es la velocidad.
 
+## Cómo suena un disparo
+
+Todas las armas suenan sintetizadas en tiempo real, sin un solo fichero de audio.
+Desde la vuelta 62 la **Rift** tiene voz propia: seca, metálica y bastante más
+fuerte —+11 dB sobre la anterior, y +9.3 dB la variante con silenciador—. La
+silenciada no es la normal con el volumen bajado: se le quitan el grave y el
+chasquido de banda ancha y se le deja el cerrojo, que suena un instante después.
+
+La Pulse y la Volt conservan la voz de siempre hasta que se calibre la suya.
+
 ## Muestras de disparo (sin ficheros todavía)
 
 Todo el audio es sintetizado, y lo seguirá siendo **salvo el disparo**, que es lo

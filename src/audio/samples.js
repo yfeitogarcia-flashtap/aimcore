@@ -113,7 +113,8 @@ export function playWeaponShot(weaponKey, suppressed = false, emitter = null, vo
   const ctx = initAudio()
   const master = masterGain()
   if (!buffer || !ctx || !master || decodedFor !== ctx) {
-    playShot(suppressed, emitter, volume)
+    // La clave viaja: la síntesis también tiene voz por arma (vuelta 62).
+    playShot(suppressed, emitter, volume, weaponKey)
     return false
   }
   // Con emisor la distancia la aplica el panner; sin él, al máster y ya. Es la

@@ -81,12 +81,20 @@ export function setMasterVolume(value) {
 }
 
 /**
- * Perfiles del disparo. El silenciado no cambia daño, retroceso ni cadencia:
- * sólo suena. Se consigue bajando el pasa-banda del transitorio —menos
- * chasquido agudo—, acortando su caída y hundiendo el cuerpo en grave.
+ * **Perfiles del disparo, y hay dos voces** (vuelta 62). El silenciado no cambia
+ * daño, retroceso ni cadencia: sólo suena.
+ *
+ * - `clasica` es la de siempre —transitorio de ruido por un pasa-banda más un
+ *   golpe grave que cae— y la llevan las armas que todavía no tienen voz propia.
+ * - `seca` es la de la Rift: tres capas que atacan a la vez, ninguna sostenida.
+ *
+ * **Un arma elige su voz por su clave**, igual que elige su silueta: `rift` y
+ * `rift.s`. Lo que no tenga entrada cae a `normal` / `suppressed`, que es lo que
+ * hace que añadir una voz nueva sea añadir una clave y no tocar `playShot`.
  */
 const SHOT_PROFILES = {
   normal: {
+    voz: 'clasica',
     bandHz: 2100,
     bandQ: 1.1,
     noiseGain: 0.32,
@@ -97,6 +105,7 @@ const SHOT_PROFILES = {
     bodyDecay: 0.055,
   },
   suppressed: {
+    voz: 'clasica',
     bandHz: 700,
     bandQ: 2.2,
     noiseGain: 0.16,
@@ -106,26 +115,229 @@ const SHOT_PROFILES = {
     bodyGain: 0.13,
     bodyDecay: 0.07,
   },
+
+  /**
+   * **La Rift.** Lo que tenía de malo el perfil clásico no era el volumen: era
+   * que el transitorio y el cuerpo **atacaban en rampa** (2 y 3 ms) y el cuerpo
+   * duraba 55 ms cayendo de tono, que es exactamente la receta de una gota de
+   * agua. Aquí las tres capas entran en medio milisegundo y ninguna se sostiene.
+   *
+   * - **`crack`**: ruido por un pasa-**altos**, no un pasa-banda. Un pasa-banda
+   *   deja una nota; lo que hace «crack» es la banda ancha de arriba.
+   * - **`metal`**: dos dientes de sierra en relación **inarmónica** (1.48, que no
+   *   es ni la octava ni la quinta) por un saturador y un pasa-banda. Dos
+   *   parciales que no son múltiplos es lo que el oído lee como metal; con una
+   *   relación armónica saldría un tono musical, que es justo lo que no es un
+   *   disparo.
+   * - **`body`**: el golpe grave, **más corto que el clásico** (32 ms contra 55).
+   *   Da peso sin dejar cola: la sequedad se pierde por abajo, no por arriba.
+   */
+  rift: {
+    voz: 'seca',
+    crackTipo: 'highpass',
+    crackHz: 2600,
+    crackQ: 0.7,
+    crackGain: 0.9,
+    crackDecay: 0.024,
+    metalHz: 1680,
+    metalTo: 860,
+    metalRatio: 1.48,
+    metalDrive: 3.4,
+    metalBandHz: 2700,
+    metalBandQ: 0.9,
+    metalGain: 0.46,
+    metalDecay: 0.07,
+    bodyFrom: 98,
+    bodyTo: 44,
+    bodyGain: 0.55,
+    bodyDecay: 0.032,
+  },
+
+  /**
+   * **La Rift con silenciador.** No es la misma con el volumen bajado: se le
+   * quitan las dos capas que delatan un disparo a distancia —el grave casi
+   * entero y el crack de banda ancha— y se le deja lo que suena **en la mano**,
+   * el cerrojo. Por eso aparece una capa que la normal no tiene (`meca`) y va
+   * **retrasada**: el mecanismo se mueve después de la detonación, y ese hueco
+   * de doce milisegundos es lo que se oye como una máquina en vez de un golpe.
+   */
+  'rift.s': {
+    voz: 'seca',
+    crackTipo: 'bandpass',
+    crackHz: 1900,
+    crackQ: 1.5,
+    crackGain: 0.3,
+    crackDecay: 0.012,
+    metalHz: 1420,
+    metalTo: 760,
+    metalRatio: 1.48,
+    metalDrive: 1.7,
+    metalBandHz: 1900,
+    metalBandQ: 1.3,
+    metalGain: 0.54,
+    metalDecay: 0.05,
+    bodyFrom: 84,
+    bodyTo: 46,
+    bodyGain: 0.07,
+    bodyDecay: 0.022,
+    mecaHz: 2900,
+    mecaQ: 1.1,
+    mecaGain: 0.4,
+    mecaDecay: 0.03,
+    mecaDelay: 0.012,
+  },
 }
 
 /**
- * Disparo: transitorio de ruido filtrado + un golpe grave que cae rápido.
- * @param {boolean} [suppressed] usa el perfil apagado del silenciador
+ * **La curva del saturador, una sola vez.** Un `WaveShaper` necesita una tabla
+ * de 2048 puntos y el fuego automático llama a esto diez veces por segundo: una
+ * tabla por disparo sería basura para el recolector en el sitio donde menos
+ * cabe. Se cachea por `drive`, que son dos valores en todo el juego.
+ *
+ * La curva es la tangente hiperbólica: satura suave y **no tiene esquinas**, así
+ * que añade armónicos sin el zumbido de un recorte duro.
  */
+const curvasDeSaturacion = new Map()
+function curvaDeSaturacion(drive) {
+  let curva = curvasDeSaturacion.get(drive)
+  if (curva) return curva
+  const n = 2048
+  curva = new Float32Array(n)
+  for (let i = 0; i < n; i++) {
+    const x = (i / (n - 1)) * 2 - 1
+    curva[i] = Math.tanh(x * drive)
+  }
+  curvasDeSaturacion.set(drive, curva)
+  return curva
+}
+
 /**
+ * **El disparo, y hay un solo camino.** Quien llama no elige síntesis ni
+ * muestra —eso lo decide `samples.js`— y tampoco elige voz: la elige el arma,
+ * por su clave. Sin clave, o con una que no tiene perfil propio, suena la voz
+ * clásica de siempre, que es lo que llevan hoy la Pulse y la Volt.
+ *
  * @param {boolean} [suppressed] perfil silenciado
  * @param {{input: AudioNode|null}} [emitter] emisor posicionado, si lo hay. Es
  *   por donde suena el disparo de un muñeco: mismo sonido, otro sitio.
  * @param {number} [volume] volumen base; por defecto, el del jugador
+ * @param {string|null} [weaponKey] clave de `WEAPONS`, para elegir la voz
  */
-export function playShot(suppressed = false, emitter = null, volume = AUDIO.shotVolume) {
+export function playShot(suppressed = false, emitter = null, volume = AUDIO.shotVolume, weaponKey = null) {
   if (!ctx || !master || !noiseBuffer) return
   const t = ctx.currentTime
-  const level = volume
-  const profile = suppressed ? SHOT_PROFILES.suppressed : SHOT_PROFILES.normal
+  const perfil = perfilDeDisparo(weaponKey, suppressed)
   // Con emisor la distancia la aplica el panner; sin él, al máster y ya.
   const out = emitter?.input ?? master
+  if (perfil.voz === 'seca') _disparoSeco(perfil, t, volume, out)
+  else _disparoClasico(perfil, t, volume, out)
+}
 
+/**
+ * La voz del arma, o la de siempre. La clave silenciada es `<arma>.s`, la misma
+ * idea que `ghost-<arma>` en las siluetas: **otra foto del arma**, no la misma
+ * con un filtro.
+ */
+function perfilDeDisparo(weaponKey, suppressed) {
+  const propio = weaponKey ? SHOT_PROFILES[suppressed ? `${weaponKey}.s` : weaponKey] : null
+  return propio ?? (suppressed ? SHOT_PROFILES.suppressed : SHOT_PROFILES.normal)
+}
+
+/**
+ * **El ataque de un disparo es un escalón, no una rampa.** Medio milisegundo:
+ * suficiente para que no sea un salto de continua —que se oye como un «pop» de
+ * altavoz— y lo bastante corto para que el oído lo lea como instantáneo. Era
+ * de 2 a 3 ms en la voz clásica, y esa es la mitad de por qué sonaba a gota.
+ */
+const ATAQUE_SECO = 0.0006
+
+/** Envolvente de percusión: entra de golpe y cae, sin sostener nada. */
+function _golpe(pico, t, decaimiento) {
+  const g = ctx.createGain()
+  g.gain.setValueAtTime(0.0001, t)
+  g.gain.linearRampToValueAtTime(Math.max(0.0002, pico), t + ATAQUE_SECO)
+  g.gain.exponentialRampToValueAtTime(0.0001, t + decaimiento)
+  return g
+}
+
+/** Una ráfaga de ruido filtrado: el `crack` y, en la silenciada, el cerrojo. */
+function _ruido(tipo, hz, q, pico, t, decaimiento, out) {
+  const fuente = ctx.createBufferSource()
+  fuente.buffer = noiseBuffer
+  const filtro = ctx.createBiquadFilter()
+  filtro.type = tipo
+  filtro.frequency.value = hz
+  filtro.Q.value = q
+  const g = _golpe(pico, t, decaimiento)
+  fuente.connect(filtro).connect(g).connect(out)
+  fuente.start(t)
+  fuente.stop(t + decaimiento + 0.02)
+  fuente.onended = () => {
+    fuente.disconnect()
+    filtro.disconnect()
+    g.disconnect()
+  }
+}
+
+/**
+ * **La voz seca.** Tres capas que atacan a la vez y una cuarta, retrasada, sólo
+ * en la silenciada. Ninguna dura más de setenta milisegundos, que es la
+ * diferencia entre un disparo y una nota.
+ */
+function _disparoSeco(p, t, level, out) {
+  // 1. El crack: banda ancha de arriba, lo primero que llega.
+  _ruido(p.crackTipo, p.crackHz, p.crackQ, p.crackGain * level, t, p.crackDecay, out)
+
+  // 2. El metal: dos parciales inarmónicos, saturados y filtrados.
+  const shaper = ctx.createWaveShaper()
+  shaper.curve = curvaDeSaturacion(p.metalDrive)
+  shaper.oversample = '2x'
+  const banda = ctx.createBiquadFilter()
+  banda.type = 'bandpass'
+  banda.frequency.value = p.metalBandHz
+  banda.Q.value = p.metalBandQ
+  const metalGain = _golpe(p.metalGain * level, t, p.metalDecay)
+  shaper.connect(banda).connect(metalGain).connect(out)
+  const osciladores = []
+  for (const ratio of [1, p.metalRatio]) {
+    const osc = ctx.createOscillator()
+    osc.type = 'sawtooth'
+    osc.frequency.setValueAtTime(p.metalHz * ratio, t)
+    osc.frequency.exponentialRampToValueAtTime(p.metalTo * ratio, t + p.metalDecay)
+    osc.connect(shaper)
+    osc.start(t)
+    osc.stop(t + p.metalDecay + 0.02)
+    osciladores.push(osc)
+  }
+  osciladores[0].onended = () => {
+    for (const osc of osciladores) osc.disconnect()
+    shaper.disconnect()
+    banda.disconnect()
+    metalGain.disconnect()
+  }
+
+  // 3. El cuerpo: el golpe grave, corto. Da peso y no deja cola.
+  const body = ctx.createOscillator()
+  body.type = 'triangle'
+  body.frequency.setValueAtTime(p.bodyFrom, t)
+  body.frequency.exponentialRampToValueAtTime(p.bodyTo, t + p.bodyDecay)
+  const bodyGain = _golpe(p.bodyGain * level, t, p.bodyDecay)
+  body.connect(bodyGain).connect(out)
+  body.start(t)
+  body.stop(t + p.bodyDecay + 0.02)
+  body.onended = () => {
+    body.disconnect()
+    bodyGain.disconnect()
+  }
+
+  // 4. El cerrojo, sólo donde se oye: con supresor y **después** del disparo.
+  if (p.mecaGain) {
+    _ruido('bandpass', p.mecaHz, p.mecaQ, p.mecaGain * level, t + p.mecaDelay, p.mecaDecay, out)
+  }
+}
+
+/** La voz de siempre: transitorio de ruido filtrado + un grave que cae. */
+function _disparoClasico(profile, t, level, out) {
   // Transitorio: ruido pasado por un pasa-banda -> "clic".
   const noise = ctx.createBufferSource()
   noise.buffer = noiseBuffer

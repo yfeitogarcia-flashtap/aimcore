@@ -6616,6 +6616,75 @@ Aritmética sobre los mismos datos: el cargador entero de la Rift pasa de 7.19°
 pitch y 2.62° de yaw a **8.39° y 7.06°**. Los números son un punto de partida y
 **se calibran jugando**, como el resto del arsenal.
 
+## Ronda 62 — La Rift suena a disparo
+
+### Lo que se oía
+
+«Demasiado suave, tipo gota de agua, y a bajo volumen.» El diagnóstico estaba en
+la descripción: una gota de agua es **un ataque en rampa y una cola con tono**, y
+eso es literalmente lo que hacía el perfil `normal` — el transitorio de ruido
+subía en 2 ms, el cuerpo en 3, y ese cuerpo era un triángulo cayendo de 210 a
+80 Hz durante 55 ms. Un disparo no tiene nada de eso: entra de golpe y se acaba.
+
+### La voz seca, y por qué cada capa
+
+Tres capas que atacan a la vez, ninguna sostenida:
+
+1. **Crack.** Ruido por un pasa-**altos** a 2.6 kHz, 24 ms. Con pasa-banda —lo
+   que había— queda una nota; lo que se lee como «crack» es la banda ancha.
+2. **Metal.** Dos dientes de sierra en relación **1.48** por un saturador `tanh`
+   y un pasa-banda, 70 ms. La relación es lo que importa: 2 (octava) o 1.5
+   (quinta) suenan a instrumento. El `tanh` satura sin esquinas, así que añade
+   armónicos sin el zumbido de un recorte duro.
+3. **Cuerpo.** El golpe grave, **32 ms** contra los 55 de antes. La sequedad se
+   pierde por abajo, no por arriba.
+
+Y en la silenciada, una cuarta que la normal no tiene: el **cerrojo**, ruido de
+banda estrecha **retrasado 12 ms**. Un supresor no baja el volumen de todo por
+igual: se lleva la onda de boca —el grave y el crack— y deja el mecanismo, que
+suena *después* de la detonación. Ese hueco es lo que se oye como una máquina.
+
+El ataque es de **0.6 ms**, que no es cero a propósito: un escalón exacto es un
+salto de continua y suena a «pop» de altavoz.
+
+### Lo que no se ve al leerlo
+
+- **La curva del saturador se cachea por `drive`.** Son 2048 puntos y el
+  automático dispara diez veces por segundo.
+- **La clave del arma viaja hasta la síntesis.** `samples.js` ya la tenía —la usa
+  para buscar la muestra grabada— y no se la pasaba a `playShot`. Ahora sí, y de
+  ahí sale que una voz nueva sea una clave nueva.
+
+### Lo que sale medido
+
+Desde el juego: se captura el ratón, se dispara con el botón y se lee la salida
+del máster muestra a muestra. El A/B es la **Pulse**, que conserva el perfil
+clásico —o sea, el que tenía la Rift— en la misma tanda y con el mismo máster.
+
+| | pico | cola a −40 dB | centroide del ataque | grave/agudo |
+|---|---|---|---|---|
+| Rift (voz nueva) | 0.4085 | 30 ms | 1894 Hz | 0.18 |
+| Pulse (voz de antes) | 0.1146 | 27 ms | 1291 Hz | 0.51 |
+| Rift silenciada | 0.1107 | 27 ms | 2204 Hz | 0.02 |
+| Pulse silenciada (antes) | 0.0380 | 37 ms | 825 Hz | 1.88 |
+
+**+11.0 dB** la normal y **+9.3 dB** la silenciada, sin acercarse a saturar
+(0.41 de 1.0). El centroide es lo que separa «metálico» de «fuerte»: un grave
+subido de volumen sube el pico y no mueve el centroide.
+
+### Y la sonda, que hubo que arreglar antes de creerse nada
+
+El pico de la Rift salió **0.3322 y 0.1390 en dos tandas seguidas sin haber
+tocado ese perfil**. No era el sonido: era el instrumento. La sonda leía el
+máster con un `ScriptProcessor` de 256 muestras —188 llamadas por segundo— y el
+contenedor pierde bloques; perder el del ataque parte el pico por la mitad.
+
+Se arregla por los dos lados: bloque de **4096** (12 llamadas por segundo),
+**cinco disparos y la mediana**, y la cuenta de capturas completas impresa en la
+propia fila. Con eso los cinco picos salen 0.409 clavados. Es la regla de la
+vuelta 46 aplicada al audio —una medida necesita que se vea de cuántas sale— y la
+de la 57 —una suite verde no está verificada por estar verde—.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

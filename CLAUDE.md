@@ -1216,6 +1216,49 @@ saberlo. Cuatro reglas que sostienen el respaldo:
   contexto* se decodificó. React en modo
   estricto monta, desmonta y vuelve a montar.
 
+**Un arma puede tener voz propia, y la elige su clave** (vuelta 62). `playShot`
+no sabe de armas: mira `SHOT_PROFILES[<arma>]` —o `<arma>.s` con silenciador, la
+misma idea que `ghost-<arma>` en las siluetas— y lo que no tenga entrada cae a
+`normal` / `suppressed`, que es la voz clásica que llevan hoy la Pulse y la Volt.
+Añadir una voz es añadir una clave, no tocar `playShot`.
+
+Hoy la tiene una sola arma, la **Rift**, y lo que se arregló no era el volumen:
+
+- **El ataque era una rampa** (2 y 3 ms) y el cuerpo duraba 55 ms cayendo de
+  tono. Eso es la receta de una gota de agua. La voz `seca` ataca en **0.6 ms**
+  —escalón, no rampa; medio milisegundo es lo que hace falta para que no suene a
+  «pop» de altavoz— y ninguna capa pasa de 70 ms.
+- **Metálico es inarmónico, no agudo.** Los dos parciales de la capa de metal van
+  en relación **1.48**, que no es ni octava ni quinta: con una relación armónica
+  sale un tono musical, que es justo lo que no es un disparo. Pasan por un
+  saturador `tanh` —suave y sin esquinas, así que añade armónicos sin el zumbido
+  de un recorte duro— y un pasa-banda.
+- **El crack es un pasa-altos, no un pasa-banda.** Un pasa-banda deja una nota;
+  lo que suena a «crack» es la banda ancha de arriba.
+- **La curva del saturador se cachea.** Son 2048 puntos y el automático dispara
+  diez veces por segundo: una tabla por disparo es basura para el recolector
+  justo donde menos cabe.
+- **La silenciada no es la normal más baja.** Se le quitan el grave y el crack de
+  banda ancha —las dos capas que delatan un disparo a distancia— y se le añade
+  una que la normal no tiene: el **cerrojo**, retrasado 12 ms. Ese hueco es lo
+  que se oye como una máquina en vez de como un golpe.
+
+Medido desde el juego, disparando con el botón y leyendo el máster muestra a
+muestra: **+11.0 dB** la normal y **+9.3 dB** la silenciada, con la cola a −40 dB
+en 30 y 27 ms y el centroide del ataque en 1894 Hz contra los 1291 de la voz de
+antes. El A/B sale gratis y es honesto: **la Pulse conserva el perfil clásico**,
+que es exactamente el que tenía la Rift, así que las dos filas de la misma tanda
+son el cambio.
+
+**Y una captura de audio también necesita su denominador** (vuelta 62). La
+primera sonda leía el máster con un `ScriptProcessor` de 256 muestras —188
+llamadas por segundo— y este contenedor **pierde bloques**: el pico de la Rift
+salió 0.3322 y 0.1390 en dos tandas seguidas sin haber tocado ese perfil, que es
+un bloque de ataque perdido y no un cambio de sonido. Se arregla por los dos
+lados a la vez: bloque de 4096, **cinco disparos y la mediana**, y la cuenta de
+capturas completas impresa al lado de cada fila. Es la regla de la vuelta 46 en
+el audio: un número solo no dice de cuántos sale.
+
 **Renombrar una clave de catálogo borra lo que hay guardado, salvo que se
 traduzca.** En la vuelta 41 las tres armas cambiaron de nombre sin tocar ni una
 estadística, y la clave vieja está en el `localStorage` de quien ya jugó: el
@@ -2042,7 +2085,10 @@ siempre.** La 1 saca una, la 2 la otra y **Q** alterna. Cada una lleva su propio
 cargador y su propia recarga, y la que dejas se congela tal cual estaba —una
 recarga a medias no avanza en la espalda, se reanuda al volver a equiparla—.
 
-**Audio de disparo: sintetizado hoy, con carril para muestras reales.** Un arma
+**Audio de disparo: sintetizado hoy, con carril para muestras reales.** Desde la
+vuelta 62 la **Rift** tiene voz propia —seca, metálica y +11 dB sobre la de
+antes; su variante silenciada, +9.3 dB y con el cerrojo por delante del grave—;
+la Pulse y la Volt siguen con la voz clásica hasta que se calibre la suya. Un arma
 puede traer su `Reference/Audio/weapons/<clave>.mp3` (y opcionalmente
 `-suppressed.mp3`); `npm run audio:weapons` lo copia a `public/audio/weapons/` y
 lo declara en `src/audio/weaponSamples.js`. Hoy no hay ninguno, así que todas
