@@ -225,6 +225,8 @@ cliente.onBienvenida = (m) => {
   document.title = `Vektor · ${codigo} · ${m.id}`
   // La butaca, para poder volver a ella si se cae el cable.
   if (m.pase) guardarPartida({ codigo, pase: m.pase, cuando: Date.now() })
+  // Y con la bienvenida se sabe por fin si las opciones de la partida son tuyas.
+  pintarConfigurable()
 }
 // **Después de poner lo suyo**: `usarRed` encadena sobre la bienvenida para
 // arrancar la sesión en el mismo turno, y encadenar sobre algo que todavía no
@@ -498,16 +500,48 @@ $('entrar').addEventListener('click', () => {
   location.href = direccionDeLaBarra(otro)
   location.reload()
 })
-$('copiar').addEventListener('click', async () => {
+/**
+ * **Copiar el enlace, y que se copie de verdad** (vuelta 67).
+ *
+ * `navigator.clipboard` **no existe fuera de un contexto seguro**, y una IP de
+ * red por `http://` —que es justo cómo se juega en casa desde otro PC— no lo es.
+ * Así que `await navigator.clipboard.writeText(...)` ni siquiera fallaba al
+ * escribir: petaba al leer `writeText` de `undefined`, se lo comía el `catch`, y
+ * lo único que pasaba era que el texto quedaba seleccionado. Desde fuera, un
+ * botón que no hace nada.
+ *
+ * Debajo va `document.execCommand('copy')`, que está obsoleto y **funciona sin
+ * contexto seguro**, que es exactamente lo que hace falta aquí. Y el botón dice
+ * qué ha pasado en los tres casos: copiado, o «selecciónalo» si no se ha podido
+ * —porque entonces hay algo que hacer a mano y el jugador tiene que saberlo—.
+ */
+async function copiarEnlace() {
+  const campo = $('enlace')
+  const texto = campo.value
   try {
-    await navigator.clipboard.writeText($('enlace').value)
-    $('copiar').textContent = 'copiado'
-    setTimeout(() => { $('copiar').textContent = 'copiar' }, 1200)
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(texto)
+      return true
+    }
   } catch {
-    // El portapapeles necesita permiso y contexto seguro. Si no lo hay, el
-    // enlace está escrito ahí al lado para seleccionarlo a mano.
-    $('enlace').select()
+    /* sin permiso: queda el camino de abajo */
   }
+  try {
+    campo.focus()
+    campo.select()
+    campo.setSelectionRange(0, texto.length)
+    return document.execCommand('copy')
+  } catch {
+    return false
+  }
+}
+
+$('copiar').addEventListener('click', async () => {
+  const boton = $('copiar')
+  const bien = await copiarEnlace()
+  if (!bien) $('enlace').select()
+  boton.textContent = bien ? 'copiado' : 'selecciónalo'
+  setTimeout(() => { boton.textContent = 'copiar' }, 1600)
 })
 
 // ---------------------------------------------------------------- entrada
@@ -661,16 +695,29 @@ cliente.onRonda = (r) => {
 // **Irse se dice.** Es lo único que distingue un abandono de una caída: sin este
 // mensaje, cerrar la pestaña y que se caiga el wifi llegan por la misma puerta.
 $('salir').addEventListener('click', () => {
+  salirAlMenu()
+})
+
+/**
+ * **Irse es irse a algún sitio** (vuelta 67). Hasta aquí el botón mandaba el
+ * adiós, cerraba el cable y **dejaba al jugador en la misma pantalla**: el menú
+ * de una partida de la que acababa de salir, con su código, su enlace y su
+ * botón de pausa. Desde fuera se leía como que el botón no hacía nada.
+ *
+ * El adiós va primero y la navegación después, y en ese orden importa: es el
+ * único mensaje que distingue un abandono de una caída (vuelta 62), y descargar
+ * la página cierra el socket sin decir nada.
+ */
+function salirAlMenu() {
   guardarPartida(null)
   cliente.abandonar()
-})
+  window.location.href = NET.rutaJuego
+}
 // Y la salida del cartel de fin: suelta la butaca —la partida ya está decidida,
 // no hay nada que reservar— y deja a la vista el menú, que es donde se teclea
 // otro código. Sin esto el cartel es una pantalla sin salida.
 $('finSalir').addEventListener('click', () => {
-  guardarPartida(null)
-  cliente.abandonar()
-  $('fin').classList.remove('puesto')
+  salirAlMenu()
 })
 // **Y cerrar la pestaña no manda nada, a propósito.** La primera versión mandaba
 // el adiós en `pagehide`, y estaba mal por una razón que sólo se ve al probarlo:
@@ -871,13 +918,27 @@ function marcarDano(fraccion, rumbo) {
 }
 
 let ultimoInforme = 0
+/** Si había rival la última vez que se miró, para repintar sólo al cambiar. */
+let huboRival = false
 function pintarPanel() {
   const ahora = performance.now()
   if (ahora - ultimoInforme < 200) return
   const ventana = (ahora - ultimoInforme) / 1000
   ultimoInforme = ahora
   const m = cliente.medidas
-  $('hayRival').textContent = cliente.poseDelRival() ? 'dentro' : 'esperando'
+  // **«Hay rival» lo dice el servidor, no la pose.** Durante la fase de compra
+  // la foto sale por destinatario y no trae al otro (vuelta 62), así que mirar
+  // `poseDelRival()` decía «esperando» los quince segundos enteros con el rival
+  // dentro — y con él, dejaba abiertas unas opciones que ya no lo estaban.
+  const dentro = cliente.ocupadas >= 2
+  if (dentro !== huboRival) {
+    huboRival = dentro
+    // **Y con el rival dentro, las opciones de la partida se cierran** (vuelta
+    // 67): cambiarlas empieza otra sala y le deja fuera. Se repinta al cambiar y
+    // no cada vez, que es la regla del HUD.
+    pintarConfigurable()
+  }
+  $('hayRival').textContent = dentro ? 'dentro' : 'esperando'
   // El caudal se mide sobre la ventana, así que hay que vaciarlo aunque el panel
   // esté cerrado: si no, al abrirlo la primera lectura sería la suma de todo lo
   // que ha pasado desde que se cerró.
@@ -1116,6 +1177,14 @@ for (const segundos of ROUNDS.compraOpciones) {
 }
 selector.value = String(compraElegida)
 selector.addEventListener('change', () => {
+  // **Y si esto no es tuyo, no hace nada** (vuelta 67). El `disabled` ya lo
+  // impide en el navegador; la comprobación está aquí porque lo que hay detrás
+  // —empezar otra partida— es irreversible, y una puerta que se cierra sola no
+  // se deja apoyada en el CSS.
+  if (!puedeConfigurar()) {
+    pintarConfigurable()
+    return
+  }
   const segundos = Number(selector.value)
   try {
     localStorage.setItem(CLAVE_COMPRA, String(segundos))
@@ -1131,6 +1200,48 @@ selector.addEventListener('change', () => {
   destino.pathname = destino.pathname.replace(/\/duelo\/[^/]+$/, '/duelo')
   window.location.href = destino.toString()
 })
+
+/**
+ * **Las opciones de la partida son de quien la crea, y sólo hasta que llega
+ * alguien** (vuelta 67).
+ *
+ * Jugando por primera vez entre dos PCs salió el fallo entero: el que se unió
+ * por el enlace tocó el desplegable de la fase de compra y **se fue a una
+ * partida nueva** —código nuevo, ranura 0, color azul— dejando a su rival solo
+ * en la de antes. No es que el cambio fallara: es que ese control **no era
+ * suyo**, y lo que hay detrás de él es empezar otra partida.
+ *
+ * Dos condiciones, y las dos son la misma idea por sus dos extremos:
+ *
+ * - **Anfitrión.** Lo dice el servidor en la bienvenida, no se deduce del color
+ *   ni del id. Una sala se configura al nacer y sólo cuenta lo que diga quien la
+ *   creó, así que enseñarle el control al otro es prometerle algo que el
+ *   servidor va a ignorar.
+ * - **Y sólo mientras no haya nadie dentro.** Cambiarlo abandona la sala, y con
+ *   ella a quien ya haya entrado por tu enlace. Que el anfitrión pueda hacerlo
+ *   es correcto; que pueda hacerlo **sin enterarse de que su amigo ya estaba**,
+ *   no.
+ */
+function puedeConfigurar() {
+  return cliente.anfitrion && cliente.ocupadas < 2
+}
+
+function pintarConfigurable() {
+  const puede = puedeConfigurar()
+  selector.disabled = !puede
+  selector.title = puede
+    ? 'cambiarla empieza una partida nueva, con otro código'
+    : cliente.anfitrion
+      ? 'ya hay alguien dentro: cambiarla le dejaría fuera'
+      : 'la elige quien crea la partida'
+  // Corto a propósito: va en la fila del número, y el menú no puede crecer.
+  $('compraQuien').textContent = puede
+    ? '· cambiarla empieza otra'
+    : cliente.anfitrion
+      ? '· con rival, ya no'
+      : '· la elige el anfitrión'
+}
+pintarConfigurable()
 
 // Para las sondas de medida: todo lo que hace falta, en un solo sitio.
 /**

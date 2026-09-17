@@ -343,6 +343,20 @@ export class Partida {
         escenario: this.escenario.key,
         hz: SIM.hz,
         n: this.paso,
+        /**
+         * **Quién manda en las opciones de la partida** (vuelta 67). Lo dice el
+         * servidor y no lo deduce el cliente, por lo de siempre: una sala se
+         * configura al nacer y **sólo cuenta lo que diga quien la creó**, así
+         * que el panel del otro no puede enseñar esos controles como si
+         * sirvieran de algo.
+         *
+         * Es la primera butaca, y no el id: el id es un contador que no para, y
+         * la butaca sobrevive a una caída con su pase. Si el anfitrión abandona
+         * de verdad, su butaca queda libre y el siguiente que entre la ocupa —y
+         * con ella el mando—, que es lo correcto: sin él no queda nadie a quien
+         * preguntar.
+         */
+        anfitrion: jugador.equipo === 0,
         salida: {
           x: jugador.pose.position.x,
           z: jugador.pose.position.z,
@@ -715,7 +729,19 @@ export class Partida {
   }
 
   _enviarFoto() {
-    const foto = { t: MSG.FOTO, n: this.paso, p: {} }
+    /**
+     * **Cuántas butacas están ocupadas** (vuelta 67). Un número, y hace falta
+     * porque durante la fase de compra la foto sale **por destinatario** y no
+     * lleva al rival (vuelta 62): desde el cliente, «¿ha entrado ya alguien?» no
+     * se puede contestar mirando si hay pose. El panel decía «esperando» los
+     * quince segundos enteros con el rival dentro, y lo que de verdad dependía
+     * de ello —si las opciones de la partida siguen siendo tuyas— se quedaba
+     * abierto cuando ya no debía.
+     *
+     * Cuenta **butacas**, no cables: quien se está cayendo sigue ocupando la
+     * suya, y su sitio no está libre para nadie.
+     */
+    const foto = { t: MSG.FOTO, n: this.paso, p: {}, ocupadas: this.jugadores.size }
     // Sólo cuando hay algo que contar: en una partida normal esto no ocupa nada.
     // `resta` son los milisegundos que le quedan a la pausa —o a la votación—,
     // y se calculan **aquí**: el cliente no tiene el reloj del servidor, y una

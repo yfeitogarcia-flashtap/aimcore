@@ -54,8 +54,17 @@ export class ClienteRed {
     this.conectado = false
     /** Tu ranura (0 o 1). La da la bienvenida. */
     this.equipo = 0
+    /** ¿Creaste tú esta partida? Lo dice la bienvenida (vuelta 67). */
+    this.anfitrion = false
     /** Cuándo llegó la última foto. Null mientras no haya llegado ninguna. */
     this._ultimaFotoEn = null
+    /**
+     * **Cuántas butacas hay ocupadas**, según el servidor (vuelta 67). No se
+     * deduce de que haya pose del rival: durante la fase de compra la foto sale
+     * por destinatario y no la lleva, así que ahí «hay rival» y «veo al rival»
+     * son dos preguntas distintas.
+     */
+    this.ocupadas = 0
     /**
      * **Avisos hacia fuera.** `onBienvenida` cuando el servidor te da sitio y
      * `onVeredicto` cada vez que dice qué pasó con uno de tus disparos. Son
@@ -588,6 +597,13 @@ export class ClienteRed {
        */
       this.equipo = mensaje.equipo
       /**
+       * **¿Es esta pantalla la que creó la partida?** (vuelta 67). Lo dice la
+       * bienvenida; aquí sólo se guarda. De ello depende que el panel enseñe
+       * las opciones de la partida como editables o como lo que son para el que
+       * se une: información.
+       */
+      this.anfitrion = !!mensaje.anfitrion
+      /**
        * **¿Hay economía en esta partida?** (vuelta 64). Lo dice el servidor en
        * la bienvenida y de ahí sale de dónde viene el arma principal: comprada,
        * o del ajuste del jugador (ver `engine.usarRed`).
@@ -762,6 +778,7 @@ export class ClienteRed {
     this._ultimaFotoEn = performance.now()
     this.medidas.sinFotosMs = 0
     this.medidas.pasoServidor = foto.n
+    this.ocupadas = foto.ocupadas ?? this.ocupadas
     this._leerPausa(foto)
     // **Antes de reejecutar nada**: si ha cambiado de fase, las entradas que
     // están sin confirmar son de antes del reinicio de ronda, y reejecutarlas

@@ -7645,6 +7645,84 @@ resolverse con un solo rayo (`_superficieBajoElRayo`). La regla que guardaba
 —que la cobertura para los disparos— sigue siendo la misma; lo que cambió es a
 quién se le pregunta.
 
+## Ronda 67 — Lo que salió al jugar entre dos PCs
+
+La primera partida de verdad entre dos máquinas distintas encontró cuatro cosas
+en media hora, y ninguna se había visto en un banco. Las cuatro comparten forma:
+**funcionaban en el único montaje en el que se habían probado**.
+
+### Un control que no es tuyo
+
+El que se unió por el enlace cambió el desplegable de la fase de compra y acabó
+en una partida nueva —código nuevo, ranura 0, color azul—, con su rival solo en
+la de antes y las dos pantallas superpuestas.
+
+El comportamiento era el documentado: «cambiar el selector recarga con una
+partida nueva» (vuelta 64), porque una sala ya creada no se reconfigura. Lo que
+faltaba era la otra mitad de esa frase: **si la sala no se reconfigura, ese
+control sólo tiene sentido para quien la va a crear**. Enseñárselo al que se une
+es prometerle algo que el servidor va a ignorar, y lo que hace en su lugar —irse
+a otra partida— es lo peor que podía hacer.
+
+Quién manda lo dice el servidor en la bienvenida, y es **la primera butaca**: no
+el id (un contador que no para) ni el color. Y se cierra también para el
+anfitrión en cuanto entra alguien, porque cambiarlo abandona la sala con su
+invitado dentro.
+
+La comprobación está además **en el `change`**, no sólo en el `disabled`: el
+atributo apaga el control en el navegador, pero lo que hay detrás es
+irreversible, y una puerta que se cierra sola no se deja apoyada en el CSS.
+
+### «Hay rival» no es «veo al rival»
+
+Al cerrar el selector con el rival dentro apareció la segunda mitad: durante la
+fase de compra la foto sale **por destinatario** y no lleva al otro (vuelta 62),
+así que `poseDelRival()` es null los quince segundos enteros. El panel llevaba
+desde la 64 diciendo «esperando» con el rival dentro, y nadie lo había mirado.
+
+La foto lleva ahora `ocupadas`, que cuenta **butacas y no cables**: quien se está
+cayendo sigue ocupando la suya y su sitio no está libre para nadie.
+
+### Irse tiene que llevar a algún sitio
+
+«Salir de la partida» mandaba el adiós, cerraba el cable y dejaba al jugador en
+la misma pantalla: el menú de una partida de la que acababa de salir, con su
+código, su enlace y su botón de pausa. Desde fuera, un botón que no hace nada.
+
+El orden no es intercambiable: **el adiós primero y la navegación después**. Ese
+mensaje es lo único que distingue un abandono de una caída (vuelta 62), y
+descargar la página cierra el socket sin decir nada.
+
+### El portapapeles no existe fuera de un contexto seguro
+
+`navigator.clipboard` es `undefined` en `http://192.168.x.x`, que es exactamente
+cómo se juega en casa desde otro PC. Así que `await
+navigator.clipboard.writeText(...)` **ni llegaba a escribir**: petaba al leer
+`writeText` de `undefined`, se lo comía el `catch` y lo único que pasaba era que
+el texto quedaba seleccionado.
+
+Debajo va `document.execCommand('copy')`, obsoleto y **el único que funciona sin
+contexto seguro**, que es justo lo que hace falta aquí. Y el botón dice cuál de
+las tres cosas ha pasado, porque si no se ha podido copiar hay algo que hacer a
+mano.
+
+Lo que se copia es siempre una URL absoluta. Lo que **no** está en nuestra mano:
+WhatsApp no convierte en enlace una IP privada con puerto por mucho que sea una
+URL válida. Lo que se comparte fuera de casa es la dirección del despliegue.
+
+### Y un banco en rojo durante tres vueltas
+
+Al medir el menú con la fila nueva, `menu62` salió rojo — y salía rojo **también
+sin tocar nada**. El menú del duelo llevaba creciendo desde la 60 (pausar), la 62
+(salir) y la 64 (la fase de compra), y a 700×460 medía 505 px: los dos botones de
+abajo caían fuera de la ventana. La regla de la 62 —«el menú tiene que caber, y
+si no cabe se desplaza»— seguía escrita; lo que faltó fue pasar su banco las tres
+veces que se le añadió un renglón.
+
+Lo que se quitó fue ayuda repetida —las teclas están en las opciones del juego— y
+una nota para probar en dos pestañas que dejó de hacer falta el día que hubo un
+botón en el menú y una dirección de red que pasar. 505 → 445 px.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

@@ -3404,6 +3404,13 @@ export const NET = {
    */
   rutaDuelo: '/duelo/',
   /**
+   * **Y por dónde se vuelve al juego** (vuelta 67). El botón «Salir de la
+   * partida» mandaba el adiós y dejaba al jugador mirando la misma pantalla,
+   * con el menú de una partida de la que acababa de irse: irse tiene que llevar
+   * a algún sitio, y el sitio es el menú principal.
+   */
+  rutaJuego: '/',
+  /**
    * **El escenario del duelo, y es uno solo** (vuelta 66). Lo miran los dos
    * extremos —la página monta el motor con él y el huésped monta la partida— y
    * tienen que coincidir: el cliente predice su propio movimiento contra la

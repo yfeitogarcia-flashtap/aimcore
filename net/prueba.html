@@ -206,6 +206,10 @@
   .linea { display: flex; gap: 6px; align-items: center; margin: 7px 0; width: 340px; }
   .linea input { flex: 1; min-width: 0; background: #141414; color: #E8E8E8; border: 1px solid #333;
     border-radius: 3px; padding: 5px 7px; font: inherit; }
+  /* **Un control que no es tuyo se ve apagado** (vuelta 67): el desplegable de
+     la fase de compra sólo lo maneja quien creó la partida, y al que se une por
+     el enlace tiene que decírselo la forma, no un intento fallido. */
+  #compraSel:disabled { opacity: .45; cursor: not-allowed; border-style: dashed; }
   .linea button { background: #2FCB82; color: #08130D; border: 0; border-radius: 3px;
     padding: 6px 10px; font: inherit; font-weight: 700; cursor: pointer; }
   #otro { text-transform: uppercase; letter-spacing: .12em; }
@@ -351,16 +355,28 @@
          selector. -->
     <div class="fila"><span class="apagado">fase de compra</span>
       <select id="compraSel" class="control"></select></div>
-    <div class="fila"><span class="apagado">en esta partida</span><span id="compraReal">—</span></div>
+
+    <!-- **De quién son las opciones** (vuelta 67) va aquí y no en una fila
+         nueva: el menú ya se salió de una ventana pequeña una vez por crecer un
+         renglón (vuelta 62), y esto es una aclaración de este mismo número. -->
+    <div class="fila"><span class="apagado">en esta partida</span>
+      <span><span id="compraReal">—</span> <span id="compraQuien" class="apagado"></span></span></div>
     <hr />
     <div class="fila"><span class="apagado">tú</span><span id="quien">conectando…</span></div>
     <div class="fila"><span class="apagado">rival</span><span id="hayRival">—</span></div>
   </div>
   <p><b>Pásale el enlace a la otra persona</b> y haz clic para jugar.</p>
-  <p class="apagado">o abre esta misma página en dos pestañas para probar solo</p>
-  <p class="apagado"><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> mover ·
-     <kbd>Espacio</kbd> saltar · <kbd>C</kbd> agachar · <kbd>Shift</kbd> andar · <kbd>Esc</kbd> soltar</p>
-  <p class="apagado"><kbd>clic izquierdo</kbd> disparar · <kbd>F3</kbd> números de red</p>
+  <!-- **Tres renglones de ayuda eran cuatro** (vuelta 67). El menú ha crecido en
+       cada vuelta que le ha añadido algo —pausar en la 60, salir en la 62, la
+       fase de compra en la 64— y a 700×460 acabó midiendo 505 px: los dos
+       botones de abajo caían fuera de la ventana y no se podían pulsar, con
+       `menu62` en rojo desde la 64 sin que nadie lo mirase. Lo que sobraba era
+       ayuda repetida —las teclas están en las opciones del juego— y una nota
+       para probar en dos pestañas que dejó de hacer falta el día que hubo un
+       botón en el menú y una dirección de red que pasar. -->
+  <p class="apagado"><kbd>WASD</kbd> mover · <kbd>Espacio</kbd> saltar ·
+     <kbd>C</kbd> agachar · <kbd>Shift</kbd> andar · <kbd>clic</kbd> disparar ·
+     <kbd>F3</kbd> números de red</p>
   <p class="apagado"><kbd>Esc</kbd> abre este menú — <b>no pausa por sí solo</b>.
      Te quedan <b id="libresMenu">3</b> pausas sin pedir permiso</p>
   <!-- **Pausar es un botón, no un gesto** (vuelta 60). Hasta la 58 soltar el

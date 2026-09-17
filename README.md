@@ -213,6 +213,17 @@ Se entra por el botón **Duelo 1v1** de la pantalla de inicio. Lleva a la págin
 del duelo, que crea una partida sola y enseña su código, el enlace para copiar,
 un campo para entrar en el código de otro y el selector de fase de compra.
 
+**Las opciones de la partida son de quien la crea**, y sólo hasta que entra el
+rival: al que se une por el enlace le salen apagadas, porque cambiarlas no
+reconfigura la sala —empieza otra, con otro código— y eso dejaría al otro solo en
+la de antes.
+
+**Y el botón «copiar» copia siempre**, también cuando juegas por la IP de tu red:
+ahí el navegador no da portapapeles moderno y hace falta el camino de abajo. Lo
+que copia es una URL completa. Un aviso que no está en nuestra mano: WhatsApp no
+convierte en enlace una dirección de red privada con puerto —lo que se comparte
+fuera de casa es la dirección del despliegue, que sí sale clicable—.
+
 ### El mapa: El Espejo
 
 El duelo tiene su propio mapa, distinto del del aim trainer. Es **simétrico**

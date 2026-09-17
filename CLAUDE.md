@@ -1914,6 +1914,66 @@ recarga con una partida nueva**. Una sala ya creada no se reconfigura, así que
 dejar el selector puesto sin más enseñaría un número que el servidor no está
 usando; debajo se ve **lo que dice el servidor**, que es la verdad.
 
+**Las opciones de una partida son de quien la crea, y sólo hasta que entra
+alguien** (vuelta 67). Jugando por primera vez entre dos PCs salió entero: el que
+se unió por el enlace tocó el desplegable de la fase de compra y **acabó en una
+partida nueva** —código nuevo, ranura 0, color azul— dejando a su rival solo en
+la de antes. No es que el cambio fallara: es que ese control **no era suyo**, y lo
+que hay detrás de él es empezar otra partida. Tres reglas:
+
+- **Quién es el anfitrión lo dice el servidor**, en la bienvenida (`anfitrion`), y
+  es **la primera butaca** — no el id, que es un contador que no para, ni el
+  color. La butaca sobrevive a una caída con su pase; si el anfitrión abandona de
+  verdad, su butaca queda libre y el mando pasa a quien la ocupe, que es lo
+  correcto porque si no no queda a quién preguntar.
+- **Y se cierra en cuanto hay alguien dentro**, también para el anfitrión.
+  Cambiarlo abandona la sala y con ella a quien haya entrado por tu enlace: que
+  pueda hacerlo es correcto, que pueda hacerlo sin enterarse, no.
+- **La comprobación no vive en el `disabled`.** El atributo apaga el control en
+  el navegador; el `change` vuelve a preguntar antes de navegar, porque lo que
+  hay detrás es irreversible y una puerta que se cierra sola no se deja apoyada
+  en el CSS.
+
+**Y «hay rival» lo dice el servidor, no la pose** (vuelta 67). Durante la fase de
+compra la foto sale **por destinatario** y no lleva al otro (vuelta 62), así que
+«¿ha entrado alguien?» y «¿veo a alguien?» son dos preguntas distintas, y mirar
+`poseDelRival()` contestaba «esperando» los quince segundos enteros con el rival
+dentro. La foto lleva `ocupadas`, que cuenta **butacas y no cables**: quien se
+está cayendo sigue ocupando la suya.
+
+**Irse es irse a algún sitio** (vuelta 67). «Salir de la partida» mandaba el
+adiós, cerraba el cable y **dejaba al jugador en la misma pantalla** —el menú de
+una partida de la que acababa de salir, con su código y su botón de pausa—, que
+desde fuera se lee como un botón que no hace nada. Ahora lleva a `NET.rutaJuego`.
+El orden importa y no es intercambiable: **el adiós primero y la navegación
+después**, porque ese mensaje es lo único que distingue un abandono de una caída
+(vuelta 62) y descargar la página cierra el socket sin decir nada.
+
+**El portapapeles no existe fuera de un contexto seguro, y una IP de red no lo
+es** (vuelta 67). `navigator.clipboard` es `undefined` en `http://192.168.x.x`,
+que es exactamente cómo se juega en casa desde otro PC: `await
+navigator.clipboard.writeText(...)` ni llegaba a escribir —petaba al leer
+`writeText` de `undefined`—, se lo comía el `catch` y el botón «copiar» no hacía
+nada visible. Debajo va `document.execCommand('copy')`, obsoleto y **el único que
+funciona sin contexto seguro**, y el botón dice cuál de las tres cosas ha pasado:
+copiado, copiado por abajo, o «selecciónalo» — porque si no se ha podido, hay algo
+que hacer a mano y el jugador tiene que saberlo.
+
+Y lo que se copia es **siempre una URL absoluta** (`enlaceDeSala`), que es lo que
+otra aplicación reconoce como enlace. Ojo con lo que **no** está en nuestra mano:
+WhatsApp no convierte en enlace una IP privada con puerto por mucho que sea una
+URL válida; lo que se comparte fuera de casa es la dirección del despliegue.
+
+**Y el menú del duelo no puede crecer una fila más** (la regla es de la 62; el
+recordatorio, de la 67). Ha ido creciendo en cada vuelta que le añadió algo
+—pausar en la 60, salir en la 62, la fase de compra en la 64— y a 700×460 llegó a
+medir **505 px**: los dos botones de abajo caían fuera de la ventana y no se
+podían pulsar. `menu62` lo decía **desde la vuelta 64** y estuvo en rojo tres
+vueltas porque no se pasó. Lo que sobraba era ayuda repetida —las teclas están en
+las opciones— y una nota para probar en dos pestañas que dejó de hacer falta el
+día que hubo un botón en el menú. Si añades algo aquí, quita algo o pasa
+`menu62`.
+
 **La armería del duelo no pausa, y no comparte pantalla con el menú** (vuelta
 64). Se abre con la tecla de armería —la del motor, reasignable en opciones— y el
 mundo sigue corriendo: una pausa es parar el mundo de los dos y sólo la decide el
