@@ -1924,6 +1924,15 @@ centro de la pantalla del duelo es un `.control`, y ahí un clic no captura a
 propósito (vuelta 48). Tres suites cayeron por esto con síntomas que no se
 parecían en nada —una premisa de «está jugando», un «0.00 u» de movimiento—.
 
+**El menú del duelo tiene que caber, y si no cabe se desplaza** (vuelta 62). Ha
+crecido dos veces —pausar en la 60, salir en la 62— y a 508 px el último botón
+caía fuera de una ventana de 460: `pausa55` murió intentando pulsarlo, con un
+«element is not visible» que no se parece a la causa. Ahora salir va en la fila
+de pausar —pequeño y al lado, que no es la acción de esta pantalla— y `#aviso`
+lleva `overflow-y: auto` con `place-items: safe center`, que es lo que evita que
+al desbordar se corte **por arriba**. `menu62.mjs` lo guarda preguntando con
+`elementFromPoint` si un clic en cada botón le llega, a cuatro tamaños.
+
 **Una suite sin aserciones no es una prueba, es un informe.** `baja.mjs` imprimía
 «se sube en 12/12» y salía en verde pasara lo que pasara; con aserciones de
 verdad cazó a la primera una regresión de 12/12 a 0/12. Si un test no puede

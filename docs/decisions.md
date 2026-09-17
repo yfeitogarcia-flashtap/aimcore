@@ -6869,6 +6869,25 @@ porque ahí no hay una línea de red— y `duelo62`, dos navegadores contra el
 producto. Y `/salud` publica los dos interruptores, así que un banco puede
 comprobar contra qué mundo mide en vez de suponerlo.
 
+### El menú del duelo, que ha crecido dos veces
+
+En la 60 le entró el botón de pausar y en la 62 el de salir: **508 px** de alto,
+contra los 460 de una ventana pequeña. El último botón cae fuera y no hay forma
+de pulsarlo — `pausa55` murió intentando, con un «element is not visible» que no
+se parece en nada a la causa.
+
+La vuelta 61 ya arregló esto una vez recortando píxeles. Esta vez se cierra de
+raíz, por los dos lados: **salir pasa a la fila de pausar** —no es la acción de
+esta pantalla, así que va pequeño y al lado— y **el menú se desplaza si no
+cabe** (`overflow-y: auto`), con `place-items: safe center`, que es lo que evita
+que al desbordar se corte por arriba en vez de por abajo.
+
+Y se mide preguntándole al navegador **si un clic en el centro de cada botón le
+llega a ese botón** (`elementFromPoint`), no calculando alturas: es la lección de
+la 61 —un vano no es un área— convertida en banco (`menu62.mjs`), a cuatro
+tamaños de ventana y con una quinta a 700×300 que comprueba que, cuando de
+verdad no cabe, se puede desplazar.
+
 ### Y el sello del build no miraba las páginas
 
 La huella que `/salud` publica desde la 61 listaba `dist/assets`, donde Vite

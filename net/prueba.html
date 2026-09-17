@@ -188,8 +188,15 @@
      El alto lo escribe `pintarPausa` al cambiar de estado, porque depende de
      cuántas líneas tenga el cartel, y clavarlo a un número se rompe al añadirle
      una. */
-  #aviso { position: fixed; inset: 0; display: grid; place-items: center; cursor: pointer;
-    padding-top: var(--pausaAlto, 0px); box-sizing: border-box;
+  /* **Y cuando no cabe, se desplaza** (vuelta 62). El menú ha crecido dos veces
+     —el botón de pausar en la 60, el de salir en la 62— y a 700×460 mide 508 px:
+     el último botón cae fuera de la ventana y no hay forma de pulsarlo. Ya
+     rompió tres bancos en la 61 recortando píxeles; esto lo cierra de raíz.
+     `safe center` es lo que evita que al desbordar se corte por arriba, que es
+     lo que hace un centrado normal. */
+  #aviso { position: fixed; inset: 0; display: grid; place-items: safe center;
+    overflow-y: auto; cursor: pointer;
+    padding: 10px 0 14px; padding-top: calc(var(--pausaAlto, 0px) + 10px); box-sizing: border-box;
     background: rgba(10,10,10,.78); text-align: center; letter-spacing: .06em; }
   #aviso[hidden] { display: none !important; }
   #sala { display: inline-block; text-align: left; margin-bottom: 18px; padding: 14px 16px;
@@ -219,6 +226,7 @@
   #pausar, #pedirVoto, #salir, #reconectar { background: #1A1A1A; color: #E8E8E8;
     border: 1px solid #3A3A3A; border-radius: 3px; padding: 8px 16px; font: inherit;
     letter-spacing: .06em; cursor: pointer; }
+  #salir { margin-left: 8px; padding: 8px 12px; font-size: 11px; color: #9A9A9A; }
   #pausar:hover, #pedirVoto:hover { border-color: #2FCB82; color: #FFF; }
   /* Salir no es la acción de esta pantalla: se ve, no se invita. En rojo, que es
      el color que en esta paleta significa «esto te lo están haciendo a ti». */
@@ -280,13 +288,14 @@
        ratón pedía la pausa solo, así que abrir el menú para mirar el código o
        copiar el enlace gastaba una de las tres libres sin haberlo pedido. Ahora
        Escape sólo abre, y lo que gasta una pausa es pulsar esto. -->
-  <p><button id="pausar" class="control" hidden>Pausar la partida</button></p>
+  <!-- Y al lado, **salir**, que es la única diferencia entre un abandono y una
+       caída —un cable que se corta no manda nada—. Va pequeño y en la misma
+       fila: no es la acción de esta pantalla, y una fila más se sale de una
+       ventana pequeña. -->
+  <p><button id="pausar" class="control" hidden>Pausar la partida</button><button id="salir" class="control">Salir de la partida</button></p>
   <!-- Es un `.control`: se pincha con el ratón suelto y su clic no cuenta como
        el clic que captura. Sale sólo sin pausas libres; lo decide `pintarPausa`. -->
   <p><button id="pedirVoto" class="control" hidden>Solicitar pausa por votación</button></p>
-  <!-- **Irse se dice** (vuelta 62): este botón es la única diferencia entre un
-       abandono y una caída, porque un cable que se corta no manda nada. -->
-  <p><button id="salir" class="control salir">Salir de la partida</button></p>
 </div></div>
 
 <div id="panel" class="control" hidden>
