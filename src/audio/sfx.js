@@ -85,12 +85,20 @@ export function setMasterVolume(value) {
  * daño, retroceso ni cadencia: sólo suena.
  *
  * - `clasica` es la de siempre —transitorio de ruido por un pasa-banda más un
- *   golpe grave que cae— y la llevan las armas que todavía no tienen voz propia.
- * - `seca` es la de la Rift: tres capas que atacan a la vez, ninguna sostenida.
+ *   golpe grave que cae— y es el **respaldo**: lo que suena un arma que todavía
+ *   no tiene voz propia. Desde la vuelta 63 no la lleva ninguna de las tres.
+ * - `seca` es la de la Rift (vuelta 62) y desde la 63 también la de la **Pulse**
+ *   y la **Volt**: tres capas que atacan en medio milisegundo, ninguna
+ *   sostenida. El carácter agresivo y metálico es del juego, no de un arma.
  *
  * **Un arma elige su voz por su clave**, igual que elige su silueta: `rift` y
  * `rift.s`. Lo que no tenga entrada cae a `normal` / `suppressed`, que es lo que
  * hace que añadir una voz nueva sea añadir una clave y no tocar `playShot`.
+ *
+ * **Lo que cambia de un arma a otra dentro de la voz seca es su ficha**, no el
+ * gusto: la Volt dispara a 800 RPM, o sea cada 75 ms, así que ninguna de sus
+ * capas pasa de 50 ms; la Pulse es corta y sube el crack; la Rift es la que
+ * conserva cuerpo grave.
  */
 const SHOT_PROFILES = {
   normal: {
@@ -186,6 +194,115 @@ const SHOT_PROFILES = {
     mecaDecay: 0.03,
     mecaDelay: 0.012,
   },
+
+  /**
+   * **La Pulse**, que es una pistola: el mismo tratamiento de la Rift con lo que
+   * cambia entre un rifle y un arma corta. Menos cuerpo y más arriba —el crack
+   * sube a 3200 Hz y el grave pierde la mitad de peso—, y todo **más corto**:
+   * lo que se oye de una pistola es el chasquido, no el empujón.
+   */
+  pulse: {
+    voz: 'seca',
+    crackTipo: 'highpass',
+    crackHz: 3200,
+    crackQ: 0.7,
+    crackGain: 0.86,
+    crackDecay: 0.018,
+    metalHz: 2050,
+    metalTo: 1020,
+    metalRatio: 1.48,
+    metalDrive: 2.8,
+    metalBandHz: 3200,
+    metalBandQ: 0.9,
+    metalGain: 0.4,
+    metalDecay: 0.05,
+    bodyFrom: 120,
+    bodyTo: 58,
+    bodyGain: 0.34,
+    bodyDecay: 0.022,
+  },
+
+  /** La Pulse con silenciador: corredera por delante y sin nada que viaje. */
+  'pulse.s': {
+    voz: 'seca',
+    crackTipo: 'bandpass',
+    crackHz: 2100,
+    crackQ: 1.5,
+    crackGain: 0.26,
+    crackDecay: 0.01,
+    metalHz: 1600,
+    metalTo: 820,
+    metalRatio: 1.48,
+    metalDrive: 1.5,
+    metalBandHz: 2100,
+    metalBandQ: 1.3,
+    metalGain: 0.46,
+    metalDecay: 0.04,
+    bodyFrom: 92,
+    bodyTo: 50,
+    bodyGain: 0.05,
+    bodyDecay: 0.018,
+    mecaHz: 3300,
+    mecaQ: 1.1,
+    mecaGain: 0.36,
+    mecaDecay: 0.026,
+    mecaDelay: 0.01,
+  },
+
+  /**
+   * **La Volt**, que dispara a 800 RPM: entre disparo y disparo hay **75 ms**,
+   * así que aquí lo que manda no es el color sino la duración. Ninguna capa
+   * pasa de 50 ms —la más corta de las tres armas— porque una cola de 70 ms a
+   * esa cadencia se pisa a sí misma y la ráfaga se oye como un zumbido en vez
+   * de como disparos contados.
+   */
+  volt: {
+    voz: 'seca',
+    crackTipo: 'highpass',
+    crackHz: 2950,
+    crackQ: 0.7,
+    crackGain: 0.88,
+    crackDecay: 0.015,
+    metalHz: 1880,
+    metalTo: 940,
+    metalRatio: 1.48,
+    metalDrive: 3,
+    metalBandHz: 2950,
+    metalBandQ: 0.95,
+    metalGain: 0.44,
+    metalDecay: 0.042,
+    bodyFrom: 108,
+    bodyTo: 48,
+    bodyGain: 0.42,
+    bodyDecay: 0.022,
+  },
+
+  /** La Volt con silenciador. */
+  'volt.s': {
+    voz: 'seca',
+    crackTipo: 'bandpass',
+    crackHz: 1950,
+    crackQ: 1.5,
+    crackGain: 0.28,
+    crackDecay: 0.011,
+    metalHz: 1500,
+    metalTo: 800,
+    metalRatio: 1.48,
+    metalDrive: 1.6,
+    metalBandHz: 2000,
+    metalBandQ: 1.3,
+    metalGain: 0.48,
+    metalDecay: 0.038,
+    bodyFrom: 88,
+    bodyTo: 48,
+    bodyGain: 0.06,
+    bodyDecay: 0.02,
+    mecaHz: 3050,
+    mecaQ: 1.1,
+    mecaGain: 0.38,
+    mecaDecay: 0.024,
+    mecaDelay: 0.009,
+  },
 }
 
 /**
@@ -215,7 +332,8 @@ function curvaDeSaturacion(drive) {
  * **El disparo, y hay un solo camino.** Quien llama no elige síntesis ni
  * muestra —eso lo decide `samples.js`— y tampoco elige voz: la elige el arma,
  * por su clave. Sin clave, o con una que no tiene perfil propio, suena la voz
- * clásica de siempre, que es lo que llevan hoy la Pulse y la Volt.
+ * clásica de siempre — que desde la vuelta 63 no la lleva ninguna de las tres:
+ * es el respaldo del arma que todavía no tenga la suya.
  *
  * @param {boolean} [suppressed] perfil silenciado
  * @param {{input: AudioNode|null}} [emitter] emisor posicionado, si lo hay. Es

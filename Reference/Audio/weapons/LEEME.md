@@ -1,5 +1,13 @@
 # Muestras de arma
 
+> **Apagadas desde la vuelta 63.** Los ficheros de aquí **no se usan**:
+> `AUDIO.samplesEnabled` está en `false` en `src/config.js`, así que el juego
+> suena entero sintetizado y este script no copia nada a `public/`. Se probaron
+> las diez muestras en juego y se descartaron —sonar a sintetizado es parte de lo
+> que es Vektor, y no tener nada que descargar ni decodificar es parte de que
+> corra en cualquier PC—. Se quedan aquí por si algún día se reconsidera: para
+> eso, ese booleano a `true` y `npm run audio:weapons`.
+
 Aquí van los sonidos reales de cada arma: **disparo**, **disparo con
 silenciador** y **recarga**. **No se sirven desde esta carpeta**:
 `npm run audio:weapons` los copia a `public/audio/weapons/` y genera

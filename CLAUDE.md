@@ -29,20 +29,19 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 **Sin assets externos, de ningún tipo:**
 
 - **Audio:** todo sintetizado en tiempo real con la Web Audio API
-  (`src/audio/sfx.js`): osciladores + un buffer de ruido pregenerado. No hay ni un
-  fichero de sonido en el repositorio. **La puerta abierta es lo que hace un arma**
-  (vuelta 39 el disparo; la 63 la recarga y el cargador vacío): se dejan en
-  `Reference/Audio/weapons/<clave-del-arma>{,-suppressed,-reload}.<ext>` y
-  `Reference/Audio/comunes/gatillo-seco.<ext>`, y `npm run audio:weapons` los
-  copia a `public/audio/` y los declara en `src/audio/weaponSamples.js`. Valen
-  `.mp3`, `.ogg` y `.wav`, en ese orden de preferencia. **La síntesis no se
-  sustituye, se queda debajo**: sin fichero, con un fichero que no se decodifica o
-  mientras todavía viaja, suena el disparo —o el clic en seco— sintetizado de
-  siempre; la recarga, que nunca ha tenido síntesis, se queda en silencio como
-  hasta ahora. Hoy no hay ningún fichero, así que suena todo sintetizado. Se
-  vuelve atrás **por sonido** sacando su fichero y repasando el script, o **del
-  todo** con `AUDIO.samplesEnabled: false`. El resto del audio no tiene esta
-  puerta.
+  (`src/audio/sfx.js`): osciladores + un buffer de ruido pregenerado. **Y se
+  queda así**: la vuelta 63 probó en juego las diez muestras grabadas —tres
+  disparos, sus tres silenciados, tres recargas y el gatillo en seco— y se
+  descartaron. No por calidad: **sonar a sintetizado es parte de lo que es
+  Vektor**, y nada que descargar ni decodificar es parte de que corra en
+  cualquier PC. `AUDIO.samplesEnabled` está en `false`.
+  El carril sigue montado y no estorba —`samples.js`, el importador y los WAV en
+  `Reference/Audio/`—, así que volver a probarlas es poner ese booleano a `true`
+  y pasar `npm run audio:weapons`; probar **una sola**, dejar sólo su fichero en
+  `Reference/`. Con el interruptor apagado el importador **no copia nada**: lo
+  que no se va a oír no entra en el build. La convención de debajo sigue en pie
+  para el día que se reconsidere: **la síntesis no se sustituye, se queda
+  debajo**.
 - **Siluetas de armas, logotipo e iconos:** vectorizados con `potrace` a partir de
   `Reference/Weapons/` —donde la convención es `<arma>.png` y `ghost-<arma>.png`,
   la misma arma con silenciador—, `Reference/Logo/` y `Reference/Icons/` mediante los
@@ -103,6 +102,26 @@ mantiene esa regla.
 
 Estas no son preferencias estéticas: cada una nació de un bug concreto.
 El porqué está en `docs/decisions.md`.
+
+**El duelo no reescribe lo que ya funciona contra los muñecos** (vuelta 63).
+Antes de construir nada para el 1v1 —o para cualquier modo multijugador que
+venga— se mira si eso ya existe en el modo de siempre y **se reutiliza**. Una
+segunda implementación de la misma idea no es más código: es un juego que se
+comporta distinto según el modo, y una diferencia que nadie decidió es **un fallo
+de producto**, no un detalle. Las que sí están decididas —que el duelo no tenga
+dianas, ni puntuación, ni armería— están escritas aquí y en `decisions.md`; todo
+lo demás tiene que salir igual en los dos sitios.
+
+Es la convención de siempre —«una sola fuente de verdad para lógica
+compartida»— aplicada a los modos, y es lo que hizo barata la vuelta 56: el duelo
+**hospeda el motor entero** en vez de montar su propia escena, así que el arma,
+el retroceso, los marcadores y el HUD son los mismos objetos. Si algo que quieres
+para el duelo no está en el motor, el sitio donde ponerlo es el motor.
+
+Hoy hay un hueco pendiente y va en este sentido, no en el otro: **las pisadas
+existen sólo en el duelo** (`_pisadasDelRival`). El día que un muñeco haga ruido
+al patrullar, sale de ahí —`playFootstep` y el emisor ya son genéricos— y no de
+un segundo sistema de pasos.
 
 **Todo el tuning en `config.js`.** Ninguna constante de juego vive suelta en un
 módulo. Si necesitas un número nuevo, va a `config.js` aunque lo use un solo
@@ -1202,11 +1221,14 @@ Y estrechar el catálogo de un ajuste **borra el valor guardado**: un
 `weapon: 'pulse'` de antes de la vuelta 39 cae a fábrica en el siguiente
 saneado, que es exactamente lo que hace el saneado con cualquier clave obsoleta.
 
-**Lo que hace un arma puede venir de un fichero; todo lo demás, no.**
-`samples.js` es el único camino de audio de un disparo —del jugador y de los
-muñecos—, de una recarga y del gatillo en seco, y decide él si suena la muestra
-grabada o lo que había antes: quien dispara no elige ni tiene que saberlo. Cinco
-reglas que sostienen el respaldo:
+**Lo que hace un arma puede venir de un fichero; todo lo demás, no — y hoy no
+viene de ninguno** (la puerta, de la 39 y la 63; la decisión de tenerla cerrada,
+de la 63). `samples.js` es el único camino de audio de un disparo —del jugador y
+de los muñecos—, de una recarga y del gatillo en seco, y decide él si suena la
+muestra grabada o lo que había antes: quien dispara no elige ni tiene que
+saberlo. Con `AUDIO.samplesEnabled` en `false` no pide ni decodifica nada y suena
+la síntesis, que es lo que se juega hoy. Cinco reglas que sostienen el respaldo,
+y son las que hacen que apagarlo sea una línea y no una vuelta atrás:
 
 - **La síntesis es el suelo, no el plan B de emergencia.** Sin fichero, con uno
   que no se decodifica o mientras todavía viaja, suena el disparo sintetizado.
@@ -1241,10 +1263,33 @@ reglas que sostienen el respaldo:
 **Un arma puede tener voz propia, y la elige su clave** (vuelta 62). `playShot`
 no sabe de armas: mira `SHOT_PROFILES[<arma>]` —o `<arma>.s` con silenciador, la
 misma idea que `ghost-<arma>` en las siluetas— y lo que no tenga entrada cae a
-`normal` / `suppressed`, que es la voz clásica que llevan hoy la Pulse y la Volt.
-Añadir una voz es añadir una clave, no tocar `playShot`.
+`normal` / `suppressed`, la voz clásica. Añadir una voz es añadir una clave, no
+tocar `playShot`.
 
-Hoy la tiene una sola arma, la **Rift**, y lo que se arregló no era el volumen:
+**Desde la vuelta 63 la voz seca la llevan las tres**, que era lo que faltaba: el
+carácter agresivo y metálico es del juego, no de un arma. La clásica se queda
+como **respaldo** —lo que sonará un arma nueva hasta que se le calibre la suya— y
+ya no la lleva ninguna. Lo que cambia de un arma a otra dentro de la voz seca
+sale de su ficha y no del gusto: la **Volt** dispara a 800 RPM, o sea cada 75 ms,
+así que ninguna de sus capas pasa de 50 ms —a esa cadencia una cola más larga se
+pisa a sí misma y la ráfaga se oye como un zumbido—; la **Pulse** es un arma
+corta, así que sube el crack a 3200 Hz y pierde la mitad del grave; la **Rift** es
+la que conserva cuerpo. Medido con el mismo banco y un disparo por captura
+(`audio63`), antes y después:
+
+| | pico antes | pico ahora | | cola antes | cola ahora | centroide antes → ahora |
+|---|---|---|---|---|---|---|
+| Pulse | 0.0859 | **0.3772** | +12.8 dB | 31 ms | 23 ms | 1179 → 2125 Hz |
+| Pulse sil. | 0.0371 | **0.0837** | +7.1 dB | 44 ms | 22 ms | 820 → 2314 Hz |
+| Volt | 0.0976 | **0.3524** | +11.1 dB | 30 ms | 19 ms | 1363 → 1791 Hz |
+| Volt sil. | 0.0399 | **0.0873** | +6.8 dB | 37 ms | 20 ms | 844 → 2357 Hz |
+| Rift (control) | 0.4472 | 0.4526 | — | 31 ms | 29 ms | 2004 → 1975 Hz |
+
+La fila de la Rift es el **control**: no se tocó, y sale igual en las dos tandas
+—1.2%, que es el ruido del banco—, así que las otras cuatro filas son el cambio y
+no la máquina.
+
+La voz seca nació en la Rift (vuelta 62), y lo que se arregló no era el volumen:
 
 - **El ataque era una rampa** (2 y 3 ms) y el cuerpo duraba 55 ms cayendo de
   tono. Eso es la receta de una gota de agua. La voz `seca` ataca en **0.6 ms**
@@ -1280,6 +1325,14 @@ un bloque de ataque perdido y no un cambio de sonido. Se arregla por los dos
 lados a la vez: bloque de 4096, **cinco disparos y la mediana**, y la cuenta de
 capturas completas impresa al lado de cada fila. Es la regla de la vuelta 46 en
 el audio: un número solo no dice de cuántos sale.
+
+**Y un disparo tiene que ser uno, y también se cuenta** (vuelta 63). La captura
+de la 62 apretaba el botón 60 ms, y eso con la **Volt** —800 RPM, un disparo cada
+75 ms— son **dos**: la «cola a −40 dB» pasaba a medir la distancia entre ellos y
+salía 77 ms para un perfil cuyas capas no llegan a 42. La fila no salía mal,
+medía otra cosa. Ahora el banco lee el cargador antes y después de cada captura,
+sólo usa las de una bala y **imprime cuántas fueron** — el denominador de la 46,
+otra vez, por la puerta de al lado.
 
 **Renombrar una clave de catálogo borra lo que hay guardado, salvo que se
 traduzca.** En la vuelta 41 las tres armas cambiaron de nombre sin tocar ni una
@@ -1929,20 +1982,47 @@ la que va después. Un `display` en la regla base del cartel lo deja encendido
 para siempre. Por eso `#abatido` no declara `display` y sólo lo hace su regla con
 `.puesto`.
 
-**Las pisadas son de los demás, y una zancada es un trozo de suelo** (vuelta 60).
-Cuando un rival se mueve cerca se le oye andar, con dirección y distancia
-(`FOOTSTEPS`, emisor colgado de su cuerpo). Tres cosas que son el diseño:
+**Las pisadas son de los demás, y una zancada es un trozo de suelo** (vuelta 60;
+las reglas de quién suena y hasta dónde, de la 63). Cuando un rival **corre**
+cerca se le oye, con dirección y distancia (`FOOTSTEPS`, emisor colgado de su
+cuerpo). Cinco cosas que son el diseño:
 
 - **El jugador no oye las suyas.** No dirían nada que no sepa —está pulsando la
   tecla— y taparían justo lo que estas pisadas vienen a dejar oír. Misma regla
   que el silbido de la vuelta 40.
-- **El paso se cuenta en distancia, no en tiempo**, así que agacharse o andar
-  bajan el ritmo solos, sin una segunda tabla de cadencias. Y se mide **contra
-  dónde se dio la última pisada**, no sumando el avance de cada frame: el rival
-  se interpola entre fotos y esa trayectoria tiembla —medido, 11 pisadas para
-  13.3 u con zancada de 1.9; contra la última, 6 para 13.4, que es lo que toca—.
-- **Agachado suena, pero poco.** Un sigilo perfecto haría de agacharse la única
-  forma de moverse, y lo que tiene que costar es la velocidad.
+- **El paso se cuenta en distancia, no en tiempo.** Y se mide **contra dónde se
+  dio la última pisada**, no sumando el avance de cada frame: el rival se
+  interpola entre fotos y esa trayectoria tiembla —medido, 11 pisadas para 13.3 u
+  con zancada de 1.9; contra la última, 6 para 13.4, que es lo que toca—.
+- **Sólo suena quien corre** (vuelta 63). Andar con SHIFT y agacharse **no suenan
+  en absoluto**: es lo que promete la tecla, y lo que se paga por ella es la
+  velocidad. Hasta la 62 sonaban más bajo (0.7 y 0.45), que es otra cosa — con un
+  rival corriendo a doce unidades por medio, «más bajo» se oye igual. Lo agachado
+  sale de la altura de ojos, que ya viaja en la foto, y va como **regla propia**
+  aunque el umbral de marcha también lo dejaría fuera: subir `crouchSpeed` algún
+  día no puede devolverle el ruido a quien se agacha.
+- **Y el umbral se mide sobre la zancada, no sobre el frame.** La marcha de un
+  frame sale del temblor de la interpolación: un paseo de 3.8 u/s pica por encima
+  de 5.33 cada pocos frames, y con la regla puesta sobre el frame **sonaba igual**
+  (medido: 4 pisadas andando). La zancada es una ventana de un tercio de segundo,
+  que es justo lo que promedia ese temblor. El umbral es fracción de **su**
+  carrera, con el peso de su arma contado por `weaponSpeedFactor`: contra los 6.5
+  de la pistola, un rival con la Rift (5.88) correría en silencio. El número
+  (0.82) sale del hueco entre las dos marchas —5.88 la carrera más lenta, 4.2 el
+  paseo más rápido— y cae a 0.55 u/s de cada una.
+- **Hay un radio, y dentro de él el volumen escala de verdad.** Fuera de
+  `FOOTSTEPS.maxDistanceU` (16 u) no suena nada, y lo dicen las dos puntas: el
+  motor no suelta la pisada y el panner llega a cero justo ahí. Dentro, el
+  **emisor del rival lleva su propia curva** —pleno hasta `fullDistanceU` (2.5 u)
+  y apagándose hasta el radio— y no la de `SPATIAL`, que está calibrada para que
+  un sonido cruce un mapa de 55 u: con ella, una pisada a 12 u salía a **1.9 dB**
+  de una a 4, o sea un radar plano. Medido tras la vuelta 63: **−10.5 dB** entre
+  esas mismas dos distancias, y el techo (`AUDIO.footstepVolume`, 0.26) no se
+  pasa ni pasándote por al lado —a 0.5 u, 0.0784 contra 0.0853 a 1.0 u—.
+
+De ahí una consecuencia que conviene tener presente al añadir otra voz al rival:
+**ese emisor es hoy el de las pisadas**. Un disparo suyo, o un grito, necesita su
+propio emisor con su propia curva; colgarlo de éste le pondría el radio de 16 u.
 
 Y una trampa de relojes: **la pose del rival se mueve con el frame y este código
 corre dentro del paso de mundo**. Dividir el avance de un frame entre un paso
@@ -2278,17 +2358,19 @@ siempre.** La 1 saca una, la 2 la otra y **Q** alterna. Cada una lleva su propio
 cargador y su propia recarga, y la que dejas se congela tal cual estaba —una
 recarga a medias no avanza en la espalda, se reanuda al volver a equiparla—.
 
-**Audio de disparo: sintetizado hoy, con carril para muestras reales.** Desde la
-vuelta 62 la **Rift** tiene voz propia —seca, metálica y +11 dB sobre la de
-antes; su variante silenciada, +9.3 dB y con el cerrojo por delante del grave—;
-la Pulse y la Volt siguen con la voz clásica hasta que se calibre la suya. Un arma
-puede traer sus tres ficheros —`Reference/Audio/weapons/<clave>.<ext>`,
-`-suppressed` y `-reload`— y el cargador vacío el suyo, en
-`Reference/Audio/comunes/gatillo-seco.<ext>`; valen `.mp3`, `.ogg` y `.wav`.
-`npm run audio:weapons` los copia a `public/audio/` y los declara en
-`src/audio/weaponSamples.js`. Hoy no hay ninguno, así que todo suena sintetizado
-—y la recarga, que no tiene síntesis, sigue sin sonar— y así seguirá lo que no
-tenga fichero.
+**Audio de disparo: sintetizado, y es definitivo** (vuelta 63). Las tres armas
+llevan la voz **seca** —ataque de 0.6 ms, ruido de banda ancha, metal inarmónico
+saturado y un golpe grave corto—, cada una con su carácter: la Pulse corta y
+aguda (0.3772 de pico, 23 ms de cola, centroide 2125 Hz), la Volt la más breve
+por su cadencia (0.3524, 19 ms) y la Rift la de más cuerpo (0.4526, 29 ms). Las
+silenciadas no son las normales bajadas: pierden el grave y el crack y ganan el
+cerrojo.
+
+Las diez muestras grabadas se probaron y se descartaron —el juego suena a
+sintetizado a propósito—, así que `AUDIO.samplesEnabled` está en `false` y no se
+descarga ni decodifica ningún fichero. El carril sigue montado y los WAV siguen
+en `Reference/Audio/` por si algún día se reconsidera: se enciende ese booleano y
+se pasa `npm run audio:weapons`. Con él apagado, el importador no copia nada.
 
 **Panel de acciones disparable: apagado** (`ACTION_PANEL.enabled: false`). El
 código se queda entero —DOM en 3D vía `CSS3DRenderer` anclado al spawn, con
@@ -2314,10 +2396,13 @@ que no hay tablero; y **bajo la mira**, centrado, el bloque de arma en
 parpadeo en reserva baja—, con el nombre del arma como rótulo secundario debajo,
 más el indicador de recarga y los mensajes de ayuda.
 
-**Pisadas del rival** (vuelta 60): cuando alguien se mueve cerca se le oye
-andar, con dirección y volumen por distancia. Sólo las de los demás; el paso se
-cuenta en suelo recorrido, así que agacharse y andar bajan el ritmo además del
-volumen. Tuning en `FOOTSTEPS`.
+**Pisadas del rival** (vuelta 60; sus reglas, de la 63): cuando alguien **corre**
+a menos de 16 u se le oye, con dirección y con el volumen subiendo de verdad
+según se acerca —pleno a 2.5 u y apagado del todo en el radio—. Andar con SHIFT y
+agacharse **no suenan en absoluto**: eso es lo que compra la tecla. Sólo las de
+los demás, y el paso se cuenta en suelo recorrido. Tuning en `FOOTSTEPS` y el
+techo en `AUDIO.footstepVolume`, que bajó de 0.42 a 0.26 porque una pisada no
+puede confundirse con un disparo (medido: 16.5 dB por debajo).
 
 **Audio espacial:** interruptor en opciones, activado por defecto. Los sonidos
 posicionados suenan con dirección (listener en la cámara, `PositionalAudio` en el

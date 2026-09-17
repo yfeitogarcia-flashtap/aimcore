@@ -40,7 +40,7 @@
 import { copyFileSync, mkdirSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { dirname, extname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { WEAPONS } from '../src/config.js'
+import { AUDIO, WEAPONS } from '../src/config.js'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const OUTPUT = resolve(ROOT, 'src/audio/weaponSamples.js')
@@ -60,6 +60,16 @@ const CARPETAS = [
 ]
 
 const avisos = []
+
+/**
+ * **Con las muestras apagadas, esto no copia nada** (vuelta 63). `samples.js` no
+ * pide un solo fichero mientras `AUDIO.samplesEnabled` sea `false`, así que
+ * copiarlos a `public/` metería megas en el build que nadie va a oír — y en
+ * silencio, que es lo peor de todo: el objetivo del juego es que no haya nada
+ * que descargar ni decodificar. El manifiesto sale vacío, como si la carpeta lo
+ * estuviera, y aquí se dice cómo volver a encenderlas.
+ */
+const APAGADAS = AUDIO.samplesEnabled === false
 
 /** Los ficheros de audio de una carpeta, agrupados por nombre sin extensión. */
 function porNombre(dir) {
@@ -97,6 +107,7 @@ const anotar = (destino, carpeta, file) => {
 
 // ---- armas
 const carpetaArmas = CARPETAS[0]
+if (!APAGADAS)
 for (const [stem, file] of porNombre(resolve(ROOT, carpetaArmas.origen))) {
   let clave = stem
   let variante = 'normal'
@@ -118,6 +129,7 @@ for (const [stem, file] of porNombre(resolve(ROOT, carpetaArmas.origen))) {
 
 // ---- comunes
 const carpetaComunes = CARPETAS[1]
+if (!APAGADAS)
 for (const [stem, file] of porNombre(resolve(ROOT, carpetaComunes.origen))) {
   const nombre = COMUNES[stem]
   if (!nombre) {
@@ -177,9 +189,13 @@ const nArmas = Object.keys(armas).length
 const nComunes = Object.keys(comunes).length
 const kb = bytes / 1024
 console.log(
-  servidos.length === 0
-    ? 'Sin muestras en Reference/Audio: todo suena sintetizado.'
-    : `${servidos.length} fichero(s) · ${nArmas} arma(s) y ${nComunes} sonido(s) común(es) · ${kb.toFixed(1)} KB copiados a public/audio.`,
+  APAGADAS
+    ? 'AUDIO.samplesEnabled está a false: no se copia nada y todo suena sintetizado.\n' +
+      '  Los ficheros de Reference/Audio se quedan donde están. Para volver a probarlos,\n' +
+      '  pon samplesEnabled a true en src/config.js y vuelve a pasar este script.'
+    : servidos.length === 0
+      ? 'Sin muestras en Reference/Audio: todo suena sintetizado.'
+      : `${servidos.length} fichero(s) · ${nArmas} arma(s) y ${nComunes} sonido(s) común(es) · ${kb.toFixed(1)} KB copiados a public/audio.`,
 )
 // El WAV se admite, pero lo que se sirve va en el build y se descarga entero al
 // primer gesto del jugador. A partir de aquí conviene comprimir.

@@ -2668,16 +2668,21 @@ export const AUDIO = {
    */
   sampleVolume: 1,
   /**
-   * **El interruptor de vuelta atrás de las muestras** (vuelta 63). A `false` no
-   * se pide ni se decodifica ningún fichero y **todo suena como antes de que
-   * hubiera uno**: la síntesis nunca se fue, sigue siendo el suelo. Es un
-   * booleano de código y no un ajuste del panel a propósito — sirve para decidir
-   * si las muestras se quedan, no para que el jugador lo elija cada vez.
+   * **Las muestras grabadas están apagadas, y es una decisión de producto**
+   * (vuelta 63). Se probaron las diez en juego —tres disparos, sus tres
+   * silenciados, tres recargas y el gatillo en seco— y no encajan: Vektor suena
+   * a sintetizado a propósito, y ese carácter es parte de lo que lo hace
+   * ultraligero. Nada que descargar, nada que decodificar, nada que esperar.
    *
-   * Para volver atrás **sólo un sonido**, no hace falta tocar esto: se saca su
-   * fichero de `Reference/Audio/` y se vuelve a pasar `npm run audio:weapons`.
+   * **Lo que había se queda**: los WAV siguen en `Reference/Audio/`, el
+   * importador sigue existiendo y `samples.js` no ha cambiado. Volver a
+   * probarlas es poner esto a `true` y pasar `npm run audio:weapons`; volver a
+   * probar **una sola** es dejar sólo su fichero en `Reference/`.
+   *
+   * Es un booleano de código y no un ajuste del panel a propósito: decide si el
+   * juego tiene ficheros de audio, no cómo suena la partida de nadie.
    */
-  samplesEnabled: true,
+  samplesEnabled: false,
   /**
    * **La recarga**, que hoy sólo existe si hay muestra: no hay síntesis debajo,
    * así que sin fichero es silencio, exactamente como hasta ahora. Por debajo
@@ -2689,12 +2694,17 @@ export const AUDIO = {
   /** Daño recibido, curación y la carga eléctrica del escudo. */
   damageVolume: 0.6,
   /**
-   * **Las pisadas de un rival.** Por debajo del silbido a propósito: una pisada
-   * dice dónde está alguien que no ves, y para eso no hace falta que suene
-   * fuerte — hace falta que suene **desde algún sitio**. Subirla taparía el
-   * disparo, que es la información urgente.
+   * **El techo de una pisada de rival**, y es un techo de verdad: el panel no lo
+   * sube y a bocajarro no se pasa de aquí (`FOOTSTEPS.fullDistanceU`).
+   *
+   * Por debajo del silbido a propósito, y desde la vuelta 63 bastante más
+   * abajo: una pisada dice dónde está alguien que no ves, y para eso no hace
+   * falta que suene fuerte — hace falta que suene **desde algún sitio**. A 0.42
+   * y con la curva plana de antes, una pisada a doce unidades salía casi igual
+   * de fuerte que una a cuatro y **se confundía con un disparo**. Se calibra
+   * jugando.
    */
-  footstepVolume: 0.42,
+  footstepVolume: 0.26,
   healVolume: 0.5,
   shieldVolume: 0.42,
 }
@@ -2719,23 +2729,34 @@ export const FOOTSTEPS = {
   /** Lo que se anda entre una pisada y la siguiente, en unidades de mapa. */
   strideU: 1.9,
   /**
-   * Por debajo de esta marcha no se pisa: es alguien parado o ajustando la mira,
-   * y un crujido por cada milímetro sería ruido constante.
+   * **Sólo se oye a quien corre** (vuelta 63). Por debajo de esta fracción de su
+   * marcha de carrera —la suya, con el peso de su arma ya contado— no se pisa en
+   * absoluto: ni andando con SHIFT, ni agachado, ni ajustando la mira parado.
+   * Andar despacio **es** la forma de no hacer ruido, así que tiene que comprar
+   * silencio entero y no un volumen más bajo; lo que cuesta es la velocidad.
+   *
+   * El número sale del hueco que hay entre las dos marchas y no de una
+   * preferencia: la carrera más lenta del arsenal es la de la Rift (5.88 u/s) y
+   * el paseo más rápido es el de la pistola (4.2), así que el umbral cae en
+   * 5.33 —a 0.55 u/s de cada uno— y ninguna de las dos lo cruza por el temblor
+   * de la interpolación.
    */
-  minSpeed: 1.2,
+  runFraction: 0.82,
   /**
-   * A partir de aquí no se oye. Es algo menos que el largo del Plano A: lo que
-   * se quiere es «hay alguien cerca», no un radar del mapa entero.
+   * **A partir de aquí no se oye nada.** No es «se oye poquísimo»: es silencio,
+   * y lo garantizan las dos puntas —el motor no dispara la pisada y el panner
+   * llega a cero justo aquí—. Bajó de 22 en la vuelta 63: 22 u en una sala de
+   * 40×40 es media diagonal, o sea un radar; lo que tiene que decir una pisada
+   * es «hay alguien cerca».
    */
-  maxDistanceU: 22,
+  maxDistanceU: 16,
   /**
-   * **Agachado suena, pero poco.** No se calla del todo a propósito: un sigilo
-   * perfecto convierte agacharse en la única forma de moverse, y lo que tiene
-   * que costar es la velocidad, no volverse inaudible.
+   * A esta distancia o menos suena el techo (`AUDIO.footstepVolume`), y de aquí
+   * a `maxDistanceU` se apaga con la distancia. Es la curva del **emisor de las
+   * pisadas**, no la de `SPATIAL`: la de la sala está calibrada para un mapa de
+   * 55 u y dejaba una pisada a doce unidades a un decibelio de una a cuatro.
    */
-  crouchGain: 0.45,
-  /** Andando (SHIFT), entre agachado y correr. */
-  walkGain: 0.7,
+  fullDistanceU: 2.5,
   /** Perfil del sonido. Roce de suela y un cuerpo corto y grave, como el aterrizaje. */
   sound: {
     scuffHz: 1900,
@@ -2750,8 +2771,7 @@ export const FOOTSTEPS = {
   },
   /**
    * Cuánto varía el tono de una pisada a la siguiente. Sin esto son la misma
-   * muestra repetida y a la tercera se oye el bucle; es la misma razón por la
-   * que la música generada no tenía un bucle reconocible.
+   * muestra repetida y a la tercera se oye el bucle.
    */
   pitchJitter: 0.12,
 }

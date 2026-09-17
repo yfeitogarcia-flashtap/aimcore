@@ -37,6 +37,7 @@ import {
   TARGET,
   TEAMS,
   WEAPONS,
+  weaponSpeedFactor,
 } from '../config.js'
 import { createScene } from './scene.js'
 import { Scenario } from './scenario.js'
@@ -1335,6 +1336,7 @@ export class Engine {
       this._rivalPrevZ = null
       this._rivalPasoX = null
       this._rivalPasoZ = null
+      this._rivalPasoT = 0
       this._rivalPisadaT = 0
     } else {
       avatar.group.visible = true
@@ -1372,6 +1374,13 @@ export class Engine {
    * - **Y el jugador no oye las suyas.** Esto sólo mira al rival. Las propias no
    *   dicen nada que no sepas —estás pulsando la tecla— y taparían justo lo que
    *   se quiere oír.
+   * - **Sólo se oye a quien corre** (vuelta 63). Andar con SHIFT y agacharse no
+   *   suenan **en absoluto**: es lo que promete la tecla, y lo que cuesta es la
+   *   velocidad. Antes sonaban más bajo, que es otra cosa — con el volumen de
+   *   un rival a doce unidades por medio, «más bajo» se oye igual.
+   * - **Y hay un radio.** Fuera de `FOOTSTEPS.maxDistanceU`, silencio; dentro,
+   *   el panner del emisor sube con la cercanía hasta el techo de
+   *   `AUDIO.footstepVolume` y no pasa de ahí.
    */
   _pisadasDelRival(pose) {
     const emisor = this._rivalEmisor
@@ -1405,14 +1414,27 @@ export class Engine {
     if (dt <= 0) return
     const velocidad = (avance / dt) * 1000
 
-    // Parado o ajustando la mira no se pisa. Y un salto de pose no es suelo
-    // andado: por encima del techo del aire es que ha habido teletransporte.
-    if (velocidad < FOOTSTEPS.minSpeed) return
+    // Un salto de pose no es suelo andado: por encima del techo del aire es que
+    // ha habido teletransporte.
     if (velocidad > MOVEMENT.airStrafeMaxSpeed * 2) {
       this._rivalPasoX = null
       this._rivalPasoZ = null
+      this._rivalPasoT = 0
       return
     }
+
+    // **Agachado no se oye** (vuelta 63), y sale de la altura de ojos, que ya
+    // viaja en la foto: es el mismo dato del que el cuerpo saca su achatamiento,
+    // así que no hace falta un campo nuevo. Va como regla propia y no confiada
+    // al umbral de abajo —que también lo dejaría fuera por lento— porque es lo
+    // que promete la tecla: subir `crouchSpeed` algún día no puede devolverle el
+    // ruido a quien se agacha.
+    if (pose.eyeHeight <= (MOVEMENT.crouchHeight + MOVEMENT.standHeight) / 2) return
+
+    // Fuera del radio, silencio total. El panner ya llega a cero justo aquí
+    // (`fullDistanceU`/`maxDistanceU`), así que esto no cambia lo que se oye:
+    // ahorra el trabajo y, sobre todo, **dice la regla** en un sitio donde se
+    // lee. Las dos puntas tienen que decir lo mismo.
     const lejos = Math.hypot(pose.x - this.camera.position.x, pose.z - this.camera.position.z)
     if (lejos > FOOTSTEPS.maxDistanceU) return
 
@@ -1424,20 +1446,42 @@ export class Engine {
     if (this._rivalPasoX === null) {
       this._rivalPasoX = pose.x
       this._rivalPasoZ = pose.z
+      this._rivalPasoT = ahora
       return
     }
-    if (Math.hypot(pose.x - this._rivalPasoX, pose.z - this._rivalPasoZ) < FOOTSTEPS.strideU) return
+    const zancada = Math.hypot(pose.x - this._rivalPasoX, pose.z - this._rivalPasoZ)
+    if (zancada < FOOTSTEPS.strideU) return
+    const zancadaMs = ahora - this._rivalPasoT
     this._rivalPasoX = pose.x
     this._rivalPasoZ = pose.z
+    this._rivalPasoT = ahora
 
-    // **Lo agachado sale de la altura de ojos, que ya viaja en la foto.** No hace
-    // falta un campo nuevo para saber si va agachado: es el mismo dato del que
-    // el cuerpo saca su achatamiento.
-    const agachado = pose.eyeHeight <= (MOVEMENT.crouchHeight + MOVEMENT.standHeight) / 2
-    const marcha = Math.min(1, velocidad / MOVEMENT.speed)
-    const sigilo = agachado ? FOOTSTEPS.crouchGain : marcha < 0.75 ? FOOTSTEPS.walkGain : 1
+    // **Y sólo se oye a quien corre**, medido **sobre la zancada** y no sobre el
+    // frame. Andar con SHIFT compra **silencio**, no un volumen más bajo: para
+    // eso está la tecla, y lo que cuesta es la velocidad.
+    //
+    // La marcha de un frame no sirve para decidirlo: el rival se dibuja
+    // interpolando entre fotos y esa trayectoria **tiembla**, así que un paseo
+    // de 3.8 u/s pica por encima del umbral cada pocos frames y sonaba igual —
+    // medido, 4 pisadas andando con la regla puesta sobre el frame. La zancada
+    // es una ventana de un tercio de segundo, que es justo lo que promedia ese
+    // temblor: la idea de la vuelta 60 —una zancada es un trozo de suelo—
+    // aplicada también al **cuánto tardó** en darla.
+    //
+    // El umbral es fracción de **su** carrera, con el peso de su arma contado
+    // por la misma función que frena al jugador: contra los 6.5 de la pistola,
+    // un rival con la Rift (5.88) correría en silencio.
+    const suArma = WEAPONS[this.net?.rival?.arma]
+    const suCarrera = MOVEMENT.speed * weaponSpeedFactor(suArma?.weight ?? 0)
+    const marchaDeZancada = zancadaMs > 0 ? (zancada / zancadaMs) * 1000 : 0
+    if (marchaDeZancada < suCarrera * FOOTSTEPS.runFraction) return
+
+    // **Todas las pisadas que suenan son de alguien corriendo**, así que todas
+    // suenan al techo: lo que cambia entre una y otra es la distancia, y de eso
+    // se encarga el panner (la regla de siempre — con panner, atenuar además a
+    // mano sería atenuar dos veces).
     this._rivalPisadas += 1
-    playFootstep(marcha * sigilo, emisor)
+    playFootstep(1, emisor)
   }
 
   /**
@@ -1466,11 +1510,28 @@ export class Engine {
        * **El emisor cuelga del cuerpo del rival**, así que se mueve con él y
        * nadie tiene que acordarse de colocarlo. Se crea una vez: un emisor por
        * pisada serían sesenta nodos de audio por segundo.
+       *
+       * **Y lleva la curva de las pisadas, no la de la sala** (vuelta 63): pleno
+       * hasta `FOOTSTEPS.fullDistanceU` y apagado del todo en `maxDistanceU`.
+       * Con la de `SPATIAL` —pensada para que un sonido se oiga de punta a punta
+       * de un mapa de 55 u— una pisada a doce unidades salía a un decibelio de
+       * una a cuatro, que es un radar y no una pista. Por eso este emisor es
+       * hoy **el de las pisadas**: si el rival gana otra voz posicionada (su
+       * disparo, un grito), va en un emisor suyo, con su curva.
        */
-      this._rivalEmisor = createEmitter(this._rivalAvatar.group)
-      /** Dónde se dio la última pisada. Una zancada es distancia, no tiempo. */
+      this._rivalEmisor = createEmitter(this._rivalAvatar.group, {
+        refDistance: FOOTSTEPS.fullDistanceU,
+        maxDistance: FOOTSTEPS.maxDistanceU,
+        rolloffFactor: 1,
+      })
+      /**
+       * Dónde y cuándo se dio la última pisada. Una zancada es **distancia**, y
+       * lo que tardó en darse es lo que dice si el rival corre o pasea: el frame
+       * suelto tiembla demasiado para decidirlo (vuelta 63).
+       */
       this._rivalPasoX = null
       this._rivalPasoZ = null
+      this._rivalPasoT = 0
       this._rivalPrevX = null
       this._rivalPrevZ = null
       /** Cuándo se leyó la pose del rival por última vez, en reloj de pared. */

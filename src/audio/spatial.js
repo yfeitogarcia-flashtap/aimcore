@@ -76,9 +76,17 @@ export function isSpatialEnabled() {
 export class Emitter {
   /**
    * @param {THREE.Object3D} parent dónde colgarlo; normalmente la escena
+   * @param {{refDistance?: number, maxDistance?: number, rolloffFactor?: number}} [curva]
+   *   **La curva de distancia de este emisor**, si la suya no es la de la sala
+   *   (vuelta 63). `SPATIAL` está calibrado para que un sonido del mundo se oiga
+   *   de punta a punta del mapa, y hay voces que **no** quieren eso: una pisada
+   *   dice «hay alguien cerca», así que la suya se apaga entera dentro del
+   *   radio en el que esa frase significa algo. Sigue sin saberse aquí de qué
+   *   voz se trata: se recibe una curva, no un nombre.
    */
-  constructor(parent) {
+  constructor(parent, curva = null) {
     this.parent = parent
+    this.curva = curva
     this.position = new THREE.Vector3()
     /** @type {THREE.PositionalAudio | null} */
     this._audio = null
@@ -106,9 +114,9 @@ export class Emitter {
     audio.hasPlaybackControl = false
     audio.panner.panningModel = SPATIAL.panningModel
     audio.panner.distanceModel = SPATIAL.distanceModel
-    audio.panner.refDistance = SPATIAL.refDistance
-    audio.panner.maxDistance = SPATIAL.maxDistance
-    audio.panner.rolloffFactor = SPATIAL.rolloffFactor
+    audio.panner.refDistance = this.curva?.refDistance ?? SPATIAL.refDistance
+    audio.panner.maxDistance = this.curva?.maxDistance ?? SPATIAL.maxDistance
+    audio.panner.rolloffFactor = this.curva?.rolloffFactor ?? SPATIAL.rolloffFactor
     audio.position.copy(this.position)
     this.parent.add(audio)
     this._audio = audio
@@ -124,6 +132,6 @@ export class Emitter {
 }
 
 /** Atajo legible para quien sólo quiere un emisor y no piensa en clases. */
-export function createEmitter(parent) {
-  return new Emitter(parent)
+export function createEmitter(parent, curva = null) {
+  return new Emitter(parent, curva)
 }

@@ -1,5 +1,9 @@
 # Sonidos comunes
 
+> **Apagados desde la vuelta 63**, como los de `weapons/`: con
+> `AUDIO.samplesEnabled` en `false` no se copia ni se pide nada y suena el clic
+> sintetizado de siempre.
+
 Lo que **no es de ningún arma en concreto**. Por eso no está en `weapons/`: el
 cargador vacío suena igual lleves lo que lleves.
 

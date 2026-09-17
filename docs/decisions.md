@@ -6994,6 +6994,141 @@ error, habría sido un aviso en la consola del script y una muestra que no suena
 nunca. Es el mismo tipo de agujero que `LEGACY_WEAPON_KEYS` cierra para los
 ajustes guardados, por la puerta de la documentación.
 
+## Ronda 63b — La síntesis se queda, y las pisadas se callan
+
+### Diez muestras probadas, diez muestras fuera
+
+El carril de la vuelta 63 se llenó: los tres disparos, sus tres silenciados, las
+tres recargas y el gatillo en seco, grabados y a 48 kHz. Se probaron en juego y
+se descartan. **El motivo no es la calidad**: Vektor suena a sintetizado a
+propósito, y eso es doble —es una decisión estética y es el objetivo de
+rendimiento—. Un juego que no descarga ni decodifica nada arranca igual en
+cualquier máquina, y ésa era la promesa desde la primera vuelta.
+
+Lo que se aprende de haberlo construido no se tira: **el carril se queda
+montado** y apagado con `AUDIO.samplesEnabled`, los WAV se quedan en
+`Reference/Audio/` y el importador sigue ahí. Volver a probarlas es una línea.
+Lo único que se añade es que **con el interruptor apagado el importador no copia
+nada**: lo que no se va a oír no puede entrar en el build, y menos en silencio.
+
+Ésta es la forma de un experimento que sale que no: no se borra, se apaga con un
+interruptor que dice por qué.
+
+### Y las tres armas se quedan con la voz seca
+
+Si la síntesis es definitiva, dejar a dos de las tres con la voz vieja era dejar
+el juego a medio calibrar. La Pulse y la Volt pasan a la voz `seca` de la vuelta
+62, cada una con lo que dice **su ficha**: la Volt dispara cada 75 ms, así que
+ninguna capa suya pasa de 50 ms —una cola más larga se pisa a sí misma y la
+ráfaga se oye como un zumbido—; la Pulse es un arma corta, sube el crack y pierde
+medio grave; la Rift conserva el cuerpo.
+
+Medido con `audio63`, mismo banco y misma máquina, un disparo por captura:
+
+| | pico antes | pico ahora | | cola antes | cola ahora | centroide |
+|---|---|---|---|---|---|---|
+| Pulse | 0.0859 | **0.3772** | +12.8 dB | 31 ms | 23 ms | 1179 → 2125 Hz |
+| Pulse sil. | 0.0371 | **0.0837** | +7.1 dB | 44 ms | 22 ms | 820 → 2314 Hz |
+| Volt | 0.0976 | **0.3524** | +11.1 dB | 30 ms | 19 ms | 1363 → 1791 Hz |
+| Volt sil. | 0.0399 | **0.0873** | +6.8 dB | 37 ms | 20 ms | 844 → 2357 Hz |
+| Rift (control) | 0.4472 | 0.4526 | — | 31 ms | 29 ms | 2004 → 1975 Hz |
+
+**La fila de la Rift es el control.** No se tocó y sale igual en las dos tandas
+—1.2%, el ruido del banco—, así que las otras cuatro son el cambio y no la
+máquina. Es el mismo truco de la 62 (la Pulse hacía de A/B dentro de la tanda)
+por el otro lado: cuando cambian todas menos una, la que no cambia es la regla.
+
+La voz clásica se queda en `SHOT_PROFILES` como **respaldo**, que es lo que
+sonará un arma nueva hasta que se le calibre la suya. No la lleva ninguna.
+
+### Un disparo tiene que ser uno, y eso se cuenta
+
+La sonda de la 62 apretaba el botón 60 ms. Con la Rift (600 RPM, un disparo cada
+100 ms) eso es un disparo; **con la Volt, 800 RPM, son dos**, y entonces la «cola
+a −40 dB» dejaba de medir cuánto dura el sonido y pasaba a medir la distancia
+entre dos: 77 ms para un perfil cuyas capas no llegan a 42. No salía mal: medía
+otra cosa.
+
+Es la regla del denominador de la vuelta 46 por una puerta nueva. Ahora el banco
+lee el cargador antes y después de cada captura, usa sólo las de **una** bala e
+imprime cuántas fueron al lado del pico. Con eso, la cola de la Volt sale en 19
+ms, que es la más corta de las tres — que era justo lo que se había diseñado.
+
+### Andar y agacharse compran silencio, no un volumen más bajo
+
+Las pisadas de la vuelta 60 sonaban siempre: corriendo al 100%, andando al 70% y
+agachado al 45%. Jugando resultó ser lo de siempre con las medias tintas — **un
+70% no se oye como sigilo, se oye como una pisada**, y con un rival corriendo a
+doce unidades por medio, más bajo se oye igual. Y las dos teclas que lo hacen
+existen exactamente para eso: lo que se paga por ellas ya es la velocidad.
+
+Así que ahora: **sólo suena quien corre**. Agachado va como regla propia y no
+confiada al umbral de marcha —que también lo dejaría fuera por lento— porque es
+lo que promete la tecla: subir `crouchSpeed` algún día no puede devolverle el
+ruido a quien se agacha.
+
+### Pero el umbral no se puede medir en un frame
+
+La primera versión comparaba la marcha del frame contra el umbral, y andando
+salían **4 pisadas**. No era el umbral: el rival se dibuja interpolando entre
+fotos y esa trayectoria **tiembla**, así que un paseo de 3.8 u/s pica por encima
+de 5.33 cada pocos frames, y una de esas picadas coincide con la zancada
+cumplida.
+
+Se mide **sobre la zancada**: la distancia de la última pisada a ésta dividida
+por lo que tardó en darse, que es una ventana de un tercio de segundo. Es la idea
+de la vuelta 60 —una zancada es un trozo de suelo, no una suma de frames—
+aplicada también al *cuánto tardó*. Y el umbral es fracción de **su** carrera,
+con el peso de su arma contado por `weaponSpeedFactor`: contra los 6.5 de la
+pistola, un rival con la Rift (5.88) correría en silencio.
+
+El 0.82 sale del hueco que ya existía y no de una preferencia: la carrera más
+lenta del arsenal es 5.88 y el paseo más rápido 4.2, así que el umbral cae en
+5.33, a 0.55 u/s de cada uno.
+
+### Un radio que se oye, y un techo que no se pasa
+
+Lo que hacía que una pisada se confundiera con un disparo no era sólo el volumen:
+era que **no bajaba con la distancia**. `SPATIAL` está calibrado para que un
+sonido del mundo cruce un mapa de 55 u —`refDistance` 4, `maxDistance` 55—, de
+modo que entre 4 y 12 unidades una pisada perdía **1.9 dB**. Plano: un radar.
+
+El arreglo no es una curva a mano encima del panner —eso sería atenuar dos veces,
+que es la convención de siempre— sino **darle a ese emisor su propia curva**:
+pleno hasta `FOOTSTEPS.fullDistanceU` (2.5 u) y cero en `maxDistanceU` (16). El
+módulo espacial sigue sin saber de pisadas: recibe una curva, no un nombre.
+
+Medido con `pisadas63`:
+
+| | antes | ahora |
+|---|---|---|
+| corriendo, oyente al lado | 0.1430 | 0.0884 |
+| corriendo, oyente a 12 u | 0.1161 | 0.0262 |
+| caída entre esas dos distancias | −1.9 dB | **−10.5 dB** |
+| andando con SHIFT | 4 pisadas | **0** |
+| agachado | 3 pisadas | **0** |
+| a 26 u | 0 | 0 |
+| la más fuerte contra un disparo | −12.2 dB | **−16.5 dB** |
+
+Y el techo se comprueba **pasándole por al lado**: a 0.5 u la pisada sale en
+0.0784 contra 0.0853 a 1.0 u, o sea que por debajo de `fullDistanceU` ya no sube.
+Un techo que sólo se cumple a cuatro unidades no es un techo.
+
+### Y una regla que vale para todo lo que venga: el duelo no reescribe el juego
+
+Antes de construir nada para el 1v1 se mira si eso ya existe en el modo de
+siempre y se reutiliza. Dos implementaciones de la misma idea no son más código:
+son un juego que se comporta distinto según el modo, y **una diferencia que nadie
+decidió es un fallo de producto**. Las decididas —el duelo no tiene dianas, ni
+puntuación, ni armería— están escritas; el resto tiene que salir igual en los
+dos sitios.
+
+Es lo que hizo barata la vuelta 56 (el duelo hospeda el motor entero en vez de
+montar su escena) y es la convención de «una sola fuente de verdad» aplicada a
+los modos. El hueco que queda hoy va en el sentido contrario y conviene anotarlo:
+**las pisadas sólo existen en el duelo**. El día que un muñeco haga ruido al
+patrullar, sale de `playFootstep` y del emisor, que ya son genéricos.
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

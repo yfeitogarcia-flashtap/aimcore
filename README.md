@@ -126,18 +126,26 @@ fijas: no son binds y no se pueden perder.
 
 ## Pisadas de los demás
 
-Cuando un rival se mueve cerca, se le **oye andar**, con dirección y volumen
-según dónde esté: si pasa por tu izquierda, suena a tu izquierda. Es la forma de
+Cuando un rival **corre** cerca, se le **oye**, con dirección y volumen según
+dónde esté: si pasa por tu izquierda, suena a tu izquierda. Es la forma de
 enterarte de que hay alguien detrás de una esquina sin verlo.
 
 Son de **los demás** y de nadie más: tus propias pisadas no suenan. No te dirían
 nada que no sepas —estás pulsando la tecla— y taparían justo lo que estas
 pisadas vienen a dejar oír.
 
-El paso se cuenta en **suelo recorrido**, no en tiempo, así que agacharse o andar
-con SHIFT bajan el ritmo solos además de sonar más flojo. Agachado se oye poco,
-pero se oye: un sigilo perfecto convertiría agacharse en la única forma de
-moverse, y lo que tiene que costar es la velocidad.
+**Andar con SHIFT y agacharse son silencio, no un volumen más bajo.** Para eso
+están esas teclas: lo que se paga por ellas es la velocidad. Si no quieres que te
+oigan llegar, no corras.
+
+**Y hay un radio: 16 unidades.** Más lejos no se oye absolutamente nada; más
+cerca, el volumen sube de verdad según se acerca —a partir de dos metros y medio
+ya suena a tope y no sube más—. El tope está bastante por debajo de un disparo, a
+propósito: una pisada dice *dónde* hay alguien, y confundirla con un tiro es
+peor que no oírla.
+
+El paso se cuenta en **suelo recorrido**, no en tiempo, así que el ritmo sale
+solo de lo rápido que vaya el otro.
 
 ## Probarlo en local, y publicarlo
 
@@ -216,22 +224,35 @@ Recargar la página **no** es irse: es como se vuelve.
 
 ## Cómo suena un disparo
 
-Todas las armas suenan sintetizadas en tiempo real, sin un solo fichero de audio.
-Desde la vuelta 62 la **Rift** tiene voz propia: seca, metálica y bastante más
-fuerte —+11 dB sobre la anterior, y +9.3 dB la variante con silenciador—. La
-silenciada no es la normal con el volumen bajado: se le quitan el grave y el
-chasquido de banda ancha y se le deja el cerrojo, que suena un instante después.
+Todas las armas suenan sintetizadas en tiempo real, sin un solo fichero de audio,
+y **las tres** llevan la misma voz seca y metálica: ataque instantáneo, un golpe
+de ruido, metal saturado encima y un grave corto por debajo. Nada se sostiene.
 
-La Pulse y la Volt conservan la voz de siempre hasta que se calibre la suya.
+Cada una tiene su carácter, y sale de su ficha: la **Pulse** es corta y aguda, la
+**Volt** es la más breve de las tres —dispara cada 75 ms, y una cola más larga se
+pisaría a sí misma— y la **Rift** es la que conserva cuerpo. Medido, la Pulse ha
+subido 12.8 dB y la Volt 11.1 respecto a la voz que tenían.
 
-## Muestras de audio (sin ficheros todavía)
+Las silenciadas no son las normales con el volumen bajado: se les quitan el grave
+y el chasquido de banda ancha —las dos capas que delatan un disparo a distancia—
+y se les deja el **cerrojo**, que suena un instante después.
 
-Todo el audio es sintetizado, y lo seguirá siendo **salvo lo que hace un arma**
-—disparo, disparo con silenciador, recarga— y el **cargador vacío**, que es lo
-que no sale convincente de cuatro osciladores. El carril está hecho y vacío: hoy
-no hay ni un fichero, así que suena todo sintetizado.
+## Muestras de audio (probadas y apagadas)
 
-Para poner muestras reales:
+En la vuelta 63 se probaron en juego diez muestras grabadas —los tres disparos,
+sus tres variantes silenciadas, las tres recargas y el gatillo en seco— y se
+**descartaron**. No por calidad: sonar a sintetizado es parte de lo que es
+Vektor, y que no haya nada que descargar ni decodificar es parte de que corra en
+cualquier máquina.
+
+Así que `AUDIO.samplesEnabled` está en **`false`** y el juego suena entero
+sintetizado. El carril se queda montado y los ficheros siguen en
+`Reference/Audio/`, sin entrar en el build: con el interruptor apagado el
+importador no copia nada.
+
+Para volver a probarlas: pon `AUDIO.samplesEnabled` a `true` en `src/config.js`,
+deja en `Reference/Audio/` **sólo** las que quieras probar y pasa
+`npm run audio:weapons`. La convención, por si llega el día:
 
 1. Deja los ficheros en su carpeta, con la **clave** del arma (`pulse`, `rift`,
    `volt`), no su etiqueta. Valen `.mp3`, `.ogg` y `.wav`, en ese orden de
