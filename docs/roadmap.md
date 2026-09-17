@@ -179,6 +179,30 @@ dejó escrito que ése es el día en que esto se puede hacer.
 - **Rompe:** el fogonazo y el silbido son mundo, no interfaz, y los dos llevan
   presupuesto por frame. Medir antes de encenderlos con más de dos jugadores.
 
+### 1.6 Deslizamiento (*slide*)
+
+Pedido en la vuelta 68 y **ya diseñado**:
+`docs/propuestas/04-deslizamiento.md`. Correr y agacharse para tirarse al suelo
+conservando la marcha, salir soltando la tecla o saltando.
+
+Va **la última de esta fase a propósito**, aunque no dependa de nada: es una
+mecánica de movimiento, o sea de lo que más se nota y lo más difícil de deshacer
+una vez que la gente la tiene en los dedos, y que la partida aguante una tarde
+pesa más. La propuesta trae el diseño entero, los tres sitios donde puede romper
+el juego y la ventana para revertirlo.
+
+Y trae **una corrección del encargo** que conviene no perder: el gesto pedido era
+W + CTRL + SPACE, y **Ctrl+W cierra la pestaña** (convención de la vuelta 27). El
+gesto propuesto es correr + agacharse, con SPACE como salida.
+
+- **Bloqueante:** nada.
+- **Medible:** `slide69.mjs`, ocho medidas en la propuesta §5 — la primera, que
+  un deslizamiento mida lo mismo a 60, 144 y 240 Hz.
+- **Rompe:** la marcha congelada del despegue (deslizarse y saltar llegaría al
+  techo del aire gratis), el hitbox-silueta de la vuelta 65 con un blanco bajo y
+  rápido, y levantarse debajo de una caja, que hoy no se comprueba porque no hacía
+  falta.
+
 ---
 
 ## Fase 2 — Saber quién juega

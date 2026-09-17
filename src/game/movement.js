@@ -172,7 +172,9 @@ export class MovementController {
     /**
      * Salto encadenado. Tres marcas, las tres en milisegundos reales:
      *  - `_jumpPressedAt`: cuándo se pulsó SPACE, tomado del propio evento de
-     *    teclado y no del frame que lo atiende.
+     *    teclado y no del frame que lo atiende. **Desde la vuelta 68 es lo que
+     *    despega**, y no `keys.jump`: el salto va por flanco, así que esta marca
+     *    se gasta —vuelve a `-Infinity`— en cuanto se usa.
      *  - `_landedAt`: el instante **exacto** del último aterrizaje, despejado de
      *    la parábola (ver `_land`).
      *  - `_landingSpeed`: la marcha horizontal que se traía al tocar el suelo,
@@ -1060,12 +1062,14 @@ export class MovementController {
       ? this.scenario.groundHeightAt(position.x, position.z, this.feetY)
       : 0
 
-    // Salto: sólo desde el suelo, así que no hay doble salto posible.
-    if (this.keys.jump && !this.airborne) {
+    // **Salta una pulsación, no una tecla apretada** (vuelta 68), y sólo desde
+    // el suelo o dentro de la gracia de borde, así que sigue sin haber doble
+    // salto posible.
+    if (this._pulsacionDeSaltoViva(now) && (!this.airborne || this._enGraciaDeBorde())) {
       this._takeOff(MOVEMENT.jumpSpeed * this.jumpFactor(now), this._isChainPress(), dt)
-      // La pulsación se gasta al despegar: mantener SPACE sigue rebotando en
-      // cada aterrizaje, como siempre, pero esos rebotes son saltos normales.
-      // Encadenar es acertar el tiempo, no dejar la tecla apoyada.
+      // La pulsación se gasta al despegar, y ésa es la mitad del mecanismo: una
+      // pulsación despega **una vez**. Dejar SPACE apoyada ya no rebota en cada
+      // aterrizaje, porque la tecla apretada no vuelve a ser un flanco.
       this._jumpPressedAt = -Infinity
     }
 
@@ -1114,6 +1118,44 @@ export class MovementController {
     const over = this._stillJumps - fatigue.freeJumps + 1
     if (over <= 0) return 1
     return Math.max(fatigue.minFactor, 1 - fatigue.penaltyPerJump * over)
+  }
+
+  /**
+   * **¿Hay una pulsación de salto sin gastar y todavía fresca?**
+   *
+   * Es la pregunta que sustituye a «¿está SPACE apretada?» (vuelta 68). Una
+   * pulsación se anota con su instante —el del evento jugando, el del paso por
+   * la red— y se gasta poniéndola a `-Infinity` al despegar, así que mantener
+   * la tecla no produce ningún salto más: para saltar otra vez hay que soltar y
+   * volver a pulsar, que es lo que un flanco significa.
+   *
+   * Y vive `MOVEMENT.jumpBufferMs` porque pulsar un pelo antes de tocar el
+   * suelo es lo normal, no un error: el flanco cae en el aire y sin memoria se
+   * perdería. La edad puede salir **negativa** —el `now` de un paso es un resto
+   * por detrás del frame en que se atendió la tecla—, y eso es una pulsación
+   * más fresca todavía.
+   */
+  _pulsacionDeSaltoViva(now) {
+    return now - this._jumpPressedAt <= MOVEMENT.jumpBufferMs
+  }
+
+  /**
+   * **Gracia de borde** (*coyote time*): salirse de una superficie andando no
+   * quita el salto de inmediato.
+   *
+   * No hace falta una marca aparte para saber que este vuelo salió de un borde:
+   * es el **único** que despega con velocidad vertical cero (`_takeOff(0)` en
+   * `_updateVertical`), porque cualquier salto de verdad arranca con
+   * `jumpSpeed` por su factor de fatiga, que tiene suelo. Un campo menos es
+   * también un campo menos que serializar en `snapshot()`, o sea un campo menos
+   * que pueda desincronizar a los dos extremos de una partida en red.
+   */
+  _enGraciaDeBorde() {
+    return (
+      this.airborne &&
+      this._launchVelocity === 0 &&
+      this._airTime * 1000 <= MOVEMENT.coyoteMs
+    )
   }
 
   /**
@@ -1259,7 +1301,16 @@ export class MovementController {
     // el aterrizaje que se despeja de la parábola sale también en tiempo real.
     // Los dos extremos de la ventana viven en el mismo reloj sin traducir nada;
     // traducirlos, que fue lo primero que se probó, es lo que metería el error.
-    if (action === 'jump') {
+    //
+    // **Y no se escribe cuando la entrada va separada** (vuelta 68), que es
+    // decir «cuando hay alguien reejecutando mis entradas»: ahí el reloj del
+    // mundo es el **número de paso** y este `timeStamp` es del reloj local, dos
+    // números sin nada que ver. Antes daba igual porque lo único que decidía
+    // esta marca era si el salto encadenaba, y `_aplicar` la pisaba con la
+    // buena antes de que nadie la usara; desde que es **la marca que despega**,
+    // una de reloj ajeno es un salto por paso o ninguno, según qué reloj vaya
+    // por delante. Por la red la pone `pressJump`, que es su sitio.
+    if (action === 'jump' && this.keys === this.input) {
       this._jumpPressedAt =
         Number.isFinite(event.timeStamp) && event.timeStamp > 0
           ? event.timeStamp

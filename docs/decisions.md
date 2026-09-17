@@ -7816,6 +7816,129 @@ El Espejo las salidas están a 32 u y el radio son 16, así que sólo se oye al
 rival en la mitad final de la aproximación — y los quince segundos de compra son
 silencio por construcción.
 
+## Ronda 68 — El salto va por flanco, y el diseño del deslizamiento
+
+### Dos síntomas, una causa
+
+Jugando salieron dos cosas que no se parecían: **el salto no responde al borde de
+una superficie pequeña** —«se nota como input con retraso, el jugador cae antes de
+saltar»— y **manteniendo SPACE se salta de forma continua sin control**. El
+encargo lo dejó abierto a propósito: «puede que ambas cosas compartan la misma
+causa».
+
+La comparten, y es una línea:
+
+```js
+if (this.keys.jump && !this.airborne) { ... }
+```
+
+`keys.jump` es la **tecla apretada**, no la pulsación. De ahí salen las dos:
+
+- **Apoyada, esa condición es verdadera en cada aterrizaje**, así que el jugador
+  rebota mientras la tecla siga abajo. Estaba escrito como decisión —«dejar SPACE
+  apoyada sigue rebotando con saltos normales»— y no lo era: era la implementación
+  contándose a sí misma. Rebotar sin control no es una mecánica.
+- **Y `!this.airborne` deja de ser cierta en el paso exacto en que los pies dejan
+  el borde.** El jugador pulsa un frame después y ya no hay suelo. No había
+  ningún retraso: el salto llegaba a tiempo y el suelo era lo que se había ido.
+
+### El arreglo es la misma línea, por flanco
+
+Lo que despega pasa a ser `_jumpPressedAt`, la marca que ya existía —sellada con
+`event.timeStamp` jugando y con la fracción de paso por la red— y que ya se
+gastaba al despegar. Con eso, mantener la tecla no vuelve a producir un flanco
+nunca. Y como un flanco puede caer donde no se puede saltar, hacen falta los dos
+números de siempre en esta mecánica, y los dos salen de una cuenta:
+
+- **`jumpBufferMs` = 170.** No es «130 como la ventana de encadenado», que fue lo
+  primero que se probó y salió mal en el banco: entre el instante **exacto** del
+  aterrizaje —que se despeja de la parábola— y el paso que puede actuar sobre él
+  caben dos pasos, el que lo detecta y el siguiente. Con 130, la mitad «antes» de
+  la ventana de encadenado se recortaba, y se recortaba **más cuanto menos
+  refresco**: el umbral se iba a 113 ms a 60 Hz. Con 130 + 2 × 16.67 = 163.3,
+  redondeado a 170, `encadenado.mjs` [5] vuelve a dar **130.00 ms a 60, 144 y 240
+  Hz, con 0.000 de diferencia**.
+- **`coyoteMs` = 110.** En 110 ms de caída libre se baja 0.181 u, por debajo de
+  `COVER.stepHeight` (0.25): la gracia se acaba antes de que el jugador haya
+  bajado lo que sube de un escalón, o sea antes de que en pantalla se vea que ya
+  no está encima. El techo de la cuenta es `sqrt(2·stepHeight/gravity)` = 129 ms.
+
+### Y que el vuelo salió de un borde no se marca: se deduce
+
+Un vuelo de borde es el **único** que despega con velocidad vertical cero
+(`_takeOff(0)`), porque cualquier salto de verdad arranca con `jumpSpeed` por su
+factor de fatiga, que tiene suelo. Un booleano más habría sido un campo más en
+`snapshot()`, que es la lista que mantiene sincronizados los dos extremos de una
+partida en red: un sitio más donde discrepar, a cambio de nada.
+
+### El fallo que este cambio podía haber metido en la red, y no metió
+
+`movement._onKeyDown` escribía `_jumpPressedAt` con `event.timeStamp` **también
+en red**, donde el reloj del mundo es el número de paso. Daba igual mientras esa
+marca sólo decidiera si el salto encadenaba —`_aplicar` la pisaba con la buena
+antes de que nadie la usara—, pero desde que **es** la marca que despega, un
+número de otro reloj es «pulsación infinitamente fresca» o «pulsación
+infinitamente vieja» según cuál de los dos vaya por delante: un salto por paso, o
+ninguno.
+
+La condición que lo cierra es la que ya distingue los dos mundos:
+`this.keys === this.input` es falso exactamente cuando hay alguien reejecutando
+mis entradas. Por la red la marca la pone `pressJump`, que es su sitio. Medido en
+`red45`: **cero correcciones y error de reconciliación cero, saltando**.
+
+### Medido
+
+- `salto68.mjs` [1]: manteniendo SPACE 3 s, **1 despegue** a 60, 144 y 240 Hz.
+- [2]: pulsar 100 ms antes de tocar el suelo **y soltar la tecla en el aire**
+  sigue saltando y sigue encadenando, en los tres refrescos. Antes se perdía.
+- [3]: saliéndose de un cajón de 1.9 u andando, pulsar a los 40 ms **salta** (1.19
+  u de subida) y a los 200 ms no — y el banco afirma antes que el jugador **sigue
+  en el aire** en los dos intentos: desde 1.9 u se cae al suelo en 356 ms, así que
+  una espera larga mide un salto normal desde el suelo y sale verde sin haber
+  probado nada. Es el denominador de la vuelta 46, otra vez.
+- [4]: y lo mismo **en el duelo, con una tecla de verdad** contra la página real:
+  1 vuelo manteniendo SPACE 3 s, 3 vuelos con tres pulsaciones. El camino no es el
+  mismo —la pulsación viaja sellada dentro de la entrada del paso—, así que medir
+  sólo el modelo no habría probado el producto (regla de la vuelta 48).
+- Sin tocar una aserción: `encadenado` (con [4] al revés: ahora afirma que **no**
+  rebota), `fatiga`, `baja` (12/12), `colision`, `estabilidad`, `tick44`,
+  `airstrafe`, `fixes`, `live`, `binds`, `red45` y `motor56`.
+
+### Dos premisas de banco que estaban rotas y no lo decían
+
+- **`red45` abría dos pestañas sin código de sala**, o sea **dos salas**. Desde la
+  vuelta 58 el huésped de Node encamina por código igual que el Durable Object, y
+  hasta entonces daba lo mismo. El síntoma no era un error: era `p1 vs p1` en la
+  primera línea del volcado —un contador que en una sala de dos no puede
+  repetirse— y cero muestras en el brazo que compara lo que B ve de A. Ahora B
+  entra por el código de A y la línea lo afirma.
+- **`motor56` apunta a `VEKTOR_BASE`**, y contra el huésped con rondas la primera
+  baja abre quince segundos de fase de compra: la tabla no sale mal, sale vacía.
+  Va contra el de `VEKTOR_RONDAS=0`, como dice su propia cabecera.
+
+### El deslizamiento: diseñado, no construido
+
+El encargo pedía diseñarlo «para cuando encaje en el roadmap» y **dejar una
+ventana hacia atrás abierta**. Está entero en
+`docs/propuestas/04-deslizamiento.md` y en el roadmap como 1.6. Tres cosas de ahí
+que conviene no perder aunque no se construya nunca:
+
+- **El gesto pedido no se puede montar.** Era W + CTRL + SPACE, y **Ctrl+W cierra
+  la pestaña** en Chrome y en Edge: el navegador resuelve ese atajo antes de que
+  el evento llegue a la página. Es la convención de la vuelta 27, que nació de
+  ese mismo cierre. El propuesto es correr + agacharse, que es el gesto de la
+  industria y **no añade ninguna tecla**.
+- **Deslizarse y saltar llegaría al techo del aire gratis.** `currentSpeed`
+  congela la marcha al despegar, así que despegar a 9.43 es volar a 9.43 y el
+  air-strafe puede rematar hasta 9.5 — lo que hoy cuesta tres encadenados bien
+  hechos. El despegue desde un deslizamiento siembra con la marcha de carrera.
+- **Y la ventana es la de `airVector`:** `MOVEMENT.slide.enabled` en `false`, la
+  mecánica entera dentro de `movement.js`, y la garantía no es una promesa sino
+  una medida — con la bandera apagada, un paseo largo por el Plano A acaba en la
+  misma coordenada hasta el último decimal que antes de escribir una línea.
+
+---
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

@@ -896,6 +896,48 @@ export const MOVEMENT = {
   chainJumpWindowMs: 130,
 
   /**
+   * **Cuánto vive una pulsación de salto sin suelo debajo**, en milisegundos.
+   *
+   * El salto se dispara por **flanco**, no por tecla apretada: lo que despega
+   * es una pulsación, y una pulsación se gasta una sola vez. De ahí sale sola
+   * la mitad del problema que esto viene a arreglar —dejar SPACE apoyada ya no
+   * rebota— y de ahí sale también que haga falta este número: pulsando un pelo
+   * antes de tocar el suelo, el flanco cae en el aire y sin memoria se perdería.
+   *
+   * Es la mitad «antes» de `chainJumpWindowMs` **más la holgura de dos pasos**,
+   * y los dos sumandos son de verdad: la pulsación tiene que seguir viva en el
+   * paso que puede actuar sobre ella, y entre el instante exacto del aterrizaje
+   * —que se despeja de la parábola— y ese paso caben el paso que lo detecta y
+   * el siguiente. A 60 Hz son 2 × 16.67 = 33.3 ms; 130 + 33.3 = 163.3,
+   * redondeado a 170.
+   *
+   * Por debajo de esa suma la mitad «antes» de la ventana de encadenado **se
+   * recorta, y se recorta más cuanto menos refresco haya**, que es justo la
+   * clase de cosa que aquí no se documenta: se arregla. Si subes
+   * `chainJumpWindowMs` o bajas `SIM.hz`, rehaz la cuenta.
+   */
+  jumpBufferMs: 170,
+
+  /**
+   * **Gracia de borde** (*coyote time*): milisegundos que se sigue pudiendo
+   * saltar después de salirse de una superficie andando, sin haber saltado.
+   *
+   * Sin esto, salirse de un cajón estrecho es quedarse sin salto: el paso en
+   * que los pies dejan el borde marca `airborne` y la pulsación que llega
+   * después —aunque sea un frame después— no encuentra suelo. Se notaba como
+   * input con retraso, y no lo era: el salto llegaba a tiempo y el suelo ya no
+   * estaba.
+   *
+   * El número no es de gusto: en 110 ms de caída libre se baja
+   * ½·30·0.11² = **0.18 u**, por debajo de `COVER.stepHeight` (0.25), o sea que
+   * la gracia se acaba antes de que el jugador haya bajado lo que sube de un
+   * escalón — no se puede saltar desde un sitio donde ya se ve que no estás.
+   * El techo de esa cuenta es `sqrt(2·stepHeight/gravity)` = 129 ms. Si tocas
+   * `gravity` o `stepHeight`, vuelve a hacerla.
+   */
+  coyoteMs: 110,
+
+  /**
    * **Qué modelo de aire se usa**, mientras se decide cuál se queda:
    *
    * - `true` — **vector de velocidad**. En el aire el jugador tiene una

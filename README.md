@@ -53,7 +53,12 @@ Sólo con la variante de movimiento activa (`MOVEMENT.enabled`):
   (`MOVEMENT.walkSpeed`). Es la velocidad más rápida con la que se dispara sin
   penalización — ver *Precisión y movimiento*.
 - **SPACE**: salto. Sin doble salto — no se puede volver a saltar hasta tocar
-  el suelo. Si dejas la tecla pulsada, rebota al aterrizar.
+  el suelo. **Salta la pulsación, no la tecla apoyada**: mantener SPACE da un
+  salto y hasta que no la sueltes y la vuelvas a pulsar no hay otro. A cambio,
+  el juego se acuerda de lo que has pulsado: una pulsación en el aire **vale al
+  tocar el suelo** (`MOVEMENT.jumpBufferMs`), y si te sales de un saliente
+  andando todavía puedes saltar durante una décima larga
+  (`MOVEMENT.coyoteMs`) — saltar en el borde de un cajón estrecho funciona.
 - **SPACE justo al aterrizar**: **salto encadenado**. Si vuelves a pulsar
   dentro de una ventana estrecha alrededor del momento de tocar el suelo —un
   pelo antes o un pelo después, `MOVEMENT.chainJumpWindowMs`— el salto nuevo
@@ -63,7 +68,7 @@ Sólo con la variante de movimiento activa (`MOVEMENT.enabled`):
   No es un acelerador: se **conserva** lo que llevabas, nunca se multiplica. Lo
   que acelera es el *air-strafe* (abajo), y encadenar es lo que deja seguir
   usando lo ganado. Y sólo cuenta si aciertas el tiempo: dejar la tecla apoyada
-  rebota, pero con saltos normales.
+  no encadena, porque no vuelve a saltar.
 - **A o D en el aire, girando el ratón hacia ese mismo lado**: **air-strafe**.
   Ganas velocidad por encima de tu carrera mientras estrafeas sin avanzar. Ver
   la sección propia más abajo.

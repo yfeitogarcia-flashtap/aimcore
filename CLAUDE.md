@@ -560,15 +560,54 @@ bordillo. Si tocas `jumpSpeed` o `gravity`, revisa esa tabla.
 con la marcha que se traía al tocar el suelo en vez de recalcularla desde el
 suelo. Nada más: ni impulso vertical extra, ni factor, ni ganancia por
 encadenar. Lo que acelera es el air-strafe, y encadenar es lo que deja seguir
-usando lo ganado. Y la pulsación se **gasta** al despegar, así que dejar
-SPACE apoyada sigue rebotando con saltos normales: encadenar es acertar el
-tiempo, no apoyar la tecla.
+usando lo ganado.
 
 Los dos extremos de la ventana se miden en tiempo real: la pulsación sale de
 `event.timeStamp` (no del frame que la atiende) y el aterrizaje, de despejar la
 parábola —`t = (v0 + velocidadDeImpacto) / g`— en lugar del frame que lo detecta,
 que llega hasta un frame tarde. Medido: el umbral sale en 130.00 ms a 60, 144 y
 240 Hz, con una diferencia de 0.000 ms entre ellos.
+
+**Lo que despega es una pulsación, no una tecla apretada** (vuelta 68). El
+salto va por **flanco**: `_jumpPressedAt` es la marca que lo dispara y se
+**gasta** —vuelve a `-Infinity`— al despegar, así que mantener SPACE da **un**
+salto y para saltar otra vez hay que soltar y volver a pulsar. Hasta la 67 la
+condición era `keys.jump`, o sea la tecla apoyada, y eso rebotaba en cada
+aterrizaje: medido, 1 vuelo en 3 s con la tecla apoyada contra la ráfaga sin
+control de antes, y lo mismo por el camino de la red. De ahí salen dos números
+que **son** el mecanismo, y ninguno de los dos es de gusto:
+
+- **`MOVEMENT.jumpBufferMs` (170).** Pulsar un pelo antes de tocar el suelo es lo
+  normal, y con el flanco en el aire la pulsación se perdería. Vive lo que dura
+  la mitad «antes» de la ventana de encadenado **más dos pasos**: entre el
+  instante exacto del aterrizaje —que se despeja de la parábola— y el paso que
+  puede actuar sobre él caben el que lo detecta y el siguiente, o sea 2 × 16.67
+  ms. Por debajo de esa suma la ventana de encadenado se recorta, y se recorta
+  más cuanto menos refresco haya. Medido después: el umbral sigue saliendo en
+  130.00 ms a 60, 144 y 240 Hz.
+- **`MOVEMENT.coyoteMs` (110).** Salirse de un cajón estrecho andando marcaba
+  `airborne` en ese mismo paso y la pulsación que llegaba un frame después no
+  encontraba suelo: se notaba como input con retraso y no lo era —el salto
+  llegaba a tiempo y el suelo ya no estaba—. El número sale de una cuenta: en 110
+  ms de caída libre se baja 0.181 u, por debajo de `COVER.stepHeight` (0.25), así
+  que la gracia se acaba **antes de que el jugador haya bajado lo que sube de un
+  escalón**. El techo de esa cuenta es `sqrt(2·stepHeight/gravity)` = 129 ms.
+
+Y que el vuelo salió de un borde **no se marca: se deduce**. Es el único que
+despega con velocidad vertical cero, porque cualquier salto de verdad arranca con
+`jumpSpeed` por su factor de fatiga, que tiene suelo. Un campo menos es un campo
+menos en `snapshot()`, o sea un sitio menos donde los dos extremos de una partida
+en red puedan discrepar.
+
+**Y la marca de la pulsación no se escribe cuando la entrada va separada**, que
+es decir «cuando hay alguien reejecutando mis entradas». Ahí el reloj del mundo
+es el número de paso y el `timeStamp` del teclado es del reloj local: dos números
+sin nada que ver. Antes daba igual —lo único que decidía esa marca era si el
+salto encadenaba, y `_aplicar` la pisaba con la buena antes de que nadie la
+usara—; desde que **es** la marca que despega, una de reloj ajeno es un salto por
+paso o ninguno, según cuál de los dos relojes vaya por delante. Por la red la
+pone `pressJump`, que es su sitio. Medido en `red45`: cero correcciones y error
+de reconciliación cero **saltando**.
 
 **Hay dos modelos de aire conviviendo tras `MOVEMENT.airVector`, y uno se
 borrará.** El interruptor es de prueba, no un ajuste de juego: no está en el
@@ -2779,7 +2818,10 @@ una vista en tercera persona que orbita el modelo, fuera de partida.
 no, ver convenciones—, gana la más lenta), salto sin doble salto **resuelto en forma cerrada** —misma
 trayectoria a cualquier refresco, y desde la vuelta 44 **el mundo entero va en
 pasos fijos de 60 Hz**, así que tampoco depende del monitor lo que sí era una
-integración—, **salto encadenado** con SPACE dentro de
+integración—, **por flanco y con memoria** desde la vuelta 68 —mantener SPACE da
+un salto, no una ráfaga; una pulsación vive `MOVEMENT.jumpBufferMs` (170) y
+salirse de un borde deja `MOVEMENT.coyoteMs` (110) para saltar igual—, **salto
+encadenado** con SPACE dentro de
 `MOVEMENT.chainJumpWindowMs` (130 ms a cada lado del aterrizaje exacto), que
 conserva la marcha del aterrizaje —con vector, también **la dirección**—, y
 **air-strafe**: en el aire, girar el ratón hacia el lado de la tecla de estrafe
@@ -2996,7 +3038,7 @@ lo pide explícitamente, no se añade.
 `docs/roadmap.md`**, ordenado por dependencia y sin fechas: reconexión, condición
 de victoria, escudo y casco en red, identidad y cuentas, el SDK Social de
 Discord, el modo de eliminación, el modo FlickLAB con ranking, los Planos B y C,
-los mapas de comunidad, la economía y la monetización. Ese fichero **no autoriza
+los mapas de comunidad, el **deslizamiento**, la economía y la monetización. Ese fichero **no autoriza
 nada** —esta sección sigue mandando— y está para no reconstruir la lista cada vez
 buscando en `decisions.md` la vuelta en que salió cada idea.
 
@@ -3014,6 +3056,16 @@ no existen, y un `$0` en la ficha prometería una mecánica que no hay.
 **En diseño, aún no construido:** los Planos B (*El Patio*) y C (*La Ejecución*)
 de `docs/propuestas/01-escenario-cobertura.md`. No los construyas hasta que el
 Plano A esté validado jugando.
+
+**Y el deslizamiento** (vuelta 68), en `docs/propuestas/04-deslizamiento.md`:
+correr y agacharse para tirarse al suelo conservando la marcha. Diseñado entero
+—con su ventana para revertirlo, `MOVEMENT.slide.enabled`, que es el precedente
+de `airVector`— y **sin una línea escrita**. Dos avisos de ahí que conviene no
+perder: el gesto pedido era **W + CTRL + SPACE** y Ctrl+W cierra la pestaña
+(convención de la vuelta 27), así que el propuesto es correr + agacharse; y
+deslizarse y saltar llegaría al techo del aire gratis si el despegue conservara
+la marcha del deslizamiento, que es la mecánica que más se practica tirada por
+la ventana.
 
 **El salto ya no depende del refresco.** Con `jumpSpeed 8.67` y `gravity 30`:
 ápice **1.2528 u** y **578 ms** de vuelo, iguales en cualquier monitor
