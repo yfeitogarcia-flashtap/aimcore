@@ -1830,6 +1830,14 @@ propiedad** (`recoilLoopFrom`, `_escenarioFijo`). Un nombre de función o una
 constante de módulo salen a cero por estar renombrada la una e inlineada la otra,
 y eso no dice nada de si están.
 
+**Y un banco de red se pasa solo, nunca a la vez que otro** (vuelta 61). Cada uno
+abre dos navegadores con WebGL por software; varios a la vez se quitan frames
+—medido, 22 fps contra 26 corriendo solo— y lo que cae son justo las dos
+aserciones que miden un margen: la cola del servidor en `red45` y los disparos
+del escenario de más latencia en `tiro46`. Es «un jugador por navegador» (vuelta
+50) un nivel más arriba. Antes de creerse un rojo, mira los fps que el propio
+banco imprime.
+
 Y no es sólo «una función que no hace nada»: en la vuelta 45 pasó **dos veces**
 con la batería de pruebas entera. Los síntomas fueron suites que salían con
 `0 pass` —la página ni cargaba— y aserciones devolviendo `undefined` donde había

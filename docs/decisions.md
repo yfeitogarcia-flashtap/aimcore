@@ -6577,6 +6577,28 @@ La regla, que es la misma de la vuelta 46 con otra ropa: **un alto no es un áre
 y cuando lo que se quiere saber es «¿se puede pinchar aquí?», se le pregunta al
 navegador en vez de deducirlo de una caja.
 
+### Y un banco de red se mide solo
+
+La regresión de esta vuelta salió con `red45` y `tiro46` en rojo, y los dos por
+lo mismo: se lanzaron **a la vez que otras suites**. Cada banco de red abre dos
+navegadores con WebGL por software, así que cuatro o seis páginas a la vez se
+quitan frames entre ellas — la propia tabla de `red45` lo dice, porque mide los
+fps del cliente: **22 fps** en la tanda en paralelo contra los 26 corriendo solo,
+y 32 y 50 en las tandas antiguas que salieron verdes.
+
+Lo que falla entonces no es una aserción cualquiera, son justo las dos que miden
+un margen de tiempo: en `red45`, cuánto infla el RTT la cola del servidor (+485
+ms contra el tope, +353 ms corriendo solo); en `tiro46`, cuántos disparos entran
+en el escenario de más latencia, que es donde el rebobinado ya está topado
+(6 de 16 en paralelo, 14 de 16 solo). Las dos son verdes por un pelo en
+condiciones normales **a propósito**: miden el peor caso.
+
+Es la misma familia que «un jugador por navegador» de la vuelta 50 —la carga de
+al lado se lee como un fallo del código— con el alcance subido un nivel: **una
+suite de red por contenedor**. Y la forma de no confundirse es la de siempre:
+antes de creerse un rojo, mirar el denominador que el propio banco imprime. Los
+fps estaban en la tabla las dos veces.
+
 ### Lo que sale medido
 
 Con la Rift, cargador entero en automático y sin tocar el ratón (`recoil61.mjs`,
