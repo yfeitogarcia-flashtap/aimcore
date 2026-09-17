@@ -29,6 +29,7 @@
  */
 import http from 'node:http'
 import { readFile } from 'node:fs/promises'
+import { readdirSync } from 'node:fs'
 import { gzipSync } from 'node:zlib'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -298,6 +299,21 @@ function servir(respuesta, peticion, fichero) {
   respuesta.end(cuerpo)
 }
 
+/**
+ * La huella de lo que este proceso va a servir: los nombres de los assets, que
+ * Vite genera a partir de su contenido. **Se lee una vez, al arrancar**, que es
+ * justo cuando queda fijado lo que se sirve —de ahí en adelante todo sale de la
+ * caché en memoria—. Comparar esto con `ls dist/assets` dice en un segundo si el
+ * huésped se ha quedado con un build viejo.
+ */
+const HUELLA = (() => {
+  try {
+    return readdirSync(path.join(PUBLICO, 'assets')).sort().join(' ')
+  } catch {
+    return 'sin dist'
+  }
+})()
+
 const texto = (respuesta, codigo, cuerpo) => {
   respuesta.writeHead(codigo, { 'Content-Type': 'text/plain; charset=utf-8' })
   respuesta.end(cuerpo)
@@ -341,6 +357,19 @@ const servidor = http.createServer(async (peticion, respuesta) => {
     respuesta.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
     return respuesta.end(JSON.stringify({
       ok: true,
+      /**
+       * **Qué build está sirviendo** (vuelta 61). Los ficheros se cachean en
+       * memoria al primer pedido, así que un `npm run build` por debajo **no le
+       * cambia nada** a un huésped ya levantado: sigue sirviendo lo de antes
+       * hasta que se reinicie. Está avisado en `CLAUDE.md` desde la 58 y aun así
+       * ha costado dos vueltas — la última, un banco en rojo que parecía una
+       * regresión del juego y era un bundle viejo.
+       *
+       * Vite pone el hash del contenido en el nombre de cada asset, así que los
+       * nombres **son** la huella: si esto no coincide con lo que hay en
+       * `dist/`, el huésped está sirviendo otra cosa.
+       */
+      build: HUELLA,
       maquina: process.env.FLY_MACHINE_ID || 'local',
       region: process.env.FLY_REGION || 'local',
       escenario: ESCENARIO,

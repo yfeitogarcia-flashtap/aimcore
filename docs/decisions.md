@@ -6525,6 +6525,36 @@ para no «arreglarlo» algún día: el retroceso **suma** a la rotación de la c
 igual que lo hace el ratón, así que no hay ningún estado de «controlado» que se
 resuelva una vez. Lo que fallaba no era el modelo, era que el empuje desaparecía.
 
+### Y el huésped sirviendo un build viejo, otra vez
+
+`recoil61` salió **rojo** al pasar la regresión, con exactamente los números de
+antes del arreglo: **15 de 30 disparos sin empuje** y la mira acabando a 7.65°.
+Parecía que el arreglo se hubiera deshecho.
+
+No se había deshecho: **el huésped estaba sirviendo el bundle anterior**. Los
+ficheros se cachean en memoria al arrancar, así que un `npm run build` por debajo
+no le cambia nada a un proceso ya levantado. Está avisado en `CLAUDE.md` desde la
+vuelta 58 —lo escribí yo— y aun así ha costado dos vueltas, la segunda en forma
+de banco en rojo que parecía una regresión del juego.
+
+Lo que lo delató no fue leer código, fue preguntar **qué está sirviendo**: el
+bundle cacheado tenía `_escenarioFijo` (vuelta 60) y no tenía `recoilLoopFrom`
+(vuelta 61), o sea que era de justo entre las dos. Eso, de paso, dice que el
+resto de la tanda es válido: ninguna otra suite prueba el retroceso.
+
+**Ojo con grepear un bundle minificado**, que casi me lleva por otro camino: de
+los cuatro nombres que probé sólo dos significaban algo. `_escenarioFijo` y
+`recoilLoopFrom` sobreviven porque son **accesos a propiedad** y el minificador no
+los puede renombrar; `facingDesdeCamara` y `FOOTSTEPS` salían a cero por estar
+renombrado el uno y en línea el otro, y eso no dice nada de si están.
+
+**El arreglo es que deje de depender de acordarse.** `/salud` dice ahora **qué
+build sirve** —los nombres de los assets, que Vite genera del contenido, leídos
+del disco **al arrancar**, que es cuando queda fijado lo que ese proceso servirá—
+y el corredor de bancos lo compara con `dist/` y **se niega a medir** si no
+coinciden. Es la misma idea que el `maquina` de la vuelta 59: un servidor que no
+dice quién es obliga a deducirlo.
+
 ### Y un vano no es un área
 
 Añadir el botón de «Pausar» al menú del duelo (vuelta 60) hizo caer **tres

@@ -1818,6 +1818,18 @@ Y el de Node además **cachea en memoria lo que sirve, comprimido**, así que ni
 siquiera reconstruir `dist/` por debajo le cambia nada: hay que reiniciar el
 proceso.
 
+**Y esto no se deja a la memoria** (vuelta 61): ha costado dos vueltas, la
+segunda en forma de banco en rojo con los números exactos de antes del arreglo,
+que parecía una regresión del juego. `/salud` dice **qué build sirve** —los
+nombres de los assets, que Vite saca del contenido— y el corredor de bancos lo
+compara con `dist/` y se niega a medir si no coinciden. Si un banco falla justo
+después de tocar código, **mira eso primero**.
+
+Y si alguna vez lo compruebas grepeando el bundle: **sólo valen los accesos a
+propiedad** (`recoilLoopFrom`, `_escenarioFijo`). Un nombre de función o una
+constante de módulo salen a cero por estar renombrada la una e inlineada la otra,
+y eso no dice nada de si están.
+
 Y no es sólo «una función que no hace nada»: en la vuelta 45 pasó **dos veces**
 con la batería de pruebas entera. Los síntomas fueron suites que salían con
 `0 pass` —la página ni cargaba— y aserciones devolviendo `undefined` donde había
