@@ -6525,6 +6525,28 @@ para no «arreglarlo» algún día: el retroceso **suma** a la rotación de la c
 igual que lo hace el ratón, así que no hay ningún estado de «controlado» que se
 resuelva una vez. Lo que fallaba no era el modelo, era que el empuje desaparecía.
 
+### Y un vano no es un área
+
+Añadir el botón de «Pausar» al menú del duelo (vuelta 60) hizo caer **tres
+bancos** —`pausa53`, `motor56` y los que van detrás— y ninguno por el motivo que
+parecía: el clic con el que capturan el ratón apuntaba al centro-abajo de la
+pantalla, y ahí ahora hay un `.control`, donde un clic **no captura a propósito**
+desde la vuelta 48. Los síntomas eran de lo más variado —«A está jugando» fallando
+como premisa, «se mueve a velocidad de carrera (0.00 u)»— y el arreglo es mover el
+clic a una esquina.
+
+Al medir si eso era además un problema de producto salió primero un **97% de la
+pantalla ocupada** a 700×460, que asusta. Y es la trampa de siempre: eso es el
+**vano** entre el borde de arriba del primer control y el de abajo del último, no
+el área. Preguntándole al navegador punto por punto cuál captura el ratón
+(`elementFromPoint`), lo que queda libre es el **70.5%** a 700×460, el 76.7% a
+820×520 y el **91%** a 1280×800. El menú es una columna estrecha con huecos, y no
+estorba a nadie que quiera empezar a jugar.
+
+La regla, que es la misma de la vuelta 46 con otra ropa: **un alto no es un área**,
+y cuando lo que se quiere saber es «¿se puede pinchar aquí?», se le pregunta al
+navegador en vez de deducirlo de una caja.
+
 ### Lo que sale medido
 
 Con la Rift, cargador entero en automático y sin tocar el ratón (`recoil61.mjs`,

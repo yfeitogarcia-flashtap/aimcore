@@ -1757,6 +1757,19 @@ infla la velocidad, y con frames largos la infla por encima del techo del aire �
 sea que el guardia de teletransporte borra la cuenta en cada frame: medido, cero
 pisadas con el rival andando—. El reloj de esto es el de pared.
 
+**Un vano no es un área** (vuelta 61). Al crecer el menú del duelo con el botón
+de pausar, la primera medida decía que ocupaba el **97% de la pantalla** a
+700×460 — y eso era la distancia del borde de arriba del primer control al de
+abajo del último, con sus huecos dentro. Preguntándole al navegador punto por
+punto con `elementFromPoint`, lo libre es el **70.5%**. Cuando lo que se quiere
+saber es «¿se puede pinchar aquí?», se le pregunta al navegador; una caja no lo
+contesta.
+
+Y de paso: **el clic con el que un banco captura el ratón va a una esquina**. El
+centro de la pantalla del duelo es un `.control`, y ahí un clic no captura a
+propósito (vuelta 48). Tres suites cayeron por esto con síntomas que no se
+parecían en nada —una premisa de «está jugando», un «0.00 u» de movimiento—.
+
 **Una suite sin aserciones no es una prueba, es un informe.** `baja.mjs` imprimía
 «se sube en 12/12» y salía en verde pasara lo que pasara; con aserciones de
 verdad cazó a la primera una regresión de 12/12 a 0/12. Si un test no puede
