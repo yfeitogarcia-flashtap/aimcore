@@ -310,6 +310,12 @@ function pintarPausa() {
   }
   pausaMiaAntes = p.pausada && p.mia
   caidaAntes = p.pausada && p.motivo === 'caida'
+  // **Y el cartel nace con su número, no con un hueco.** El bloque se rehace al
+  // cambiar de estado y la cuenta la escribe `pintarRestas`, que va por frame:
+  // entre una cosa y la otra hay un fotograma con la cuenta en blanco. Se ve al
+  // entrar en pausa y, cuando llega la cuenta de libres una foto después, otra
+  // vez. Escribirla aquí mismo cuesta una llamada y la quita.
+  if (p.pausada) pintarRestas(performance.now())
   medirCartel()
   pintarVotacion()
 }
