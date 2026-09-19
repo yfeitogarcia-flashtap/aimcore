@@ -1952,8 +1952,33 @@ const LINEAR_TO_SRGB = (c) => (c <= 0.0031308 ? c * 12.92 : 1.055 * c ** (1 / 2.
  * piezas bajas (#848484 en vez de #b0b0b0 para el bordillo) y la miniatura
  * dejaría de parecerse a lo que se ve en partida.
  */
+/**
+ * **El gris de una pieza, y también el de una altura suelta** (vuelta 76).
+ *
+ * El tono no es decoración: **dice la altura**, y el jugador aprende a leerlo.
+ * Mientras todas las piezas salían del vocabulario bastaba con mirar la tabla;
+ * desde que el editor deja escribir una altura en números, una pieza de 2.4
+ * caía en el `?? media` y salía del mismo gris que una de 1.9 — o sea el tono
+ * mintiendo.
+ *
+ * Un número coge el gris de **la altura del vocabulario más cercana**, que
+ * conserva lo que el tono promete: más alto, más claro. Una clave sigue
+ * devolviendo exactamente el suyo, así que ningún mapa de hoy cambia un píxel.
+ */
+export function coverColor(kind) {
+  if (typeof kind !== 'number') return COVER.colors[kind] ?? COVER.colors.media
+  let mejor = 'media'
+  let distancia = Infinity
+  for (const [clave, alto] of Object.entries(COVER.heights)) {
+    if (!COVER.colors[clave]) continue
+    const d = Math.abs(alto - kind)
+    if (d < distancia) { distancia = d; mejor = clave }
+  }
+  return COVER.colors[mejor]
+}
+
 export function coverEdgeColor(kind) {
-  const hex = COVER.colors[kind] ?? COVER.colors.media
+  const hex = coverColor(kind)
   const value = parseInt(hex.slice(1), 16)
   let out = ''
   for (const shift of [16, 8, 0]) {

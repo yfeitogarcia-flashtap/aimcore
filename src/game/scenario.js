@@ -17,7 +17,7 @@
 
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { COVER, claveDeEscenario, coverEdgeColor, coverHeight, definicionDeEscenario, fisicaDeEscenario, scenarioRoom } from '../config.js'
+import { COVER, claveDeEscenario, coverColor, coverEdgeColor, coverHeight, definicionDeEscenario, fisicaDeEscenario, scenarioRoom } from '../config.js'
 
 /**
  * Prisma triangular para las rampas: rectángulo abajo y una única arista
@@ -266,7 +266,9 @@ export class Scenario {
       for (const geometry of geometries) geometry.dispose()
       if (!merged) continue
 
-      const fill = COVER.colors[kind] ?? COVER.colors.media
+      // Por `coverColor` y no por la tabla a pelo: una altura en números
+      // coge el gris de la del vocabulario más cercana (vuelta 76).
+      const fill = coverColor(kind)
       const material = new THREE.MeshBasicMaterial({
         color: fill,
         side: kind === 'rampa' ? THREE.DoubleSide : THREE.FrontSide,

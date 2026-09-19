@@ -452,3 +452,97 @@ De paso cerró tres cosas de la fase 1 que estaban mal y no se habían visto:
    sale de `mapaComoModulo`, la misma función que usa el editor.
 
 Nada de esto cambia el plan: las fases 2 a 5 siguen como estaban.
+
+---
+
+## 10. La fase 2, construida (vuelta 76)
+
+Se construyó tal como estaba planteada —menú de formas, candados por eje,
+rejilla e imán, giro de 90°, deshacer/rehacer y presupuesto— y con ella los
+siete ajustes que salieron de usar la fase 1 jugando. Lo que sigue es lo que
+**no** se pudo hacer como estaba escrito, que es de lo único que hay que
+acordarse.
+
+### 10.1 El presupuesto: el instrumento se midió antes de creérselo
+
+Estaba escrito «se mide en vez de contarse», y eso era lo correcto. Lo que no
+se había previsto es que **un paso de mundo no se puede cronometrar en un
+navegador**: `performance.now()` viene acotado a 100 µs fuera de un contexto
+aislado y un paso contra diecisiete cajas cuesta mucho menos.
+
+Costó tres versiones, y las dos primeras salían verdes midiendo el reloj:
+
+| Versión | Qué medía | Qué decía |
+|---|---|---|
+| Paso a paso, p99 de 400 | un paso | **0.000 ms en Los Pilares** — un mapa entero a cero |
+| Bloques de 25, p99 de 40 | 25 pasos | **0.0010 con 0 piezas y 0.0010 con 600** |
+| Total de 2000 pasos, media | la tanda entera | 0 piezas 0.0000 · 200 0.0001 · **1500 0.0004** |
+
+Sólo la tercera responde a lo que se le pone delante, y por eso es la que se
+compara con el presupuesto; el peor bloque se enseña al lado, cuantizado y
+dicho. Es la regla de la vuelta 46 —una proporción necesita que se vea su
+denominador— aplicada al cronómetro, y la del 62 —cinco disparos y la mediana—
+por la misma puerta.
+
+**Y el resultado de medirlo cambia para qué sirve el panel.** Con colisión AABB
+y mallas fundidas por tipo, **un mapa no puede romper el presupuesto por
+geometría**: 1500 piezas cuestan 0.0004 ms por paso contra los 0.2 de
+presupuesto y los 0.07 que cuesta un paso real con ocho muñecos. Así que el
+aviso es un cortafuegos para el día que una pieza cueste de verdad —un vano, un
+tejado, una rotación libre— y lo que el panel hace hoy es **enseñar lo que
+cuesta tu mapa**, que ya era lo que faltaba. Conviene no confundir las dos cosas
+al leerlo.
+
+### 10.2 «Sin muñecos» no es un mapa sin rutas
+
+La primera versión del interruptor quitaba las rutas al mapa antes de montarlo,
+razonando que dónde nace un muñeco sale de ellas. **Es falso, y el banco lo cazó
+a la primera**: sin rutas las dianas no desaparecen, se muestrean por cono como
+en la sala vacía. Salía una igual.
+
+Lo correcto es que **si un mundo tiene muñecos es del mundo**, y entra por la
+misma puerta que el escenario: `new Engine(…, { escenario, dianas })`. Es la
+puerta de la vuelta 60, y por su mismo motivo — la alternativa era escribir
+`simultaneousTargets` en el store del jugador, o sea reescribirle sus ajustes
+por abrir el editor.
+
+### 10.3 «Base» era un desplegable y no se entendía
+
+Tenía razón el encargo. Lo que uno quiere al apilar es poner una caja encima de
+otra, y con un menú de nombres de alturas (`media`, `alta`) eso hay que
+deducirlo. Ahora son **dos controles y una frase**: un número —desde qué altura
+empieza la pieza— y un botón que la apoya en el techo de lo que tenga debajo.
+
+Y subir una pieza la sube **entera**: mover sólo la base la aplastaría contra su
+propio techo hasta hacerla desaparecer, que es lo que hacía la primera versión
+del campo numérico.
+
+### 10.4 WASD no puede pedir el botón del ratón
+
+La fase 1 dejó el vuelo detrás del botón derecho para no robarle las teclas a
+quien escribe una clave en el panel. Usándolo se ve que el precio es alto: se
+mira una esquina, se suelta, y para acercarse hay que volver a agarrar.
+
+Las dos condiciones que de verdad hacían falta son **el puntero sobre la vista**
+y **el foco fuera de un campo**, y el botón las cumplía de rebote. Es
+`typingInField` (vuelta 56) en esta página: el editor sí tiene campos de texto,
+así que la pregunta «¿esto es escribir o es jugar?» hay que contestarla.
+
+### 10.5 Y el tamaño de la sala ya tenía tope, pero no se veía
+
+`SALA` acota el ancho y el fondo a 10–200 u y el alto a 4–60 desde la fase 1, y
+lo aplica el mismo saneado que lee un mapa al montarlo — así que un número fuera
+de rango no llega al juego venga del editor o de un fichero escrito a mano. Lo
+que faltaba era **decirlo en la pantalla**, y que los campos lo lleven en su
+`min`/`max`.
+
+**No se ató al presupuesto, y no debe atarse:** son dos límites distintos. El de
+la sala es duro y del formato; el presupuesto es una medida de lo que cuesta la
+colisión. Una sala de 200×200 con cuatro cajas es barata y una de 40×40 con
+cuatrocientas no lo sería — derivar uno del otro mentiría en los dos sentidos.
+
+### 10.6 El borrador ya no manda sobre la dirección
+
+Un borrador de **otro** mapa se ignora si la barra pide uno concreto. Sin esto,
+`/editor/#pilares` abría lo último que se hubiera tocado y no había forma de
+decir cuál se quiere.

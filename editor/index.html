@@ -13,7 +13,12 @@
          «probar». Compartirlo sería pelearse con él por la cámara. -->
     <div id="vista">
       <canvas id="lienzo"></canvas>
-      <div id="caja-juego" hidden><canvas id="juego"></canvas></div>
+      <div id="caja-juego" hidden>
+        <canvas id="juego"></canvas>
+        <!-- El HUD y la mira del juego, montados aquí por `src/ui/duelo.jsx`:
+             los mismos componentes que el duelo y el entrenamiento. -->
+        <div id="capa"></div>
+      </div>
       <p id="pista">Clic para jugar · <b>ESC</b> vuelve a editar</p>
     </div>
 
@@ -35,16 +40,26 @@
         <div class="trio">
           <label>Salida X <input id="spawn-x" type="number" step="0.5" /></label>
           <label>Salida Z <input id="spawn-z" type="number" step="0.5" /></label>
-          <label>Rejilla <input id="paso" type="number" step="0.25" min="0.25" /></label>
         </div>
+        <p id="limites" class="nota"></p>
+      </section>
+
+      <section>
+        <h2>Formas</h2>
+        <!-- Presets de la misma caja: lo que cambia es el tamaño y el `kind`,
+             porque la colisión sólo sabe de cajas alineadas a los ejes. -->
+        <div id="formas" class="formas"></div>
       </section>
 
       <section>
         <h2>Piezas <span id="cuenta" class="nota"></span></h2>
         <div class="botonera">
-          <button id="anadir" type="button">Añadir caja</button>
           <button id="duplicar" type="button">Duplicar</button>
           <button id="borrar" type="button">Borrar</button>
+        </div>
+        <div class="botonera">
+          <button id="deshacer" type="button" title="Ctrl+Z">↶ Deshacer</button>
+          <button id="rehacer" type="button" title="Ctrl+Mayús+Z">↷ Rehacer</button>
         </div>
         <ul id="lista"></ul>
       </section>
@@ -52,22 +67,68 @@
       <section id="pieza" hidden>
         <h2>Pieza seleccionada</h2>
         <div class="trio">
-          <label>X <input id="p-x" type="number" step="0.5" /></label>
-          <label>Z <input id="p-z" type="number" step="0.5" /></label>
-          <label>&nbsp;</label>
-        </div>
-        <div class="trio">
-          <label>Ancho <input id="p-w" type="number" step="0.5" min="0.1" /></label>
-          <label>Fondo <input id="p-d" type="number" step="0.5" min="0.1" /></label>
+          <label>X <input id="p-x" type="number" /></label>
+          <label>Z <input id="p-z" type="number" /></label>
           <label>Giro <button id="p-giro" type="button" title="Intercambia ancho y fondo">90°</button></label>
         </div>
-        <label>Altura <select id="p-kind"></select></label>
-        <label>Base <select id="p-base"></select></label>
+        <!-- Los candados son por eje: con uno echado, esa dimensión no la
+             mueven ni el arrastre ni los tiradores. -->
+        <div class="trio">
+          <label>Ancho <input id="p-w" type="number" min="0.1" /></label>
+          <label>Fondo <input id="p-d" type="number" min="0.1" /></label>
+          <label>Alto <input id="p-alto" type="number" min="0.1" /></label>
+        </div>
+        <div class="trio candados">
+          <label><input id="lock-w" type="checkbox" /> bloquear</label>
+          <label><input id="lock-d" type="checkbox" /> bloquear</label>
+          <label><input id="lock-alto" type="checkbox" /> bloquear</label>
+        </div>
+        <label>Altura del vocabulario <select id="p-kind"></select></label>
+
+        <h3>Apoyo</h3>
+        <!-- **Base es «desde qué altura empieza»**, no «sobre qué pieza se
+             apoya»: un número, como el alto. Apilar es poner esa base en el
+             techo de lo que haya debajo, y eso lo hace el botón. -->
+        <p class="nota">Una pieza va del suelo a su <b>Alto</b>. Súbela escribiendo
+          desde qué altura empieza, o apóyala en la que tenga debajo.</p>
+        <div class="trio">
+          <label>Base: empieza a <input id="p-base" type="number" step="0.1" min="0"
+            title="Altura desde el suelo a la que arranca la pieza. 0 = en el suelo." /></label>
+          <label class="ancho2">Apilar <button id="p-apilar" type="button"
+            title="Pone la base en el techo de la pieza de debajo">sobre lo de debajo</button></label>
+        </div>
+        <p id="aviso-aire" class="aviso" hidden></p>
+      </section>
+
+      <section>
+        <h2>Ayudas para construir</h2>
+        <div class="trio">
+          <label><input id="laser-x" type="checkbox" /> Láser X</label>
+          <label><input id="laser-y" type="checkbox" /> Láser Y</label>
+          <label><input id="laser-z" type="checkbox" /> Láser Z</label>
+        </div>
+        <label>Rejilla: mover de
+          <select id="paso">
+            <option value="1">1 unidad (cuadro a cuadro)</option>
+            <option value="0.9">9/10</option>
+            <option value="0.8">8/10</option>
+            <option value="0.7">7/10</option>
+            <option value="0.6">6/10</option>
+            <option value="0.5" selected>5/10</option>
+            <option value="0.4">4/10</option>
+            <option value="0.3">3/10</option>
+            <option value="0.2">2/10</option>
+            <option value="0.1">1/10</option>
+          </select>
+        </label>
+        <label class="checkline"><input id="iman" type="checkbox" checked /> Imán: pegar a la cara de al lado</label>
+        <p id="presupuesto" class="nota"></p>
       </section>
 
       <section>
         <h2>Archivo</h2>
         <label>Abrir <select id="abrir"></select></label>
+        <label class="checkline"><input id="con-munecos" type="checkbox" /> Probar con muñecos</label>
         <div class="botonera">
           <button id="probar" type="button" class="accion">Probar</button>
           <button id="guardar" type="button" class="accion">Guardar</button>
@@ -86,7 +147,8 @@
       </section>
 
       <footer class="nota">
-        Clic izquierdo selecciona y arrastra · botón derecho orbita · rueda acerca
+        Clic izquierdo selecciona y arrastra · botón derecho orbita · rueda acerca<br>
+        <b>WASD</b> vuela con el ratón sobre el mapa · <b>Q/E</b> baja y sube · <b>Mayús</b> corre
       </footer>
     </aside>
 
