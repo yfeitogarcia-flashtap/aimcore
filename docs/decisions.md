@@ -8238,14 +8238,14 @@ puede comparar** (un `undefined` de un arma sin RPM convertía el máximo en NaN
 dejaba **todas** las barras sin dibujar), y el panel creció a 1100 px para que
 las cinco quepan en una fila.
 
-### Lo que falta
+### Lo que faltaba, y llegó en la 73
 
-`Reference/Weapons/Vanta.png` **no está en el repositorio**. La mecánica está
-entera; lo que no hay es su silueta, así que su ficha sale sin dibujo. En cuanto
-llegue es `npm run trace:weapons` y ya: la lista de armas a trazar se deriva de
-`WEAPONS` desde la vuelta 70. `armeria43` lo imprime en su volcado y afirma que
-**no falta ninguna que sí tenga referencia**, así que el día que llegue sigue en
-verde sin tocar nada.
+`Reference/Weapons/vanta.png` no estaba en el repositorio, así que la ficha del
+cuchillo salió sin dibujo. Llegó durante la vuelta 73 y costó **un comando**:
+`npm run trace:weapons`. La lista de armas a trazar se deriva de `WEAPONS` desde
+la vuelta 70 y `armeria43` afirmaba que no faltaba ninguna **que sí tuviera
+referencia**, así que no hubo que tocar ni una línea ni una aserción — que era
+exactamente lo que esas dos decisiones compraban.
 
 ---
 

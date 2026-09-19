@@ -3278,10 +3278,9 @@ con sonido propio.
 **Vanta** (vuelta 71) es el **cuchillo**, y ocupa la tercera ranura —la tecla 3,
 reservada desde la vuelta 27—. Se lleva siempre, como la pistola. Clic izquierdo
 flojo (25 de daño, uno cada 400 ms), clic derecho fuerte (55, uno cada 857), y
-**un fuerte por la espalda mata siempre**. **Le falta la silueta**: su referencia
-(`Reference/Weapons/Vanta.png`) todavía no está en el repositorio, así que su
-ficha sale sin dibujo hasta que llegue y se pase `npm run trace:weapons`.
-`armeria43` lo dice en su volcado y se pondrá al día solo.
+**un fuerte por la espalda mata siempre**. **Ya tiene silueta** desde la vuelta
+73, trazada de `Reference/Weapons/vanta.png` como las demás; sin variante
+`ghost-`, porque un cuchillo no admite silenciador.
 
 **La Scout** (vuelta 70) es el primer **rifle de francotirador**: una bala al
 cuerpo mata a quien no lleve chaleco (110 de daño, `damageScale: 2.2`), dos con

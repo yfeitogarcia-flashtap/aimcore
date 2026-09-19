@@ -1079,9 +1079,9 @@ avisos, y cada uno dice algo distinto:
   si has conectado, y la puñalada por la espalda añade un metal que no lleva
   ningún otro golpe.
 
-*Le falta la silueta: su referencia (`Reference/Weapons/Vanta.png`) todavía no
-está en el repositorio, así que su ficha sale sin dibujo. En cuanto llegue es un
-comando: `npm run trace:weapons`.*
+**Y ya tiene su silueta**, trazada de `Reference/Weapons/vanta.png` como las de
+las demás. No lleva variante con silenciador, por lo mismo que la Scout: un
+cuchillo no la admite.
 
 ### La Scout, y la mirilla
 
