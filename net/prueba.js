@@ -91,6 +91,13 @@ const motor = new Engine(lienzo, {
   // depende de dónde se juegue: en el juego es el panel de React, aquí es la
   // tienda de abajo. Lo que el motor no hace en red es pausar.
   onArmoury: () => alternarTienda(),
+  /**
+   * **Apuntando con mirilla se quita la mira de la página** (vuelta 70): la
+   * lente trae la suya —cruceta fina y punto rojo— y dos miras a la vez es una
+   * encima de otra. Es lo mismo que hace el entrenamiento; la lente, que es lo
+   * que de verdad se comparte, la dibuja el motor.
+   */
+  onScope: (puesta) => document.body.classList.toggle('apuntando', puesta),
 }, { escenario: ESCENARIO })
 
 /**

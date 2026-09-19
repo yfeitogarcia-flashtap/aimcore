@@ -979,10 +979,13 @@ export class Partida {
     const p = tirador.pose.position
     const origen = { x: p.x, y: p.y, z: p.z }
 
-    const veredicto = resolverDisparo(origen, d.yaw, d.pitch, cuerpo, this.escenario.occluders)
+    // **Y con qué arma**: desde la vuelta 70 el daño no sale sólo de la zona.
+    // El arma es la que el servidor le reconoce al tirador, no la que diga el
+    // cliente en el momento de dibujar — la misma que ya valida la cadencia.
+    const veredicto = resolverDisparo(origen, d.yaw, d.pitch, cuerpo, this.escenario.occluders, tirador.arma)
     // **El control**: el mismo disparo sin rebobinar nada. No decide nada, se
     // manda para poder medir qué compra la compensación.
-    const sin = resolverDisparo(origen, d.yaw, d.pitch, ahora, this.escenario.occluders)
+    const sin = resolverDisparo(origen, d.yaw, d.pitch, ahora, this.escenario.occluders, tirador.arma)
 
     salida.impacto = veredicto.impacto
     salida.zona = veredicto.zona

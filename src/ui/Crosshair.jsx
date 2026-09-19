@@ -16,11 +16,15 @@ import { FEEDBACK } from '../config.js'
  * dibujado **alrededor** de ella: el anillo de daño, que dice que te han dado a
  * ti y no tiene otro sitio donde ponerse.
  *
+ * **Y se quita con la mirilla puesta** (vuelta 70): la lente trae la suya, y
+ * dos miras a la vez es una encima de otra. Lo dice el motor por `onScope`, que
+ * es una pulsación y no un valor por frame.
+ *
  * Su forma y su tamaño salen de `CROSSHAIR`, que es lo que comparten los dos
  * modos desde esta vuelta y lo que tocará una pantalla de opciones el día que
  * se pueda diseñar la propia.
  */
-const Crosshair = forwardRef(function Crosshair(_props, ref) {
+const Crosshair = forwardRef(function Crosshair({ hidden = false }, ref) {
   const ringRef = useRef(null)
 
   useImperativeHandle(ref, () => ({
@@ -48,7 +52,7 @@ const Crosshair = forwardRef(function Crosshair(_props, ref) {
   }), [])
 
   return (
-    <div className="crosshair" aria-hidden="true">
+    <div className={`crosshair${hidden ? ' crosshair--hidden' : ''}`} aria-hidden="true">
       <span className="crosshair__bar crosshair__bar--top" />
       <span className="crosshair__bar crosshair__bar--right" />
       <span className="crosshair__bar crosshair__bar--bottom" />

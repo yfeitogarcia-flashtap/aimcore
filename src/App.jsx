@@ -60,6 +60,7 @@ export default function App() {
    * sin saltarse la regla de no repintar por frame.
    */
   const [equipped, setEquipped] = useState({ weaponKey: getSettings().weapon, suppressed: false })
+  const [apuntando, setApuntando] = useState(false)
 
   // El store de ajustes vive fuera de React porque el motor también lo lee.
   const settings = useSyncExternalStore(subscribeSettings, getSettings)
@@ -114,6 +115,14 @@ export default function App() {
         onArmoury: () => setArmouryOpen((open) => !open),
         onAvatarDebug: setAvatarDebug,
         onWeapon: setEquipped,
+        /**
+         * **Apuntando con mirilla, la mira de la página se quita** (vuelta 70).
+         * La lente trae la suya —cruceta fina y punto rojo— y dos miras a la
+         * vez es una encima de otra. El aviso es una pulsación, no un valor por
+         * frame, así que puede ser estado de React: llega al cambiar de idea,
+         * no sesenta veces por segundo.
+         */
+        onScope: setApuntando,
         onFinish: setSummary,
       })
       engine.start()
@@ -241,7 +250,7 @@ export default function App() {
       {showHud && (
         <Hud ref={hudRef} weaponKey={equipped.weaponKey} suppressed={equipped.suppressed} />
       )}
-      {phase === PHASE.RUNNING && <Crosshair ref={crosshairRef} />}
+      {phase === PHASE.RUNNING && <Crosshair ref={crosshairRef} hidden={apuntando} />}
 
       {engineError && (
         <div className="overlay">

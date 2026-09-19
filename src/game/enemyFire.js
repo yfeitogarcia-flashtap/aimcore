@@ -346,7 +346,11 @@ export class EnemyFire {
       // La cabeza no se escala: vale 100 y mata, que es de lo que depende la
       // regla del casco. El cuerpo sí, porque el jugador cruza el mapa bajo
       // fuego de varios a la vez.
-      const base = zoneDamage(hit.zone)
+      // `zoneDamage` ya cuenta el `damageScale` del arma del muñeco (vuelta
+      // 70) y ya deja la cabeza en paz; lo de aquí es lo de siempre, el ajuste
+      // de cuánto aprietan **como grupo**, que es otra cosa y se multiplica
+      // encima.
+      const base = zoneDamage(hit.zone, ENEMY.weapon)
       const damage = hit.zone === 'head' ? base : base * ENEMY.bodyDamageScale
       // **Y de dónde vino.** Sin esto, recibir un disparo sólo dice que te han
       // dado; el indicador direccional necesita el punto, y va en tres números

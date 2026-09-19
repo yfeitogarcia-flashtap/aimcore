@@ -26,6 +26,7 @@
 import * as THREE from 'three'
 import { BODY_TOP, ZONE_BANDS, bodySection } from './body.js'
 import { hasLineOfSight } from './sight.js'
+import { zoneDamage } from './player.js'
 import {
   COLORS,
   COVER,
@@ -409,11 +410,19 @@ export class TargetManager {
 
   /**
    * Descuenta el daño de la zona alcanzada.
+   *
+   * **Con el arma que dispara** desde la vuelta 70: un muñeco es un blanco con
+   * las mismas zonas que un jugador, así que si una bala de francotirador mata
+   * de un tiro a una persona no puede hacerle cosquillas a un muñeco. El
+   * escalado lo pone `zoneDamage`, que es la misma función que usan el duelo y
+   * el fuego enemigo — dos escaleras de daño es cómo un arma acaba pegando
+   * distinto según a quién.
+   *
    * @returns {{ killed: boolean, zone: string }}
    */
-  applyHit(hit, now) {
+  applyHit(hit, now, weaponKey = null) {
     const { instance, part } = hit
-    instance.health -= part.damage
+    instance.health -= zoneDamage(part.zone, weaponKey)
 
     if (instance.health > 0) {
       // Sobrevive: la zona parpadea para que se vea que el disparo entró.

@@ -482,7 +482,25 @@ export function aimPoint(body, factor, out = _toPlayer) {
   return out.set(body.x, body.feetY + (body.top - body.feetY) * factor, body.z)
 }
 
-/** Daño de una zona, tal como lo declara el modelo de hitbox. */
-export function zoneDamage(zone) {
-  return ZONES[zone]?.damage ?? 0
+/**
+ * **Lo que vale una bala en esa zona, con el arma que la dispara.**
+ *
+ * El modelo de zonas dice la **forma** del daño —cabeza 100, torso 50, piernas
+ * 34— y el arma dice cuánto vale la suya (`damageScale`, vuelta 70). Hasta la
+ * Scout no hizo falta porque las tres armas pegaban igual, y escribir un número
+ * de daño por arma entonces habría sido inventarse un dato; con un fusil de
+ * francotirador que mata de un tiro al cuerpo, el dato existe.
+ *
+ * **La cabeza no se escala nunca**, por la misma razón que `ENEMY.bodyDamageScale`
+ * tampoco la toca: vale 100 de 100 y de ahí cuelga la regla del casco —el
+ * primero a la cabeza lo rompe y el siguiente mata—. Escalarla dejaría el casco
+ * en papel con unas armas y en muro con otras.
+ *
+ * Sin `weaponKey`, o con un arma que no declara el campo, vale 1: las tres de
+ * siempre no cambian ni un punto.
+ */
+export function zoneDamage(zone, weaponKey = null) {
+  const base = ZONES[zone]?.damage ?? 0
+  if (zone === 'head') return base
+  return base * (WEAPONS[weaponKey]?.damageScale ?? 1)
 }

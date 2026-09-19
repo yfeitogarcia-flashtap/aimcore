@@ -20,6 +20,8 @@
      56, que es cuando el motor completo pasa a llevar la partida. */
   #mira, #vital, #abatido, #armaHud, #dano, #ronda { display: none; }
   body.jugando #mira, body.jugando #vital, body.jugando #armaHud { display: block; }
+  /* Con la mirilla puesta manda la suya (vuelta 70). */
+  body.apuntando #mira { opacity: 0; }
   body.jugando #dano { display: block; }
 
   /* **La mira es la del entrenamiento** (vuelta 67), no una escrita aquí: los

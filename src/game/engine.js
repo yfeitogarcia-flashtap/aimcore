@@ -25,6 +25,7 @@ import {
   MOVEMENT,
   HELP,
   IMPACTS,
+  LOOK,
   PLAYER,
   RECOIL_RESET_MS,
   RENDER,
@@ -32,6 +33,7 @@ import {
   DEATHMATCH_DURATIONS,
   SESSION_DURATION_S,
   SESSION_MODES,
+  SCOPE,
   SIM,
   NET,
   SIM_STEP_MS,
@@ -42,6 +44,7 @@ import {
 } from '../config.js'
 import { createScene } from './scene.js'
 import { Scenario } from './scenario.js'
+import { Scope } from './scope.js'
 import { Objective, OUTCOME } from './objective.js'
 import { computeScore } from './scoring.js'
 import { createSceneTransition } from './transition.js'
@@ -194,6 +197,21 @@ export class Engine {
     this._disposeScene = disposeScene
 
     this.camera = new THREE.PerspectiveCamera(CAMERA.fov, 1, CAMERA.near, CAMERA.far)
+    /**
+     * **La mirilla ampliada** (vuelta 70). `_scopeOn` es lo que el jugador
+     * quiere y `_scopeT` dónde va la transición: 0 sin mirilla, 1 puesta. El
+     * encuadre y la sensibilidad se interpolan con ese mismo número, así que no
+     * pueden quedarse a medio camino el uno del otro.
+     *
+     * Las dos sensibilidades se guardan aquí y **se aplican siempre por
+     * `_aplicarSensibilidad`**: `_applySettings` escribía directamente en los
+     * controles, y eso, con la mirilla puesta, devolvía la de a pelo en cuanto
+     * alguien tocara cualquier opción.
+     */
+    this._scopeOn = false
+    this._scopeT = 0
+    this._sensNormal = LOOK.sensitivity
+    this._sensMirilla = LOOK.sensitivity
 
     this.controls = new LookControls(this.camera)
 
@@ -683,6 +701,8 @@ export class Engine {
 
     const parent = this.canvas.parentElement
     if (parent) parent.appendChild(this.cssRenderer.domElement)
+    // La lente va donde el lienzo, no en el HUD: es parte de lo que se ve.
+    this.scope = new Scope(parent || document.body)
 
     this._resizeObserver = new ResizeObserver(this._onResize)
     this._resizeObserver.observe(this.canvas.parentElement || this.canvas)
@@ -695,6 +715,8 @@ export class Engine {
   }
 
   dispose() {
+    this.scope?.dispose()
+    this.scope = null
     this._running = false
     cancelAnimationFrame(this._rafId)
     this.canvas.removeEventListener('mousedown', this._onMouseDown)
@@ -849,7 +871,9 @@ export class Engine {
     // Con escenario fijo el ajuste del jugador no manda aquí: ver `_escenarioFijo`.
     this._applyScenario(this._escenarioFijo ?? settings.scenario)
     setSpatialEnabled(settings.spatialAudio)
-    this.controls.setSensitivity(settings.sensitivity)
+    this._sensNormal = settings.sensitivity
+    this._sensMirilla = settings.scopeSensitivity
+    this._aplicarSensibilidad()
     const limit = FRAME_LIMITS[settings.frameLimit].fps
     this._frameIntervalMs = limit > 0 ? 1000 / limit : 0
     this._frameAccumulator = 0
@@ -975,6 +999,10 @@ export class Engine {
     }
     this._releaseTrigger()
     this._sprayIndex = 0
+    // **Cambiar de arma baja la mirilla.** Es del arma, no del jugador: sacar
+    // la pistola apuntando con la del fusil sería llevar puesto el visor de un
+    // arma que ya no tienes en la mano.
+    this._ponerMirilla(false)
     this.slot = slot
     this.weaponKey = key
     const stowed = this._stowed[key]
@@ -1285,6 +1313,64 @@ export class Engine {
     updateSettings({ suppressor: { ...settings.suppressor, [this.weaponKey]: !settings.suppressor[this.weaponKey] } })
   }
 
+  /**
+   * **Pone o quita la mirilla.** Lo que cambia es la intención; la transición
+   * la corre `_updateScope` con el reloj del mundo.
+   */
+  _alternarMirilla() {
+    this._ponerMirilla(!this._scopeOn)
+  }
+
+  /**
+   * La intención, y el aviso a la página. `onScope` es una **pulsación**, no un
+   * valor por frame: se manda al cambiar de idea y no sesenta veces por
+   * segundo, así que puede ser estado de React sin saltarse la regla del HUD.
+   * Cada página lo usa para apagar **su** mira, que es lo único de esto que no
+   * es del motor.
+   */
+  _ponerMirilla(puesta) {
+    const quiere = Boolean(puesta) && Boolean(this.weapon.scope)
+    if (quiere === this._scopeOn) return
+    this._scopeOn = quiere
+    this.callbacks.onScope?.(quiere)
+  }
+
+  /**
+   * **La transición, con el reloj del mundo.** Va en el paso fijo y no en el
+   * frame: así dura los mismos 140 ms en cualquier monitor, que es la regla de
+   * la casa para todo lo temporizado. Y de ella cuelgan las tres cosas a la
+   * vez —lente, encuadre y sensibilidad—, de modo que no pueden quedarse a
+   * medio camino la una de la otra.
+   *
+   * Cuando no hay nada que animar no toca nada: ni el FOV, ni la matriz de
+   * proyección, ni las variables CSS.
+   */
+  _updateScope(stepMs) {
+    const objetivo = this._scopeOn ? 1 : 0
+    if (this._scopeT === objetivo) return
+    const paso = SCOPE.transitionMs > 0 ? stepMs / SCOPE.transitionMs : 1
+    const t = objetivo > this._scopeT
+      ? Math.min(objetivo, this._scopeT + paso)
+      : Math.max(objetivo, this._scopeT - paso)
+    this._scopeT = t
+    this.scope?.set(t)
+    const fovMirilla = this.weapon.scope?.fov ?? CAMERA.fov
+    this.camera.fov = CAMERA.fov + (fovMirilla - CAMERA.fov) * t
+    this.camera.updateProjectionMatrix()
+    this._aplicarSensibilidad()
+  }
+
+  /**
+   * **La sensibilidad vigente sale de un solo sitio.** Con la mirilla a medio
+   * poner se interpola entre las dos, porque el encuadre también está a medio
+   * camino: cambiarla de golpe en el instante del clic es un tirón justo en el
+   * gesto que se hace para afinar.
+   */
+  _aplicarSensibilidad() {
+    const t = this._scopeT
+    this.controls.setSensitivity(this._sensNormal + (this._sensMirilla - this._sensNormal) * t)
+  }
+
   _onMouseDown(event) {
     /**
      * **El clic derecho pone y quita el supresor del arma que llevas**
@@ -1300,7 +1386,15 @@ export class Engine {
     if (event.button === 2) {
       event.preventDefault()
       if (!this.isLocked || this.phase !== PHASE.RUNNING) return
-      this._alternarSupresor()
+      /**
+       * **Y desde la vuelta 70 también pone y quita la mirilla**, en las armas
+       * que la tienen. No son dos gestos peleándose por el mismo botón: el clic
+       * derecho es «la segunda función del arma que llevas», y un arma tiene
+       * una u otra. La Scout no admite supresor y sí mirilla, así que la
+       * decisión la toma el dato del arma y no un modo.
+       */
+      if (this.weapon.scope) this._alternarMirilla()
+      else this._alternarSupresor()
       return
     }
     if (!this._isBind('shoot', event)) return
@@ -1782,6 +1876,7 @@ export class Engine {
 
   /** Abatido: se congela al jugador y arranca la cuenta de reaparición. */
   _downPlayer() {
+    this._ponerMirilla(false)
     // **En red la muerte ya la ha decidido el servidor**: `status` no lleva la
     // cuenta de nada y llamarle aquí arrancaría una reaparición local que iría
     // por su lado. Lo demás —soltar el gatillo, cancelar la recarga— sí es del
@@ -2355,7 +2450,7 @@ export class Engine {
     playWeaponShot(this.weaponKey, this.suppressorEnabled)
     if (hit) {
       this.hits += 1
-      const { killed } = this.targets.applyHit(hit, this.gameTime)
+      const { killed } = this.targets.applyHit(hit, this.gameTime, this.weaponKey)
       if (killed) {
         this.kills += 1
         // Una baja perdona parte de la espera, si es que hay algo que perdonar.
@@ -2496,6 +2591,9 @@ export class Engine {
     if (this.enRed) {
       this.controls.enabled = false
       this._releaseTrigger()
+      // Y se baja la mirilla, que es lo mismo que soltar el gatillo: con el
+      // ratón suelto estás en un menú, y el menú no se mira por un visor.
+      this._ponerMirilla(false)
       // **Se desconecta el teclado, no se apaga el movimiento.** El servidor
       // sigue ejecutando las entradas de este jugador pase lo que pase, así que
       // el cliente tiene que seguir prediciéndolas: apagar `movement` pararía
@@ -2524,6 +2622,14 @@ export class Engine {
   _suspend() {
     this.controls.enabled = false
     this._releaseTrigger()
+    // Y se baja la mirilla: el menú no se mira por un visor, y la transición
+    // corre con el reloj del mundo, que en pausa está parado.
+    this._ponerMirilla(false)
+    this._scopeT = 0
+    this.scope?.set(0)
+    this.camera.fov = CAMERA.fov
+    this.camera.updateProjectionMatrix()
+    this._aplicarSensibilidad()
     this.movement.setEnabled(false)
     if (this.phase === PHASE.RUNNING) this._setPhase(PHASE.PAUSED)
   }
@@ -2685,6 +2791,7 @@ export class Engine {
     // El reloj del mundo avanza aquí y **sólo aquí**: pausar es dejar de
     // sumarle, y con eso se para todo lo que cuelga de él.
     this.gameTime += stepMs
+    this._updateScope(stepMs)
     this._updateReload(this.gameTime)
     this.elapsedMs += stepMs
     // Con explosivo, el reloj de la sesión es su cuenta atrás: la duración

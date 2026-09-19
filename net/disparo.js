@@ -46,9 +46,12 @@ export function direccionDeMira(yaw, pitch, out = _dir) {
  * @param {number} pitch
  * @param {object} cuerpo el del rival, de `cuerpoDeJugador`
  * @param {Array} oclusores geometría del escenario, o vacío
+ * @param {string|null} arma con qué se dispara. Desde la vuelta 70 el daño no
+ *   es sólo de la zona: la Scout mata de una al cuerpo y eso lo declara el arma
+ *   (`damageScale`). Sin ella, el daño es el del modelo de zonas de siempre.
  * @returns {{impacto:boolean, zona:string|null, distancia:number, dano:number, tapado:boolean}}
  */
-export function resolverDisparo(origen, yaw, pitch, cuerpo, oclusores) {
+export function resolverDisparo(origen, yaw, pitch, cuerpo, oclusores, arma = null) {
   const fallo = { impacto: false, zona: null, distancia: 0, dano: 0, tapado: false }
   if (!cuerpo) return fallo
 
@@ -75,7 +78,7 @@ export function resolverDisparo(origen, yaw, pitch, cuerpo, oclusores) {
     impacto: true,
     zona: golpe.zone,
     distancia: golpe.distance,
-    dano: zoneDamage(golpe.zone),
+    dano: zoneDamage(golpe.zone, arma),
     tapado: false,
   }
 }

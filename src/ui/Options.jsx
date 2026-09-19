@@ -315,6 +315,21 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
         editable
       />
 
+      {/*
+        **La sensibilidad con mirilla es suya, no un múltiplo de la otra**
+        (vuelta 70). Apuntar por un visor es un gesto distinto y el jugador
+        querrá ir más fino sin tocar la de siempre; derivarla de los aumentos le
+        quitaría esa decisión. De fábrica valen lo mismo, así que quien no la
+        toque no nota nada nuevo.
+      */}
+      <SliderRow
+        id="opt-scope-sensitivity"
+        setting="scopeSensitivity"
+        value={settings.scopeSensitivity}
+        onChange={onChange}
+        editable
+      />
+
       <ScenarioRow value={settings.scenario} onChange={onChange} />
 
       <SegmentedRow

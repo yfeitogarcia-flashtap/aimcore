@@ -68,6 +68,7 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Puntuación | `src/game/scoring.js` | Variables normalizadas, media ponderada y estrellas. |
 | Transición | `src/game/transition.js` | **Módulo sustituible entero.** Contrato único: `run(build)` tapa la escena, llama a `build()` y destapa. Nada más del motor sabe qué forma tiene. |
 | React | `src/App.jsx`, `src/ui/` | Sólo conoce la *fase* (inicio / juego / pausa / resumen) y el resumen final. |
+| Mirilla | `src/game/scope.js` | La lente del francotirador: negro alrededor, cruceta fina y punto rojo. **Del motor, con su propia hoja de estilos**, para que salga igual en los dos modos. |
 | Silueta del arma | `src/ui/weaponSilhouette.js` | Qué trazado toca —con supresor es otra foto— y el SVG como texto. **Sin React, para que lo usen los dos modos.** |
 | Armería | `src/ui/Armoury.jsx` | Panel de equipo (tecla B): silueta, ficha y «Equipar» por arma. Escribe en el store de ajustes, como opciones. |
 | HUD | `src/ui/Hud.jsx` | Se actualiza **imperativamente por refs** desde el bucle. Cero `setState` por frame. |
@@ -1458,6 +1459,66 @@ Y dos cosas que **no** se tocan al calibrar esto:
   rotación igual que lo hace el ratón, así que no hay ningún «controlado» que se
   fije: compensar bien en la bala 14 no compra la 19. Si alguna vez aparece un
   flag de «el jugador va compensando», es este fallo por otra puerta.
+
+**El daño es de la zona **y** del arma, y lo dice una sola función** (vuelta
+70). Hasta la Scout las tres armas pegaban igual y estaba escrito aquí que un
+número de daño por arma sería inventarse un dato; con un fusil de francotirador
+que mata de un tiro al cuerpo, el dato existe. El modelo de zonas sigue diciendo
+la **forma** —cabeza 100, torso 50, piernas 34— y `WEAPONS[x].damageScale` dice
+cuánto vale una bala de ésa. Cuatro reglas:
+
+- **`zoneDamage(zona, arma)` es el único sitio donde se multiplica**, y la
+  llaman los cuatro que reparten daño: el disparo del duelo (`net/disparo.js`),
+  el fuego enemigo, los muñecos del entrenamiento (`targets.applyHit`) **y la
+  ficha de la armería**. Un segundo cálculo en el panel es una tienda que
+  promete un número y unas balas que quitan otro.
+- **La cabeza no se escala nunca**, igual que `ENEMY.bodyDamageScale` tampoco la
+  toca: vale 100 de 100 y de ahí cuelga la regla del casco —el primero lo rompe
+  y el siguiente mata—. Escalarla dejaría el casco en papel con unas armas y en
+  muro con otras.
+- **Sin el campo vale 1.** Las tres de siempre no declaran nada, así que no se
+  mueve ni un punto de lo calibrado: medido, Rift 50/100 antes y después.
+- **Y un muñeco es un blanco con las mismas zonas que un jugador**, así que se
+  cae de un tiro igual. Si una bala mata a una persona y le hace cosquillas a un
+  muñeco, hay dos escaleras de daño.
+
+Medido con la Scout (×2.2 → 110 al torso): **una bala al cuerpo sin chaleco, dos
+con él, una a la cabeza** —dos si hay casco, porque el primero lo rompe—, tres a
+las piernas con chaleco. Con la Rift siguen haciendo falta tres.
+
+**La mirilla ampliada vive en el motor, y el clic derecho es «la segunda función
+del arma»** (vuelta 70). Es la primera del juego y hoy sólo la tiene la Scout,
+que la declara con su bloque `scope`. Cinco cosas:
+
+- **No son dos gestos peleándose por un botón.** El clic derecho pone el
+  supresor en las armas que lo admiten y la mirilla en las que la tienen, y
+  ningún arma tiene las dos: la Scout no admite supresor. Lo decide el dato del
+  arma, no un modo.
+- **La lente la dibuja `src/game/scope.js`, que es del motor**, así que sale en
+  los dos modos por la convención de la 63 — y trae **su propia hoja de
+  estilos**, inyectada una vez, porque las dos páginas tienen CSS distinto y un
+  bloque copiado en cada una es la misma mirilla escrita dos veces. Lo único que
+  no hace es esconder la mira de la página: cada una tiene la suya y el motor
+  avisa por `onScope`, que es una **pulsación** y no un valor por frame.
+- **La transición va en el paso de mundo**, no en el frame: 140 ms en cualquier
+  monitor (medido: 150 / 145.8 / 141.7 ms a 60 / 144 / 240 Hz, que es el dato
+  más lo que sobra de un paso). Y de ese mismo número cuelgan las **tres** cosas
+  —lente, encuadre y sensibilidad—, así que no pueden quedarse a medio camino la
+  una de la otra. 140 ms es lo que hace falta para que un *quickscope* siga
+  siendo un gesto.
+- **El FOV lo escribe sólo `_updateScope`.** Dos sitios escribiendo el encuadre
+  es una cámara que se queda a medias el día que uno no se entere de un cambio
+  de arma.
+- **Y la sensibilidad sale de un solo camino** (`_aplicarSensibilidad`).
+  `_applySettings` escribía directamente en los controles, y eso, con la mirilla
+  puesta, devolvía la de a pelo **en cuanto alguien tocara cualquier opción**.
+  `scopeSensitivity` es un ajuste propio y no un múltiplo de la otra ni algo
+  derivado de los aumentos: apuntar por un visor es un gesto distinto, y
+  derivarlo le quitaría la decisión al jugador. De fábrica valen lo mismo.
+
+Se baja sola al cambiar de arma, al pausar, al morir y al soltar el ratón. En
+pausa se baja **de golpe** y no interpolando, porque el reloj del mundo está
+parado y la transición cuelga de él.
 
 **Un arma pesa, y el peso lo traduce una sola función.** Cada entrada de
 `WEAPONS` declara `weight` en kilos y `weaponSpeedFactor` dice cuánto frena: peso
@@ -2908,6 +2969,14 @@ con sonido propio.
 | Pulse | secundaria (tecla **2**, siempre) | semi | 500 | 18 | 1200 ms | sí | 1.1 kg | 6.50 u/s |
 | Rift | principal (tecla **1**) | auto | 600 | 30 | 2300 ms | sí | 3.6 kg | 5.88 u/s |
 | Volt | principal (tecla **1**) | auto | 800 | 25 | 1800 ms | sí | 2.6 kg | 6.14 u/s |
+| Scout | principal (tecla **1**) | semi | 48 | 10 | 2600 ms | **no** | 3.2 kg | 5.98 u/s |
+
+**La Scout** (vuelta 70) es el primer **rifle de francotirador**: una bala al
+cuerpo mata a quien no lleve chaleco (110 de daño, `damageScale: 2.2`), dos con
+chaleco, una a la cabeza. Trae la **mirilla ampliada** del juego —clic derecho,
+22° de encuadre, 140 ms de transición— y **no admite silenciador**, que es lo
+que deja ese clic libre. En la tienda del duelo va en *Francotirador*
+(categoría 5), a 3100.
 
 Se llamaban Scalar-2, Axis-7 y Vertex-9 hasta la vuelta 41: el renombrado no tocó
 ni una estadística, y un ajuste guardado con el nombre viejo se traduce al nuevo
@@ -3070,13 +3139,16 @@ la que sale**, modo y carácter, marca de **en la mano**, el botón **Equipar**,
 **casilla verde del silenciador** y las estadísticas puestas, con barra
 comparativa contra el arsenal en cadencia, cargador y peso: daño (el modelo de
 zonas, igual para las tres), cadencia, peso y lo que cuesta en velocidad,
-cargador y recarga, absorción de escudo y objetivo de precisión. La pistola sale
+cargador y recarga, absorción de escudo y objetivo de precisión. **El daño ya no
+es el mismo en las cuatro** (vuelta 70): sale de `zoneDamage`, la misma función
+que resuelve el disparo. La pistola sale
 con su ficha y sin botón de equipar: se lleva siempre. Se cierra con **Escape**,
 con **B** o con su botón, y abrirla **pausa** la sesión igual que Escape. Sin
 precios y sin comprar: no hay economía todavía.
 
 **Opciones** (accesibles antes de empezar y desde la pausa, persistidas):
-escenario, sensibilidad, tipo de diana, **duración de Deathmatch**
+escenario, sensibilidad, **sensibilidad con mirilla**, tipo de diana,
+**duración de Deathmatch**
 (sin límite / 3 / 5 / 10 minutos), tamaño de diana, distancia de spawn, cadencia
 de aparición, dianas simultáneas, límite de FPS, **audio espacial**, mensajes de
 ayuda, **dificultad de los muñecos**,

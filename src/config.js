@@ -114,6 +114,12 @@ export const SESSION_DURATION_S = 30
 
 /** Cámara. FOV vertical; a 16:9 equivale a ~103° horizontales (referencia FPS). */
 export const CAMERA = {
+  /**
+   * El encuadre normal. Con mirilla se baja al `scope.fov` del arma y se vuelve
+   * a subir aquí, interpolando — y lo escribe **sólo** el motor, en
+   * `_updateScope`: dos sitios escribiendo el FOV es una cámara que se queda a
+   * medio camino el día que uno de los dos no se entere de un cambio de arma.
+   */
   fov: 71,
   near: 0.1,
   far: 200,
@@ -123,6 +129,42 @@ export const CAMERA = {
  * Mira. `degreesPerCount` es la convención de los FPS clásicos (0.022°/count),
  * así que `sensitivity` se puede comparar de tú a tú con la de otros juegos.
  */
+/**
+ * **La mirilla ampliada** (vuelta 70), hoy exclusiva de los rifles de
+ * francotirador: el arma la pide con su bloque `scope` y aquí está lo que es
+ * igual para todas.
+ *
+ * Es la **primera y única** del juego, y por eso el interruptor no es un modo
+ * aparte: es el **clic derecho**, el mismo gesto que pone y quita el supresor.
+ * Un arma tiene una segunda función o no la tiene, y cuál es lo dice el arma —
+ * la Scout no admite supresor y sí mirilla, así que el gesto no se pisa nunca.
+ */
+export const SCOPE = {
+  /**
+   * **Cuánto dura la transición**, en ms. No es instantánea a propósito —un
+   * corte seco se lee como un fallo de dibujado— y no puede ser lenta: 140 ms
+   * es lo que hace falta para que un *quickscope* asomándose siga siendo un
+   * gesto y no una espera. Se anima **por paso de mundo**, así que dura lo
+   * mismo en cualquier monitor.
+   */
+  transitionMs: 140,
+  /**
+   * Grosor de la cruceta y del punto, en píxeles de pantalla. Fina a propósito:
+   * lo que se apunta con una mirilla es un punto, y una cruz gruesa tapa
+   * exactamente lo que se está mirando.
+   */
+  lineaPx: 1,
+  puntoPx: 2,
+  /** Hueco central de la cruceta: el punto rojo no puede quedar dentro de una X. */
+  huecoPx: 9,
+  /**
+   * Radio de la lente, en porcentaje del lado corto de la pantalla. Lo de fuera
+   * es negro macizo — que es lo que hace que apuntar **cueste** visión
+   * periférica, y lo que equilibra que una bala mate de un tiro.
+   */
+  radioVmin: 38,
+}
+
 export const LOOK = {
   sensitivity: 1.5,
   degreesPerCount: 0.022,
@@ -612,6 +654,94 @@ export const WEAPONS = {
      * su carácter: sube poco y no se está quieta. Punto de partida.
      */
     recoilLoopFrom: 11,
+  },
+  /**
+   * **La Scout: el primer rifle de francotirador** (vuelta 70).
+   *
+   * Es la primera arma que necesita dos cosas que el arsenal no tenía: **daño
+   * propio** —una bala al cuerpo mata a quien no lleve chaleco— y una **mirilla
+   * ampliada**. Las dos están declaradas aquí abajo y las dos son datos del
+   * arma, no ramas en quien dispara.
+   */
+  'scout': {
+    label: 'Scout',
+    character: 'francotirador',
+    slot: 'primary',
+    /**
+     * De cerrojo: un disparo por clic. `semi` es exactamente eso — lo que
+     * separa un cerrojo de una pistola aquí es la cadencia, no el modo.
+     */
+    mode: 'semi',
+    /** 48 RPM = 1250 ms entre disparos. Fallar cuesta un segundo y cuarto. */
+    rpm: 48,
+    magazine: 10,
+    reloadMs: 2600,
+    /**
+     * **Sin silenciador, y por eso el clic derecho es suyo para otra cosa.** No
+     * hay `ghost-scout.png` y no tiene que haberlo: el trazado de siluetas
+     * deriva las variantes de este mismo campo.
+     */
+    supportsSuppressor: false,
+    /** Un arma de un disparo se juzga contra acertar: el listón sube. */
+    precisionTarget: 0.75,
+    /**
+     * Lo que se come el chaleco. Más bajo que el de la Volt a propósito: un
+     * chaleco tiene que **cambiar el número de balas** que hacen falta, no
+     * volverlas inofensivas — con 0.45 son dos al cuerpo con chaleco y una sin
+     * él, que es exactamente lo que se pidió.
+     */
+    shieldAbsorb: 0.45,
+    /**
+     * **Un fusil de francotirador ligero.** 3.2 kg → 5.98 u/s, entre la Volt
+     * (6.14) y la Rift (5.88): es un arma de mapa abierto, y un sniper que no
+     * se puede mover no reposiciona.
+     */
+    weight: 3.2,
+    /**
+     * **El daño propio del arma** (vuelta 70). El modelo de zonas sigue
+     * diciendo la **forma** del daño —cabeza 100, torso 50, piernas 34— y esto
+     * dice cuánto vale una bala de ésta: 50 × 2.2 = **110 al torso**, que es
+     * más de una vida.
+     *
+     * **No toca la cabeza**, por la misma razón que `ENEMY.bodyDamageScale` no
+     * la toca: la cabeza vale 100 de 100 y de ahí cuelga la regla del casco.
+     * Escalarla convertiría el casco en papel con unas armas y en muro con
+     * otras.
+     *
+     * Con chaleco (50 de escudo) y 0.45 de absorción: la primera bala deja 60
+     * de daño a la vida y la segunda mata. Sin chaleco, la primera ya mata. A
+     * las piernas (34 × 2.2 = 74.8) hacen falta dos sin chaleco y tres con él.
+     * Las otras tres armas no declaran este campo y valen 1, así que **nada de
+     * lo calibrado hasta hoy se mueve**.
+     */
+    damageScale: 2.2,
+    /**
+     * **La mirilla.** Que exista y a qué encuadre lleva es del arma; cómo se
+     * dibuja y cuánto tarda, de `SCOPE`. Un arma sin este bloque no tiene
+     * mirilla y su clic derecho sigue siendo el supresor.
+     *
+     * 22° contra los 71 de serie es **3.2 aumentos**. El número sale de lo que
+     * hace falta para que valga la pena: a 40 u —el largo de un mapa— un cuerpo
+     * ocupa 12 px de alto sin mirilla y 39 con ella.
+     */
+    scope: { fov: 22 },
+    /**
+     * **Una patada sola y grande**, no un patrón que se aprende: un cerrojo no
+     * tiene ráfaga que controlar. Sube 2.4° de golpe y el resto del patrón es la
+     * caída, que no se llega a ver porque entre disparo y disparo pasan 1250 ms
+     * y el retroceso se reinicia solo a los `RECOIL_RESET_MS`.
+     */
+    recoil: [
+      [2.4, 0.18],
+      [2.2, -0.16],
+      [2.0, 0.14],
+    ],
+    /**
+     * La cola es su último paso, que es lo que toca cuando el patrón no
+     * describe una ráfaga: si alguien consigue encadenar dos disparos dentro de
+     * la ventana, el segundo empuja como el primero.
+     */
+    recoilLoopFrom: 2,
   },
 }
 
@@ -1356,6 +1486,24 @@ export const SETTINGS = {
     max: 6,
     step: 0.01,
     /** Decimales al mostrar y al redondear el campo numérico. */
+    decimals: 2,
+  },
+  /**
+   * **La sensibilidad con la mirilla puesta**, independiente de la normal
+   * (vuelta 70). No es un multiplicador de la otra ni sale de los aumentos: es
+   * un número propio, porque apuntar con mirilla es un gesto distinto —el
+   * jugador quiere poder ir más fino sin tocar su sensibilidad de siempre— y
+   * derivarlo de los aumentos le quitaría esa decisión.
+   *
+   * De fábrica la misma que la normal, así que quien no la toque no nota nada
+   * nuevo salvo el encuadre.
+   */
+  scopeSensitivity: {
+    label: 'Sensibilidad con mirilla',
+    default: LOOK.sensitivity,
+    min: 0.1,
+    max: 6,
+    step: 0.01,
     decimals: 2,
   },
   scenario: {
@@ -3438,6 +3586,10 @@ export const ECONOMY = {
     { clave: 'pulse', nombre: 'Pulse', tipo: 'arma', ranura: 'secondary', categoria: 1, codigo: 1, precio: 0, deSerie: true, disponible: true },
     { clave: 'volt', nombre: 'Volt', tipo: 'arma', ranura: 'primary', categoria: 3, codigo: 1, precio: 1600, disponible: true },
     { clave: 'rift', nombre: 'Rift', tipo: 'arma', ranura: 'primary', categoria: 4, codigo: 3, precio: 2900, disponible: true },
+    // **La Scout cuesta más que el rifle** porque una bala al cuerpo mata a
+    // quien no lleve chaleco. Y 3100 deja intacta la regla de la ronda 2: con
+    // los 2700 del que pierde no llega, guarde o no los 300 del chaleco.
+    { clave: 'scout', nombre: 'Scout', tipo: 'arma', ranura: 'primary', categoria: 5, codigo: 1, precio: 3100, disponible: true },
     { clave: 'chaleco', nombre: 'Chaleco', tipo: 'equipo', categoria: 6, codigo: 1, precio: 500, disponible: true },
     { clave: 'casco', nombre: 'Casco', tipo: 'equipo', categoria: 6, codigo: 2, precio: 350, disponible: true },
     { clave: 'supresor', nombre: 'Supresor', tipo: 'accesorio', categoria: 8, codigo: 1, precio: 250, disponible: true },

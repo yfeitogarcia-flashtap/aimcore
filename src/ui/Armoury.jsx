@@ -7,6 +7,7 @@ import {
   WEAPONS,
   weaponSpeedFactor,
 } from '../config.js'
+import { zoneDamage } from '../game/player.js'
 import WeaponSilhouette from './WeaponSilhouette.jsx'
 
 /**
@@ -55,14 +56,24 @@ function speedCost(weight) {
 }
 
 /**
- * **El daño no es del arma, es de la zona**, y eso hay que decirlo donde se
- * miran las estadísticas: hoy las tres armas quitan lo mismo y lo que cambia el
- * resultado es dónde aciertes. Enseñar un número de daño por arma sería
- * inventarse un dato que el juego no tiene.
+ * **El daño es de la zona y del arma** (vuelta 70). Hasta la Scout las tres
+ * pegaban igual y aquí se decía justo eso: que lo que cambia el resultado es
+ * dónde aciertes, y que enseñar un número por arma sería inventarse un dato.
+ * Ahora el dato existe —un fusil de francotirador mata de un tiro al cuerpo— y
+ * el que no lo declara sigue valiendo lo de siempre, así que esta fila sale de
+ * `zoneDamage`, que es **la misma función que resuelve el disparo**. Un segundo
+ * cálculo aquí es un panel que promete un número y unas balas que quitan otro.
  */
-const ZONE_DAMAGE = TARGET_TYPES.hitbox.parts
-  .map((part) => `${ZONE_LABELS[part.zone] ?? part.zone} ${part.damage}`)
-  .join(' · ')
+function damageLine(weaponKey) {
+  return TARGET_TYPES.hitbox.parts
+    .map((part) => {
+      const d = zoneDamage(part.zone, weaponKey)
+      // Sin decimales cuando son redondos: «torso 110», no «torso 110.0».
+      const n = Math.round(d * 10) / 10
+      return `${ZONE_LABELS[part.zone] ?? part.zone} ${n}`
+    })
+    .join(' · ')
+}
 
 /**
  * **Los topes de cada barra salen del arsenal, no de un número redondo.** Una
@@ -194,7 +205,7 @@ function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip,
           field="weight"
           amount={weapon.weight}
         />
-        <Stat label="Daño" value={ZONE_DAMAGE} />
+        <Stat label="Daño" value={damageLine(weaponKey)} />
         <Stat
           label="Escudo · precisión"
           value={`absorbe ${Math.round(weapon.shieldAbsorb * 100)}% · objetivo ${Math.round(weapon.precisionTarget * 100)}%`}

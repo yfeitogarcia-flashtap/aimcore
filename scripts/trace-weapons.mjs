@@ -21,6 +21,7 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { boundsOf, buildMask, scalePath, traceToPath } from './lib/trace.mjs'
+import { WEAPONS as ARSENAL_DATA } from '../src/config.js'
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const SOURCE_DIR = resolve(ROOT, 'Reference/Weapons')
@@ -30,9 +31,14 @@ const OUTPUT = resolve(ROOT, 'src/ui/weaponPaths.js')
  * Cada entrada es una silueta a vectorizar.
  *
  * **La convención es `<arma>.png` y `ghost-<arma>.png`**: la segunda es la misma
- * arma con silenciador. Las tres la tienen desde la vuelta 41, y por eso las
- * seis entradas salen de un bucle en vez de escribirse a mano: añadir un arma
- * es añadir su clave a `ARSENAL`, no cuatro líneas aquí.
+ * arma con silenciador.
+ *
+ * **Y la lista sale de `WEAPONS`, no de aquí** (vuelta 70). Escrita a mano eran
+ * dos catálogos del arsenal, y el día que llegó un arma **sin** silenciador —la
+ * Scout— habría sido además un catálogo que miente: quién tiene variante
+ * silenciada lo dice `supportsSuppressor`, que es el mismo campo que mira la
+ * armería y el que valida el saneado. Añadir un arma es añadirla a `WEAPONS` y
+ * dejar su PNG en `Reference/Weapons/`.
  *
  * `matchHeightOf` escala el trazado para que su altura coincida con la de otra:
  * las dos variantes de un arma son la misma arma fotografiada aparte, así que
@@ -40,11 +46,15 @@ const OUTPUT = resolve(ROOT, 'src/ui/weaponPaths.js')
  * **alarga** el arma, no la engorda, y lo que tiene que cuadrar entre las dos
  * fotos es la altura.
  */
-const ARSENAL = ['pulse', 'rift', 'volt']
-const WEAPONS = ARSENAL.flatMap((key) => [
-  { key, file: `${key}.png` },
-  { key: `ghost-${key}`, file: `ghost-${key}.png`, matchHeightOf: key },
-])
+const ARSENAL = Object.keys(ARSENAL_DATA)
+const WEAPONS = ARSENAL.flatMap((key) =>
+  ARSENAL_DATA[key].supportsSuppressor
+    ? [
+        { key, file: `${key}.png` },
+        { key: `ghost-${key}`, file: `ghost-${key}.png`, matchHeightOf: key },
+      ]
+    : [{ key, file: `${key}.png` }],
+)
 
 const traced = {}
 for (const { key, file, matchHeightOf } of WEAPONS) {

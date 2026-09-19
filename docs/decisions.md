@@ -8037,6 +8037,101 @@ que no existe habría sido código sin forma de probarlo.
 
 ---
 
+## Ronda 70 — La Scout, el daño por arma y la primera mirilla
+
+### El dato que no existía y ahora sí
+
+Estaba escrito en dos sitios —en `CLAUDE.md` y en la ficha de la armería— que el
+daño era **de la zona y no del arma**, y que poner un número por arma sería
+inventarse un dato que el juego no tiene. Era cierto mientras las tres pegaban
+igual. Un rifle de francotirador que mata de un tiro al cuerpo **es** ese dato,
+así que la regla cambia, y cambia con cuidado:
+
+- El modelo de zonas sigue diciendo la **forma** del daño (100 / 50 / 34) y el
+  arma dice cuánto vale la suya (`damageScale`). La Scout es ×2.2 → **110 al
+  torso**, más de una vida.
+- **La cabeza no se escala**, por lo mismo que `ENEMY.bodyDamageScale` no la
+  toca desde la 37: vale 100 de 100 y de ahí cuelga la regla del casco.
+- **Sin el campo vale 1**, así que las tres de siempre no se mueven ni un punto.
+  Eso no es una cortesía: es lo que permite añadir un arma sin volver a calibrar
+  lo que ya estaba calibrado.
+- Y la multiplicación vive en **`zoneDamage`**, que es donde ya estaba la tabla.
+  La llaman los cuatro que reparten daño —el duelo, el fuego enemigo, los
+  muñecos del entrenamiento y **la ficha de la armería**—. Lo último importa más
+  de lo que parece: un panel con su propio cálculo es una tienda que promete un
+  número y unas balas que quitan otro.
+
+Medido: una al cuerpo sin chaleco, **dos** con chaleco, una a la cabeza y dos si
+hay casco; tres a las piernas con chaleco. Con la Rift siguen haciendo falta
+tres al cuerpo.
+
+Y un muñeco se cae de un tiro, porque un muñeco es un blanco con las mismas
+zonas que un jugador: `targets.applyHit` pasó a pedir el arma. Si una bala mata
+a una persona y le hace cosquillas a un muñeco, hay dos escaleras de daño.
+
+### El clic derecho no se reparte: lo decide el arma
+
+La mirilla necesitaba un botón y el clic derecho ya tenía dueño —el supresor,
+desde la 64—. La salida no fue un modificador ni una tecla nueva: el clic
+derecho pasa a ser **«la segunda función del arma que llevas»**, y ningún arma
+tiene las dos. La Scout no admite supresor (`supportsSuppressor: false`) y tiene
+mirilla; las otras tres, al revés. Lo decide el dato, no un `if` sobre un modo.
+
+De ahí salió gratis una limpieza que ya tocaba: **`trace-weapons.mjs` derivaba
+el arsenal de una lista escrita a mano**. Con un arma sin variante silenciada
+eso habría sido además un catálogo que miente, así que la lista sale ahora de
+`WEAPONS` y las variantes de `supportsSuppressor` — el mismo campo que mira la
+armería y que valida el saneado.
+
+### Tres cosas que se mueven a la vez, con el reloj del mundo
+
+La lente, el encuadre y la sensibilidad cuelgan del **mismo** número (`_scopeT`),
+que avanza en el paso fijo y no en el frame: 140 ms en cualquier monitor (medido,
+150 / 145.8 / 141.7 ms a 60 / 144 / 240 Hz, que es el dato más el resto de un
+paso). Si cada una fuera por su lado, se quedarían a medio camino la una de la
+otra en la primera pausa.
+
+Dos reglas que salieron de escribirlo:
+
+- **El FOV lo escribe sólo `_updateScope`.** Dos sitios escribiendo el encuadre
+  es una cámara a medias el día que uno no se entere de un cambio de arma. Es la
+  regla del rumbo de la vuelta 66 por otra puerta: sobre un campo manda uno solo.
+- **Y la sensibilidad, sólo `_aplicarSensibilidad`.** `_applySettings` escribía
+  directamente en los controles, así que con la mirilla puesta **tocar
+  cualquier opción** —el volumen, los mensajes de ayuda— devolvía la
+  sensibilidad de a pelo en mitad de un disparo. El banco lo mide a propósito.
+
+### Y la lente es del motor, pero la mira es de la página
+
+`src/game/scope.js` dibuja la lente y **trae su propia hoja de estilos**,
+inyectada una vez: las dos páginas tienen CSS distinto y un bloque copiado en
+cada una es la misma mirilla escrita dos veces, que es exactamente lo que pasó
+con la mira hasta la 67.
+
+Lo que **no** hace es esconder la mira de la página. Se probó: alcanzar desde el
+módulo a `.crosshair` y a `#mira` habría metido en un módulo del juego los
+nombres de los trozos de dos páginas. El motor avisa por `onScope` —una
+**pulsación**, como `onWeapon`, no un valor por frame— y cada página apaga la
+suya con una línea.
+
+### Lo que el arsenal creciendo destapó
+
+Tres bancos daban por sabido que las armas eran tres:
+
+- **La armería se partía en dos filas.** `subgrid` alinea **dentro de una fila de
+  fichas** —que es lo correcto: comparar es mirar la misma altura en las que
+  están una al lado de otra—, así que la cuarta, sola abajo, no cuadraba con
+  nadie. El panel pasa de 780 a 900 px y la columna mínima de 210 a 190: entran
+  las cuatro. El banco afirma ahora lo de siempre **por fila**, que es lo que
+  sobrevive al arsenal siguiente.
+- **`vuelta41` afirmaba el arsenal entero** para probar que renombrar no toca una
+  estadística. Ahora afirma **las tres renombradas**, que es lo que aquella
+  vuelta vino a proteger.
+- Y **`slots39` contaba dos principales**. Cuántas hay es del arsenal; la regla
+  —se derivan de la ranura y la pistola no está— es lo que se guarda.
+
+---
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

@@ -981,6 +981,25 @@ se traduce al nuevo en vez de caer al valor de fábrica.
 | **Pulse** | pistola (**2**) | semi | 500 | 18 | 1.2 s | sí | 1.1 kg | 6.50 u/s | ninguno — se dispara como antes de que hubiera armas |
 | **Rift** | principal (**1**) | auto | 600 | 30 | 2.3 s | sí | 3.6 kg | 5.88 u/s | rifle: subida vertical marcada los primeros ocho disparos, luego deriva a la izquierda |
 | **Volt** | principal (**1**) | auto | 800 | 25 | 1.8 s | sí | 2.6 kg | 6.14 u/s | SMG: patada más inmediata pero la mitad de techo vertical, y más bamboleo lateral que vertical |
+| **Scout** | principal (**1**) | semi | 48 | 10 | 2.6 s | **no** | 3.2 kg | 5.98 u/s | francotirador: una patada sola y grande, 2.4° de golpe |
+
+### La Scout, y la mirilla
+
+**Un rifle de francotirador** (vuelta 70). Una bala al cuerpo mata a quien no
+lleve chaleco; con chaleco hacen falta dos, y a la cabeza siempre una —salvo con
+casco, que se lleva la primera—. A cambio dispara cada segundo y cuarto: fallar
+cuesta.
+
+**Clic derecho: la mirilla.** Fondo negro, cruceta fina y punto rojo en el
+centro, con un encuadre de 22° contra los 71 de siempre — más de tres aumentos.
+Se pone y se quita con el mismo botón y tarda 140 ms, que es lo justo para que
+asomarse, apuntar y disparar siga siendo un gesto. La Scout **no lleva
+silenciador**, y por eso el clic derecho es suyo para esto: en las demás sigue
+siendo el supresor.
+
+**La sensibilidad con mirilla es suya**, y se ajusta en opciones. De fábrica es
+la misma que la normal; bajarla es lo que hace que el tercer aumento sirva para
+afinar y no para dar bandazos.
 
 ### El peso: lo que cuesta llevar el arma
 
