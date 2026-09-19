@@ -3525,6 +3525,35 @@ compra en la tienda del 1v1, y en el mapa que reparte (vuelta 72) tampoco.
 de `docs/propuestas/01-escenario-cobertura.md`. No los construyas hasta que el
 Plano A esté validado jugando.
 
+**Y el editor visual de mapas** (vuelta 74), diseñado en
+`docs/propuestas/05-editor-de-mapas.md` y **sin una línea construida**. Lo que
+hay que saber antes de meterle mano, porque es lo que decide su alcance:
+
+- **La colisión es AABB**, y el editor no puede poder construir algo contra lo
+  que el motor no sepa chocar. Rotación libre en Y, tejados sólidos y triángulos
+  que se chocan **no existen hoy** —`resolveAxis` resuelve un eje cada vez
+  contra `minX/maxX/minZ/maxZ/bottom/top`, sin orientación en ningún sitio— y
+  una caja girada se dibujaría girada, pararía las balas bien y se chocaría sin
+  girar. Giros de 90° sí son gratis: son intercambiar ancho y fondo.
+- **El primer ventanal es el día del que habla la nota de la vuelta 69**, y
+  ojo con la letra pequeña: `base` **ya la usan tres piezas** —los tres
+  parapetos del Balcón— pero las tres se apoyan sobre la plataforma maciza, que
+  ocupa su huella entera de 0 a 2.6. Lo que no existe es una pieza con **aire
+  debajo**, y ése es el dintel de un vano. Es lo que obliga a escribir la
+  comprobación de no levantarse debajo de algo, y `slide69` [9] se pondrá rojo,
+  que es para lo que está.
+- **Y el eje de todo es que un escenario pueda no venir de una clave.**
+  `Scenario`, `scenarioRoom` y `fisicaDeEscenario` sólo saben leer una clave de
+  `SCENARIOS`, y un mapa recién dibujado no está en ningún catálogo. De esa
+  misma pieza sale la respuesta a cómo se publica: **el fichero es el mapa**, no
+  hay un paso de publicación aparte.
+
+Lo que **no** entra ahí y conviene no dejarse arrastrar: la duración de una
+ronda, cuántas hay y los segundos de fase de compra **no son del mapa** —viven
+en `ROUNDS` y se eligen por sala al crearla— así que van en la página del duelo,
+no en el editor. Lo que sí es del mapa es su física y su dotación, que ya lo
+son desde la 72.
+
 **El deslizamiento ya no está aquí: se construyó en la vuelta 69.** El diseño
 sigue en `docs/propuestas/04-deslizamiento.md` y lo que hay que saber para
 tocarlo, en las convenciones. Se entra corriendo y pulsando agacharse —el gesto

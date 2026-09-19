@@ -347,8 +347,13 @@ Lo que falta no es el formato, es todo lo demás:
   mundo es la condición de todo el netcode, no un detalle.
 - **Moderación.** Contenido de terceros. Es una decisión de producto antes que de
   código.
-- **Un editor**, o no. Hoy un mapa se escribe a mano en un fichero de datos, y
-  eso ya es utilizable por alguien técnico.
+- **Un editor**, que desde la vuelta 74 está **diseñado y sin construir**:
+  `docs/propuestas/05-editor-de-mapas.md`. Y ahí está la separación que importa:
+  un editor **no necesita nada de esta fase**. Es una herramienta de autor que
+  escribe un fichero en el build, así que no pide ni identidad, ni
+  almacenamiento, ni moderación, ni que un mapa viaje. Lo que esta fase añade
+  encima de un editor es **distribución**, que es todo lo demás de esta lista.
+  Se pueden hacer en cualquier orden, y el editor primero es mucho más barato.
 - **Y qué puede declarar un mapa además de geometría.** Desde la vuelta 72 un
   escenario trae su **física** (gravedad, salto, techo del aire) y su
   **dotación** (con qué sale cada uno si en él no se compra). Para un mapa del
