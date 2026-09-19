@@ -70,6 +70,25 @@ body {
   -webkit-user-select: none;
 }
 
+/**
+ * **La capa de juego lleva su propia tipografía** (vuelta 73).
+ *
+ * El HUD es el mismo componente en los dos modos, pero las dos páginas no
+ * tienen el mismo `body`: la del duelo declara `font: 12px/1.5` para su menú,
+ * su tienda y sus números de F3, y eso se colaba dentro del HUD. Los anchos y
+ * los márgenes salían clavados —201 px de bloque de vida, a 34 del borde— y el
+ * alto no: 44 px contra 40, y el bloque de FPS 21 contra 16. Una diferencia que
+ * nadie decidió, que es exactamente lo que la vuelta 63 llama fallo de
+ * producto, sólo que de cuatro píxeles.
+ *
+ * El tamaño es el del navegador, que es el que el juego ha usado siempre por no
+ * declarar ninguno. Se escribe aquí —donde vive la tipografía del juego— y no
+ * en la página del duelo, para que no haya dos.
+ */
+.hud-layer {
+  font: 16px / normal var(--font-mono);
+}
+
 .app {
   position: relative;
   width: 100%;
@@ -677,6 +696,33 @@ body {
 .crosshair--melee .crosshair__bar--bottom { top: calc(var(--crosshair-gap) * 2.2); }
 .crosshair--melee .crosshair__bar--left { left: calc((var(--crosshair-gap) * 2.2 + var(--crosshair-length)) * -1); }
 .crosshair--melee .crosshair__bar--right { left: calc(var(--crosshair-gap) * 2.2); }
+
+/**
+ * **Y por la espalda es otra forma, no otro color** (vuelta 73).
+ *
+ * Un golpe fuerte por detrás mata lleve lo que lleve el otro, así que es la
+ * diferencia más grande que hay entre dos golpes — y es lo único que la
+ * pantalla puede decir **antes** de darlo. La mira ya estaba abierta y verde
+ * por estar en rango; lo que se añade es que **gira 45°**. Una cruz y una X no
+ * se confunden ni de reojo, que es todo lo que se le pide a una señal que hay
+ * que leer en una décima.
+ *
+ * **Y no se toca el anillo**, aunque la marca de una baja sí lo use (vuelta
+ * 52): ese anillo es el del daño recibido, lo anima `Crosshair.damage` con la
+ * API de animaciones y encenderlo desde CSS sería dos dueños para la misma
+ * propiedad — el fallo de la cuña de daño de la vuelta 60, que tardó dos
+ * vueltas en verse.
+ *
+ * Por forma y no por tono porque en esta paleta todos los tonos significan ya
+ * algo (vuelta 40) y el verde es el de «aquí llegas»: teñirlo de otra cosa
+ * diría que es otra cosa, y es la misma llevada al extremo.
+ *
+ * El giro va en el contenedor, así que la mira sigue siendo **una sola**: no
+ * hay cuatro trazos nuevos que puedan quedarse desalineados de los de al lado.
+ */
+.crosshair--backstab {
+  transform: rotate(45deg);
+}
 
 /* Sin cargador que contar no hay barra que separar (el cuchillo, vuelta 71). */
 .hud__ammo-sep--oculta { visibility: hidden; }
@@ -1772,12 +1818,32 @@ body {
   color: var(--text-muted);
 }
 
+/**
+ * **Con qué se pone el silenciador** (vuelta 73). Va donde estaba su precio en
+ * la tienda —que era lo que estaba mal: no cuesta nada— y ocupa el hueco de la
+ * casilla en el modo de consulta. Pequeño y apagado: es una instrucción, no un
+ * número que se compare con el de la ficha de al lado.
+ */
+.armoury__hint {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  line-height: 1.45;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  text-align: center;
+}
+
 /* Y el de los interruptores: hoy sólo está el del silenciador, y un arma que no
    lo admita deja su hueco vacío en lugar de subir sus estadísticas. */
 .armoury__switches {
   display: flex;
+  /* **En columna desde la vuelta 73**: la casilla y la nota de con qué se pone
+     el silenciador son dos renglones, no dos columnas — en fila, la nota se
+     partía en tres líneas contra el borde de la ficha. */
+  flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 4px;
   min-height: 22px;
   width: 100%;
 }

@@ -45,8 +45,9 @@
 
 import * as THREE from 'three'
 import { CSS3DSprite } from 'three/examples/jsm/renderers/CSS3DRenderer.js'
-import { COLORS, ENEMY, MARKERS, TARGET_TYPES, WEAPONS } from '../config.js'
+import { COLORS, ENEMY, MARKERS, MELEE_WEAPON, TARGET_TYPES, WEAPONS } from '../config.js'
 import { hasLineOfSight } from './sight.js'
+import { esPorLaEspalda } from './player.js'
 import { WEAPON_PATHS } from '../ui/weaponPaths.js'
 
 /** Altura del muñeco en unidades de su radio, igual que en `enemyFire.js`. */
@@ -112,6 +113,12 @@ function compassGeometry(height) {
   // orientación, independiente del claro/oscuro de la cola: una es de forma y la
   // otra de tono, y se leen en sitios distintos —la forma de perfil, el tono de
   // frente—.
+  //
+  // **Y una tercera se probó y no entró** (vuelta 73): una punta de flecha, con
+  // barbos y muesca, para que la silueta cambiase entre frente y espalda. Medida
+  // contra esta cuña daba +16% de área y **no** mejoraba nada la discriminación,
+  // y encima costaba tono a corta distancia. El porqué completo, en
+  // `MARKERS.compass`.
   const noseY = h / 2 - MARKERS.compass.noseDrop * h
   const positions = [
     // Cola: cuatro esquinas.
@@ -254,6 +261,31 @@ export class DummyMarkers {
       polygonOffsetUnits: 1,
     })
     /**
+     * **Y la cola encendida: «le estás viendo la espalda»** (vuelta 73).
+     *
+     * Es la única cosa que dice este marcador que no es *hacia dónde mira* sino
+     * *qué puedes hacerle*, y por eso es lo único binario que tiene. El arco es
+     * el mismo que decide la puñalada instantánea y sale de la misma función
+     * (`esPorLaEspalda`), así que la brújula no puede prometer una espalda que
+     * el servidor no dé por buena.
+     *
+     * **Se enciende, no se apaga.** Sólo cambia la tapa de la cola —de
+     * `tailShade` a `backShade`—, que es justo lo que se ve cuando estás detrás:
+     * fuera del arco el marcador queda exactamente como estaba desde la vuelta
+     * 40, y dentro hay más luz. La primera versión lo hacía al revés, dejando
+     * las caras translúcidas fuera del arco, y era un error de dirección: se
+     * pedía que se leyera mejor.
+     */
+    this._compassTailBackMaterial = new THREE.MeshBasicMaterial({
+      color: new THREE.Color(COLORS.action).multiplyScalar(MARKERS.compass.backShade),
+      side: THREE.DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: 1,
+      polygonOffsetUnits: 1,
+    })
+    /** El arco de espalda es el del cuchillo: uno, y salido del dato del arma. */
+    this._arcoEspaldaDeg = WEAPONS[MELEE_WEAPON]?.melee?.backArcDeg ?? 120
+    /**
      * **El contorno negro de la brújula.** La misma técnica que las aristas de
      * la cobertura y del marcador del explosivo: `EdgesGeometry` sobre la propia
      * malla y `LineSegments` encima, o sea el mismo volumen dibujado dos veces y
@@ -279,6 +311,7 @@ export class DummyMarkers {
     this._materials = [
       this._compassMaterial,
       this._compassTailMaterial,
+      this._compassTailBackMaterial,
       this._compassEdgeMaterial,
       this._alertMaterial,
       this._threatMaterial,
@@ -379,6 +412,8 @@ export class DummyMarkers {
          */
         sightClear: false,
         nextSightAt: 0,
+        /** Si le estás viendo la espalda. Arranca en `false`, que es lo normal. */
+        detras: false,
         /** Lo último que se escribió en el DOM, para no tocarlo por frame. */
         shownNick: null,
         shownWeapon: null,
@@ -428,6 +463,28 @@ export class DummyMarkers {
       slot.group.visible = true
       slot.group.position.copy(position)
       slot.needle.rotation.y = instance.facing
+      /**
+       * **Y si le estás viendo la espalda, la brújula se llena** (vuelta 73).
+       * El rumbo del marcador mira a +Z, así que su vector de frente es
+       * `(sin, cos)` — la conversión vive donde está la convención, que es lo
+       * que la vuelta 71 dejó escrito para no repetir el error de 180°.
+       *
+       * Es un coseno por muñeco y por frame: ni un rayo, ni una raíz de más
+       * que las que ya hay. No pasa por el reparto de presupuesto porque no
+       * gasta nada de lo que ese reparto protege.
+       */
+      const detras = esPorLaEspalda(
+        camera.position.x, camera.position.z,
+        position.x, position.z,
+        Math.sin(instance.facing), Math.cos(instance.facing),
+        this._arcoEspaldaDeg,
+      )
+      if (detras !== slot.detras) {
+        slot.detras = detras
+        slot.needle.material = detras
+          ? [this._compassMaterial, this._compassTailBackMaterial]
+          : [this._compassMaterial, this._compassTailMaterial]
+      }
 
       // Tamaño aparente: más allá de la distancia de referencia el marcador
       // crece con ella y deja de encoger en pantalla.

@@ -68,6 +68,7 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Puntuación | `src/game/scoring.js` | Variables normalizadas, media ponderada y estrellas. |
 | Transición | `src/game/transition.js` | **Módulo sustituible entero.** Contrato único: `run(build)` tapa la escena, llama a `build()` y destapa. Nada más del motor sabe qué forma tiene. |
 | React | `src/App.jsx`, `src/ui/` | Sólo conoce la *fase* (inicio / juego / pausa / resumen) y el resumen final. |
+| Capa del duelo | `src/ui/duelo.jsx` | Monta **los mismos** `Hud`, `Crosshair`, `Options` y `Armoury` en la página del 1v1 y los publica como un asa imperativa. No dibuja nada propio (vuelta 73). |
 | Tajo | `src/game/slash.js` | El destello de un golpe de cuchillo. **Del motor, con su propia hoja de estilos**: sin arma en la mano, la pantalla es lo único que cuenta el golpe. |
 | Mirilla | `src/game/scope.js` | La lente del francotirador: negro alrededor, cruceta fina y punto rojo. **Del motor, con su propia hoja de estilos**, para que salga igual en los dos modos. |
 | Silueta del arma | `src/ui/weaponSilhouette.js` | Qué trazado toca —con supresor es otra foto— y el SVG como texto. **Sin React, para que lo usen los dos modos.** |
@@ -125,6 +126,39 @@ Hoy hay un hueco pendiente y va en este sentido, no en el otro: **las pisadas
 existen sólo en el duelo** (`_pisadasDelRival`). El día que un muñeco haga ruido
 al patrullar, sale de ahí —`playFootstep` y el emisor ya son genéricos— y no de
 un segundo sistema de pasos.
+
+**Y el duelo ya no tiene HUD propio: monta el del juego** (vuelta 73). La página
+del 1v1 llevaba desde la vuelta 45 con su vida, su bloque de arma, su cartel de
+abatido y su cuña de daño escritos a mano, y el precio de esa copia se vio
+entero jugando — **cinco cosas, y ninguna era una decisión**: no había chaleco
+en pantalla aunque se acabara de comprar, ni casco, ni marca de Vektor, ni ficha
+de armas, y **no había forma de abrir las opciones sin salir de la partida** (de
+ahí que la sensibilidad de la mirilla, que existe desde la 70, fuera
+inalcanzable).
+
+`src/ui/duelo.jsx` monta `Hud`, `Crosshair`, `Options` y `Armoury` —los
+componentes del entrenamiento— en la página del duelo, y las cuatro funciones de
+pintar que había allí se borraron. **No hizo falta cambiar ni un campo del
+motor**: `stats` ya traía `shieldSegments`, `helmet` y `charges` desde la 64, y
+lo que faltaba era quién los dibujase. Tres reglas:
+
+- **Lo que el duelo no tiene se declara, no se esconde.** Aciertos y fallos,
+  estrellas y marcador de sesión son del entrenamiento: el 1v1 no tiene
+  puntuación (vuelta 45) y lleva su propio marcador de ronda. Va con una bandera
+  (`<Hud duelo>`) y no con un segundo componente.
+- **La tipografía del juego se escribe una vez** (`.hud-layer`, en
+  `styles.css`). Montado el HUD, los anchos salían clavados y los altos no —44
+  px de bloque de vida contra 40— porque el `body` de la página del duelo
+  declara `font: 12px/1.5` para su menú y su tienda y eso se colaba dentro. Una
+  diferencia entre modos de cuatro píxeles sigue siendo una diferencia que nadie
+  decidió.
+- **Y la armería del duelo no equipa: enseña** (`soloFicha`). Ahí lo que llevas
+  lo decide el servidor —se compra, o lo reparte el mapa—, así que un botón
+  «Equipar» prometería algo que va a ignorar. Mismo componente, mismos datos,
+  una bandera.
+
+Medido (`duelo73`): bloque de vida, bloque de arma, marca y FPS caen en el mismo
+sitio y del mismo tamaño en los dos modos, pixel a pixel.
 
 **Todo el tuning en `config.js`.** Ninguna constante de juego vive suelta en un
 módulo. Si necesitas un número nuevo, va a `config.js` aunque lo use un solo
@@ -1059,6 +1093,34 @@ paralela al suelo y gira sólo en yaw —girada hacia la cámara apuntaría siem
 jugador y no diría nada—. Los iconos `?` y `!` sólo tienen que leerse, y para eso
 mirar a la cámara es lo correcto.
 
+**La legibilidad de la brújula no está en su forma, está en el contraste de su
+cola** (vuelta 73). Sus dos señales de orientación son **comparativas** —el tono
+(vuelta 39) y la pendiente (vuelta 40)— y las dos piden haber visto la otra
+vista para saber cuál estás viendo. Eso vale para información pasiva a doce
+unidades; con un cuchillo en la mano la pregunta es binaria y hay una décima.
+
+Se probó una **punta de flecha** —barbos y muesca, para que la silueta cambiase
+entre frente y espalda— y **no entró**: medida contra la cuña de siempre daba
++16% de área, **no mejoraba** lo que venía a mejorar (la silueta cambia un
+15-24% con las dos) y **costaba tono donde más importa** —a 8 u el Δ de
+luminancia caía de 20.2 a 10.5, porque una cola en V enseña menos cara oscura y
+más costado claro—. Está escrito en `MARKERS.compass` para que no se vuelva a
+intentar.
+
+**Lo que sí entró: la cola se enciende dentro del arco de espalda**
+(`backShade`). Fuera del arco todo queda como estaba desde la vuelta 40; dentro,
+la tapa pasa de 45% a verde entero. Es lo único de este marcador que no dice
+*hacia dónde mira* sino *qué puedes hacerle*, y por eso es lo único binario que
+tiene: el arco es el mismo que decide la puñalada instantánea y sale de la misma
+función (`esPorLaEspalda`), así que la brújula no puede prometer una espalda que
+el servidor no dé por buena. Medido: 24 de 64 píxeles cambian y suben 39 de
+luminancia, dentro de la banda 34-62 que la 40 dio por legible.
+
+**Y añade luz, no la quita.** La primera versión hacía lo contrario —caras
+translúcidas fuera del arco— y era un error de dirección que el banco cazó de
+inmediato: se pedía que se leyera **mejor**, y aquello lo dejaba más apagado el
+90% del tiempo para encenderlo el 10%.
+
 **Un triángulo perfectamente plano a la altura de los ojos no se ve.** Medido: con
 `rise: 0` y la cámara a la altura exacta de la brújula, el marcador ocupa **cero
 píxeles**. No se lee mal: no está. Por eso los dos vértices de la cola van
@@ -1516,6 +1578,13 @@ Tres consecuencias que **son** el sistema:
   y ahí el supresor no se podía poner de ninguna manera—, y un segundo
   interruptor de «aquí hay economía» sería una cosa más que mantener en
   sincronía.
+- **Y no es un artículo de la tienda** (vuelta 73). Lo era, a 250, y eso
+  contradecía en la misma pantalla la regla de la 64: no cuesta nada, es del
+  arma que ya llevas y se conmuta en cualquier fase. Lo que hacía falta no era
+  un precio sino **decir con qué se pone**, y eso va en la ficha del arma —
+  «Clic derecho del ratón = Silenciador», en las tres que lo admiten—. El
+  servidor lo atiende **antes de mirar el catálogo**, que es donde va un
+  interruptor y no una compra.
 
 **El retroceso es una fuerza continua, no una animación con final** (vuelta 61).
 El patrón de `WEAPONS[x].recoil` describe **la subida**, que es de una vez; al
@@ -2150,6 +2219,16 @@ Seis reglas que **son** el sistema:
   reloj de las entradas de la víctima.
 - **Y abandonar es perder la ronda.** Encaja sin ningún caso especial: el rival
   gana la ronda y, como un duelo no se juega solo, la partida.
+- **Y que se acaba se oye, no sólo se ve** (vuelta 73). El contador en rojo
+  estaba desde la 62, a 20 s, y no bastaba: es información en un sitio al que no
+  se mira, y lo que pasaba jugando era volver a la salida sin que nada lo
+  hubiera dicho. **El oído no hay que apuntarlo a ninguna parte.**
+  `ROUNDS.avisoFinalSegundos` (15, lo que dura una fase de compra) pone el rojo
+  y un pitido suave por segundo, el último más agudo. Se dispara **en el cambio
+  de cifra**, que es el mismo sitio donde se escribe el reloj: no hay un segundo
+  temporizador que pueda desfasarse del número que se ve, y en pausa no suena
+  porque el reloj de la ronda es el número de paso — sale solo, sin una
+  condición más.
 
 **La fase de compra aísla de verdad, y eso lo garantiza el servidor** (vuelta
 62). Quince segundos entre ronda y ronda, con dos mecanismos que no son el mismo:
@@ -2229,6 +2308,20 @@ sistema:
   tiene economía, y allí el arma sigue saliendo del ajuste como hasta la 63 —si
   no, `red45` y compañía medirían el peso y la cadencia de una pistola—. Deducir
   «no hay economía» de que no llegue un mensaje es adivinar por silencio.
+
+**Lo que no se compra no puede entrar en el catálogo** (vuelta 73).
+`catalogoDeTienda()` sanea `ECONOMY.catalogo` y lo miran los dos extremos —el
+cliente para montar el panel y el servidor para aceptar—, que es la misma idea
+que `compraAbierta` y `escenarioDeDuelo`: escrito en cada lado se despega, y el
+síntoma sería un artículo que el panel enseña y el servidor rechaza sin decir
+por qué.
+
+Hoy quita una sola cosa, y es la que hay que garantizar: **un arma de cuerpo a
+cuerpo no se compra**. El Vanta se lleva siempre, como la pistola, en cualquier
+mapa y sin coste. Que no esté escrito en la lista no basta —una lista a mano es
+una lista donde un día se cuela algo—: la regla sale de `WEAPONS[clave].slot`,
+el mismo dato del que salen `PRIMARY_WEAPONS`, `SECONDARY_WEAPON` y
+`MELEE_WEAPON`.
 
 **La fase de compra es de la sala, y la elige quien la crea** (vuelta 64). Viaja
 en la dirección del socket (`?compra=…`), como el pase de reconexión y por el
@@ -2323,6 +2416,12 @@ vueltas porque no se pasó. Lo que sobraba era ayuda repetida —las teclas est�
 las opciones— y una nota para probar en dos pestañas que dejó de hacer falta el
 día que hubo un botón en el menú. Si añades algo aquí, quita algo o pasa
 `menu62`.
+
+Y por eso el botón de **Opciones** de la vuelta 73 entró **en la fila que ya
+había** —pausar, opciones, salir— y las **fichas de las armas** no entraron en
+este menú en absoluto: se abren desde la tienda, que es la misma conversación
+(«qué llevo y qué hace»), y con la tecla de armería en los mapas que reparten.
+`menu62` sigue verde.
 
 **La armería del duelo no pausa, y no comparte pantalla con el menú** (vuelta
 64). Se abre con la tecla de armería —la del motor, reasignable en opciones— y el
@@ -3013,6 +3112,15 @@ reconexión, y volver es abrir el enlace otra vez. Irse —que es pulsar el bot�
 le da la ronda y la partida al rival. El huésped lleva ping/pong para enterarse
 de un cable mudo.
 
+**Y el menú de ESC del duelo tiene tres botones desde la vuelta 73**: pausar,
+**opciones** y salir. El de opciones abre el panel completo del juego —con la
+sección de controles y la sensibilidad de la mirilla— **sin salir de la
+partida**, que hasta aquí era la única forma de llegar a él. No pausa: el mundo
+sigue corriendo, igual que con el menú desde la 60 y con la tienda desde la 64.
+Las fichas de las armas se abren desde la tienda («Ver fichas de las armas») y
+con la tecla de armería en los mapas que reparten, donde no hay nada que
+comprar.
+
 Desde la vuelta 53 se puede **pausar la partida de los dos**, con tres pausas
 libres por jugador y permiso del rival a partir de la cuarta — y desde la 60
 **Escape sólo abre el menú**: la pausa la gasta el botón «Pausar» de ahí dentro. Y desde la 54 **con
@@ -3214,6 +3322,13 @@ planos WebGL invisibles para el raycast, y botones Pausa / Reiniciar / Cambiar
 arma / Silenciador / Opciones—, pero no hay tablero en la sala: disparar hacia
 su sitio es un disparo normal. Su hueco reservado se sigue auditando.
 
+**Y desde la vuelta 73 el HUD del duelo es literalmente el mismo**: la página
+del 1v1 monta los componentes del juego en vez de tener los suyos, así que
+aparecen ahí el **chaleco**, el **casco**, la **marca de Vektor** y las fichas
+de las armas, que faltaban. Lo que no sale son los tres bloques del
+entrenamiento —aciertos y fallos, estrellas y marcador de sesión—, que en un
+duelo no miden nada.
+
 **HUD:** **abajo a la derecha** el bloque de arma —silueta grande (208 px), el
 nombre con su ficha corta (`AUTO`/`SEMI` y `SIL` si lleva supresor) y la munición
 en grande—, **el mismo en el duelo desde la vuelta 67**, que hasta entonces no
@@ -3240,6 +3355,18 @@ agacharse **no suenan en absoluto**: eso es lo que compra la tecla. Sólo las de
 los demás, y el paso se cuenta en suelo recorrido. Tuning en `FOOTSTEPS` y el
 techo en `AUDIO.footstepVolume`, que bajó de 0.42 a 0.26 porque una pisada no
 puede confundirse con un disparo (medido: 16.5 dB por debajo).
+
+**Sonido al equipar lo comprado** (vuelta 73): cuatro voces sintetizadas
+(`playEquip`) —cremallera para el chaleco, golpe sordo para el casco, cerrojo
+para un arma y mosquetón para la utilidad— que suenan **cuando el servidor lo da
+por tuyo**, no al pinchar. La condición «sólo si hay saldo» sale gratis de ahí:
+si no se cobra, el inventario no cambia y no hay nada que sonar. Y lo que llevas
+puesto lo dice la palabra **«Equipado»** en su artículo, no sólo un filo de
+color. Tuning en `AUDIO.equipVolume`.
+
+**Y un pitido por segundo en los últimos 15 s de ronda**
+(`ROUNDS.avisoFinalSegundos`, `AUDIO.roundTickVolume`), con el contador en rojo
+y el último más agudo. Suave a propósito: avisa, no sobresalta.
 
 **Audio espacial:** interruptor en opciones, activado por defecto. Los sonidos
 posicionados suenan con dirección (listener en la cámara, `PositionalAudio` en el

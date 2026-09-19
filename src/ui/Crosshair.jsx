@@ -16,7 +16,19 @@ import { FEEDBACK } from '../config.js'
  * dibujado **alrededor** de ella: el anillo de daño, que dice que te han dado a
  * ti y no tiene otro sitio donde ponerse.
  *
- * **Y se quita con la mirilla puesta** (vuelta 70): la lente trae la suya, y
+ * **Y dice dos cosas del cuchillo, no una** (vuelta 73). Con alguien a
+ * distancia de golpe los cuatro trazos se abren y se tiñen del verde de acción
+ * (vuelta 71); **si además le estás viendo la espalda** giran 45° y se cierra
+ * un anillo alrededor del centro. Lo que distingue los dos estados es la
+ * **forma** y no el color, que es la regla de la vuelta 67 y la misma por la
+ * que la marca de una baja no es la de un impacto en otro tono.
+ *
+ * Y es la única cosa que la pantalla puede decir **antes** de golpear: un
+ * fuerte por la espalda mata lleve lo que lleve el otro (vuelta 71), o sea que
+ * es la diferencia más grande que hay entre dos golpes, y hasta aquí sólo se
+ * sabía después.
+ *
+ * **Se quita con la mirilla puesta** (vuelta 70): la lente trae la suya, y
  * dos miras a la vez es una encima de otra. Lo dice el motor por `onScope`, que
  * es una pulsación y no un valor por frame.
  *
@@ -24,7 +36,7 @@ import { FEEDBACK } from '../config.js'
  * modos desde esta vuelta y lo que tocará una pantalla de opciones el día que
  * se pueda diseñar la propia.
  */
-const Crosshair = forwardRef(function Crosshair({ hidden = false, melee = false }, ref) {
+const Crosshair = forwardRef(function Crosshair({ hidden = false, melee = false, backstab = false }, ref) {
   const ringRef = useRef(null)
 
   useImperativeHandle(ref, () => ({
@@ -53,7 +65,7 @@ const Crosshair = forwardRef(function Crosshair({ hidden = false, melee = false 
 
   return (
     <div
-      className={`crosshair${hidden ? ' crosshair--hidden' : ''}${melee ? ' crosshair--melee' : ''}`}
+      className={`crosshair${hidden ? ' crosshair--hidden' : ''}${melee ? ' crosshair--melee' : ''}${backstab ? ' crosshair--backstab' : ''}`}
       aria-hidden="true"
     >
       <span className="crosshair__bar crosshair__bar--top" />

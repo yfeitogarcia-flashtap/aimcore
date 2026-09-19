@@ -62,6 +62,7 @@ export default function App() {
   const [equipped, setEquipped] = useState({ weaponKey: getSettings().weapon, suppressed: false })
   const [apuntando, setApuntando] = useState(false)
   const [aCuchillo, setACuchillo] = useState(false)
+  const [porLaEspalda, setPorLaEspalda] = useState(false)
 
   // El store de ajustes vive fuera de React porque el motor también lo lee.
   const settings = useSyncExternalStore(subscribeSettings, getSettings)
@@ -129,7 +130,10 @@ export default function App() {
          * abre y se tiñe. Es lo único que un arma sin modelo en la mano puede
          * decir antes de golpear. Pulsación, no valor por frame.
          */
-        onMeleeRange: setACuchillo,
+        onMeleeRange: (dentro, espalda) => {
+          setACuchillo(dentro)
+          setPorLaEspalda(Boolean(espalda))
+        },
         onFinish: setSummary,
       })
       engine.start()
@@ -257,7 +261,7 @@ export default function App() {
       {showHud && (
         <Hud ref={hudRef} weaponKey={equipped.weaponKey} suppressed={equipped.suppressed} />
       )}
-      {phase === PHASE.RUNNING && <Crosshair ref={crosshairRef} hidden={apuntando} melee={aCuchillo} />}
+      {phase === PHASE.RUNNING && <Crosshair ref={crosshairRef} hidden={apuntando} melee={aCuchillo} backstab={porLaEspalda} />}
 
       {engineError && (
         <div className="overlay">

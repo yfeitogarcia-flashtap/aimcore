@@ -226,6 +226,8 @@ export class Engine {
      * la mitad de su feedback: la mira lo dice cambiando de forma.
      */
     this._meleeRange = false
+    /** Y si además está de espaldas: la otra mitad del aviso (vuelta 73). */
+    this._meleeBack = false
     this._sensNormal = LOOK.sensitivity
     this._sensMirilla = LOOK.sensitivity
 
@@ -2512,12 +2514,53 @@ export class Engine {
    */
   _updateMeleeRange() {
     let dentro = false
+    let espalda = false
     if (this.weapon.melee && this.phase === PHASE.RUNNING) {
-      dentro = this.enRed ? this._rivalACuchillo() : this._blancoACuchillo() !== null
+      /**
+       * **Y si además le ves la espalda** (vuelta 73). Un golpe fuerte por
+       * detrás mata lleve lo que lleve el otro (vuelta 71), así que es la
+       * diferencia más grande que hay entre dos golpes — y hasta aquí la
+       * pantalla no la decía **antes**, sólo después, con el doble arco.
+       *
+       * Sale del **mismo rayo** que ya decide si llegas y del mismo
+       * `esPorLaEspalda` que decide el instakill: no hay una segunda cuenta que
+       * pueda decir que sí mientras el servidor dice que no. Es la regla de la
+       * vuelta 71 —«lo publica quien lo tiene»— llevada un paso antes en el
+       * tiempo, que es donde sirve.
+       */
+      if (this.enRed) {
+        const pose = this._rivalACuchillo() ? this.net?.poseDelRival?.() : null
+        dentro = Boolean(pose)
+        if (pose) {
+          const p = this.camera.position
+          // **El rival es una cámara y una cámara mira a −Z**, al revés que el
+          // `facing` de un muñeco. La conversión va aquí y es la misma que hace
+          // `resolverCuchillada` con el mismo rumbo: si se escribiera distinta,
+          // la mira diría espalda y el veredicto diría frente.
+          espalda = esPorLaEspalda(
+            p.x, p.z, pose.x, pose.z,
+            -Math.sin(pose.yaw ?? 0), -Math.cos(pose.yaw ?? 0),
+            this.weapon.melee.backArcDeg,
+          )
+        }
+      } else {
+        const hit = this._blancoACuchillo()
+        dentro = hit !== null
+        if (hit) {
+          const q = hit.instance.group.position
+          const p = this.camera.position
+          espalda = esPorLaEspalda(
+            p.x, p.z, q.x, q.z,
+            Math.sin(hit.instance.facing ?? 0), Math.cos(hit.instance.facing ?? 0),
+            this.weapon.melee.backArcDeg,
+          )
+        }
+      }
     }
-    if (dentro === this._meleeRange) return
+    if (dentro === this._meleeRange && espalda === this._meleeBack) return
     this._meleeRange = dentro
-    this.callbacks.onMeleeRange?.(dentro)
+    this._meleeBack = espalda
+    this.callbacks.onMeleeRange?.(dentro, espalda)
   }
 
   /**

@@ -17,7 +17,7 @@
  * Y sigue sin tener código de juego: importa `movement.js`, `scenario.js`,
  * `hitPlayer` y `hasLineOfSight` tal cual.
  */
-import { ECONOMY, NET, PAUSE, ROUNDS, SIM, SIM_STEP_MS, WEAPONS, WEAPON_ORDER } from '../src/config.js'
+import { ECONOMY, NET, PAUSE, ROUNDS, SIM, SIM_STEP_MS, WEAPONS, WEAPON_ORDER, catalogoDeTienda } from '../src/config.js'
 import { MovementController } from '../src/game/movement.js'
 import { encajarImpacto } from '../src/game/player.js'
 import { crearPose, cuerpoDeJugador } from './pose.js'
@@ -1206,7 +1206,7 @@ export class Partida {
 
   /** La entrada del catálogo, por su clave. */
   _delCatalogo(clave) {
-    return ECONOMY.catalogo.find((i) => i.clave === clave) ?? null
+    return catalogoDeTienda().find((i) => i.clave === clave) ?? null
   }
 
   /**
@@ -1223,15 +1223,19 @@ export class Partida {
    */
   _comprar(jugador, clave, arma = null) {
     if (!this.conRondas) return
-    const item = this._delCatalogo(clave)
-    if (!item || !item.disponible) return
 
-    // **El supresor no es una compra, es un interruptor** (vuelta 64): no cuesta
-    // nada y es del arma que ya llevas, así que se conmuta **en cualquier fase**
-    // — como la tecla V del entrenamiento, y como el clic derecho del que sale.
-    // Encerrarlo en la fase de compra habría sido inventarle un coste que no
-    // tiene, y dejar el clic derecho muerto durante la ronda.
-    if (item.tipo === 'accesorio') {
+    /**
+     * **El supresor no es una compra, es un interruptor** (vuelta 64), y desde
+     * la 73 **tampoco es un artículo**: salió del catálogo, porque un precio al
+     * lado decía lo contrario que el juego —no cuesta nada, es del arma que ya
+     * llevas y se conmuta en cualquier fase—.
+     *
+     * Así que se atiende **antes de mirar el catálogo** y no como un `tipo`
+     * dentro de él. Viene por `MSG.COMPRAR` porque ése es el mensaje que el
+     * cliente ya tenía para hablar del equipo, y darle uno propio habría sido
+     * un verbo más en el protocolo para la misma conversación.
+     */
+    if (clave === 'supresor') {
       // El supresor de un arma **que se lleva**: la principal comprada o la
       // pistola, nunca la que no está en las manos de nadie.
       const cual = arma === 'pulse' ? 'pulse' : jugador.inventario.primaria
@@ -1240,6 +1244,10 @@ export class Partida {
       this._enviarEconomia(jugador)
       return
     }
+
+    const item = this._delCatalogo(clave)
+    if (!item || !item.disponible) return
+
     // **Y en un mapa sin economía se acaba aquí: no hay tienda que abrir.**
     // El corte va **después** del supresor a propósito: conmutarlo no es una
     // compra, es un interruptor del arma que ya llevas (vuelta 64), así que

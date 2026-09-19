@@ -3115,6 +3115,49 @@ export const MARKERS = {
      */
     noseDrop: 0.5,
     /**
+     * **Lo que se probó y no entró: una punta de flecha** (vuelta 73).
+     *
+     * La idea era añadir una tercera señal de orientación que **no** fuera
+     * comparativa —barbos y muesca, para que de frente se viera una punta y de
+     * espaldas una V ancha—, porque las dos que hay exigen haber visto la otra
+     * vista: el tono (vuelta 39) y la pendiente (vuelta 40).
+     *
+     * Medida contra la cuña de siempre en el mismo banco (`brujula73`), la
+     * flecha daba **+16% de área** (136 px contra 117 a 12 u) y **no mejoraba
+     * nada** lo que venía a mejorar: la silueta cambia entre frente y espalda un
+     * 15–24% con las dos. Y encima **costaba tono donde más importa**: a 8 u el
+     * Δ de luminancia caía de 20.2 a 10.5, porque una cola en V enseña menos
+     * cara oscura y más costado claro. O sea que cambiaba la señal que el
+     * cuchillo necesita por área que no hacía falta.
+     *
+     * Se queda escrito porque el siguiente que lo piense se ahorra la vuelta: la
+     * legibilidad de este marcador **no está en su forma**, está en el contraste
+     * de la cola, y por ahí es por donde entró el arreglo de esta vuelta
+     * (`backShade`).
+     */
+    /**
+     * **Y cuando le ves la espalda, la cola se enciende.**
+     *
+     * Es la única señal del marcador que no dice *hacia dónde mira* sino *qué
+     * puedes hacerle*, y por eso es la única binaria que tiene: el arco es el
+     * mismo (`WEAPONS.vanta.melee.backArcDeg`) que decide la puñalada
+     * instantánea y sale de la misma función (`esPorLaEspalda`). Dos cuentas
+     * separadas serían una brújula que promete una espalda que el servidor no
+     * da por buena.
+     *
+     * **Lo que cambia es el brillo de la cola, y hacia arriba.** La primera
+     * versión hacía lo contrario —las caras translúcidas fuera del arco y
+     * opacas dentro— y era un error de dirección: el encargo decía que el
+     * marcador se lee mal, y aquello lo dejaba más apagado el 90% del tiempo
+     * para poder encenderlo el 10%. Medido, hundía el Δ de tono de la vuelta 40
+     * de 34 a 10. Ahora la cola pasa de `tailShade` a esto, así que fuera del
+     * arco todo está exactamente como estaba y dentro **hay más luz, no menos**.
+     *
+     * Y sin color nuevo: en esta paleta todos los tonos significan ya algo
+     * (vuelta 40) y el verde de acción es el de la propia brújula.
+     */
+    backShade: 1,
+    /**
      * **Opacidad del contorno, que es lo único que se puede afinar de él.**
      *
      * En WebGL el grosor de una línea no se toca: `linewidth` se ignora y todas
@@ -3501,6 +3544,17 @@ export const AUDIO = {
    * de fuerte que una a cuatro y **se confundía con un disparo**. Se calibra
    * jugando.
    */
+  /**
+   * **Lo que suena al ponerte lo que has comprado** (vuelta 73). Por debajo de
+   * un disparo con holgura: es interfaz, y lo que no puede es taparte a un
+   * rival que entra por detrás mientras compras.
+   */
+  equipVolume: 0.5,
+  /**
+   * **El pitido del final de ronda.** Suave a propósito: avisa, no sobresalta.
+   * Va aún más bajo que el de equipar porque suena **quince veces seguidas**.
+   */
+  roundTickVolume: 0.3,
   footstepVolume: 0.26,
   healVolume: 0.5,
   shieldVolume: 0.42,
@@ -3889,6 +3943,23 @@ export const ECONOMY = {
    * panel, con su precio y su combinación, y **no se puede comprar**: prometer
    * una granada que no vuela sería peor que no enseñarla.
    */
+  /**
+   * **Lo que se vende, y lo que no se vende porque no se compra** (vuelta 73).
+   *
+   * Dos cosas quedaron fuera de esta lista y las dos por el mismo motivo: en el
+   * juego son **gratis y tuyas**, así que un precio al lado decía lo contrario
+   * que el juego.
+   *
+   * - **El supresor** estaba aquí a 250 como accesorio, y no lo es: se conmuta
+   *   con el clic derecho, en los dos modos, en cualquier fase y sin coste —esa
+   *   regla es de la vuelta 64, y este artículo la contradecía—. Lo que hacía
+   *   falta no era un artículo sino decir con qué se pone, y eso va en la ficha
+   *   del arma, que es donde se busca.
+   * - **El cuchillo** no está y no puede estar: se lleva siempre, como la
+   *   pistola. Y no se queda fuera por olvido sino **por construcción** —
+   *   `catalogoSano()` no deja pasar un arma de cuerpo a cuerpo—, porque una
+   *   lista escrita a mano es una lista donde un día se cuela algo.
+   */
   catalogo: [
     { clave: 'pulse', nombre: 'Pulse', tipo: 'arma', ranura: 'secondary', categoria: 1, codigo: 1, precio: 0, deSerie: true, disponible: true },
     { clave: 'volt', nombre: 'Volt', tipo: 'arma', ranura: 'primary', categoria: 3, codigo: 1, precio: 1600, disponible: true },
@@ -3899,7 +3970,6 @@ export const ECONOMY = {
     { clave: 'scout', nombre: 'Scout', tipo: 'arma', ranura: 'primary', categoria: 5, codigo: 1, precio: 3100, disponible: true },
     { clave: 'chaleco', nombre: 'Chaleco', tipo: 'equipo', categoria: 6, codigo: 1, precio: 500, disponible: true },
     { clave: 'casco', nombre: 'Casco', tipo: 'equipo', categoria: 6, codigo: 2, precio: 350, disponible: true },
-    { clave: 'supresor', nombre: 'Supresor', tipo: 'accesorio', categoria: 8, codigo: 1, precio: 250, disponible: true },
     { clave: 'granada', nombre: 'Granada', tipo: 'utilidad', categoria: 7, codigo: 1, precio: 300, disponible: false },
     { clave: 'aturdidora', nombre: 'Aturdidora', tipo: 'utilidad', categoria: 7, codigo: 2, precio: 250, disponible: false },
     { clave: 'cegadora', nombre: 'Cegadora', tipo: 'utilidad', categoria: 7, codigo: 3, precio: 250, disponible: false },
@@ -3913,15 +3983,32 @@ export const ECONOMY = {
     5: 'Francotirador',
     6: 'Equipo',
     7: 'Utilidad',
-    8: 'Accesorios',
   },
   /**
    * **El techo de la ronda 1**: los tipos que se pueden comprar. Sin `arma`, así
    * que la primera ronda se juega con la pistola pase lo que pase.
    */
-  techoRonda1: ['equipo', 'utilidad', 'accesorio'],
+  techoRonda1: ['equipo', 'utilidad'],
   /** Lo que da un chaleco, en puntos de escudo. Un segmento de los de siempre. */
   escudoPorChaleco: PLAYER.shield.segment,
+}
+
+/**
+ * **El catálogo de verdad, saneado** (vuelta 73), y lo miran los dos extremos:
+ * el cliente para montar el panel y el servidor para aceptar una compra. Es la
+ * misma idea que `compraAbierta` y que `escenarioDeDuelo` — escrito en cada
+ * lado se despega, y el síntoma sería el peor de los dos: un artículo que el
+ * panel enseña y el servidor rechaza sin decir por qué.
+ *
+ * Hoy quita una sola cosa, y es la que el encargo pedía garantizar: **un arma
+ * de cuerpo a cuerpo no se compra**. El Vanta se lleva siempre, como la
+ * pistola, en cualquier mapa y sin coste, y que no esté en la lista de arriba
+ * no basta — una lista escrita a mano es una lista donde un día se cuela algo.
+ * Aquí no puede: la regla sale de `WEAPONS[clave].slot`, que es el mismo dato
+ * del que salen `PRIMARY_WEAPONS`, `SECONDARY_WEAPON` y `MELEE_WEAPON`.
+ */
+export function catalogoDeTienda() {
+  return ECONOMY.catalogo.filter((item) => WEAPONS[item.clave]?.slot !== 'melee')
 }
 
 export const ROUNDS = {
@@ -3932,6 +4019,18 @@ export const ROUNDS = {
   maxRondas: 14,
   /** Lo que dura una ronda si nadie muere. */
   duracionSegundos: 180,
+  /**
+   * **Cuándo se avisa de que la ronda se acaba** (vuelta 73). Hasta aquí no se
+   * avisaba: el jugador se encontraba de vuelta en su salida sin que nada se lo
+   * hubiera dicho, y con tres minutos por ronda mirar el reloj no es algo que
+   * se haga en mitad de un intercambio.
+   *
+   * Quince segundos son los que dura una fase de compra, que es la unidad de
+   * tiempo que este modo ya tiene: lo que se avisa es «te queda lo que dura
+   * comprar». Por debajo de diez no da tiempo a cambiar de plan y por encima de
+   * veinte el pitido se vuelve el fondo de la ronda.
+   */
+  avisoFinalSegundos: 15,
   /**
    * **La fase de compra, entre una ronda y la siguiente** — y desde la vuelta 64
    * esto es sólo el **valor por defecto**: quien crea la partida la elige en la

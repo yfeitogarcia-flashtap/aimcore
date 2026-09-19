@@ -20,8 +20,8 @@
  * contraria. Lo que sigue siendo suyo: el código de partida, el menú, los
  * avisos de conexión, las pausas y los números de F3.
  */
-import { masterGain } from '../src/audio/sfx.js'
-import { COLORS, CROSSHAIR, DUEL_SCENARIOS, ECONOMY, NET, ROUNDS, TARGET, TEAMS, WEAPONS } from '../src/config.js'
+import { masterGain, playEquip, playRoundTick } from '../src/audio/sfx.js'
+import { COLORS, CROSSHAIR, DUEL_SCENARIOS, ECONOMY, NET, ROUNDS, TARGET, TEAMS, WEAPONS, catalogoDeTienda } from '../src/config.js'
 import { Engine } from '../src/game/engine.js'
 import { Avatar } from '../src/game/avatar.js'
 import { hasLineOfSight } from '../src/game/sight.js'
@@ -29,7 +29,7 @@ import { cuerpoDeJugador } from './pose.js'
 import { resolverDisparo } from './disparo.js'
 import { ClienteRed } from './cliente.js'
 import { conRedSimulada, transporteWebSocket } from './transporte.js'
-import { weaponSilhouetteSvg } from '../src/ui/weaponSilhouette.js'
+import { montarCapaDeDuelo } from '../src/ui/duelo.jsx'
 import { normalizarCodigo } from './codigo.js'
 import { compraAbierta } from './protocolo.js'
 import { codigoDeLaDireccion, direccionDeLaBarra, enlaceDeSala, mapaDeLaDireccion, urlDeSala } from './sala-cliente.js'
@@ -89,31 +89,52 @@ const ESCENARIO = mapaDeLaDireccion()
  * que siempre fue suyo: el código de partida, el menú, los avisos de conexión,
  * las pausas y los números de F3.
  */
+/**
+ * **La capa de interfaz, que es la del juego** (vuelta 73). Va antes que el
+ * motor porque sus callbacks la usan desde el primer frame.
+ */
+const capa = montarCapaDeDuelo(document.getElementById('capa'), {
+  // Al cerrar un panel vuelve lo que había debajo: con el ratón suelto, el menú.
+  alCerrarPanel: () => {
+    aviso.hidden = document.pointerLockElement === lienzo || !tienda.hidden
+  },
+})
+
 const motor = new Engine(lienzo, {
   onFrame: (stats) => pintarHud(stats),
-  onWeapon: (w) => pintarArma(w),
-  onDamage: (fraccion, rumbo) => marcarDano(fraccion, rumbo),
+  onWeapon: (w) => capa.arma(w.weaponKey, w.suppressed),
+  onDamage: (fraccion, rumbo) => capa.dano(fraccion, rumbo),
   onVerdict: (v) => marcarDisparo(v),
+  onHelp: (texto, ms) => capa.ayuda(texto, ms),
   // **La armería es de la página, como el menú** (vuelta 64). El motor sabe que
   // se ha pedido —la tecla es suya, reasignable en opciones— y quién la dibuja
   // depende de dónde se juegue: en el juego es el panel de React, aquí es la
   // tienda de abajo. Lo que el motor no hace en red es pausar.
-  // Y en un mapa que reparte no hay nada que abrir: la tecla no hace nada,
-  // que es más honesto que un panel con todo apagado (vuelta 72).
-  onArmoury: () => { if (cliente.conEconomia) alternarTienda() },
+  /**
+   * **La tecla de armería abre lo que haya que abrir** (vuelta 73). Donde se
+   * compra, la tienda; donde el mapa reparte, **las fichas** — que hasta aquí
+   * no se podían ver en ninguna parte del duelo, ni siquiera las de la Scout y
+   * el Vanta, que están enteras desde las vueltas 70 y 71. En la 72 esta tecla
+   * no hacía nada en Los Pilares, que era honesto y seguía sin enseñar los
+   * números.
+   */
+  onArmoury: () => {
+    if (cliente.conEconomia) alternarTienda()
+    else capa.panel(capa.hayPanel() ? null : 'ficha')
+  },
   /**
    * **Apuntando con mirilla se quita la mira de la página** (vuelta 70): la
    * lente trae la suya —cruceta fina y punto rojo— y dos miras a la vez es una
    * encima de otra. Es lo mismo que hace el entrenamiento; la lente, que es lo
    * que de verdad se comparte, la dibuja el motor.
    */
-  onScope: (puesta) => document.body.classList.toggle('apuntando', puesta),
+  onScope: (puesta) => capa.apuntando(puesta),
   /**
    * **La mira dice si hay alguien a distancia de cuchillo** (vuelta 71). Es lo
    * único que un arma sin modelo en la mano puede decir **antes** de golpear, y
    * llega como pulsación —al entrar y al salir del alcance—, no por frame.
    */
-  onMeleeRange: (dentro) => document.body.classList.toggle('aCuchillo', dentro),
+  onMeleeRange: (dentro, espalda) => capa.aCuchillo(dentro, espalda),
 }, { escenario: ESCENARIO })
 
 /**
@@ -366,7 +387,10 @@ let caidaAntes = false
 
 function pintarPausa() {
   const p = cliente.pausa
-  $('libres').textContent = `pausas ${p.libres} · rival ${p.rivalLibres}`
+  // Las pausas que quedan se dicen **en el menú**, que es donde se gastan
+  // (vuelta 73). Estaban además pegadas al bloque de vida, y ese bloque es
+  // ahora el del juego: dos sitios para el mismo número es uno que se queda
+  // viejo.
   $('libresMenu').textContent = p.libres
   // **El botón de votación sólo existe cuando es la única salida** (vuelta 55):
   // con libres que gastar, pedirle permiso al rival sería pedir por pedir.
@@ -702,9 +726,14 @@ document.addEventListener('pointerlockchange', () => {
   if (!capturado) pintarPausa()
   // Y si lo que hay abierto es la tienda, el menú no vuelve: son dos pantallas
   // de la misma situación —el ratón suelto— y sólo cabe una.
-  aviso.hidden = capturado || !tienda.hidden
-  // Mira, vida y «abatido» son de jugar; con el ratón suelto tapan el menú.
+  aviso.hidden = capturado || !tienda.hidden || capa.hayPanel()
+  // **La mira es de jugar**: con el ratón suelto no se apunta a nada y tapa el
+  // menú. El resto del HUD se queda puesto, que es lo que hace el juego.
   document.body.classList.toggle('jugando', capturado)
+  capa.jugando(capturado)
+  // Y si se recupera el ratón con un panel abierto, el panel se cierra: no se
+  // juega con las opciones delante.
+  if (capturado) capa.panel(null)
 })
 
 for (const [id, campo] of [['lat', 'latenciaMs'], ['jit', 'jitterMs']]) {
@@ -741,6 +770,22 @@ cliente.onRonda = (r) => {
 
 // **Irse se dice.** Es lo único que distingue un abandono de una caída: sin este
 // mensaje, cerrar la pestaña y que se caiga el wifi llegan por la misma puerta.
+/**
+ * **Las opciones, sin salir de la partida** (vuelta 73). Es el panel del juego
+ * —el mismo componente, los mismos ajustes, el mismo store— y por eso trae de
+ * una vez la sección de controles, la sensibilidad y **la sensibilidad de la
+ * mirilla**, que existe desde la vuelta 70 y en el duelo no se podía alcanzar.
+ *
+ * No pausa: una pausa es parar el mundo de los dos y sólo la decide el servidor
+ * (vuelta 53). Aquí eres un blanco mientras lo miras, igual que con el menú
+ * desde la 60 y con la tienda desde la 64 — y por eso el botón de pausar sigue
+ * estando al lado, que es lo que sí para el mundo.
+ */
+$('opciones').addEventListener('click', () => {
+  aviso.hidden = true
+  capa.panel('opciones')
+})
+
 $('salir').addEventListener('click', () => {
   salirAlMenu()
 })
@@ -790,8 +835,11 @@ motor.start()
 const costes = []
 function pintarHud(stats) {
   const ahora = performance.now()
-  pintarVitales(stats)
-  pintarArmaEnVivo(stats)
+  // **El HUD es el del juego** (vuelta 73): vida, escudo, casco, munición,
+  // recarga, viñeta de abatido y marca de Vektor salen de `Hud.jsx` por refs,
+  // igual que en el entrenamiento. Aquí sólo se le pasa el mismo `stats` que ya
+  // venía publicando el motor — no hacía falta ni un campo nuevo.
+  capa.pintar(stats)
   // El fantasma: la última palabra del servidor sobre ti. Va aquí y no en el
   // motor porque es un instrumento de medida, no una pieza del juego.
   if (cliente.autoritativo && $('gho').checked) {
@@ -814,6 +862,8 @@ function pintarHud(stats) {
  * Rehacer el bloque por frame es la regla del HUD rota por la puerta de atrás.
  */
 let restaPintada = ''
+/** El último segundo que ya ha pitado, para que cada uno suene una vez. */
+let segPitado = -1
 function pintarRonda() {
   const r = cliente.rondas
   if (r.fase === 'espera' || r.fase === 'fin') {
@@ -832,7 +882,27 @@ function pintarRonda() {
   if (texto === restaPintada) return
   restaPintada = texto
   $('rondaTiempo').textContent = texto
-  $('ronda').classList.toggle('poco', r.fase === 'ronda' && seg <= 20)
+
+  /**
+   * **Que la ronda se acaba se oye, no sólo se ve** (vuelta 73). El rojo ya
+   * estaba —desde la 62, a 20 s— y no bastaba: es información en un sitio al
+   * que no se mira, y lo que se notaba jugando era aparecer de vuelta en la
+   * salida sin que nada lo hubiera dicho. El oído no hay que apuntarlo a
+   * ninguna parte, que es exactamente el problema.
+   *
+   * Un pitido por segundo dentro de la ventana, y **uno por segundo de verdad**:
+   * se dispara en el cambio de cifra, que es el mismo sitio donde se escribe el
+   * reloj, así que no hay un segundo temporizador que pueda desfasarse del que
+   * se ve. En pausa el reloj de la ronda no baja —es el número de paso— y por
+   * tanto tampoco suena: sale solo, sin una condición más.
+   *
+   * Y sólo en la ronda: en la fase de compra la cuenta también baja, pero ahí
+   * no se acaba nada, se empieza.
+   */
+  const avisando = r.fase === 'ronda' && seg > 0 && seg <= ROUNDS.avisoFinalSegundos
+  $('ronda').classList.toggle('poco', avisando)
+  if (avisando && seg !== segPitado) playRoundTick(seg === 1)
+  segPitado = avisando ? seg : -1
 }
 
 /**
@@ -881,101 +951,20 @@ function pintarFaseDeRonda(r) {
 }
 
 /**
- * **Vida, munición y abatido son de jugar, así que se pintan siempre**, esté el
- * panel de depuración abierto o no.
+ * **Vida, munición, arma y abatido los dibuja el HUD del juego** (vuelta 73).
  *
- * Desde la vuelta 56 los números salen del motor (`onFrame`), que ya los tiene
- * todos: vida y cuenta de reaparición **las dice el servidor** —y la cuenta va
- * en el reloj de las entradas, el mismo con el que se decide, así que la
- * pantalla y la reaparición caen en el mismo instante— y cargador, recarga y
- * arma son del cliente.
+ * Aquí vivían cuatro funciones —`pintarVitales`, `pintarArmaEnVivo`,
+ * `pintarArma` y `marcarDano`— que eran una copia recortada de lo que
+ * `src/ui/Hud.jsx` lleva haciendo desde la vuelta 34, y «recortada» es la
+ * palabra: **esta copia no tenía chaleco**. Se compraba en la ronda 1, el
+ * servidor lo cobraba y lo aplicaba, y en pantalla no salía nada. Tampoco tenía
+ * casco, ni marca de Vektor, ni los segundos de gracia.
+ *
+ * No hizo falta cambiar ni un campo del motor: `stats` ya traía todo eso desde
+ * la vuelta 64 —`shieldSegments`, `helmet`, `charges`— y lo que faltaba era
+ * quién lo dibujase. Es la convención de la vuelta 63 hasta el final: lo que ya
+ * funciona en un modo no se reescribe, se llama.
  */
-let vidaPintada = -1
-let cuentaPintada = ''
-function pintarVitales(stats) {
-  // **Sólo se escribe en el DOM cuando el número ha cambiado.** Va por frame, y
-  // escribir `textContent` sesenta veces por segundo con el mismo valor es
-  // trabajo de maquetación por nada: la misma regla por la que el HUD del juego
-  // se actualiza por refs y no repinta por frame.
-  const vida = Math.max(0, Math.min(100, Math.round(stats.health)))
-  if (vida !== vidaPintada) {
-    vidaPintada = vida
-    $('vitalN').textContent = vida
-    $('vitalN').className = stats.lowHealth ? 'mal' : ''
-    $('vitalB').firstElementChild.style.width = `${vida}%`
-    $('abatido').classList.toggle('puesto', !stats.alive)
-  }
-  if (stats.alive) return
-  const texto = `reapareces en ${(stats.respawnLeftMs / 1000).toFixed(1)}`
-  if (texto !== cuentaPintada) {
-    cuentaPintada = texto
-    $('reaparece').textContent = texto
-  }
-}
-
-/** El cargador, que cambia disparo a disparo. Mismo criterio: sólo si cambia. */
-let municionPintada = ''
-function pintarArmaEnVivo(stats) {
-  // Un cuchillo no tiene cargador (vuelta 71): «0 / 0» es lo que pone un arma
-  // rota, y el infinito ocupa el mismo sitio sin mentir. Igual que en el HUD
-  // del entrenamiento, que es el mismo bloque.
-  const sinCargador = stats.magazine === 0
-  const texto = stats.reloading
-    ? `${'·'.repeat(1 + Math.floor(stats.reloadProgress * 6))}`
-    : sinCargador ? '∞' : `${stats.ammo} / ${stats.magazine}`
-  if (texto === municionPintada) return
-  municionPintada = texto
-  $('municion').textContent = texto
-  $('municion').classList.toggle('mal',
-    !sinCargador && !stats.reloading && stats.ammo <= Math.max(1, stats.magazine * 0.25))
-}
-
-/**
- * Y el nombre del arma, que sólo cambia al cambiar de arma — una pulsación, no
- * un valor por frame, que es por lo que viaja por callback y no en `stats`.
- * Con silenciador se dice, porque cambia cómo suena y a quién se oye.
- */
-function pintarArma({ weaponKey, suppressed }) {
-  const arma = WEAPONS[weaponKey]
-  // **Y su silueta** (vuelta 67), la misma del entrenamiento y por el mismo
-  // trazado: `weaponSilhouette.js` decide cuál toca —con supresor es otra foto,
-  // no la misma con un tubo pegado— y aquí sólo se coloca. Se escribe al cambiar
-  // de arma, que es una pulsación y no un valor por frame.
-  $('armaSil').innerHTML = weaponSilhouetteSvg(weaponKey, suppressed)
-  $('arma').firstChild.textContent = arma ? arma.label : '—'
-  $('armaModo').textContent = arma
-    ? `${arma.mode === 'auto' ? 'AUTO' : 'SEMI'}${suppressed ? ' · SIL' : ''}`
-    : ''
-}
-
-/**
- * **De dónde te han disparado** (la cuña de la vuelta 40, aquí en su versión
- * mínima). El ángulo lo calcula el motor con el vector de la cámara y medido en
- * horizontal; esta página sólo lo pinta. El `conic-gradient` cuenta los grados
- * desde arriba y en el sentido del reloj, que es la misma convención, así que
- * no hay conversión que pueda salir espejada.
- */
-let apagarDano = 0
-function marcarDano(fraccion, rumbo) {
-  const cuna = $('dano')
-  cuna.style.setProperty('--angulo', `${(rumbo * 180) / Math.PI}deg`)
-  /**
-   * **La fuerza del impacto va en una variable, no en `style.opacity`**
-   * (arreglo de la vuelta 60). Escribir la opacidad en línea la deja por encima
-   * de **toda** la hoja de estilos —un estilo en línea gana a cualquier
-   * selector—, así que ni `#dano { opacity: 0 }` ni quitar `.puesto` volvían a
-   * apagarla: la cuña se quedaba puesta **desde el primer impacto** y para
-   * siempre. Se notaba al morir porque el último disparo recibido es el que la
-   * dejaba encendida, pero el derribo no tenía nada que ver.
-   *
-   * Ahora quien manda la opacidad es la clase, que es lo que el temporizador
-   * sabe quitar; la fuerza sólo tiñe el gradiente.
-   */
-  cuna.style.setProperty('--fuerza', String(Math.min(1, 0.35 + fraccion).toFixed(3)))
-  cuna.classList.add('puesto')
-  clearTimeout(apagarDano)
-  apagarDano = setTimeout(() => cuna.classList.remove('puesto'), 500)
-}
 
 let ultimoInforme = 0
 /** Si había rival la última vez que se miró, para repintar sólo al cambiar. */
@@ -1067,7 +1056,7 @@ let tecleado = ''
 
 function montarTienda() {
   const porCategoria = new Map()
-  for (const item of ECONOMY.catalogo) {
+  for (const item of catalogoDeTienda()) {
     if (!porCategoria.has(item.categoria)) porCategoria.set(item.categoria, [])
     porCategoria.get(item.categoria).push(item)
   }
@@ -1103,7 +1092,7 @@ function montarTienda() {
 /** Pedir la compra. Quien dice si cabe es el servidor; esto sólo pide. */
 function comprar(item) {
   if (!item.disponible) return
-  cliente.comprar(item.clave, item.tipo === 'accesorio' ? motor.weaponKey : null)
+  cliente.comprar(item.clave, null)
 }
 
 /**
@@ -1116,11 +1105,6 @@ function porQueNo(item, eco, fase) {
   // vistazo y no compite con «sin saldo» por el mismo hueco de diez píxeles.
   if (!item.disponible) return ''
   if (item.deSerie) return 'siempre contigo'
-  // El supresor va antes de la fase: no cuesta nada y se pone cuando se quiera.
-  if (item.tipo === 'accesorio') {
-    if (!WEAPONS[motor.weaponKey]?.supportsSuppressor) return 'no lo admite'
-    return null
-  }
   // **Cuándo está abierta la tienda lo dice `compraAbierta`**, la misma función
   // que el servidor mira para aceptar la compra (vuelta 65). Sin fase de compra
   // configurada no hay ventana entre rondas donde meterla, así que la ventana es
@@ -1151,22 +1135,30 @@ function pintarTienda() {
     boton.disabled = razon !== null
     // **Lo que se puede comprar ahora mismo se marca**, que es lo que separa un
     // artículo de verdad de uno precintado sin tener que leer la nota.
-    boton.classList.toggle('puedo', razon === null && item.tipo !== 'accesorio')
+    boton.classList.toggle('puedo', razon === null)
     const puesto =
       item.clave === eco.inv.primaria ||
       (item.clave === 'chaleco' && eco.inv.escudo > 0) ||
-      (item.clave === 'casco' && eco.inv.casco) ||
-      (item.tipo === 'accesorio' && eco.inv.supresor?.[motor.weaponKey])
+      (item.clave === 'casco' && eco.inv.casco)
     boton.classList.toggle('puesto', !!puesto)
-    // El supresor dice de qué arma habla: es del arma que llevas en la mano
-    // (vuelta 43), no del jugador.
-    const detalle =
-      item.tipo === 'accesorio' && razon === null
-        ? `${WEAPONS[motor.weaponKey]?.label ?? '—'}${eco.inv.supresor?.[motor.weaponKey] ? ' · puesto' : ''}`
-        : razon ?? ''
-    nota.textContent = detalle || ' '
+    /**
+     * **«Equipado» lo dice la palabra, no sólo un borde** (vuelta 73). Lo que
+     * llevas puesto se marcaba con un filo verde, y de un vistazo eso no se
+     * distingue de «esto lo puedes comprar», que también es un borde. La nota
+     * ya existía para decir por qué **no** se puede comprar algo, y «porque ya
+     * lo tienes» es esa misma frase — así que gana a la razón, que para un
+     * artículo puesto decía «puesto», la palabra que nadie busca.
+     */
+    nota.textContent = puesto ? 'Equipado' : (razon ?? '') || ' '
   }
 }
+
+// Las fichas se abren desde la tienda: es la misma pregunta —qué llevo y qué
+// hace— y el menú de ESC no puede crecer una fila más (vuelta 62).
+$('fichas').addEventListener('click', () => {
+  alternarTienda(false)
+  capa.panel('ficha')
+})
 
 function alternarTienda(abrir = tienda.hidden) {
   tienda.hidden = !abrir
@@ -1221,9 +1213,33 @@ montarTienda()
  * siguiera sacando la pistola. Es la misma forma que ya tenía `onBienvenida`, y
  * por el mismo motivo — dos dueños para un callback.
  */
+/**
+ * **Lo que suena es lo que te han dado, no lo que has pedido** (vuelta 73).
+ *
+ * El sonido de equipar se dispara comparando el inventario con el de antes, y
+ * eso hace dos cosas de una: suena **al ponértelo** —que es lo que pedía el
+ * encargo— y no suena si no llegaba el saldo, porque entonces el servidor no
+ * cambia nada. No hace falta preguntar por el dinero: la ausencia de cambio
+ * **es** la respuesta.
+ *
+ * Y sólo se mira lo que se puede comprar. El supresor también cambia esta clave
+ * y no es una compra (vuelta 64): tiene su propio clic y su propio sonido en el
+ * arma, y hacerle sonar el cerrojo aquí sería contarlo dos veces.
+ */
+let invAnterior = null
+function sonarLoComprado(inv) {
+  const antes = invAnterior
+  invAnterior = { primaria: inv.primaria, escudo: inv.escudo, casco: inv.casco }
+  if (!antes) return
+  if (inv.primaria && inv.primaria !== antes.primaria) playEquip('arma')
+  else if (inv.escudo > antes.escudo) playEquip('chaleco')
+  else if (inv.casco && !antes.casco) playEquip('casco')
+}
+
 const ecoDelMotor = cliente.onEconomia
 cliente.onEconomia = (eco) => {
   ecoDelMotor?.(eco)
+  sonarLoComprado(eco.inv)
   pintarTienda()
 }
 

@@ -8424,6 +8424,178 @@ todas las demás.
 
 ---
 
+## Ronda 73 — El duelo deja de tener su propio HUD
+
+Diez cosas de jugar, y **cinco eran la misma**: la página del 1v1 llevaba desde
+la vuelta 45 con una interfaz escrita a mano, y lo que se notó jugando fue el
+precio entero de esa copia.
+
+### La copia costaba cinco cosas, y ninguna era una decisión
+
+`net/prueba.html` tenía su vida, su bloque de arma, su cartel de abatido y su
+cuña de daño. Funcionaba, y por eso duró seis vueltas. Pero era una segunda
+implementación de lo que `src/ui/Hud.jsx` hace desde la vuelta 34, y «segunda»
+quería decir **recortada**:
+
+- **No tenía chaleco.** Se compraba en la ronda 1, el servidor lo cobraba y lo
+  aplicaba, y en pantalla no salía nada. Tampoco casco, ni cargas, ni los
+  segundos de gracia.
+- **No tenía la marca de Vektor.**
+- **No tenía ficha de armas**, así que en el duelo no se podían ver los números
+  de ninguna — ni siquiera los de la Scout y el Vanta, enteros desde las vueltas
+  70 y 71.
+- **Y no tenía dónde montar un panel**, así que **no había forma de abrir las
+  opciones sin salir de la partida**. De ahí la quinta: la sensibilidad de la
+  mirilla existe desde la vuelta 70 y era inalcanzable. No faltaba: no se podía
+  llegar.
+
+La vuelta 67 ya había hecho esto mismo con dos piezas —la mira y la silueta del
+arma— sacándolas a donde las pudieran llamar los dos. Esto es lo mismo hasta el
+final: `src/ui/duelo.jsx` monta **los componentes del juego** en la página del
+duelo, y las cuatro funciones de pintar HUD que había aquí se borran.
+
+**No hizo falta cambiar ni un campo del motor.** `stats` ya traía
+`shieldSegments`, `helmet` y `charges` desde la vuelta 64: lo que faltaba era
+quién los dibujase.
+
+**Lo que cuesta, medido.** La página del duelo pasa a cargar React y los
+componentes de interfaz: de **202 KB comprimidos a 266**, o sea +64. La del
+juego se queda igual (254 contra 254). Y para quien juegue a las dos —que es
+todo el mundo, porque al duelo se entra por el menú— el total **no cambia**:
+266 KB antes contra 268 ahora, porque lo que antes eran dos bundles con la mitad
+del código repetido ahora es un trozo común que se descarga una vez.
+
+Medido (`duelo73`): el bloque de vida, el de arma, la marca y los FPS caen en
+**el mismo sitio y del mismo tamaño** en los dos modos, pixel a pixel
+—201×40 a 34 del borde, 208×143 a 26 y 28—.
+
+### Y lo que el duelo no tiene se declara, no se esconde
+
+Tres bloques del HUD son del entrenamiento y sólo de él: aciertos y fallos,
+estrellas y marcador de sesión. El duelo **no tiene puntuación** (vuelta 45) y
+lleva su propio marcador de ronda, así que ahí no miden nada. Va con una
+bandera (`<Hud duelo>`) y no con un segundo componente, que es la convención de
+la 63: una diferencia entre modos se declara y se ve, o es un fallo de producto.
+
+### Cuatro píxeles que también eran una diferencia que nadie decidió
+
+Montado el HUD, los anchos y los márgenes salían clavados y **los altos no**:
+44 px de bloque de vida contra 40, y 21 de FPS contra 16. La causa era la página
+del duelo declarando `font: 12px/1.5` en su `body` para su menú y su tienda, y
+eso colándose dentro del HUD. La tipografía del juego pasa a estar escrita una
+vez (`.hud-layer`, en `styles.css`) y no en cada página.
+
+### El supresor no es un artículo, y el cuchillo tampoco
+
+`ECONOMY.catalogo` vendía un **Supresor** por 250. No lo es: no cuesta nada, es
+del arma que ya llevas y se conmuta con el clic derecho en cualquier fase — esa
+regla es de la vuelta 64, y el artículo la contradecía en la misma pantalla. Lo
+que hacía falta no era un precio sino **decir con qué se pone**, y el sitio
+donde se busca eso es la ficha del arma.
+
+De paso, el servidor deja de tratarlo como un `tipo` del catálogo y lo atiende
+**antes de mirarlo**: es un interruptor, no una compra, y ahora el código lo dice.
+
+Y el **Vanta** no está en la lista ni puede estar: `catalogoDeTienda()` no deja
+pasar un arma de ranura `melee`. No es que se haya quitado —nunca estuvo—, es
+que **ahora no puede entrar**: una lista escrita a mano es una lista donde un
+día se cuela algo.
+
+### Lo que compras suena al ponértelo, no al pedirlo
+
+Cuatro voces nuevas (`playEquip`), y ninguna es un bip con otro volumen: la
+cremallera del chaleco es ruido por un pasa-banda que **sube** de 700 a 4200 Hz
+en 180 ms; el casco son dos parciales graves muy amortiguados —lo que dice que
+es un casco es que **no** resuena—; el arma es el cerrojo, dos chasquidos
+separados 55 ms; la utilidad, un mosquetón con su muelle sonando 200 ms.
+
+**Suena cuando el servidor lo da por tuyo**, comparando el inventario con el de
+antes. Eso hace dos cosas de una: suena al ponértelo, que es lo que se pedía, y
+la condición «sólo si hay dinero suficiente» **sale gratis** — si no se cobra,
+el inventario no cambia y no hay nada que sonar. No hace falta preguntar por el
+saldo: la ausencia de cambio es la respuesta.
+
+Y lo que llevas puesto lo dice **la palabra** «Equipado», no sólo un filo de
+color: un borde verde de «esto lo puedes comprar» y un borde verde de «esto ya
+lo llevas» son el mismo borde.
+
+### Que la ronda se acaba se oye
+
+El rojo ya estaba desde la vuelta 62, a 20 s, y no bastaba: es información en un
+sitio al que no se mira, y lo que pasaba jugando era aparecer de vuelta en la
+salida sin que nada lo hubiera dicho. **El oído no hay que apuntarlo a ninguna
+parte**, que es exactamente el problema.
+
+Quince segundos —lo que dura una fase de compra, que es la unidad de tiempo que
+este modo ya tiene— con el contador en rojo y un pitido suave por segundo, el
+último más agudo. Se dispara **en el cambio de cifra**, que es el mismo sitio
+donde se escribe el reloj: no hay un segundo temporizador que pueda desfasarse
+del número que se ve, y en pausa no suena porque el reloj de la ronda es el
+número de paso y en pausa no corre. Sale solo, sin una condición más.
+
+Medido (`ronda73`, con la ronda apretada a 25 s): rojo con 15 s por delante y
+**15 pitidos**, contados en el máster y no en llamadas a funciones.
+
+### El indicador de orientación: lo que se probó y lo que entró
+
+El encargo decía que la brújula se lee mal en acción rápida y que con el
+cuchillo eso importa de verdad. El diagnóstico: sus dos señales son
+**comparativas** —el tono de la cola (vuelta 39) y la pendiente del perfil
+(vuelta 40)— y las dos piden haber visto la otra vista para saber cuál estás
+viendo. Eso vale para información pasiva a doce unidades, que es para lo que se
+calibraron. No vale para una pregunta binaria a unidad y media.
+
+**Lo que se probó y no entró: una punta de flecha.** Barbos y muesca, para que
+la **silueta** cambiara entre frente y espalda y hubiera una tercera señal que
+no fuera comparativa. Medida contra la cuña de siempre en el mismo banco
+(`brujula73`): daba **+16% de área** (136 px contra 117 a 12 u), **no mejoraba**
+lo que venía a mejorar —la silueta cambia un 15-24% con las dos— y **costaba
+tono donde más importa**: a 8 u el Δ de luminancia caía de 20.2 a 10.5, porque
+una cola en V enseña menos cara oscura y más costado claro. O sea que cambiaba
+la señal que el cuchillo necesita por área que no hacía falta. Fuera.
+
+Queda escrito en `config.js` para que el siguiente que lo piense se ahorre la
+vuelta: **la legibilidad de este marcador no está en su forma**, está en el
+contraste de su cola.
+
+**Lo que entró son dos señales, y las dos añaden luz en vez de quitarla.**
+
+La primera versión hacía lo contrario —las caras translúcidas fuera del arco de
+espalda y opacas dentro— y era un error de dirección que el banco cazó de
+inmediato: se pedía que el marcador se leyera **mejor**, y aquello lo dejaba más
+apagado el 90% del tiempo para poder encenderlo el 10%. Hundía el Δ de tono de
+la vuelta 40 de 34 a 10.
+
+- **La cola se enciende dentro del arco de espalda** (`backShade`). Fuera del
+  arco todo queda exactamente como estaba desde la vuelta 40; dentro, la tapa de
+  la cola pasa de 45% a verde entero. Es la única cosa que este marcador dice
+  que no es *hacia dónde mira* sino *qué puedes hacerle*, y por eso es lo único
+  binario que tiene. El arco es el mismo que decide la puñalada instantánea y
+  sale de la misma función (`esPorLaEspalda`): dos cuentas separadas serían una
+  brújula que promete una espalda que el servidor no da por buena.
+
+  Medido: **24 de 64 píxeles** del marcador cambian y **suben 39 de
+  luminancia** — dentro de la banda 34-62 que la vuelta 40 dio por legible.
+
+- **Y la mira dice lo mismo a bocajarro.** El aviso de alcance del cuchillo
+  (vuelta 71) llevaba un estado y ahora lleva dos: en rango los cuatro trazos se
+  abren y se tiñen; **si además le ves la espalda, giran 45°**. Una cruz y una X
+  no se confunden ni de reojo. Sale del **mismo rayo** que ya decide si llegas y
+  del mismo `esPorLaEspalda` que decide el instakill, así que no hay una segunda
+  cuenta que pueda decir que sí mientras el servidor dice que no.
+
+  Es la regla de la vuelta 71 —«lo publica quien lo tiene»— llevada un paso
+  antes en el tiempo, que es donde sirve: un fuerte por la espalda mata lleve lo
+  que lleve el otro, o sea que es la diferencia más grande que hay entre dos
+  golpes, y hasta aquí sólo se sabía **después** de darlo.
+
+  Y no se toca el anillo, aunque la marca de una baja sí lo use (vuelta 52): ese
+  anillo es el del daño recibido, lo anima `Crosshair.damage` con la API de
+  animaciones, y encenderlo desde CSS serían dos dueños para la misma propiedad
+  — el fallo de la cuña de daño de la vuelta 60, que tardó dos vueltas en verse.
+
+---
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
@@ -8623,6 +8795,36 @@ objetivo era medir tiempos y rendimiento de verdad.
   un casco que el mapa no reparte. Con dos navegadores además: que los dos montan
   el mismo mapa desde el enlace, que la Scout sale **en la mano**, que la tecla de
   la armería no abre nada y que El Espejo sigue exactamente igual.
+
+- **Que el HUD del duelo es el del juego, y no uno parecido** (`duelo73.mjs`):
+  con dos navegadores y una partida de verdad, que el bloque de vida, el de
+  arma, la marca y los FPS caen **en el mismo sitio y del mismo tamaño** que
+  entrenando —201×40 a 34 del borde, 208×143 a 26 y 28—; que están los tres
+  segmentos de chaleco y el casco, que es lo que faltaba; y que **no** están los
+  tres bloques del entrenamiento, que ahí no miden nada.
+- **Que las opciones se abren sin salir de la partida** (`duelo73.mjs` [2]): que
+  el menú de ESC tiene sus tres botones, que el panel que abre es el del juego
+  —con la sección de controles y la sensibilidad de la mirilla dentro— y que la
+  partida sigue en pie mientras se mira.
+- **Que la tienda no vende lo que no se vende** (`duelo73.mjs` [3] y [4]): que
+  el supresor no es un artículo y su categoría se fue con él, que el cuchillo
+  tampoco está, que comprar el chaleco lo cobra y lo pone y que su artículo lo
+  dice con la palabra «Equipado»; y que las fichas se abren sin pasar por la
+  compra, con la Scout y el Vanta, sin botón de equipar y con la nota del
+  silenciador en las tres que lo admiten.
+- **Que el final de ronda se ve y se oye** (`ronda73.mjs`, con la ronda apretada
+  a 25 s y el huésped relanzado): que el contador se pone en rojo **con 15 s por
+  delante y no antes**, y que suenan **15 pitidos** contados por amplitud en el
+  máster, no por llamadas a funciones. Y lo primero que comprueba es que el
+  huésped lleva esa config, que es la lección de la vuelta 72.
+- **Que el marcador de orientación se lee mejor y no peor** (`brujula73.mjs`):
+  que las dos cifras de la vuelta 39 siguen en pie —116 px a 12 u y 114 a 20,
+  por encima del listón de 80; 64% del ancho de la silueta del muñeco de
+  cerca— y que el Δ de tono de la vuelta 40 sigue separando frente de espalda
+  (17-25). Y de la señal nueva: que dentro del arco de espalda **24 de 64
+  píxeles del marcador suben 39 de luminancia**, dentro de la banda 34-62 que
+  aquella vuelta dio por legible. El mismo banco es el que tumbó la punta de
+  flecha, midiéndola contra la cuña de siempre.
 
 Lo que **no** está verificado automáticamente: la sensación de juego, el balance
 entre armas y la legibilidad del HUD en pantallas pequeñas. Eso sigue siendo

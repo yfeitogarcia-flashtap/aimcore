@@ -13,43 +13,25 @@
   hr { border: 0; border-top: 1px solid #222; margin: 9px 0; }
 
   /* ---------------------------------------------- lo que se ve jugando
-     Dónde apuntas, cuánta vida te queda, qué arma llevas y con cuánta munición,
-     de dónde te disparan y si estás abatido. Todo esto sólo existe con el ratón
-     capturado (`body.jugando`); con el ratón suelto estorba al aviso, que es la
-     pantalla de menú. El bloque de arma y la cuña de daño entran con la vuelta
-     56, que es cuando el motor completo pasa a llevar la partida. */
-  #mira, #vital, #abatido, #armaHud, #dano, #ronda { display: none; }
-  body.jugando #mira, body.jugando #vital, body.jugando #armaHud { display: block; }
-  /* Con la mirilla puesta manda la suya (vuelta 70). */
-  body.apuntando #mira { opacity: 0; }
-  /* Y con alguien a distancia de cuchillo, la mira se abre y se tiñe del verde
-     de acción (vuelta 71): es el aviso de que **ahí llegas**. */
-  body.aCuchillo #mira i { background: var(--action-color, #2FCB82); }
-  body.aCuchillo #mira i:nth-child(1) { top: calc((var(--crosshair-gap, 3px) * 2.2 + var(--crosshair-length, 7px)) * -1); }
-  body.aCuchillo #mira i:nth-child(2) { top: calc(var(--crosshair-gap, 3px) * 2.2); }
-  body.aCuchillo #mira i:nth-child(3) { left: calc((var(--crosshair-gap, 3px) * 2.2 + var(--crosshair-length, 7px)) * -1); }
-  body.aCuchillo #mira i:nth-child(4) { left: calc(var(--crosshair-gap, 3px) * 2.2); }
-  body.jugando #dano { display: block; }
+     **Ya no se dibuja aquí** (vuelta 73). La mira, la vida, el escudo, el
+     casco, el bloque de arma, la cuña de daño, la viñeta de abatido y la marca
+     de Vektor son **los componentes del juego**, montados por
+     `src/ui/duelo.jsx`. Esta página llevaba su propia copia desde la vuelta 45
+     y el precio se vio entero jugando: no había chaleco en pantalla aunque se
+     acabara de comprar, no había marca, no había ficha de armas y no había
+     forma de abrir las opciones sin salir de la partida.
 
-  /* **La mira es la del entrenamiento** (vuelta 67), no una escrita aquí: los
-     tres números salen de `CROSSHAIR` y los publica el JS como variables CSS,
-     igual que el color. Hasta aquí el duelo llevaba trazos de un píxel y un
-     punto en el centro, y el juego dos píxeles y sin punto — dos miras
-     distintas en el mismo juego, que es la definición de fallo de producto de
-     la vuelta 63. Los valores de aquí son el respaldo por si el JS no llega. */
-  #mira { position: fixed; left: 50%; top: 50%; width: 0; height: 0;
-    pointer-events: none; }
-  #mira i { position: absolute; background: var(--crosshair-color, #EAEAEA); }
-  #mira i:nth-child(1), #mira i:nth-child(2) {
-    width: var(--crosshair-thickness, 2px); height: var(--crosshair-length, 7px);
-    left: calc(var(--crosshair-thickness, 2px) / -2); }
-  #mira i:nth-child(1) { top: calc((var(--crosshair-gap, 3px) + var(--crosshair-length, 7px)) * -1); }
-  #mira i:nth-child(2) { top: var(--crosshair-gap, 3px); }
-  #mira i:nth-child(3), #mira i:nth-child(4) {
-    height: var(--crosshair-thickness, 2px); width: var(--crosshair-length, 7px);
-    top: calc(var(--crosshair-thickness, 2px) / -2); }
-  #mira i:nth-child(3) { left: calc((var(--crosshair-gap, 3px) + var(--crosshair-length, 7px)) * -1); }
-  #mira i:nth-child(4) { left: var(--crosshair-gap, 3px); }
+     Lo que sigue siendo de aquí es lo que sólo existe en el duelo: el marcador
+     de ronda, los carteles de pausa y votación, el aviso de red, el menú del
+     código, la tienda y los números de F3. Y la marca de impacto, que cuelga
+     del **veredicto del servidor** y por eso no tiene sitio en el
+     entrenamiento. */
+  #ronda { display: none; }
+  /* **Los paneles del juego van por encima de lo que es de esta página**
+     (vuelta 73). El marcador de ronda vive en z-index 3 y el `.overlay` de las
+     opciones y las fichas viene con el 2 del juego, donde no compite con nada:
+     aquí sí, y la cuenta de la ronda se leía por encima del panel. */
+  #capa .overlay { z-index: 9; }
 
   /* **Y la marca de impacto es otro elemento, no la mira moviéndose** (vuelta
      67). Antes eran los mismos cuatro trazos girando 45°, así que acertar
@@ -134,55 +116,6 @@
   #votacion kbd { margin-left: 5px; background: rgba(10,10,10,.22); border: 0;
     padding: 1px 4px; font-size: 10px; opacity: .8; }
 
-  #vital { position: fixed; left: 18px; bottom: 16px; }
-  /* Sobre la pared clara del mapa, el gris apagado del panel no se lee: esto va
-     en pantalla y tiene que verse. Un punto por debajo del blanco de la vida,
-     que sigue siendo lo principal. */
-  #libres { margin-top: 6px; color: #B4B4B4; letter-spacing: .04em;
-    text-shadow: 0 1px 2px rgba(10,10,10,.9); }
-  #vitalN { font-size: 26px; line-height: 1; color: #FFF; font-variant-numeric: tabular-nums; }
-  #vitalB { width: 132px; height: 3px; margin-top: 5px; background: #242424; }
-  #vitalB i { display: block; height: 100%; background: #2FCB82; transition: width .12s linear; }
-
-  /* **El bloque de arma: abajo a la derecha, grande y con su silueta** (vuelta
-     67). Es el mismo sitio, el mismo tamaño y la misma forma que el del
-     entrenamiento, y la silueta sale del mismo trazado (`weaponSilhouette.js`)
-     — hasta aquí el duelo no tenía ninguna, que es justo la clase de diferencia
-     entre modos que la vuelta 63 llama fallo de producto.
-     Cifras de ancho fijo: la munición cambia disparo a disparo y con ancho
-     variable el bloque baila. */
-  #armaHud { position: fixed; right: 28px; bottom: 26px; pointer-events: none;
-    display: flex; flex-direction: column; align-items: flex-end; gap: 6px;
-    text-align: right; }
-  #armaFila { display: flex; align-items: baseline; gap: 16px; }
-  .weapon__svg { width: 208px; height: 90px; flex: none; fill: none;
-    stroke: #E8E8E8; stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round;
-    filter: drop-shadow(0 1px 2px rgba(10,10,10,.9)); }
-  #municion { font-size: 34px; line-height: 1; color: #FFF; letter-spacing: .04em;
-    font-variant-numeric: tabular-nums; text-shadow: 0 1px 2px rgba(10,10,10,.9); }
-  #municion.mal { color: #E4462B; }
-  #arma { display: flex; flex-direction: column; align-items: flex-end; gap: 2px;
-    font-size: 12px; line-height: 1.35; letter-spacing: .18em; color: #C8C8C8;
-    text-transform: uppercase; text-shadow: 0 1px 2px rgba(10,10,10,.9); }
-  #armaModo { font-size: 9px; line-height: 1.35; letter-spacing: .22em; color: #8A8A8A; }
-
-  /* **La cuña de daño.** El hueco del centro es una máscara radial y no una
-     opacidad afinada: así la regla de no tapar la mira queda garantizada por
-     construcción y no por un número que alguien pueda subir. */
-  #dano { position: fixed; inset: 0; z-index: 2; pointer-events: none; opacity: 0;
-    transition: opacity .18s linear;
-    background: conic-gradient(from calc(var(--angulo, 0deg) - 34deg),
-      rgba(255,45,31,calc(.55 * var(--fuerza, 1))) 0deg,
-      rgba(255,45,31,0) 68deg, rgba(255,45,31,0) 360deg);
-    -webkit-mask-image: radial-gradient(circle at 50% 50%, transparent 24%, #000 62%);
-    mask-image: radial-gradient(circle at 50% 50%, transparent 24%, #000 62%); }
-  /* **La opacidad la manda esta clase y nadie más.** Hasta la vuelta 60 la
-     fuerza del impacto se escribía como `style.opacity` desde el JS, y un
-     estilo en línea gana a cualquier selector: quitar `.puesto` no apagaba
-     nada y la cuña se quedaba encendida desde el primer disparo recibido. La
-     fuerza va ahora en `--fuerza`, que sólo tiñe el gradiente. */
-  #dano.puesto { opacity: 1; }
-
   /* Ojo: **aquí no se pone `display`**. La regla de arriba lo apaga y ésta
      tiene la misma especificidad —un id—, así que un `display: grid` puesto
      aquí gana por ir después y el cartel de ABATIDO se queda encendido con la
@@ -212,11 +145,6 @@
   #fin.puesto { display: grid; }
   #fin b { font-size: 40px; letter-spacing: .12em; }
   #fin p { margin-top: 8px; letter-spacing: .1em; }
-  #abatido { position: fixed; inset: 0; place-items: center; pointer-events: none;
-    background: radial-gradient(ellipse at center, rgba(10,10,10,.25) 35%, rgba(10,10,10,.88) 100%);
-    text-align: center; letter-spacing: .3em; }
-  body.jugando #abatido.puesto { display: grid; }
-  #abatido b { font-size: 34px; color: #E4462B; }
 
   /* ---------------------------------------------- la pantalla de menú */
   /* El menú se centra **por debajo** del cartel de pausa, no detrás: los dos
@@ -333,11 +261,16 @@
   #finSalir { margin-top: 14px; background: #2FCB82; color: #08130D; border: 0;
     border-radius: 3px; padding: 9px 20px; font: inherit; font-weight: 700;
     letter-spacing: .06em; cursor: pointer; }
-  #pausar, #pedirVoto, #salir, #reconectar { background: #1A1A1A; color: #E8E8E8;
+  #pausar, #pedirVoto, #salir, #opciones, #reconectar { background: #1A1A1A; color: #E8E8E8;
     border: 1px solid #3A3A3A; border-radius: 3px; padding: 8px 16px; font: inherit;
     letter-spacing: .06em; cursor: pointer; }
   #salir { margin-left: 8px; padding: 8px 12px; font-size: 11px; color: #9A9A9A; }
-  #pausar:hover, #pedirVoto:hover { border-color: #2FCB82; color: #FFF; }
+  #opciones { margin-left: 8px; }
+  #fichas { background: #1A1A1A; color: #C8C8C8; border: 1px solid #3A3A3A;
+    border-radius: 3px; padding: 6px 12px; font: inherit; letter-spacing: .06em;
+    cursor: pointer; }
+  #fichas:hover { border-color: #2FCB82; color: #FFF; }
+  #pausar:hover, #pedirVoto:hover, #opciones:hover { border-color: #2FCB82; color: #FFF; }
   /* Salir no es la acción de esta pantalla: se ve, no se invita. En rojo, que es
      el color que en esta paleta significa «esto te lo están haciendo a ti». */
   #salir:hover { border-color: #E4462B; color: #FFF; }
@@ -351,21 +284,11 @@
 <div id="pausa" hidden></div>
 <div id="votacion"></div>
 
-<div id="mira"><i></i><i></i><i></i><i></i></div>
+<!-- **La capa del juego**: HUD, mira, opciones y fichas. La monta
+     `src/ui/duelo.jsx` con los mismos componentes que el entrenamiento — aquí
+     sólo hace falta el sitio donde ponerla (vuelta 73). -->
+<div id="capa"></div>
 <div id="marca"><i></i><i></i><i></i><i></i><u></u></div>
-<div id="vital"><div id="vitalN">100</div><div id="vitalB"><i style="width:100%"></i></div>
-  <div id="libres">pausas 3 · rival 3</div></div>
-<!-- El bloque de arma va **bajo la mira y centrado**, como en el HUD del juego:
-     munición a un lado, nombre del arma como rótulo secundario debajo. -->
-<div id="armaHud">
-  <div id="armaSil"></div>
-  <div id="armaFila"><div id="arma">—<span id="armaModo"></span></div><div id="municion">—</div></div>
-</div>
-<!-- Y la cuña de daño, que dice **de dónde** te han disparado. El ángulo lo
-     calcula el motor; esto sólo lo pinta. El centro va libre por construcción:
-     es una máscara radial, no una opacidad afinada (vuelta 40). -->
-<div id="dano"></div>
-<div id="abatido"><div><b>ABATIDO</b><p class="apagado" id="reaparece">&nbsp;</p></div></div>
 <!-- **El marcador de ronda** (vuelta 62): arriba y centrado, porque es lo que se
      mira entre ronda y ronda. La cuenta va en su propio nodo y se escribe por
      frame; el resto sólo cuando cambia de fase — la regla del HUD de siempre. -->
@@ -432,7 +355,15 @@
        caída —un cable que se corta no manda nada—. Va pequeño y en la misma
        fila: no es la acción de esta pantalla, y una fila más se sale de una
        ventana pequeña. -->
-  <p><button id="pausar" class="control" hidden>Pausar la partida</button><button id="salir" class="control">Salir de la partida</button></p>
+  <!-- **Y opciones, sin salir de la partida** (vuelta 73). Hasta aquí el menú
+       del duelo tenía dos botones y ninguno llevaba a la configuración: para
+       cambiar la sensibilidad, un bind o la sensibilidad de la mirilla había
+       que **irse de la partida**. No era una decisión: era que esta página no
+       tenía dónde montar el panel, y desde que monta la capa del juego sí.
+       Los tres van en una fila y no en tres: `menu62` mide que quepan. -->
+  <p><button id="pausar" class="control" hidden>Pausar la partida</button><button
+     id="opciones" class="control">Opciones</button><button
+     id="salir" class="control">Salir de la partida</button></p>
   <!-- Es un `.control`: se pincha con el ratón suelto y su clic no cuenta como
        el clic que captura. Sale sólo sin pausas libres; lo decide `pintarPausa`. -->
   <p><button id="pedirVoto" class="control" hidden>Solicitar pausa por votación</button></p>
@@ -451,7 +382,16 @@
   <div id="tiendaGrid"></div>
   <p class="apagado" style="max-width:980px;margin:9px auto 0">
     <kbd>B</kbd> cierra · clic para comprar · o teclea <b>categoría + código</b>
-    (la Rift es <kbd>4</kbd><kbd>3</kbd>) · <kbd>clic derecho</kbd> pone y quita el supresor
+    (la Rift es <kbd>4</kbd><kbd>3</kbd>) · <kbd>clic derecho</kbd> pone y quita el
+    silenciador, que es del arma y no cuesta nada
+  </p>
+  <!-- **Los números de las armas, sin pasar por la compra** (vuelta 73). Hasta
+       aquí el duelo no enseñaba la ficha de ninguna, ni siquiera las de la
+       Scout y el Vanta. Va aquí y no en el menú de ESC porque es de la misma
+       conversación que la tienda —qué llevo y qué hace—, y porque ese menú no
+       puede crecer una fila más (vuelta 62). -->
+  <p style="text-align:center;margin:6px 0 0">
+    <button id="fichas" class="control">Ver fichas de las armas</button>
   </p>
 </div>
 

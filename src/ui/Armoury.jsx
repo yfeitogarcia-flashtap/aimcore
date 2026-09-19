@@ -152,7 +152,7 @@ function SuppressorToggle({ on, onToggle }) {
 /** Con qué tecla sale cada ranura. La lista de teclas de equipo, en un sitio. */
 const SLOT_KEYS = { primary: '1', secondary: '2', melee: '3' }
 
-function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip, onSuppressor }) {
+function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip, onSuppressor, soloFicha }) {
   const weapon = WEAPONS[weaponKey]
   // **Ni la pistola ni el cuchillo se equipan: se llevan.** Lo que decide que
   // una ficha no tenga botón es que su ranura no se elige, y eso hoy son dos.
@@ -184,7 +184,15 @@ function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip,
       </div>
 
       <div className="armoury__action">
-        {fixed ? (
+        {/**
+          * **De consulta no se equipa** (vuelta 73). En el duelo lo que llevas
+          * lo decide el servidor —se compra, o lo reparte el mapa—, así que un
+          * botón «Equipar» aquí prometería algo que el servidor va a ignorar.
+          * Es la regla del selector de la vuelta 67 en otra pantalla.
+          */}
+        {soloFicha ? (
+          <span className="armoury__fixed">{inHand ? 'En la mano' : 'Ficha'}</span>
+        ) : fixed ? (
           // La pistola no se equipa: se lleva. Ocupa el hueco del botón con la
           // razón por la que no lo tiene, que es lo que alguien va a buscar ahí.
           <span className="armoury__fixed">Siempre encima</span>
@@ -201,8 +209,23 @@ function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip,
       </div>
 
       <div className="armoury__switches">
-        {weapon.supportsSuppressor && (
+        {/**
+          * **El silenciador no se compra: es del arma** (vuelta 73). Hasta aquí
+          * la tienda del duelo lo vendía por 250 como si fuera un accesorio, y
+          * no lo es — se conmuta con el clic derecho, en los dos modos, en
+          * cualquier fase y sin coste (esa regla es de la vuelta 64). Un precio
+          * en el panel decía lo contrario que el juego.
+          *
+          * Lo que hacía falta no era un artículo: era **decir con qué se pone**,
+          * y el sitio donde alguien lo busca es la ficha del arma. Va en los dos
+          * modos, porque el clic derecho vale en los dos; en el de consulta es
+          * lo único que queda, porque ahí la casilla no mandaría nada.
+          */}
+        {weapon.supportsSuppressor && !soloFicha && (
           <SuppressorToggle on={suppressed} onToggle={() => onSuppressor(weaponKey)} />
+        )}
+        {weapon.supportsSuppressor && (
+          <span className="armoury__hint">Clic derecho del ratón = Silenciador</span>
         )}
       </div>
 
@@ -259,7 +282,7 @@ function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip,
  *   onClose: () => void,
  * }} props
  */
-export default function Armoury({ settings, equipped, onChange, onClose }) {
+export default function Armoury({ settings, equipped, onChange, onClose, soloFicha = false }) {
   /**
    * **Y el cuchillo el último** (vuelta 71), que es el orden en que se llevan:
    * principal, pistola, cuerpo a cuerpo. Sale de `MELEE_WEAPON`, derivado de la
@@ -284,10 +307,17 @@ export default function Armoury({ settings, equipped, onChange, onClose }) {
 
   return (
     <div className="panel panel--armoury" onMouseDown={(event) => event.stopPropagation()}>
-      <h2 className="panel__title panel__title--small">Armería</h2>
+      <h2 className="panel__title panel__title--small">
+        {soloFicha ? 'Fichas de las armas' : 'Armería'}
+      </h2>
       <p className="panel__hint">
-        La principal sale con la <strong>1</strong> y la {WEAPONS[SECONDARY_WEAPON].label} con la{' '}
-        <strong>2</strong>. Lo que pesa se nota al andar, y el silenciador es de cada arma.
+        {soloFicha
+          ? <>Lo que llevas en una partida lo decide el servidor: se compra, o lo reparte el mapa.
+              Esto son los números — la principal sale con la <strong>1</strong>, la{' '}
+              {WEAPONS[SECONDARY_WEAPON].label} con la <strong>2</strong> y el{' '}
+              {WEAPONS[MELEE_WEAPON].label} con la <strong>3</strong>.</>
+          : <>La principal sale con la <strong>1</strong> y la {WEAPONS[SECONDARY_WEAPON].label} con la{' '}
+              <strong>2</strong>. Lo que pesa se nota al andar, y el silenciador es de cada arma.</>}
       </p>
 
       <div className="armoury__grid">
@@ -295,12 +325,16 @@ export default function Armoury({ settings, equipped, onChange, onClose }) {
           <WeaponCard
             key={key}
             weaponKey={key}
-            equipped={key === settings.weapon}
+            // En el modo de consulta **nada está «equipado»**: lo que llevas
+            // no sale de este ajuste, sale del servidor. Marcar la que tienes
+            // guardada en el juego sería señalar un arma que no llevas.
+            equipped={!soloFicha && key === settings.weapon}
             inHand={key === equipped?.weaponKey}
             suppressed={Boolean(settings.suppressor[key])}
             slotKey={SLOT_KEYS[WEAPONS[key].slot] ?? '1'}
             onEquip={(next) => onChange({ weapon: next })}
             onSuppressor={toggleSuppressor}
+            soloFicha={soloFicha}
           />
         ))}
       </div>

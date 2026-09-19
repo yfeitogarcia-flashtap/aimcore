@@ -599,6 +599,156 @@ export function playUiConfirm() {
   }
 }
 
+/**
+ * **Lo que has comprado, al ponértelo** (vuelta 73).
+ *
+ * Suena **cuando el servidor lo da por tuyo**, no al pinchar: el clic sólo pide,
+ * y un sonido al pedir diría «ya lo tienes» a quien no llegue de saldo. Es la
+ * misma regla que la marca de impacto de la vuelta 46 —lo que confirma es el
+ * veredicto, no la intención—, y de paso la condición del encargo («sólo si hay
+ * dinero suficiente») sale gratis: si no se cobra, no hay inventario nuevo y no
+ * suena nada.
+ *
+ * Cuatro voces y **ninguna es un bip con otro volumen**: lo que distingue a
+ * cada una es de qué está hecha, que es la regla de la casa desde la 40.
+ *
+ * - **Chaleco**: una cremallera. Ruido por un pasa-banda que **sube** de 700 a
+ *   4.2 kHz en 180 ms, que es lo que se oye como un diente detrás de otro. La
+ *   única de las cuatro que dura más de una décima, porque abrocharse tarda.
+ * - **Casco**: un golpe sordo sobre algo hueco. Dos parciales graves y muy
+ *   amortiguados, sin nada agudo: lo que dice «esto es un casco» es que no
+ *   resuena.
+ * - **Arma**: el cerrojo. Dos chasquidos metálicos separados 55 ms —correr y
+ *   soltar—, con la misma saturación inarmónica que los disparos, porque es la
+ *   misma pieza de metal.
+ * - **Utilidad**: un mosquetón al cinturón. Un golpe corto y **un anillo agudo
+ *   que sigue sonando** 200 ms: el muelle. Es lo único de las cuatro que tiene
+ *   cola, y es lo que lo hace reconocible.
+ *
+ * @param {'chaleco'|'casco'|'arma'|'utilidad'} tipo
+ */
+export function playEquip(tipo) {
+  if (!ctx || !master || !noiseBuffer) return
+  const t = ctx.currentTime
+  const vol = AUDIO.equipVolume
+  const fin = []
+
+  if (tipo === 'chaleco') {
+    const noise = ctx.createBufferSource()
+    noise.buffer = noiseBuffer
+    const banda = ctx.createBiquadFilter()
+    banda.type = 'bandpass'
+    banda.Q.value = 4.5
+    banda.frequency.setValueAtTime(700, t)
+    banda.frequency.exponentialRampToValueAtTime(4200, t + 0.18)
+    const gain = ctx.createGain()
+    gain.gain.setValueAtTime(0.0001, t)
+    gain.gain.exponentialRampToValueAtTime(0.5 * vol, t + 0.02)
+    gain.gain.exponentialRampToValueAtTime(0.0001, t + 0.2)
+    noise.connect(banda).connect(gain).connect(master)
+    noise.start(t)
+    noise.stop(t + 0.22)
+    fin.push([noise, banda, gain])
+  } else if (tipo === 'casco') {
+    for (const [hz, amp, largo] of [[190, 0.55, 0.14], [268, 0.3, 0.1]]) {
+      const osc = ctx.createOscillator()
+      osc.type = 'triangle'
+      osc.frequency.setValueAtTime(hz, t)
+      osc.frequency.exponentialRampToValueAtTime(hz * 0.72, t + largo)
+      const gain = ctx.createGain()
+      gain.gain.setValueAtTime(0.0001, t)
+      gain.gain.exponentialRampToValueAtTime(amp * vol, t + 0.003)
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + largo)
+      osc.connect(gain).connect(master)
+      osc.start(t)
+      osc.stop(t + largo + 0.02)
+      fin.push([osc, gain])
+    }
+  } else if (tipo === 'arma') {
+    for (const retraso of [0, 0.055]) {
+      const noise = ctx.createBufferSource()
+      noise.buffer = noiseBuffer
+      const banda = ctx.createBiquadFilter()
+      banda.type = 'bandpass'
+      banda.Q.value = 7
+      banda.frequency.value = retraso ? 2400 : 3100
+      const gain = ctx.createGain()
+      gain.gain.setValueAtTime(0.0001, t + retraso)
+      gain.gain.exponentialRampToValueAtTime(0.45 * vol, t + retraso + 0.0015)
+      gain.gain.exponentialRampToValueAtTime(0.0001, t + retraso + 0.035)
+      noise.connect(banda).connect(gain).connect(master)
+      noise.start(t + retraso)
+      noise.stop(t + retraso + 0.05)
+      fin.push([noise, banda, gain])
+    }
+  } else {
+    const noise = ctx.createBufferSource()
+    noise.buffer = noiseBuffer
+    const alto = ctx.createBiquadFilter()
+    alto.type = 'highpass'
+    alto.frequency.value = 2600
+    const golpe = ctx.createGain()
+    golpe.gain.setValueAtTime(0.0001, t)
+    golpe.gain.exponentialRampToValueAtTime(0.4 * vol, t + 0.0015)
+    golpe.gain.exponentialRampToValueAtTime(0.0001, t + 0.03)
+    noise.connect(alto).connect(golpe).connect(master)
+    noise.start(t)
+    noise.stop(t + 0.04)
+    fin.push([noise, alto, golpe])
+
+    // El muelle: lo que hace que un mosquetón suene a mosquetón y no a clic.
+    const osc = ctx.createOscillator()
+    osc.type = 'sine'
+    osc.frequency.setValueAtTime(3150, t)
+    const anillo = ctx.createGain()
+    anillo.gain.setValueAtTime(0.0001, t)
+    anillo.gain.exponentialRampToValueAtTime(0.22 * vol, t + 0.004)
+    anillo.gain.exponentialRampToValueAtTime(0.0001, t + 0.2)
+    osc.connect(anillo).connect(master)
+    osc.start(t)
+    osc.stop(t + 0.22)
+    fin.push([osc, anillo])
+  }
+
+  for (const nodos of fin) {
+    nodos[0].onended = () => {
+      for (const nodo of nodos) nodo.disconnect()
+    }
+  }
+}
+
+/**
+ * **La ronda se acaba** (vuelta 73). Un pitido por segundo en los últimos
+ * `ROUNDS.avisoFinalSegundos`, y **suave a propósito**: es un recordatorio, no
+ * una alarma — el jugador está en mitad de un intercambio y lo que no puede
+ * hacer es sobresaltarle.
+ *
+ * Es senoidal puro y sin ruido, como `playUiConfirm`, porque **no es del
+ * mundo**: es información de la partida, como el marcador de ronda. Y el último
+ * segundo sube de tono, que es lo que separa «queda poco» de «se acabó» sin
+ * necesidad de mirar el reloj.
+ *
+ * @param {boolean} ultimo si es el segundo final.
+ */
+export function playRoundTick(ultimo = false) {
+  if (!ctx || !master) return
+  const t = ctx.currentTime
+  const osc = ctx.createOscillator()
+  osc.type = 'sine'
+  osc.frequency.setValueAtTime(ultimo ? 1180 : 880, t)
+  const gain = ctx.createGain()
+  gain.gain.setValueAtTime(0.0001, t)
+  gain.gain.exponentialRampToValueAtTime((ultimo ? 0.34 : 0.22) * AUDIO.roundTickVolume, t + 0.006)
+  gain.gain.exponentialRampToValueAtTime(0.0001, t + (ultimo ? 0.16 : 0.09))
+  osc.connect(gain).connect(master)
+  osc.start(t)
+  osc.stop(t + 0.2)
+  osc.onended = () => {
+    osc.disconnect()
+    gain.disconnect()
+  }
+}
+
 /** Acierto: dos parciales senoidales con subida rápida de tono. Brillante. */
 export function playHit() {
   if (!ctx || !master) return

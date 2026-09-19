@@ -231,6 +231,12 @@ rival: al que se une por el enlace le salen apagadas, porque cambiarlas no
 reconfigura la sala —empieza otra, con otro código— y eso dejaría al otro solo en
 la de antes.
 
+**El menú de ESC tiene tres botones:** *Pausar la partida*, *Opciones* y *Salir
+de la partida*. Las opciones son las mismas del juego —controles, sensibilidad,
+sensibilidad de la mirilla— y se abren **sin salir de la partida**; el mundo
+sigue corriendo mientras las miras, así que ahí eres un blanco. Pausar es lo
+único que para el mundo, y lo para para los dos.
+
 **Y el botón «copiar» copia siempre**, también cuando juegas por la IP de tu red:
 ahí el navegador no da portapapeles moderno y hace falta el camino de abajo. Lo
 que copia es una URL completa. Un aviso que no está en nuestra mano: WhatsApp no
@@ -298,6 +304,10 @@ su salida, se queda encerrado en una caja de 4 u alrededor de ella y **no recibe
 la posición del rival**, así que no hay forma de verse ni de dispararse. Es la
 ventana de la tienda, que se cuenta un poco más abajo.
 
+**Y la ronda avisa antes de acabarse:** en los últimos **15 segundos** el
+contador se pone en rojo y suena un pitido suave por segundo, el último más
+agudo. Suave a propósito — avisa, no sobresalta.
+
 Todo es configurable en `ROUNDS` (`src/config.js`).
 
 ### Si se corta la conexión
@@ -336,13 +346,29 @@ de cada ficha. La Pulse es `1 1`, la Volt `3 1` y la Rift `4 3`. Los códigos
 dejan huecos a propósito para las armas que faltan: cuando lleguen, lo que ya te
 sabes no cambiará de sitio.
 
-**Con el arma en la mano, el clic derecho pone y quita el supresor.** No cuesta
-dinero y se puede hacer en cualquier momento — es tu arma.
+**Con el arma en la mano, el clic derecho pone y quita el silenciador.** No
+cuesta dinero, no está en la tienda y se puede hacer en cualquier momento — es
+tu arma, no un accesorio que se compra. Lo dicen las fichas de la Pulse, la Volt
+y la Rift, que son las tres que lo admiten.
+
+**El cuchillo tampoco se compra:** el Vanta va contigo siempre, en cualquier
+mapa, como la pistola.
+
+**Lo que compras suena al ponértelo** —cada cosa con lo suyo: el chaleco con una
+cremallera, el casco con un golpe sordo, un arma con el cerrojo— y su artículo
+pasa a decir **«Equipado»** mientras lo lleves. Si no te llega el saldo no suena
+nada, porque no se te ha dado nada.
+
+**Y los números de cada arma se pueden mirar sin comprar:** el botón «Ver fichas
+de las armas», abajo en la tienda, abre la misma ficha que la armería del
+entrenamiento — con la Scout y el Vanta incluidos. En los mapas que reparten, la
+tecla de la armería abre directamente eso, que es lo único que hay que ver.
 
 **Y en Los Pilares nada de esto existe.** Ese mapa reparte el equipo en vez de
 venderlo, así que no hay tienda, ni dinero, ni fase de compra: la tecla de la
-armería no abre nada y el selector de fase sale apagado. No es lo mismo que
-elegir «sin fase», que es justo lo contrario —ahí se compra todo el rato—.
+armería abre las fichas de las armas y el selector de fase sale apagado. No es
+lo mismo que elegir «sin fase», que es justo lo contrario —ahí se compra todo el
+rato—.
 
 ### El dinero
 
@@ -739,6 +765,12 @@ De abajo arriba:
    silueta del muñeco —la primera versión ocupaba el 105%, más que el propio
    muñeco— sin dejar de leerse a media distancia, porque más allá de 8 u deja de
    encoger en pantalla.
+
+   **Y cuando le estás viendo la espalda, su cola se enciende.** Es el único
+   aviso de este marcador que no dice hacia dónde mira sino qué puedes hacerle:
+   se enciende exactamente dentro del arco en el que una puñalada fuerte mata de
+   un golpe, ni un grado más. Con el cuchillo en la mano eso deja de ser un
+   detalle.
 2. **Un `?` amarillo** mientras te ha visto y todavía no dispara —ésa es su
    ventana de reacción, y es exactamente el hueco que tienes para cubrirte— o
    **un `!` rojo** mientras te dispara, uno por muñeco, así que se cuentan las
@@ -1033,7 +1065,12 @@ Sólo el fuerte: un flojo por detrás no mata de una.
 avisos, y cada uno dice algo distinto:
 
 - **La mira se abre y se pone verde** cuando hay alguien a distancia de
-  cuchillo. Es lo único que se puede saber *antes* de golpear.
+  cuchillo, **y gira 45° si además le estás viendo la espalda**. Es lo único que
+  se puede saber *antes* de golpear, y es justo lo que más decide: un fuerte por
+  detrás mata lleve lo que lleve el otro. Una cruz y una X no se confunden ni de
+  reojo.
+- **Y la brújula sobre su cabeza se enciende** en ese mismo arco, así que a
+  distancia también se ve venir.
 - **La cámara se mueve** al golpear, como con el retroceso de un arma. El fuerte
   empuja el doble que el flojo.
 - **Un arco cruza la pantalla**: fino y a la izquierda el flojo, grueso, verde y
@@ -1042,7 +1079,9 @@ avisos, y cada uno dice algo distinto:
   si has conectado, y la puñalada por la espalda añade un metal que no lleva
   ningún otro golpe.
 
-*Le falta la silueta del HUD: su referencia todavía no está en el repositorio.*
+*Le falta la silueta: su referencia (`Reference/Weapons/Vanta.png`) todavía no
+está en el repositorio, así que su ficha sale sin dibujo. En cuanto llegue es un
+comando: `npm run trace:weapons`.*
 
 ### La Scout, y la mirilla
 
@@ -1060,7 +1099,8 @@ siendo el supresor.
 
 **La sensibilidad con mirilla es suya**, y se ajusta en opciones. De fábrica es
 la misma que la normal; bajarla es lo que hace que el tercer aumento sirva para
-afinar y no para dar bandazos.
+afinar y no para dar bandazos. En el duelo, las opciones se abren desde el menú
+de **ESC** sin salir de la partida.
 
 ### El peso: lo que cuesta llevar el arma
 

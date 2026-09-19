@@ -66,7 +66,7 @@ function modoDelArma(weaponKey) {
   return modo === 'auto' ? 'AUTO' : 'SEMI'
 }
 
-const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
+const Hud = forwardRef(function Hud({ weaponKey, suppressed, duelo = false }, ref) {
   const fpsRef = useRef(null)
   const timeRef = useRef(null)
   const timeLabelRef = useRef(null)
@@ -415,6 +415,24 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
         que haya con quién compararse. Hoy no lo hay —no hay cuentas ni
         multijugador—, y una lista de rivales vacía o inventada diría que sí.
       */}
+      {/**
+        * **Lo que el duelo no tiene no se esconde: no se monta** (vuelta 73).
+        *
+        * Tres bloques son del entrenamiento y sólo de él, y no por olvido: el
+        * duelo **no tiene puntuación ni dianas** (vuelta 45), así que aciertos,
+        * fallos, estrellas y el reloj de sesión no miden nada ahí — y el
+        * marcador de TAB es de una sesión contra muñecos, que es otra cosa que
+        * las rondas. El 1v1 lleva su propio marcador de ronda, que es de la
+        * partida y vive en su página.
+        *
+        * Se decide con **una bandera y no con dos componentes**: es la
+        * convención de la vuelta 63: una diferencia entre modos se declara y se
+        * ve, o es un fallo de producto. Todo lo demás —la marca, los FPS, el
+        * engranaje, la vida, el escudo, el casco, la viñeta de abatido, el
+        * bloque de arma y la ayuda— sale igual en los dos sitios porque **es el
+        * mismo componente**.
+        */}
+      {!duelo && (
       <div className="scoreboard" ref={scoreboardRef} hidden>
         <div className="scoreboard__panel">
           <div className="scoreboard__head">
@@ -437,6 +455,7 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
           </div>
         </div>
       </div>
+      )}
 
       <div className="hud__fps">
         <span className="hud__fps-value" ref={fpsRef}>
@@ -457,6 +476,7 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
         <span className="hud__options-key">ESC</span>
       </div>
 
+      {!duelo && (
       <div className="hud__stars" ref={starsRef} hidden>
         {[0, 1, 2, 3, 4].map((i) => (
           <svg
@@ -473,6 +493,9 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
         ))}
       </div>
 
+      )}
+
+      {!duelo && (
       <div className="hud">
         <div className="hud__stat hud__stat--timer">
           <span className="hud__value" ref={timeRef}>
@@ -495,6 +518,7 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
           <span className="hud__label">fallos</span>
         </div>
       </div>
+      )}
 
       {/* Vida y escudo, abajo a la izquierda: lejos de la mira y lejos del
           cargador, que es lo otro que se mira de reojo. La cruz y el escudo son
