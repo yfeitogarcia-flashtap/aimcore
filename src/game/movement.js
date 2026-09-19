@@ -53,7 +53,7 @@
  * clavada en el centro a la altura de pie, que es la línea base de puntería.
  */
 
-import { COVER, LANDING, MOVEMENT, ROOM, fisicaDeEscenario, weaponSpeedFactor } from '../config.js'
+import { COVER, EDITOR, LANDING, MOVEMENT, ROOM, fisicaDeEscenario, weaponSpeedFactor } from '../config.js'
 import { defaultKeybinds, keysOf, typingInField } from '../keybinds.js'
 
 const DEG_TO_RAD = Math.PI / 180
@@ -660,6 +660,26 @@ export class MovementController {
    */
   update(dt, now = performance.now()) {
     if (!this.enabled) return
+    /**
+     * **Volar es una herramienta del editor, no una mecánica** (vuelta 77).
+     *
+     * Existe para una sola cosa: poder apuntar a una cornisa a la que no se
+     * llega de pie, y plantar ahí un muñeco. Por eso es un `if` **al principio
+     * del paso** y no una rama dentro de la vertical — así no hay ni un camino
+     * nuevo que recorra el modelo de movimiento, ni un campo más en
+     * `snapshot()`, ni nada que pueda discrepar entre los dos extremos de una
+     * partida en red. Lo enciende el editor y sólo el editor.
+     *
+     * Y **apagarlo no teletransporta**: se deja al jugador en el aire con
+     * `airborne` y su parábola de siempre, así que cae con la gravedad del mapa
+     * y aterriza como en cualquier salto. Vektor no tiene daño por caída, así
+     * que «sin daño» sale solo: no hay nada que desactivar.
+     */
+    if (this.volando) {
+      this._volar(dt)
+      this._guardState()
+      return
+    }
     // Antes que la horizontal, porque decide con qué marcha y hacia dónde se
     // mueve este paso.
     this._updateSlide(dt, now)
@@ -678,6 +698,45 @@ export class MovementController {
     this._updateLandingDip(dt)
     this.camera.position.y = this.feetY + this.eyeHeight - this.landingDip
     this._guardState()
+  }
+
+  /**
+   * **El vuelo del editor**: la horizontal de siempre —con su colisión, que es
+   * lo que impide colarse dentro de una caja— y la vertical a mano.
+   *
+   * La colisión horizontal se conserva a propósito: volar **a través** de la
+   * geometría haría imposible juzgar si una cornisa se defiende, que es justo
+   * para lo que se vuela. Lo que se quita es la gravedad y el suelo.
+   */
+  _volar(dt) {
+    // Sin gravedad no hay vuelo que resolver: el estado del despegue se limpia
+    // para que al soltar el vuelo se caiga desde aquí y no desde el salto de
+    // hace un minuto.
+    this.airborne = true
+    this._airTime = 0
+    this._launchY = this.feetY
+    this._launchVelocity = 0
+    this.verticalVelocity = 0
+
+    this._updateHorizontal(dt)
+    const sube = Number(Boolean(this.keys.jump)) - Number(Boolean(this.keys.crouch))
+    this.feetY = Math.max(this.feetY + sube * EDITOR.vuelo * dt, 0)
+    this.camera.position.y = this.feetY + this.eyeHeight
+  }
+
+  /**
+   * Enciende o apaga el vuelo. Al apagarlo **no se coloca a nadie**: se deja
+   * cayendo, que es lo que hace que aterrizar sea el aterrizaje de siempre.
+   */
+  setVolando(valor) {
+    this.volando = Boolean(valor)
+    if (!this.volando) {
+      this.airborne = true
+      this._airTime = 0
+      this._launchY = this.feetY
+      this._launchVelocity = 0
+      this.verticalVelocity = 0
+    }
   }
 
   /**

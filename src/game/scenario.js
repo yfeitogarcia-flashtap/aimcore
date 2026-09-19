@@ -17,7 +17,8 @@
 
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { COVER, claveDeEscenario, coverColor, coverEdgeColor, coverHeight, definicionDeEscenario, fisicaDeEscenario, scenarioRoom } from '../config.js'
+import { COVER, claveDeEscenario, coverColor, coverEdgeColor, coverHeight, definicionDeEscenario, fisicaDeEscenario, fondoDeEscenario, scenarioRoom } from '../config.js'
+import { crearFondo } from './backdrop.js'
 
 /**
  * Prisma triangular para las rampas: rectángulo abajo y una única arista
@@ -118,8 +119,24 @@ export class Scenario {
      */
     this.points = []
 
+    /**
+     * **El fondo panorámico vive aquí y no en quien dibuja** (vuelta 77), que
+     * es lo que hace que salga igual entrenando, en el duelo y en el editor —
+     * la convención de la vuelta 63—. Va **fuera de `this.group`** a propósito:
+     * ese grupo es la geometría del mapa, y el fondo no es geometría del mapa.
+     */
+    this.fondo = crearFondo(scene, fondoDeEscenario(escenario), this.room)
+
     this._build()
     scene.add(this.group)
+  }
+
+  /**
+   * Coloca el fondo donde toca. Lo llama quien dibuja, una vez por frame: es
+   * una escritura de posición, sin reloj y sin estado.
+   */
+  seguirConFondo(camara) {
+    this.fondo?.seguir(camara)
   }
 
   /** ¿Este escenario tiene cobertura, o es la sala vacía de siempre? */
@@ -578,6 +595,8 @@ export class Scenario {
   }
 
   dispose() {
+    this.fondo?.dispose()
+    this.fondo = null
     this.scene.remove(this.group)
     for (const geometry of this.geometries) geometry.dispose()
     for (const material of this.materials) material.dispose()

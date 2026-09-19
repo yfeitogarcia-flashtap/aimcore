@@ -582,8 +582,9 @@ En ambos casos: una diana a la vez, *pop* al acertar y otra en menos de
 
 ## El editor de mapas
 
-Desde la vuelta 74 los mapas se dibujan en vez de escribirse, y desde la 76 se
-construye de verdad: formas, imán, candados, deshacer y presupuesto.
+Desde la vuelta 74 los mapas se dibujan en vez de escribirse. Hoy va por su
+**fase 3**: formas, imán y candados para construir; salidas, zonas, simetría y
+física para que lo que dibujas sea un mapa de duelo completo.
 
 ```bash
 npm run editor     # abre /editor/ directamente
@@ -592,6 +593,17 @@ npm run editor     # abre /editor/ directamente
 
 **Sólo existe en desarrollo.** No entra en lo que se despliega: es una
 herramienta de autor, no una pantalla del juego.
+
+### El panel
+
+La pantalla entera es el mapa. Los mandos están en un **panel flotante** que se
+abre y se cierra con **ESPACIO**, con su botón de la esquina o pinchando fuera,
+y tiene cinco pestañas: **Mapa**, **Construir**, **Duelo**, **Probar** y
+**Archivo**.
+
+Arriba se queda una barra fina con lo que hay que poder leer sin abrir nada
+—qué mapa tienes delante, cuántas piezas, lo que cuesta y si queda algo por
+guardar— más **Probar** y **Guardar**.
 
 ### Dibujar
 
@@ -602,7 +614,9 @@ herramienta de autor, no una pantalla del juego.
   elige**: de 1 unidad entera a 1/10, y es el mismo que usan las flechas de los
   tiradores del panel.
 - **Imán**: al soltar una pieza cerca de la cara de otra, se pega a ella. Es lo
-  que evita el hueco de dos centímetros que no se ve editando y sí jugando.
+  que evita el hueco de dos centímetros que no se ve editando y sí jugando. Se
+  mueve **por un solo eje**, el de la cara más cercana: encajar contra algo no
+  te desvía de lado.
 - **Clic izquierdo** selecciona y arrastra, **botón derecho** orbita, **rueda**
   acerca, **botón central o Mayús+derecho** desplaza la vista. Y con el ratón
   sobre el mapa, **WASD vuela** —Q/E baja y sube, Mayús corre—.
@@ -617,6 +631,8 @@ herramienta de autor, no una pantalla del juego.
   se dibuja y para las balas, pero el juego todavía no comprueba que no te
   levantes debajo agachado.
 - **Tres láseres de alineación**, uno por eje, que se encienden por separado.
+  Salen de la **base** de la pieza, que es la superficie contra la que se
+  alinea.
 - **90°** intercambia ancho y fondo. No hay rotación libre, y no es un olvido:
   la colisión del juego es de cajas alineadas a los ejes, así que una caja
   girada se dibujaría girada y **se chocaría sin girar**. Está explicado en
@@ -651,9 +667,20 @@ Un mapa con física propia se prueba con la suya: en uno con la gravedad de Los
 Pilares el salto sube 3.25 u y no 1.25.
 
 Salen **la mira y el HUD del juego** —los mismos componentes que el duelo y el
-entrenamiento, no una versión aparte— y un interruptor decide si hay **muñecos**
-o la sala está completamente vacía. Para medir geometría lo segundo; para ver
-cómo se juega, lo primero.
+entrenamiento, no una versión aparte— y tres interruptores en la pestaña
+**Probar**:
+
+- **Con muñecos**, o la sala completamente vacía. Para medir geometría lo
+  segundo; para ver cómo se juega, lo primero.
+- **El disparo coloca un muñeco**: cada clic planta uno donde acabe el rayo en
+  vez de disparar. No gasta munición ni cuenta en la precisión, porque no es un
+  disparo — es una pregunta: *¿desde dónde se defiende esta cornisa?*
+- **God mode** (tecla **G**): vuelas sin gravedad, que es lo que deja apuntar a
+  lo que no se alcanza de pie. Al apagarlo caes hasta el suelo, sin daño.
+
+Los muñecos que plantes **no se guardan con el mapa**: son un instrumento de
+medida. Dónde puede nacer uno de verdad sale de un barrido medido, no de
+ponerlos a ojo.
 
 ### Versiones: guardar con comentario y volver atrás
 
@@ -700,13 +727,46 @@ mapa que tenías abierto y la cámara cruzan la recarga, así que no deberías
 notarlo más que por un parpadeo. Y la dirección lleva el mapa abierto
 (`/editor/#clave`), por si lo quieres en marcadores.
 
+### Hacer un mapa de duelo
+
+La pestaña **Duelo** es lo que convierte un montón de cajas en un 1v1:
+
+- **Dos salidas, con su rumbo.** «Que se miren» pone cada una apuntando a la
+  otra, que no es un adorno: una cámara mira a −Z con yaw 0, así que sin rumbo
+  el que sale al sur aparece mirando a la pared del fondo.
+- **«Medir»** dice cuánto hay entre ellas **y si se ven**. Lo segundo es lo que
+  importa: dos puntos a treinta unidades con línea de visión entre ellos son una
+  ronda que empieza resuelta.
+- **Zona de aparición** y **caja de compra**, las dos como **áreas**. La zona es
+  una banda que cruza la sala —de la línea del muro hacia atrás no aparece
+  nadie—, no una bolsa alrededor del punto.
+- **Simetría por giro de 180°.** Dibujas media sala y el botón pone la otra. Es
+  giro y no espejo a propósito: con un espejo cada jugador tendría la esquina
+  estrecha por un lado distinto, o sea un mapa distinto para cada uno. Y
+  «Comprobar parejas» te dice qué pieza se ha quedado sin la suya.
+- **Física propia**: gravedad, salto y techo del aire. Debajo, la cuenta de lo
+  que sube un salto con esos números — que es de donde salen las alturas de las
+  piezas, no del gusto.
+- **Sin economía**: el mapa reparte en vez de vender, y dices con qué.
+
+### Fondo panorámico
+
+En la pestaña **Mapa**: qué se ve más allá de las paredes. Noche estrellada,
+ciudad, volcán o nave industrial.
+
+**Se dibuja, no se descarga.** Es una esfera vista por dentro con la textura
+generada en un canvas al montar el escenario: ni colisión, ni oclusor, ni
+presupuesto de geometría. Un panorama fotográfico sería el primer asset externo
+de Vektor —que hoy no tiene ninguno, ni de audio ni de imagen— y esa decisión
+está sin tomar.
+
 ### Lo que todavía no hace
 
-Rampas, salidas de duelo, zonas de aparición, simetría por giro y métricas de
-mapa en vivo (distancia entre salidas, líneas de visión, tiempo de cruce). Son
-las fases 3 a 5, diseñadas en `docs/propuestas/05-editor-de-mapas.md`. Los mapas
-de hoy conservan sus rutas, recogibles y sitios de explosivo al guardarlos, pero
-el editor no los edita: salen de un barrido medido, no de ponerlos a ojo.
+Rampas, vanos y ventanales, y las métricas de mapa que hoy sólo cubren las
+salidas (tiempo de cruce, primer contacto, asomo). Son las fases 4 y 5 de
+`docs/propuestas/05-editor-de-mapas.md`. Los mapas de hoy conservan sus rutas,
+recogibles y sitios de explosivo al guardarlos, pero el editor no los edita:
+salen de un barrido medido, no de ponerlos a ojo.
 
 Y lo que no va a hacer hasta que el motor sepa chocar con ello: **rotación
 libre, tejados y triángulos sólidos**.

@@ -9097,6 +9097,132 @@ servidor»**, porque guardar un mapa invalida `config.js`.
 
 
 
+## Ronda 77 — El editor deja de ser sólo geometría
+
+Seis puntos salidos de usar la fase 2 y la fase 3 entera. Lo que sigue es lo
+que costó una decisión o un diagnóstico.
+
+### 77.1 El panel va antes de la fase 3, y el precedente tiene nombre
+
+El encargo dejaba abierto si el rediseño de interfaz iba antes, después o en
+paralelo. Va **antes**, y la razón es aritmética: la fase 3 pasa el panel de
+seis secciones a once. Una barra lateral de 300 px con once secciones no se lee,
+se recorre con la rueda — y construir la fase 3 contra ella habría sido
+construirla dos veces.
+
+El precedente es `menu62`: el menú del duelo creció una fila por vuelta hasta
+que los dos botones de abajo quedaron **fuera de la ventana**, y el banco lo
+dijo en rojo durante tres vueltas antes de que nadie lo pasara. La lección no
+era «mide el menú», era **no dejes que una pantalla crezca sin un sitio a donde
+crecer**.
+
+Tres cosas del diseño nuevo que no son de gusto:
+
+- **La barra dice el estado y el panel guarda los mandos.** Si para saber
+  cuántas piezas llevas hay que abrir el panel, el panel se queda abierto — y
+  entonces no era flotante, era la barra lateral con más pasos.
+- **El telón se come el clic que cierra.** Sin él, cerrar pinchando fuera
+  llegaba al lienzo y seleccionaba o arrastraba una pieza. **Un gesto de cerrar
+  no puede editar el mapa**, que es la misma idea que el clic de captura del
+  duelo y sus `.control` (vuelta 48).
+- **ESPACIO se intercepta sobre un botón y no sobre un campo.** Sobre un campo
+  es un espacio, evidentemente. Sobre un botón el navegador lo leería como
+  «pulsa el que tiene el foco», así que con una pestaña recién elegida la tecla
+  del panel sería «repite lo último». Aquí ESPACIO significa el panel, siempre.
+
+### 77.2 «Sin muñecos» ya se había equivocado una vez; el fondo no podía
+
+La vuelta 76 aprendió que quitarle las rutas a un mapa no quita las dianas. El
+fondo panorámico tenía la misma trampa por el otro lado: **montarlo como una
+pieza más** habría sido una pared invisible a ciento sesenta unidades que para
+balas y tapa apariciones.
+
+Va en su propia malla, fuera de `this.group`, **fuera de `occluders`** y fuera
+del presupuesto. Medido en `ed77`: los oclusores no cambian al ponerlo, y el
+presupuesto sigue contando exactamente las piezas del mapa.
+
+Y **vive en `Scenario`**, no en quien dibuja, que es lo que hace que salga igual
+entrenando, en el duelo y en el editor — la convención de la vuelta 63.
+
+### 77.3 Un horizonte se mide en ángulo, no en píxeles
+
+La primera versión de la ciudad tenía `alturaMax: 0.34` sobre una textura
+equirectangular. Eso son **sesenta grados de elevación de rascacielos**: no es
+una ciudad de fondo, es estar dentro de un pozo — y en la captura se veía al
+instante. Un horizonte urbano visto desde la calle ocupa diez o doce grados, o
+sea 0.06.
+
+La lección repetible: **cuando un número va a parar a una textura de 180°, el
+número no está en píxeles**. Y que se vio mirando una captura, no leyendo el
+código — que es la nota de la vuelta 48 otra vez.
+
+### 77.4 Una cara ya cuadrada no gasta el raíl
+
+El imán pasa a mover por **un solo eje**: engancharlos los dos a la vez es lo
+que desviaba la pieza de lado al arrimarla a su vecina.
+
+Pero la primera versión del raíl rompió `ed76`, y por algo que sólo se ve
+midiendo: al construir en fila, **el otro eje suele estar ya perfectamente
+alineado**, o sea a distancia cero — y cero gana siempre. El raíl se lo llevaba
+un enganche que no movía nada, y el único que hacía falta se quedaba sin
+aplicar. **Mover cero no es enganchar**, así que un candidato a distancia
+despreciable no compite.
+
+### 77.5 Un error de signo se evita escribiendo el vector una vez
+
+A y D estaban cambiadas en la cámara del editor. La causa: los senos y cosenos
+metidos a mano en cada componente
+(`centro.x -= (adelante * sin + lado * cos)`), que es donde un signo se cuela
+sin que se note. Ahora se escriben **el frente y el derecho como dos vectores** y
+se suman. Es el error de 180° de la vuelta 60 en pequeño, y se evita igual:
+donde hay una convención, se escribe una vez y se le pone nombre.
+
+### 77.6 El tiro de herramienta corta antes de que eso sea un arma
+
+La primera versión cortaba dentro de `_shoot`, que parecía el sitio —es donde
+está el rayo—. El banco midió que **seguía gastando munición**: `_tryShoot` hace
+la cadencia, el retroceso, el patrón y la munición **alrededor** de `_shoot`.
+
+El corte va arriba del todo, con su propio ritmo (`EDITOR.plantarMs`) y no el
+del arma que lleves: con la Scout serían 1.25 s entre muñeco y muñeco y con la
+pistola ocho por segundo con el botón apoyado.
+
+### 77.7 Qué se ha verificado y cómo
+
+`ed77.mjs`, contra la página y por la interfaz, **51 aserciones**:
+
+- **El láser a la base** con la pieza en el suelo y subida a 2.6.
+- **El imán mueve un eje**, y el otro sólo lo mueve la rejilla — comparado
+  contra la rejilla calculada en la página, no contra un número escrito a mano.
+- **D a la derecha y A a la izquierda**, con la cámara mirando a −Z.
+- **El panel** abre con ESPACIO, cierra con un clic fuera **sin tocar ninguna
+  pieza**, y escribiendo en un campo ESPACIO es un espacio.
+- **El fondo** se monta, **no entra en los oclusores**, no cuenta como pieza en
+  el presupuesto y sobrevive al saneado.
+- **La fase 3**: un mapa de entrenamiento no enseña salidas vacías; declararlo
+  de duelo las saca, son dos, en extremos opuestos y **mirándose**; el que sale
+  en +Z mira a −Z y no a la pared de su espalda; la medida de salidas dice la
+  distancia **y si se ven**; zona, caja de compra, física y dotación sobreviven
+  al saneado sin una queja; y la nota de física calcula el ápice (3.26 u con la
+  gravedad de Los Pilares).
+- **La simetría** se aplica duplicando lo que no está centrado y dejando lo que
+  sí, y la comprobación pasa de «1 sin pareja» a «todas cuadran».
+- **Probar**: un clic planta un muñeco **sin gastar munición ni contar como
+  disparo**, el cuerpo es el del juego, **G** vuela y sube 7 u, apagarlo deja
+  caer sin daño, y al volver a editar los muñecos se sueltan.
+- Y **cero errores de página**, contados como fallo.
+
+`editor74`, `ed76` y `hist75` siguen verdes —los dos últimos, adaptados al panel
+flotante— y la batería del entrenamiento también.
+
+Y una cautela más para `editor74`, que ya la tenía escrita y se volvió a
+tropezar con ella: corriendo **a la vez que otro banco** bajó a **0.6 fps** y la
+aserción del salto falló, porque a ese ritmo cabe un vuelo entero entre dos
+frames. Sola, 17.5 fps y verde. Es «un banco se pasa solo» (vuelta 61), y el
+número que lo delata lo imprime el propio banco.
+
+
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

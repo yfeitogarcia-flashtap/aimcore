@@ -10,7 +10,7 @@
  * Nada de geometría: eso es de `scenario.js`, que monta **estos mismos datos**.
  */
 
-import { COVER, ROOM, coverHeight } from '../config.js'
+import { COVER, FONDOS, PRIMARY_WEAPONS, ROOM, ROUNDS, coverHeight } from '../config.js'
 
 /**
  * **Todos los campos que puede tener un mapa, en el orden en que se escriben.**
@@ -21,7 +21,7 @@ import { COVER, ROOM, coverHeight } from '../config.js'
  * campo a un escenario, va aquí y en `sanearMapa`.
  */
 export const CAMPOS = [
-  'clave', 'label', 'card', 'soloDuelo', 'room', 'spawn', 'fisica', 'duelo',
+  'clave', 'label', 'card', 'soloDuelo', 'fondo', 'room', 'spawn', 'fisica', 'duelo',
   'boxes', 'ramps', 'spawnZone', 'objectiveSites', 'pickups', 'routes', 'anchors',
 ]
 
@@ -134,6 +134,16 @@ export function sanearMapa(bruto) {
   mapa.label = typeof bruto.label === 'string' && bruto.label ? bruto.label : 'Sin nombre'
   if (bruto.card) mapa.card = bruto.card
   if (bruto.soloDuelo) mapa.soloDuelo = true
+  /**
+   * **El fondo es una clave del catálogo, no una ruta** (vuelta 77). Un mapa
+   * no puede decidir descargar nada: lo que declara es **cuál** de los fondos
+   * que el juego sabe dibujar quiere detrás, y dibujarlo es de `backdrop.js`.
+   * Una clave desconocida se dice y se cae a ninguno, como cualquier otra.
+   */
+  if (bruto.fondo !== undefined && bruto.fondo !== null) {
+    if (FONDOS[bruto.fondo]) mapa.fondo = bruto.fondo
+    else problemas.push(`fondo desconocido: ${JSON.stringify(bruto.fondo)}`)
+  }
 
   if (bruto.room) {
     const r = bruto.room
@@ -165,9 +175,8 @@ export function sanearMapa(bruto) {
     }
   }
 
-  // El bloque de duelo se conserva entero: salidas, dotación y «sin economía»
-  // son de la fase 3 y hasta entonces se guardan tal cual en vez de perderse.
-  if (bruto.duelo) mapa.duelo = bruto.duelo
+  const duelo = sanearDuelo(bruto.duelo, problemas)
+  if (duelo) mapa.duelo = duelo
 
   const listas = {
     boxes: (b, i) => sanearPieza(b, problemas, `pieza ${i}`),
@@ -186,6 +195,71 @@ export function sanearMapa(bruto) {
   }
 
   return { mapa, problemas }
+}
+
+/**
+ * **El bloque de duelo, saneado de verdad** (vuelta 77).
+ *
+ * Hasta aquí se conservaba tal cual —«es de la fase 3»— y eso valía mientras
+ * sólo lo escribieran las manos que escribieron `config.js`. Desde que el
+ * editor lo edita ya no: un rumbo que no es un número o una dotación con un
+ * arma que no existe **son una partida que arranca mal**, y el sitio donde eso
+ * se caza es el mismo que sanea todo lo demás.
+ *
+ * Lo que **no** se comprueba aquí es que el mapa esté equilibrado —que las
+ * salidas estén lejos, que no se vean entre ellas, que la ida y la vuelta
+ * midan lo mismo—: eso son medidas, y las hace el editor contra la geometría
+ * montada. El saneado dice si el dato es un dato.
+ */
+function sanearDuelo(bruto, problemas) {
+  if (!bruto || typeof bruto !== 'object') return null
+  const duelo = {}
+
+  if (bruto.salidas !== undefined) {
+    if (!Array.isArray(bruto.salidas)) problemas.push('duelo: las salidas no son una lista')
+    else {
+      duelo.salidas = bruto.salidas.map((s, i) => {
+        if (!finito(s?.x) || !finito(s?.z)) { problemas.push(`salida ${i}: x o z no son números`); return null }
+        // **El rumbo es opcional y su ausencia se dice**: sin él, el que sale
+        // en el sur aparece mirando a la pared del fondo (vuelta 66). Vale 0
+        // para no inventarse nada, pero que valga 0 por defecto no puede pasar
+        // desapercibido en un mapa de dos extremos.
+        if (!finito(s.yaw)) problemas.push(`salida ${i}: sin rumbo, saldrá mirando a −Z`)
+        return { x: s.x, z: s.z, yaw: finito(s.yaw) ? s.yaw : 0 }
+      }).filter(Boolean)
+      if (duelo.salidas.length && duelo.salidas.length !== 2) {
+        problemas.push(`duelo: hay ${duelo.salidas.length} salida(s) y un 1v1 necesita dos`)
+      }
+    }
+  }
+
+  /**
+   * **La caja de compra puede ser del mapa** (vuelta 77), con la de `ROUNDS` de
+   * valor por defecto — la misma forma que la física de la vuelta 72, y segura
+   * por la misma razón: los dos extremos montan el mismo mapa y derivan el
+   * mismo corralito **sin que viaje ningún número**.
+   */
+  if (bruto.cajaCompra !== undefined) {
+    const c = bruto.cajaCompra
+    const ancho = finito(c?.ancho) ? c.ancho : ROUNDS.cajaCompra.ancho
+    const fondo = finito(c?.fondo) ? c.fondo : ROUNDS.cajaCompra.fondo
+    if (ancho <= 0 || fondo <= 0) problemas.push('duelo: la caja de compra no mide nada')
+    else duelo.cajaCompra = { ancho, fondo }
+  }
+
+  if (bruto.sinEconomia) duelo.sinEconomia = true
+  if (bruto.dotacion !== undefined) {
+    const d = bruto.dotacion
+    // Un arma que no está en el catálogo es un jugador que sale con las manos
+    // vacías, y eso en un mapa que reparte no tiene arreglo dentro de la ronda.
+    if (!PRIMARY_WEAPONS[d?.arma]) problemas.push(`dotación: arma desconocida (${JSON.stringify(d?.arma)})`)
+    else duelo.dotacion = { arma: d.arma, chaleco: Boolean(d.chaleco), casco: Boolean(d.casco) }
+  }
+  if (duelo.sinEconomia && !duelo.dotacion) {
+    problemas.push('duelo: sin economía y sin dotación, se sale con la pistola y nada más')
+  }
+
+  return Object.keys(duelo).length ? duelo : null
 }
 
 /**

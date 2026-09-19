@@ -546,3 +546,111 @@ cuatrocientas no lo sería — derivar uno del otro mentiría en los dos sentido
 Un borrador de **otro** mapa se ignora si la barra pide uno concreto. Sin esto,
 `/editor/#pilares` abría lo último que se hubiera tocado y no había forma de
 decir cuál se quiere.
+
+---
+
+## 11. La fase 3, construida — y el panel que hubo que hacer antes (vuelta 77)
+
+La fase 3 entera —salidas con rumbo, zona de aparición y caja de compra como
+áreas, simetría por giro, física propia y dotación— más seis cosas que salieron
+de usar la fase 2, entre ellas un rediseño de interfaz que **había que hacer
+antes y no después**.
+
+### 11.1 Por qué el panel va antes de la fase 3, y no en paralelo
+
+El encargo dejaba la decisión abierta. Va **antes**, por una razón que no es de
+gusto y que este repositorio ya se ha comido una vez: **la fase 3 duplica los
+controles**. A la barra lateral de 300 px le entraban seis secciones; con
+salidas, zona, caja de compra, simetría, física y dotación son once, y una
+columna de once secciones no se lee — se recorre con la rueda.
+
+Eso es exactamente lo que le pasó al menú del duelo: creció una fila por vuelta
+hasta que los botones de abajo quedaron **fuera de la ventana**, y `menu62`
+estuvo tres vueltas en rojo diciéndolo. Construir la fase 3 contra la barra
+vieja habría sido construirla dos veces.
+
+Lo que se hizo:
+
+- **La barra de arriba dice el estado; el panel guarda los mandos.** Mapa,
+  piezas, presupuesto y estado se leen sin abrir nada, más Probar y Guardar. Un
+  panel que hay que abrir para saber cuántas piezas llevas es un panel que se
+  deja abierto, y entonces no era flotante.
+- **Cinco pestañas** —Mapa, Construir, Duelo, Probar, Archivo— porque esto va a
+  seguir creciendo.
+- **El telón se come el clic que cierra.** Sin él, cerrar el panel pinchando
+  fuera llegaba al lienzo y seleccionaba —o arrastraba— una pieza de propina.
+  Un gesto de cerrar no puede editar el mapa.
+- **ESPACIO abre y cierra**, y escribiendo en un campo es un espacio. En un
+  botón se intercepta a propósito: si no, con una pestaña recién pulsada la
+  tecla del panel sería «vuelve a pulsar lo último».
+
+### 11.2 Lo que la fase 3 añade al formato, y lo que no
+
+`fondo` y un `duelo` **saneado de verdad**. Hasta aquí ese bloque se conservaba
+tal cual —«es de la fase 3»— y eso valía mientras sólo lo escribieran las manos
+que escribieron `config.js`. Desde que lo edita un formulario ya no: un rumbo
+que no es un número, o una dotación con un arma que no existe, **son una partida
+que arranca mal**.
+
+Dos decisiones dentro:
+
+- **La caja de compra pasa a poder ser del mapa** (`duelo.cajaCompra`), con la
+  de `ROUNDS` de valor por defecto. Es la forma de la física de la vuelta 72, y
+  es segura por la misma razón: los dos extremos montan el mismo mapa y derivan
+  el mismo corralito **sin que viaje ningún número**.
+- **Lo que el saneado comprueba es que el dato sea un dato**, no que el mapa
+  esté equilibrado. Si las salidas se ven entre ellas es una **medida**, y la
+  hace el editor contra la geometría montada con el mismo `hasLineOfSight` que
+  usa la aparición — con su número al lado, como manda la vuelta 46.
+
+### 11.3 El fondo panorámico: se dibuja, y hay una decisión pendiente
+
+El encargo pedía un panorama 360° «empezando por imagen estática». Se ha
+construido **el mecanismo entero** —campo del mapa, catálogo, esfera vista por
+dentro, sin colisión, fuera de los oclusores y fuera del presupuesto— y se ha
+rellenado con **cuatro fondos generados en un canvas**: noche, ciudad, volcán y
+nave.
+
+Lo que queda por decidir, y es de producto y no de implementación: **un panorama
+fotográfico sería el primer asset externo del proyecto**. Vektor no tiene ni
+uno —el audio se sintetiza, la geometría es procedural, las siluetas se trazan
+de una referencia que no viaja— y el argumento de esa regla es el mismo que hizo
+revertir el audio grabado en la vuelta 63: que el juego corra en cualquier PC
+sin descargar nada, y que sonar y verse así **sea** lo que es Vektor. Una foto
+equirectangular decente son varios megas por mapa.
+
+La puerta está abierta y es una clave más en `FONDOS`. No se ha cruzado sin
+preguntar.
+
+### 11.4 Las herramientas de probar
+
+Dos, y las dos son **instrumentos de medida**, no mecánicas:
+
+- **El disparo que planta un muñeco.** Corta en `_tryShoot` **antes de que eso
+  sea un arma**: sin munición, sin retroceso, sin patrón, sin sonido y sin
+  contar en la precisión. Lo único que necesita es dónde acaba el rayo, y eso lo
+  da el mismo rayo que resuelve un disparo — lanzar uno segundo desde fuera es
+  lo que la vuelta 64 prohibió, y encima la sala no se raycastea, se resuelve en
+  aritmética.
+- **El vuelo (G).** Un `if` al principio del paso de movimiento y no una rama
+  dentro de la vertical: así no hay un camino nuevo por el modelo, ni un campo
+  más en `snapshot()`, ni nada que pueda discrepar entre los dos extremos de una
+  partida. Apagarlo **no teletransporta**: deja al jugador en el aire con su
+  parábola de siempre, así que cae con la gravedad del mapa. «Sin daño por
+  caída» sale gratis — Vektor no tiene daño por caída.
+
+Los muñecos plantados **no se guardan con el mapa**, y eso es deliberado: dónde
+puede nacer un muñeco de verdad sale de un barrido medido, no de ponerlos a ojo.
+Escribirlos en el fichero sería colar a mano justo el dato que §6 dejó fuera.
+
+### 11.5 Y tres arreglos de la fase 2
+
+- **El láser sale de la base de la pieza**, no de su centro. Para alinear hay
+  que ver la línea contra la superficie sobre la que la pieza se apoya.
+- **El imán es un raíl**: gana **un** eje, el de la cara más cercana, y el otro
+  se queda donde lo dejó el arrastre. Enganchaba en x y en z a la vez, así que
+  arrimar una pieza a su vecina la desviaba de lado de paso. Y una cara ya
+  cuadrada (distancia cero) **no gasta el raíl**: mover cero no es enganchar.
+- **A y D estaban cambiadas.** El vector derecho llevaba el signo al revés. Se
+  arregla escribiendo frente y derecho una vez y sumándolos, en vez de meter los
+  senos a mano en cada componente — que es cómo se cuela un error de signo.

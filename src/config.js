@@ -2050,6 +2050,100 @@ export function giro180(piezas) {
   ]
 }
 
+/**
+ * **Las herramientas del editor** (vuelta 77), y son tuning como todo lo demás.
+ *
+ * Van juntas y aparte del juego a propósito: **ninguna de estas dos cosas
+ * existe en una partida**. No salen en ningún panel del jugador, no se guardan
+ * en sus ajustes y no viajan en `snapshot()` — las enciende el editor para
+ * poder medir un mapa, que es otra cosa que jugarlo.
+ */
+export const EDITOR = {
+  /** Lo que sube y baja el vuelo, en u/s. */
+  vuelo: 9,
+  /**
+   * Lo que se espera entre dos muñecos plantados. No es la cadencia de un arma
+   * —una herramienta no dispara— sino lo que hace que mantener el botón no
+   * siembre sesenta muñecos por segundo.
+   */
+  plantarMs: 180,
+}
+
+/**
+ * **Los fondos panorámicos, y se dibujan en vez de descargarse** (vuelta 77).
+ *
+ * Lo que un mapa ve más allá de sus paredes. Tres cosas que son el diseño:
+ *
+ * - **No es un asset.** Vektor no tiene ni uno —ni audio, ni texturas— y un
+ *   panorama fotográfico sería el primero: un fichero de varios megas que hay
+ *   que descargar, decodificar y mantener, en un juego cuyo argumento es que
+ *   corre en cualquier PC sin bajarse nada. Lo que hay aquí son **parámetros**,
+ *   y `src/game/backdrop.js` pinta con ellos una textura en un canvas al
+ *   montar el escenario. El día que se decida meter una foto, el sitio es este
+ *   catálogo y la decisión es de producto, no de implementación.
+ * - **No es geometría del mapa.** Va en su propia esfera vista por dentro, no
+ *   entra en `occluders`, no tiene colisión y **no cuenta en el presupuesto**:
+ *   una malla, un material, cero rayos. Por eso un fondo no puede tapar un
+ *   disparo ni esconder a un rival, que es justo lo que haría si se montara
+ *   como una pieza más.
+ * - **Y el tono de la sala no se toca.** La rampa de grises de `COVER` dice la
+ *   altura de una pieza (vuelta 40) y un fondo claro detrás se la comería. Los
+ *   tres son oscuros a propósito, con el detalle en el horizonte.
+ */
+export const FONDOS = {
+  noche: {
+    label: 'Noche estrellada',
+    tipo: 'estrellas',
+    cenit: '#05070d',
+    horizonte: '#0d1018',
+    estrellas: 900,
+  },
+  ciudad: {
+    label: 'Ciudad de noche',
+    tipo: 'horizonte',
+    cenit: '#06080e',
+    horizonte: '#141826',
+    /** La silueta, con su neblina naranja de ciudad justo encima de los tejados. */
+    silueta: '#04060a',
+    halo: '#e4462b',
+    torres: 120,
+    /**
+     * **Lo que ocupa el horizonte se mide en ángulo, no en píxeles.** La
+     * textura cubre 180° de elevación en su alto, así que 0.34 son **sesenta
+     * grados** de rascacielos: no es una ciudad de fondo, es estar dentro de
+     * un pozo. 0.06 son unos once grados, que es lo que ocupa un horizonte
+     * urbano visto desde la calle.
+     */
+    alturaMax: 0.06,
+  },
+  volcan: {
+    label: 'Volcán',
+    tipo: 'horizonte',
+    cenit: '#080404',
+    horizonte: '#24100a',
+    silueta: '#060303',
+    halo: '#ff6a2b',
+    torres: 34,
+    alturaMax: 0.05,
+  },
+  sala: {
+    label: 'Nave industrial',
+    tipo: 'nave',
+    cenit: '#0b0b0d',
+    horizonte: '#17171b',
+    /** Las costillas de la nave: verticales regulares, que es lo que la lee como interior. */
+    costilla: '#25252b',
+    costillas: 28,
+  },
+}
+
+/** Qué fondo se dibuja, saneado contra el catálogo. Sin clave, ninguno. */
+export function fondoDeEscenario(escenario) {
+  const definition = definicionDeEscenario(escenario)
+  const clave = definition?.fondo
+  return clave && FONDOS[clave] ? { clave, ...FONDOS[clave] } : null
+}
+
 const ESCENARIOS_INTEGRADOS = {
   empty: {
     label: 'Sala vacía',

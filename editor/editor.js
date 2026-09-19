@@ -24,11 +24,13 @@
  */
 
 import * as THREE from 'three'
-import { COVER, SCENARIOS, coverColor, coverHeight, scenarioRoom } from '../src/config.js'
+import { COVER, FONDOS, MOVEMENT, PRIMARY_WEAPONS, ROUNDS, SCENARIOS, TARGET, coverColor, coverHeight, giro180, scenarioRoom } from '../src/config.js'
+import { Avatar } from '../src/game/avatar.js'
 import { Engine } from '../src/game/engine.js'
 import { MovementController } from '../src/game/movement.js'
 import { Scenario } from '../src/game/scenario.js'
 import { createScene } from '../src/game/scene.js'
+import { hasLineOfSight } from '../src/game/sight.js'
 import { SALA, mapaComoModulo, mapaNuevo, sanearMapa } from '../src/maps/formato.js'
 import { montarCapaDeDuelo } from '../src/ui/duelo.jsx'
 
@@ -177,12 +179,22 @@ function volar(dt) {
   if (!adelante && !lado && !sube) return
 
   const v = VUELO.base * dt * (teclasCamara.has('ShiftLeft') || teclasCamara.has('ShiftRight') ? VUELO.corriendo : 1)
-  // Adelante es hacia donde mira la cámara, aplastado al suelo: volar mirando
-  // hacia abajo no debe hundirte, que es lo que hace inmanejable un vuelo.
-  const sin = Math.sin(orbita.yaw)
-  const cos = Math.cos(orbita.yaw)
-  orbita.centro.x -= (adelante * sin + lado * cos) * v
-  orbita.centro.z -= (adelante * cos - lado * sin) * v
+  /**
+   * **El derecho se deriva del frente, no se escribe a mano** (vuelta 77). La
+   * cámara está en esféricas alrededor del centro, así que mira hacia
+   * `(−sin yaw, −cos yaw)` —aplastado al suelo: volar mirando hacia abajo no
+   * debe hundirte—. El derecho es ese frente girado 90°, o sea
+   * `(cos yaw, −sin yaw)`, y la primera versión lo puso con el signo cambiado:
+   * **A movía a la derecha y D a la izquierda**.
+   *
+   * Es el mismo error de convención que la brújula de la vuelta 60 en pequeño,
+   * y se evita igual: escribir los dos vectores una vez y sumarlos, en vez de
+   * meter los senos a mano en cada componente.
+   */
+  const frente = [-Math.sin(orbita.yaw), -Math.cos(orbita.yaw)]
+  const derecho = [Math.cos(orbita.yaw), -Math.sin(orbita.yaw)]
+  orbita.centro.x += (adelante * frente[0] + lado * derecho[0]) * v
+  orbita.centro.z += (adelante * frente[1] + lado * derecho[1]) * v
   orbita.centro.y = Math.max(orbita.centro.y + sube * v, 0)
 }
 
@@ -214,7 +226,7 @@ scene.add(contorno)
 /**
  * **Los láseres de alineación**, uno por eje y cada uno con su interruptor.
  *
- * Salen del **centro** de la pieza elegida y cruzan la sala de lado a lado, que
+ * Salen de la **base** de la pieza elegida y cruzan la sala de lado a lado, que
  * es lo que deja ver de un vistazo con qué está alineada y con qué no. Rojos
  * porque es el único color de la paleta que no significa nada en el mundo del
  * editor —el naranja es de las dianas y el verde es la selección—, y finos
@@ -239,11 +251,15 @@ function pintarLaseres() {
     const encendido = $(`laser-${eje}`)?.checked && Boolean(pieza)
     linea.visible = encendido
     if (!encendido) continue
-    const alto = coverHeight(pieza.kind)
     const base = pieza.base ? coverHeight(pieza.base) : 0
-    // El láser pasa por el centro de la pieza: alineas centros, que es lo que
-    // se mira al construir, y no esquinas, que dependen del tamaño.
-    linea.position.set(pieza.x + pieza.w / 2, base + (alto - base) / 2, pieza.z + pieza.d / 2)
+    /**
+     * **A la altura de la base, no del centro** (vuelta 77). Con el centro, una
+     * pieza apoyada en el suelo tenía el láser flotando a media altura: para
+     * alinear hay que ver la línea **contra la superficie sobre la que se
+     * apoya**, y la de una pieza del suelo es el suelo. Es la misma idea que
+     * el imán —lo que se cuadra son caras, no centros—, por la otra puerta.
+     */
+    linea.position.set(pieza.x + pieza.w / 2, base, pieza.z + pieza.d / 2)
     // Largo de sobra para cruzar cualquier sala, que es lo que lo hace útil.
     const largo = Math.max(escenario?.room.width ?? 40, escenario?.room.depth ?? 40) * 2
     linea.scale.setScalar(largo)
@@ -318,13 +334,22 @@ function aRejilla(v) {
 const IMAN = 0.6
 
 /**
- * **El imán pega a la cara de al lado, no al centro.**
+ * **El imán pega a la cara de al lado, y mueve por un solo eje** (vuelta 77).
  *
  * Construir con cajas es poner una contra otra, así que lo que tiene que
  * coincidir son **caras**: el borde izquierdo de ésta con el derecho de
- * aquélla, o los dos bordes izquierdos si se están alineando en fila. Se
- * comparan las cuatro combinaciones por eje y gana la más cercana, siempre que
- * esté dentro de `IMAN`.
+ * aquélla, o los dos bordes izquierdos si se están alineando en fila.
+ *
+ * Y **gana un eje, no los dos**. La primera versión enganchaba en x y en z por
+ * separado, así que arrimar una pieza a la cara de su vecina la **desviaba de
+ * lado** de paso: encajabas por un eje y el otro se te movía sin haberlo
+ * pedido. Un imán que corrige dos ejes a la vez no es un imán, es un
+ * teletransporte corto.
+ *
+ * Lo que hace falta es un **raíl**: se mira la cara más cercana de todo el
+ * mapa, se aplica **ésa** y el otro eje se queda exactamente donde lo dejó el
+ * arrastre. Encajar contra una pared es entonces un desplazamiento recto, que
+ * es lo que uno está haciendo con la mano.
  *
  * Y se aplica **después** de la rejilla: la rejilla es la regla general y el
  * imán la excepción cuando hay algo con lo que alinearse. Al revés, la rejilla
@@ -332,29 +357,40 @@ const IMAN = 0.6
  */
 function alImán(pieza, indice) {
   if (!$('iman').checked) return
+  let mejor = null
   for (const eje of ['x', 'z']) {
     const medida = eje === 'x' ? 'w' : 'd'
+    const otroEje = eje === 'x' ? 'z' : 'x'
+    const miOtraMedida = eje === 'x' ? 'd' : 'w'
     const mio = [pieza[eje], pieza[eje] + pieza[medida]]
-    let mejor = null
     for (const [otroIndice, otra] of mapa.boxes.entries()) {
       if (otroIndice === indice) continue
       // Sólo con las que se solapan en el otro eje: pegarse a la cara de una
       // caja que está en la otra punta del mapa no alinea nada.
-      const otroEje = eje === 'x' ? 'z' : 'x'
       const otraMedida = eje === 'x' ? 'd' : 'w'
       if (pieza[otroEje] > otra[otroEje] + otra[otraMedida] + IMAN) continue
-      if (otra[otroEje] > pieza[otroEje] + pieza[eje === 'x' ? 'd' : 'w'] + IMAN) continue
+      if (otra[otroEje] > pieza[otroEje] + pieza[miOtraMedida] + IMAN) continue
 
       for (const suyo of [otra[eje], otra[eje] + otra[medida]]) {
         for (const [cual, valor] of mio.entries()) {
           const d = Math.abs(valor - suyo)
+          /**
+           * **Una cara ya cuadrada no gasta el raíl.** Si el otro eje coincide
+           * exactamente —lo normal al construir en fila— su distancia es cero
+           * y ganaría siempre, dejando sin efecto el único enganche que hacía
+           * falta. Mover cero no es enganchar.
+           */
+          if (d < 1e-6) continue
+          // El empate se queda con el primero: sin esto, dos caras a la misma
+          // distancia en ejes distintos harían saltar el raíl de eje según el
+          // orden en que se recorran las piezas.
           if (d > IMAN || (mejor && d >= mejor.d)) continue
-          mejor = { d, destino: cual === 0 ? suyo : suyo - pieza[medida] }
+          mejor = { d, eje, destino: cual === 0 ? suyo : suyo - pieza[medida] }
         }
       }
     }
-    if (mejor) pieza[eje] = Number(mejor.destino.toFixed(4))
   }
+  if (mejor) pieza[mejor.eje] = Number(mejor.destino.toFixed(4))
 }
 
 function enSuelo(evento) {
@@ -467,6 +503,12 @@ function rellenarAlturas() {
   $('abrir').innerHTML = `<option value="">(mapa nuevo)</option>` + Object.entries(SCENARIOS)
     .map(([clave, def]) => `<option value="${clave}">${def.label ?? clave}</option>`)
     .join('')
+  // Los dos catálogos de la fase 3 salen del dato, no de una lista a mano:
+  // añadir un fondo o un arma principal los pone aquí solo.
+  $('fondo').innerHTML = `<option value="">(ninguno, sólo la rejilla)</option>` +
+    Object.entries(FONDOS).map(([clave, f]) => `<option value="${clave}">${f.label}</option>`).join('')
+  $('dotacion-arma').innerHTML = Object.entries(PRIMARY_WEAPONS)
+    .map(([clave, w]) => `<option value="${clave}">${w.label ?? clave}</option>`).join('')
   anunciarLimites()
 }
 
@@ -506,7 +548,17 @@ function pintarPanel() {
   $('spawn-x').value = mapa.spawn.x
   $('spawn-z').value = mapa.spawn.z
   $('paso').value = paso
-  $('cuenta').textContent = `${mapa.boxes.length}`
+  /**
+   * **La misma cifra en la barra y en el panel** (vuelta 77). El panel está
+   * cerrado la mayor parte del tiempo, así que lo que hay que saber siempre
+   * —cuántas piezas llevas— se escribe también fuera. Una sola línea de
+   * escritura para los dos nodos: dos sitios que la calculen es cómo acaban
+   * diciendo cosas distintas.
+   */
+  const piezas = `${mapa.boxes.length} pieza${mapa.boxes.length === 1 ? '' : 's'}`
+  $('cuenta').textContent = piezas
+  $('cuenta-panel').textContent = piezas
+  $('barra-mapa').textContent = mapa.label || mapa.clave || '(mapa nuevo)'
 
   $('lista').innerHTML = mapa.boxes
     .map((p, i) => `<li data-i="${i}" class="${i === seleccion ? 'puesta' : ''}">${String(i).padStart(2, '0')} · ${p.kind} · ${p.w}×${p.d} @ ${p.x},${p.z}</li>`)
@@ -951,14 +1003,83 @@ function probar() {
     onHelp: (texto, ms) => capa?.ayuda(texto, ms),
     onScope: (puesta) => capa?.apuntando(puesta),
     onMeleeRange: (dentro, espalda) => capa?.aCuchillo(dentro, espalda),
+    // Dónde acabó el rayo. Sólo llega con el tiro de herramienta puesto, y es
+    // el mismo rayo que resuelve un disparo: uno, no dos (vuelta 64).
+    onSuperficie: (punto) => plantar(punto),
   }, { escenario: limpio, dianas: conMunecos })
   capa?.jugando(true)
+  motor.tiroDeHerramienta = $('tiro-muneco').checked
   motor.start()
   motor.requestStart('endless')
+  // El vuelo se aplica después de arrancar: `requestStart` reaparece, y
+  // reaparecer pone al jugador en el suelo.
+  if ($('god').checked) motor.movement.setVolando(true)
 }
+
+/**
+ * **Los muñecos plantados son un instrumento de medida** (vuelta 77), como el
+ * fantasma del duelo o los números detrás de F3. Sirven para contestar una
+ * pregunta que ninguna cifra contesta —«¿desde dónde se defiende esta
+ * cornisa?»— y por eso **no se guardan con el mapa**: dónde puede nacer un
+ * muñeco de verdad sale de un barrido medido (`rutas-buscar.mjs`), no de
+ * ponerlos a ojo. Escribirlos en el fichero sería colar a mano justo el dato
+ * que la propuesta dejó fuera del editor a propósito.
+ *
+ * Se dibujan con `crearCuerpo`, que es **la única forma de figura humana del
+ * juego** (vuelta 38): así lo que mides es la silueta que recibe disparos y no
+ * un cilindro parecido.
+ */
+const plantados = []
+
+function plantar(punto) {
+  if (!motor) return
+  // Con el color de equipo y no con el naranja de las dianas: lo que se
+  // pregunta es si **un jugador** se defiende ahí, no si cabe un blanco.
+  const cuerpo = new Avatar(TARGET.radius)
+  // Anclado a los pies, como el hitbox: el punto es donde acabó el rayo.
+  cuerpo.group.position.set(punto.x, punto.y, punto.z)
+  motor.scene.add(cuerpo.group)
+  plantados.push(cuerpo)
+  $('cuenta-plantados').textContent = `${plantados.length}`
+}
+
+function limpiarPlantados() {
+  for (const cuerpo of plantados) cuerpo.dispose()
+  plantados.length = 0
+  $('cuenta-plantados').textContent = ''
+}
+
+$('limpiar-plantados').addEventListener('click', limpiarPlantados)
+
+$('tiro-muneco').addEventListener('change', () => {
+  if (motor) motor.tiroDeHerramienta = $('tiro-muneco').checked
+})
+
+/**
+ * **El vuelo se enciende con G, y la G es del editor.** El juego no comparte
+ * binds con esta página: allí `KEYBINDS` es un mapa saneado y reasignable, y
+ * aquí es una tecla de herramienta que no existe en ninguna partida. Meterla en
+ * `KEYBINDS` habría sido reservarle al jugador una tecla para algo que no puede
+ * usar nunca.
+ */
+function ponerGod(valor) {
+  $('god').checked = valor
+  motor?.movement.setVolando(valor)
+}
+
+$('god').addEventListener('change', () => ponerGod($('god').checked))
+
+window.addEventListener('keydown', (evento) => {
+  if (evento.code !== 'KeyG' || !motor) return
+  evento.preventDefault()
+  ponerGod(!$('god').checked)
+})
 
 function dejarDeProbar() {
   if (!motor) return
+  // Los muñecos cuelgan de la escena del motor, que se va entera: hay que
+  // soltarlos antes o quedan sus geometrías sin dueño.
+  limpiarPlantados()
   motor.dispose()
   motor = null
   capa?.jugando(false)
@@ -1016,6 +1137,7 @@ function frame(ahora = performance.now()) {
   if (sucio) { sucio = false; remontar(); anotarBorrador() }
   volar(dt)
   colocarCamara()
+  escenario?.seguirConFondo(camara)
   renderer.render(scene, camara)
 }
 
@@ -1107,15 +1229,20 @@ function medirPresupuesto() {
       triangulos += (malla.geometry?.index?.count ?? malla.geometry?.attributes?.position?.count ?? 0) / 3
     }
 
-    const nodo = $('presupuesto')
     const aprieta = media > PRESUPUESTO_MS
-    nodo.className = `nota ${aprieta ? 'aprieta' : 'cabe'}`
-    nodo.textContent = `${media.toFixed(4)} ms de colisión por paso (peor bloque ${peor.toFixed(4)})` +
+    // En la barra, lo corto; en el panel, con su denominador entero (vuelta 46).
+    const corto = `${media.toFixed(4)} ms/paso` + (aprieta ? ' — SE PASA' : '')
+    const largo = `${media.toFixed(4)} ms de colisión por paso (peor bloque ${peor.toFixed(4)})` +
       ` · ${escenario.boxes.length} piezas · ${Math.round(triangulos)} triángulos` +
-      ` · de ${PASOS_MEDIDOS} pasos` + ` · presupuesto ${PRESUPUESTO_MS} ms` +
+      ` · de ${PASOS_MEDIDOS} pasos · presupuesto ${PRESUPUESTO_MS} ms` +
       (aprieta ? ' — SE PASA' : '')
+    for (const [id, texto] of [['presupuesto', corto], ['presupuesto-panel', largo]]) {
+      const nodo = $(id)
+      nodo.className = `${id === 'presupuesto' ? 'dato' : 'nota'} ${aprieta ? 'aprieta' : 'cabe'}`
+      nodo.textContent = texto
+    }
   } catch (error) {
-    $('presupuesto').textContent = `no se ha podido medir: ${error.message}`
+    $('presupuesto-panel').textContent = `no se ha podido medir: ${error.message}`
   }
 }
 
@@ -1208,6 +1335,371 @@ function abrirLoQueToque() {
  * desmonta en modo estricto, y construirla con cada prueba sería pagar ese
  * baile cada vez — además de perder el HUD entre pruebas.
  */
+// ---------------------------------------------------------------- la fase 3
+
+/**
+ * **La fase 3: el mapa deja de ser sólo geometría** (vuelta 77).
+ *
+ * Salidas con rumbo, zona de aparición y caja de compra **como áreas**,
+ * simetría por giro, física propia y dotación. Todo esto ya lo entendía el
+ * juego desde las vueltas 66 y 72 — lo que faltaba era poder escribirlo sin
+ * abrir `config.js`.
+ *
+ * Una regla gobierna la hoja entera: **el editor escribe el dato, no una
+ * versión suya del dato.** `duelo.salidas`, `spawnZone`, `duelo.cajaCompra`,
+ * `fisica` y `duelo.dotacion` son los campos que leen `partida.js` y
+ * `scenario.js` tal cual, y el saneado que los valida es el mismo
+ * (`src/maps/formato.js`). Un formulario que guardase «su» forma y la
+ * tradujera al guardar sería una segunda definición de mapa.
+ */
+
+/** Los dos grados y radianes: el dato viaja en radianes, la pantalla se lee en grados. */
+const aGrados = (rad) => Math.round(((rad ?? 0) * 180) / Math.PI)
+const aRadianes = (deg) => (Number(deg) || 0) * Math.PI / 180
+
+function dueloDe() {
+  if (!mapa.duelo) mapa.duelo = {}
+  return mapa.duelo
+}
+
+function salidasDe() {
+  const d = dueloDe()
+  if (!Array.isArray(d.salidas) || d.salidas.length !== 2) {
+    // Dos y no una: un 1v1 sin dos sitios de salida es un mapa donde los dos
+    // aparecen encima, que es exactamente el fallo que arregló la vuelta 66.
+    const sala = scenarioRoom(mapa)
+    const z = sala.depth / 2 - 4
+    d.salidas = [{ x: 0, z, yaw: 0 }, { x: 0, z: -z, yaw: Math.PI }]
+  }
+  return d.salidas
+}
+
+/** Rellena la hoja de duelo desde el mapa. Se llama al abrir el panel, no por frame. */
+function pintarDuelo() {
+  $('solo-duelo').checked = Boolean(mapa.soloDuelo)
+  $('fondo').value = mapa.fondo ?? ''
+  // **Lo que este mapa no tiene se apaga, no se enseña vacío.** Un mapa de
+  // entrenamiento no tiene salidas ni dotación —tiene un spawn y rutas—, y
+  // unos campos en blanco ahí prometen algo que el juego va a ignorar, que es
+  // el fallo del selector de la vuelta 67.
+  $('duelo-campos').hidden = !mapa.soloDuelo
+
+  const duelo = mapa.duelo ?? {}
+  const salidas = Array.isArray(duelo.salidas) ? duelo.salidas : []
+  for (const [i, prefijo] of ['s1', 's2'].entries()) {
+    const s = salidas[i] ?? {}
+    $(`${prefijo}-x`).value = s.x ?? ''
+    $(`${prefijo}-z`).value = s.z ?? ''
+    $(`${prefijo}-yaw`).value = s.yaw === undefined ? '' : aGrados(s.yaw)
+  }
+  $('caja-compra').value = duelo.cajaCompra?.ancho ?? ROUNDS.cajaCompra.ancho
+
+  $('sin-economia').checked = Boolean(duelo.sinEconomia)
+  $('dotacion-campos').hidden = !duelo.sinEconomia
+  $('dotacion-arma').value = duelo.dotacion?.arma ?? Object.keys(PRIMARY_WEAPONS)[0]
+  $('dotacion-escudo').checked = Boolean(duelo.dotacion?.chaleco)
+  $('dotacion-casco').checked = Boolean(duelo.dotacion?.casco)
+
+  const zona = mapa.spawnZone?.[0]
+  for (const [id, valor] of [['zona-x', zona?.x], ['zona-z', zona?.z], ['zona-w', zona?.w], ['zona-d', zona?.d]]) {
+    $(id).value = valor ?? ''
+  }
+
+  $('fisica-propia').checked = Boolean(mapa.fisica)
+  $('fisica-campos').hidden = !mapa.fisica
+  $('fis-gravedad').value = mapa.fisica?.gravity ?? MOVEMENT.gravity
+  $('fis-salto').value = mapa.fisica?.jumpSpeed ?? MOVEMENT.jumpSpeed
+  $('fis-aire').value = mapa.fisica?.airStrafeMaxSpeed ?? MOVEMENT.airStrafeMaxSpeed
+  notaDeFisica()
+}
+
+/**
+ * **Lo que un mapa construye con su física sale de ella, no del gusto** (vuelta
+ * 72): en Los Pilares un salto sube 3.26 u, así que la torre mide 3.2. El
+ * editor hace esa cuenta delante de ti en vez de dejarla para el papel.
+ */
+function notaDeFisica() {
+  const g = Number($('fis-gravedad').value) || MOVEMENT.gravity
+  const v = Number($('fis-salto').value) || MOVEMENT.jumpSpeed
+  const apice = (v * v) / (2 * g)
+  const vuelo = (2 * v) / g
+  $('fisica-nota').textContent =
+    `Con estos números un salto sube ${apice.toFixed(2)} u y dura ${(vuelo * 1000).toFixed(0)} ms. ` +
+    `Una pieza de hasta ${(apice + 0.25).toFixed(1)} u se sube desde el suelo contando el escalón.`
+}
+
+campo('solo-duelo', () => {
+  mapa.soloDuelo = $('solo-duelo').checked || undefined
+  // Dos salidas en cuanto se declara mapa de duelo: un 1v1 **son** dos sitios
+  // de salida, así que proponerlas no es adivinar, es la definición. Se ponen
+  // en extremos opuestos y mirándose, que es lo único que no puede estar mal.
+  if (mapa.soloDuelo) {
+    salidasDe()
+    const [a, b] = mapa.duelo.salidas
+    if (!Number.isFinite(a.yaw) || !Number.isFinite(b.yaw)) {
+      a.yaw = Math.atan2(-(b.x - a.x), -(b.z - a.z))
+      b.yaw = Math.atan2(-(a.x - b.x), -(a.z - b.z))
+    }
+  }
+  pintarDuelo()
+})
+campo('fondo', (v) => { mapa.fondo = FONDOS[v] ? v : undefined })
+
+for (const [i, prefijo] of ['s1', 's2'].entries()) {
+  for (const [sufijo, clave] of [['x', 'x'], ['z', 'z'], ['yaw', 'yaw']]) {
+    campo(`${prefijo}-${sufijo}`, (v) => {
+      const s = salidasDe()[i]
+      s[clave] = clave === 'yaw' ? aRadianes(v) : (Number(v) || 0)
+    })
+  }
+}
+
+/**
+ * **Que se miren no es un adorno**: es el fallo de la vuelta 66 resuelto de una
+ * vez. Sin rumbo, el que sale en el sur aparece mirando a la pared del fondo, y
+ * el rumbo correcto es una cuenta —`atan2` hacia la otra salida— que nadie
+ * tiene por qué hacer a mano.
+ */
+$('s-mirarse').addEventListener('click', () => {
+  anotarParaDeshacer()
+  const [a, b] = salidasDe()
+  // La cámara mira a −Z con yaw 0, o sea `forward = (−sin, −cos)`: el rumbo que
+  // apunta de A a B es `atan2(−dx, −dz)`. Escribirlo al revés es el error de
+  // 180° de la vuelta 60, aquí en forma de dos jugadores de espaldas.
+  a.yaw = Math.atan2(-(b.x - a.x), -(b.z - a.z))
+  b.yaw = Math.atan2(-(a.x - b.x), -(a.z - b.z))
+  pintarDuelo()
+  sucio = true
+})
+
+/**
+ * **Las salidas se miden contra la geometría montada, no contra el dato.** Que
+ * dos puntos estén a 32 u no dice nada si hay línea de visión entre ellos: lo
+ * que un mapa de duelo tiene que garantizar es que la ronda **no empiece
+ * resuelta** (vuelta 66).
+ */
+$('s-medir').addEventListener('click', () => {
+  const [a, b] = salidasDe()
+  const dist = Math.hypot(b.x - a.x, b.z - a.z)
+  let seVen = null
+  if (escenario) {
+    // Los ojos a la altura de siempre, y el mismo rayo que usa la aparición.
+    const ojos = 1.7
+    seVen = hasLineOfSight(
+      new THREE.Vector3(a.x, ojos, a.z),
+      new THREE.Vector3(b.x, ojos, b.z),
+      escenario.occluders,
+    )
+  }
+  $('s-medida').textContent =
+    `${dist.toFixed(1)} u entre salidas` +
+    (seVen === null ? '' : seVen
+      ? ' · SE VEN: la ronda empieza resuelta, mete algo en medio'
+      : ' · sin línea de visión entre ellas')
+  $('s-medida').className = `nota ${seVen ? 'aprieta' : 'cabe'}`
+})
+
+campo('caja-compra', (v) => {
+  const lado = Math.max(Number(v) || 0, 1)
+  dueloDe().cajaCompra = { ancho: lado, fondo: lado }
+})
+
+campo('sin-economia', () => {
+  const d = dueloDe()
+  d.sinEconomia = $('sin-economia').checked || undefined
+  // **Sin economía y sin dotación se sale con la pistola y nada más**, que no
+  // es lo que nadie quiere decir al marcar esa casilla. Se propone una y el
+  // saneado se queja si se quita.
+  if (d.sinEconomia && !d.dotacion) {
+    d.dotacion = { arma: Object.keys(PRIMARY_WEAPONS)[0], chaleco: true, casco: false }
+  }
+  pintarDuelo()
+})
+
+for (const [id, clave] of [['dotacion-arma', 'arma'], ['dotacion-escudo', 'chaleco'], ['dotacion-casco', 'casco']]) {
+  campo(id, (v) => {
+    const d = dueloDe()
+    if (!d.dotacion) d.dotacion = { arma: Object.keys(PRIMARY_WEAPONS)[0], chaleco: false, casco: false }
+    d.dotacion[clave] = clave === 'arma' ? v : $(id).checked
+  })
+}
+
+/**
+ * **La zona de aparición es una caja, no una bolsa** (vuelta 43): la regla es
+ * «de la línea del muro hacia atrás no aparece nadie». Se declara con la misma
+ * convención que una pieza —esquina mínima, ancho y fondo— justo para que no
+ * haya dos vocabularios de área en el mismo fichero.
+ */
+for (const [id, clave] of [['zona-x', 'x'], ['zona-z', 'z'], ['zona-w', 'w'], ['zona-d', 'd']]) {
+  campo(id, (v) => {
+    if (!mapa.spawnZone?.length) mapa.spawnZone = [{ x: 0, z: 0, w: 0, d: 0 }]
+    mapa.spawnZone[0][clave] = Number(v) || 0
+  })
+}
+$('zona-quitar').addEventListener('click', () => {
+  anotarParaDeshacer()
+  mapa.spawnZone = []
+  pintarDuelo()
+  sucio = true
+})
+
+/**
+ * **Giro de 180°, no espejo** (vuelta 66), y aquí se ve por qué en un clic:
+ * dibujas media sala y el botón pone la otra. Con un espejo cada jugador
+ * tendría la esquina estrecha por un lado distinto, o sea un mapa distinto para
+ * cada uno; con el giro, **la vista de uno es la del otro**.
+ *
+ * Lo que va **centrado en el origen no se duplica**: su copia girada caería
+ * encima de sí misma, y eso son dos mallas en el mismo sitio — que no se ve y
+ * se paga en cada frame.
+ */
+$('giro-aplicar').addEventListener('click', () => {
+  const centradas = mapa.boxes.filter((p) => enElOrigen(p))
+  const aGirar = mapa.boxes.filter((p) => !enElOrigen(p))
+  anotarParaDeshacer()
+  mapa.boxes = [...giro180(aGirar), ...centradas]
+  seleccion = -1
+  sucio = true
+  refrescarPanel()
+  contar([], `giradas ${aGirar.length} · ${centradas.length} centrada(s) no se duplican`)
+})
+
+/** Centrada en el origen: su giro se solaparía consigo misma. */
+function enElOrigen(p) {
+  return Math.abs(p.x + p.w / 2) < 0.001 && Math.abs(p.z + p.d / 2) < 0.001
+}
+
+/**
+ * **La simetría se comprueba, no se supone** (`mapa66`). Escribir dos veces
+ * cada caja es escribir la ocasión de que una se quede a media unidad de su
+ * pareja, y media unidad es una esquina que existe para uno y no para el otro.
+ */
+$('giro-comprobar').addEventListener('click', () => {
+  const huerfanas = []
+  for (const p of mapa.boxes) {
+    if (enElOrigen(p)) continue
+    const pareja = mapa.boxes.find((q) => (
+      Math.abs(q.x + (p.x + p.w)) < 0.001 && Math.abs(q.z + (p.z + p.d)) < 0.001 &&
+      Math.abs(q.w - p.w) < 0.001 && Math.abs(q.d - p.d) < 0.001 &&
+      coverHeight(q.kind) === coverHeight(p.kind)
+    ))
+    if (!pareja) huerfanas.push(p)
+  }
+  const nodo = $('giro-nota')
+  nodo.className = `nota ${huerfanas.length ? 'aprieta' : 'cabe'}`
+  nodo.textContent = huerfanas.length
+    ? `${huerfanas.length} pieza(s) sin pareja girada: ${huerfanas.slice(0, 4).map((p) => `${p.w}×${p.d} @ ${p.x},${p.z}`).join(' · ')}`
+    : `Las ${mapa.boxes.length} piezas tienen su pareja girada.`
+})
+
+campo('fisica-propia', () => {
+  if ($('fisica-propia').checked) {
+    mapa.fisica = mapa.fisica ?? {
+      gravity: MOVEMENT.gravity,
+      jumpSpeed: MOVEMENT.jumpSpeed,
+      airStrafeMaxSpeed: MOVEMENT.airStrafeMaxSpeed,
+    }
+  } else {
+    delete mapa.fisica
+  }
+  pintarDuelo()
+})
+
+for (const [id, clave] of [['fis-gravedad', 'gravity'], ['fis-salto', 'jumpSpeed'], ['fis-aire', 'airStrafeMaxSpeed']]) {
+  campo(id, (v) => {
+    if (!mapa.fisica) return
+    mapa.fisica[clave] = Math.max(Number(v) || 0, 0.1)
+    notaDeFisica()
+  })
+}
+
+// ---------------------------------------------------------------- el panel
+
+/**
+ * **El panel flota y se abre con ESPACIO** (vuelta 77).
+ *
+ * Era una barra lateral fija de 300 px, y eso tenía dos precios que se pagaban
+ * a la vez: **el mapa se mira desde fuera** y un tercio del ancho no estaba
+ * mirándolo, y sobre todo que este panel va a crecer con cada fase — la fase 3
+ * le añade salidas, zonas, simetría, física y dotación—. Una columna que crece
+ * hasta salirse de la ventana es exactamente lo que le pasó al menú del duelo,
+ * que estuvo tres vueltas con los botones de abajo fuera de la pantalla
+ * (`menu62`).
+ *
+ * Tres reglas que son el diseño:
+ *
+ * - **Lo que se lee siempre no está aquí dentro.** La barra de arriba lleva el
+ *   mapa, las piezas, el presupuesto y el estado. Un panel que hay que abrir
+ *   para saber cuántas piezas llevas es un panel que se deja abierto, y
+ *   entonces no era flotante.
+ * - **Pestañas, no una columna.** Cinco hojas y no diez secciones apiladas:
+ *   con la fase 3 la columna medía dos pantallas.
+ * - **Y ESPACIO es del editor.** El juego salta con ESPACIO, pero esta página
+ *   no comparte binds con el juego (es la misma regla que la **G** del vuelo)
+ *   y el panel **no se abre jugando**: con el motor montado, esa tecla es del
+ *   motor y aquí no se mira.
+ */
+/**
+ * **El panel se rellena al abrirlo, no por frame.** Está cerrado casi todo el
+ * tiempo y sus campos no cambian solos: pintarlos sesenta veces por segundo
+ * sería la regla del HUD (cero repintado por frame) rota por comodidad.
+ */
+function refrescarPanel() {
+  pintarPanel()
+  pintarDuelo()
+}
+
+function panelAbierto() { return !$('telon').hidden }
+
+function abrirPanel(abrir = true) {
+  if (motor) return
+  $('telon').hidden = !abrir
+  // Volar con el panel puesto sería mover la cámara a ciegas detrás de él.
+  if (abrir) { teclasCamara.clear(); sobreLaVista = false }
+  if (abrir) refrescarPanel()
+}
+
+$('abrir-panel').addEventListener('click', () => abrirPanel(true))
+$('cerrar-panel').addEventListener('click', () => abrirPanel(false))
+
+// Un clic **en el telón y no en el panel** cierra. El telón se lo come, que es
+// para lo que está: sin él llegaría al lienzo y movería una pieza.
+$('telon').addEventListener('pointerdown', (evento) => {
+  if (evento.target === $('telon')) abrirPanel(false)
+})
+
+for (const boton of document.querySelectorAll('#pestanas button')) {
+  boton.addEventListener('click', () => elegirPestana(boton.dataset.pestana))
+}
+
+function elegirPestana(cual) {
+  for (const boton of document.querySelectorAll('#pestanas button')) {
+    boton.classList.toggle('puesta', boton.dataset.pestana === cual)
+  }
+  for (const hoja of document.querySelectorAll('.hoja')) {
+    hoja.hidden = hoja.dataset.hoja !== cual
+  }
+}
+
+window.addEventListener('keydown', (evento) => {
+  if (evento.code !== 'Space' || motor) return
+  /**
+   * **Escribiendo, ESPACIO es un espacio.** En un botón, en cambio, se
+   * intercepta a propósito: ESPACIO activa el botón que tenga el foco, y con
+   * una pestaña recién pulsada eso convertiría la tecla del panel en «vuelve a
+   * pulsar lo último». Aquí ESPACIO significa **el panel**, siempre.
+   */
+  if (document.activeElement?.matches('input:not([type=checkbox]), textarea, select')) return
+  evento.preventDefault()
+  abrirPanel(!panelAbierto())
+})
+
+// Escape cierra el panel antes que nada. Jugando no puede estar abierto, así
+// que no se pelea con el Escape que vuelve de «probar».
+window.addEventListener('keydown', (evento) => {
+  if (evento.code === 'Escape' && panelAbierto()) { evento.preventDefault(); abrirPanel(false) }
+})
+
 capa = montarCapaDeDuelo($('capa'))
 
 pintarFormas()
@@ -1233,6 +1725,7 @@ window.vektorEditor = {
   get movimiento() { return motor?.movement ?? null },
   get orbita() { return orbita },
   get laseres() { return laseres },
+  get plantados() { return plantados },
   coverHeight,
   cargar,
   colocar,

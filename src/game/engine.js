@@ -19,24 +19,25 @@ import {
   AVATAR,
   CAMERA,
   COVER,
+  DEATHMATCH_DURATIONS,
+  EDITOR,
   FOOTSTEPS,
   FRAME_LIMITS,
-  OBJECTIVE,
-  MOVEMENT,
   HELP,
   IMPACTS,
   LOOK,
+  MELEE_WEAPON,
+  MOVEMENT,
+  NET,
+  OBJECTIVE,
   PLAYER,
   RECOIL_RESET_MS,
   RENDER,
-  MELEE_WEAPON,
+  SCOPE,
   SECONDARY_WEAPON,
-  DEATHMATCH_DURATIONS,
   SESSION_DURATION_S,
   SESSION_MODES,
-  SCOPE,
   SIM,
-  NET,
   SIM_STEP_MS,
   TARGET,
   TEAMS,
@@ -194,6 +195,14 @@ export class Engine {
      * Con esto el duelo dice qué mapa juega y no toca nada de nadie.
      */
     this._escenarioFijo = opciones.escenario ?? null
+
+    /**
+     * **Con esto puesto, disparar es apuntar** (vuelta 77): ver
+     * `_shoot`. Lo enciende y lo apaga el editor en caliente, así que es un
+     * campo y no una opción de construcción.
+     */
+    this.tiroDeHerramienta = false
+    this._siguientePlantado = 0
 
     /**
      * **Que un mundo tenga muñecos es del mundo, no del jugador** (vuelta 76).
@@ -2399,6 +2408,23 @@ export class Engine {
     // si estás vivo es el servidor.
     if (this.enRed ? this.net.vida <= 0 : !this.status.alive) return false
 
+    /**
+     * **La herramienta corta aquí, antes de que esto sea un arma** (vuelta
+     * 77). Debajo hay cadencia, retroceso, patrón y munición, y una
+     * herramienta no tiene ninguna de las cuatro: lo único que necesita es el
+     * rayo, y eso lo da `_shoot`.
+     *
+     * Lo que sí lleva es un ritmo propio, y no el del arma que tengas en la
+     * mano — con la Scout serían 1.25 s entre muñeco y muñeco, y con la pistola
+     * ocho por segundo con el botón apoyado.
+     */
+    if (this.tiroDeHerramienta) {
+      if (now < this._siguientePlantado) return false
+      this._siguientePlantado = now + EDITOR.plantarMs
+      this._shoot(instanteReal)
+      return true
+    }
+
     const weapon = this.weapon
     const intervalMs = 60000 / weapon.rpm
     if (now < this._nextShotAt) return false
@@ -2665,6 +2691,29 @@ export class Engine {
   }
 
   _shoot(instanteReal = this._simTime) {
+    /**
+     * **El tiro de herramienta no es un disparo: es una pregunta** (vuelta 77).
+     *
+     * El editor lo usa para plantar un muñeco donde apuntas, y para eso hace
+     * falta una sola cosa que el motor ya calcula y nadie más puede calcular
+     * sin repetirse: **dónde acaba el rayo**. Lanzar un segundo rayo desde
+     * fuera es justo lo que la vuelta 64 prohibió —«dos rayos para dos
+     * preguntas sobre la misma recta es cómo se acaban contestando
+     * distinto»— y encima la sala no se raycastea, se resuelve en aritmética.
+     *
+     * Así que se sale **antes de que esto sea un disparo**: sin munición, sin
+     * sonido, sin retroceso, sin marca de bala y sin contar en la precisión.
+     * Lo único que hace es publicar la superficie. No lleva `enRed` porque una
+     * herramienta no existe en una partida: es del editor y de nadie más.
+     */
+    if (this.tiroDeHerramienta) {
+      this.camera.updateMatrixWorld()
+      this.raycaster.setFromCamera(SCREEN_CENTER, this.camera)
+      const superficie = this._superficieBajoElRayo()
+      if (superficie) this.callbacks.onSuperficie?.(superficie.punto, superficie.normal)
+      return
+    }
+
     this.shots += 1
 
     /**
@@ -2947,6 +2996,9 @@ export class Engine {
 
     this.actionPanel.follow(this.camera)
     this.actionPanel.syncLayout()
+    // El fondo panorámico va con la cámara en posición (vuelta 77): se coloca
+    // con la pose ya interpolada y antes de dibujar, como todo lo demás.
+    this.scenario.seguirConFondo(this.camera)
     this._publishStats()
     this.renderer.render(this.scene, this.camera)
     this.cssRenderer.render(this.cssScene, this.camera)

@@ -85,6 +85,7 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Config | `src/config.js` | Todo el tuning, sin excepción. |
 | Formato de mapa | `src/maps/formato.js` | Qué campos tiene un mapa, el saneado y el serializador. **Lo miran el editor y el cargador**, que es lo que evita que un mapa se guarde con su física y se abra sin ella. |
 | Mapas de fichero | `src/maps/index.js` | Registro **generado** de los mapas que escribe el editor, fundido en `SCENARIOS`. Importaciones estáticas para que lo lean igual Vite y Node. |
+| Fondo | `src/game/backdrop.js` | El panorama 360° de un mapa: una esfera vista por dentro con la textura **dibujada en un canvas**. Sin colisión, fuera de los oclusores y fuera del presupuesto. |
 | Editor | `editor/` | La página de dibujar mapas (`/editor/`). **Sólo en desarrollo**: no entra en `dist/`. Hospeda el motor entero para probar, como el duelo. |
 | Partida (servidor) | `net/partida.js` | **Todo lo que decide el servidor**, sin saber por dónde viaja: entradas, pasos, disparo, rebobinado y fotos. Un jugador entra con una función `enviar(texto)` y nada más. **No hay red en este fichero.** |
 | Huésped de Node | `net/servidor.mjs` | Node + `ws`, y desde la vuelta 58 **el del despliegue**: encamina por código de sala, lleva un reloj por sala y sirve `dist/`. El mismo fichero en local y en Fly. |
@@ -446,8 +447,14 @@ prisma, muro, bordillo, plataforma y parapeto—, y **las seis son la misma caja
 con otros números y otro `kind`: lo que distingue un muro de un bordillo no es
 su geometría, porque no hay más geometría que la que la colisión sabe resolver.
 Encima, un candado por dimensión, rejilla de 1 u a 1/10, imán a la cara de al
-lado, giro de 90°, deshacer/rehacer y tres láseres de alineación por eje. Cuatro
-cosas de ahí son reglas y no tuning:
+lado, giro de 90°, deshacer/rehacer y tres láseres de alineación por eje —que
+salen de la **base** de la pieza y no de su centro (vuelta 77): para alinear hay
+que ver la línea contra la superficie sobre la que la pieza se apoya—. Y **el
+imán es un raíl**: gana **un** eje, el de la cara más cercana, y el otro se
+queda donde lo dejó el arrastre. Enganchar los dos a la vez desviaba la pieza de
+lado al arrimarla a su vecina, y una cara ya cuadrada —distancia cero— **no
+gasta el raíl**, porque mover cero no es enganchar. Cuatro cosas más son reglas
+y no tuning:
 
 - **El presupuesto se mide, y el instrumento se midió antes de creérselo.** Un
   paso de mundo **no se puede cronometrar en un navegador** —`performance.now()`
@@ -484,6 +491,13 @@ de un campo**, y el botón las cumplía de rebote a cambio de dejar el vuelo
 inalcanzable justo cuando se usa. Es `typingInField` (vuelta 56) en una página
 que sí tiene campos de texto.
 
+**Y su vector lateral se escribe una vez** (vuelta 77). A y D salieron
+cambiadas porque los senos y cosenos iban metidos a mano en cada componente, que
+es donde un signo se cuela sin que se note. Se escriben **el frente y el
+derecho como dos vectores** y se suman: es el error de 180° de la vuelta 60 en
+pequeño, y se evita igual — donde hay una convención, se escribe una vez y se le
+pone nombre.
+
 **El tamaño de la sala tiene tope, y no es el presupuesto.** `SALA` acota lado a
 10–200 u y alto a 4–60, y lo aplica el mismo saneado que lee un mapa al
 montarlo: un número fuera de rango no llega al juego venga del editor o de un
@@ -502,6 +516,74 @@ Y dos cosas que salieron construyéndolo y valen fuera del editor:
   `config.js`, y parchear ese módulo en caliente es justo lo que duplica el
   store de ajustes (§4). Una recarga entera cuesta medio segundo y cierra esa
   puerta.
+
+**El panel del editor flota, y por qué se rehízo antes de la fase 3** (vuelta
+77). Era una barra lateral fija de 300 px y la fase 3 la pasaba de seis
+secciones a once — o sea a una columna que se recorre con la rueda en vez de
+leerse. El precedente tiene nombre: el menú del duelo creció una fila por vuelta
+hasta que sus botones de abajo quedaron **fuera de la ventana**, y `menu62`
+estuvo tres vueltas en rojo diciéndolo. Construir la fase 3 contra la barra
+vieja habría sido construirla dos veces. Cuatro reglas:
+
+- **La barra de arriba dice el estado; el panel guarda los mandos.** Mapa,
+  piezas, presupuesto y estado se leen sin abrir nada. Un panel que hay que
+  abrir para saber cuántas piezas llevas se queda abierto, y entonces no era
+  flotante.
+- **El telón se come el clic que cierra.** Sin él llegaba al lienzo y
+  seleccionaba —o arrastraba— una pieza: **un gesto de cerrar no puede editar el
+  mapa**. Es la idea de los `.control` del duelo (vuelta 48) por otra puerta.
+- **ESPACIO abre y cierra, y es del editor.** Sobre un campo es un espacio;
+  sobre un botón se intercepta, o con una pestaña recién pulsada la tecla del
+  panel sería «repite lo último». Y **no se abre jugando**: con el motor montado
+  esa tecla es del motor. Esta página no comparte binds con el juego, que es lo
+  mismo que vale para la **G** del vuelo.
+- **Y el panel se rellena al abrirlo, no por frame.** Es la regla del HUD (cero
+  repintado por frame) en una página sin React.
+
+**Un mapa puede tener fondo, y el fondo se dibuja** (vuelta 77). `fondo` es una
+clave de `FONDOS` y `src/game/backdrop.js` pinta con ella una textura
+equirectangular en un canvas, al montar el escenario. Vive en `Scenario`, así
+que sale igual entrenando, en el duelo y en el editor (vuelta 63). Cuatro cosas:
+
+- **No es un asset, y eso es una decisión pendiente y no una limitación.** Un
+  panorama fotográfico sería **el primer asset externo del proyecto**: el
+  argumento en contra es el mismo que hizo revertir el audio grabado en la
+  vuelta 63 —que corra en cualquier PC sin descargar nada, y que verse así sea
+  lo que es Vektor—. La puerta es una clave más en el catálogo; no se ha cruzado
+  sin preguntar.
+- **No es geometría del mapa.** Fuera de `this.group`, **fuera de
+  `occluders`** y fuera del presupuesto: ningún rayo le pregunta nada. Montarlo
+  como una pieza más sería una pared invisible a ciento sesenta unidades que
+  para balas y tapa apariciones.
+- **Sigue a la cámara en posición y no en rotación.** En posición, porque si no
+  se llega andando a su borde en un mapa grande; **no** en rotación, porque eso
+  sería un fondo pintado en la pantalla y no un sitio alrededor del mapa.
+- **Y un horizonte se mide en ángulo, no en píxeles.** La textura cubre 180° de
+  elevación en su alto, así que el `alturaMax: 0.34` de la primera versión eran
+  **sesenta grados de rascacielos**: estar dentro de un pozo. Un horizonte
+  urbano ocupa diez o doce grados. Se vio mirando una captura, no leyendo el
+  código.
+
+**Las herramientas de probar son instrumentos de medida, no mecánicas** (vuelta
+77), y están en `EDITOR` —aparte del tuning del juego— porque **ninguna existe
+en una partida**:
+
+- **El disparo que planta un muñeco** corta en `_tryShoot` **antes de que eso
+  sea un arma**: sin munición, sin retroceso, sin patrón, sin sonido y sin
+  contar en la precisión. Lo único que necesita es dónde acaba el rayo, y ése es
+  **el mismo rayo** que resuelve un disparo — lanzar un segundo desde fuera es
+  lo que prohibió la vuelta 64, y encima la sala no se raycastea, se resuelve en
+  aritmética. La primera versión cortaba dentro de `_shoot` y seguía gastando
+  munición, porque la cadencia y el cargador están **alrededor**.
+- **El vuelo (G)** es un `if` al principio del paso de movimiento y no una rama
+  dentro de la vertical: así no hay un camino nuevo por el modelo, ni un campo
+  más en `snapshot()`, ni nada que pueda discrepar entre los dos extremos de una
+  partida en red. **Apagarlo no teletransporta**: deja al jugador en el aire con
+  su parábola de siempre y cae con la gravedad del mapa. «Sin daño por caída»
+  sale gratis, porque Vektor no tiene daño por caída.
+- **Y los muñecos plantados no se guardan con el mapa.** Dónde puede nacer uno
+  de verdad sale de un barrido medido, no de ponerlos a ojo: escribirlos en el
+  fichero sería colar a mano el dato que el editor deja fuera a propósito.
 
 **Un mapa puede repartir en vez de vender, y «sin economía» no es «sin fase de
 compra»** (vuelta 72). Son lo contrario: desde la 65, **a cero la tienda no
@@ -3079,6 +3161,14 @@ vez que la batería del entrenamiento.
 **Si un resultado te parece extraño, reinicia el servidor de desarrollo antes de
 creerte el diagnóstico.** No depures un falso negativo durante media hora.
 
+**Y reiniciar es comprobar que el viejo ha muerto** (vuelta 77). Un `pkill`
+seguido de un arranque inmediato **no reinicia nada**: el proceso viejo tarda en
+soltar el puerto, el nuevo muere con «Port 5192 is already in use» en un registro
+que nadie mira, y la batería se pasa entera contra el servidor contaminado. Pasó
+después de haber escrito la regla de arriba. Se comprueba **por proceso** —que
+no quede ni un `vite` y que el puerto no conteste— antes de lanzar el nuevo; es
+lo mismo que la vuelta 72 con el huésped, y ya van dos.
+
 **Y comprueba que el que contesta es el que acabas de lanzar** (vuelta 64).
 Vite, si el puerto está ocupado, **arranca en el siguiente** y lo dice en una
 línea que nadie mira: el 5192 lo seguía sirviendo la instancia vieja —la del
@@ -3405,19 +3495,34 @@ guardado (vuelta 75).
 
 Con la fase 2 ya se construye de verdad: **seis formas** —cubo, prisma, muro,
 bordillo, plataforma y parapeto, que son la misma caja con otros números—,
-**candado por dimensión**, **rejilla de 1 u a 1/10**, **imán** a la cara de al
-lado, giro de 90°, **deshacer/rehacer** (Ctrl+Z), **tres láseres de alineación**
-por eje, **apilar** sobre lo de debajo con aviso si queda un vano, **cámara que
-vuela con WASD** con el puntero sobre el mapa, y un **presupuesto medido** que
-enseña lo que cuesta la colisión de tu mapa con su denominador al lado. Al
-probar salen **la mira y el HUD del juego**, y un interruptor decide si hay
-muñecos o la sala está vacía.
+**candado por dimensión**, **rejilla de 1 u a 1/10**, **imán** que pega a la
+cara de al lado moviendo **por un solo eje**, giro de 90°, **deshacer/rehacer**
+(Ctrl+Z), **tres láseres de alineación** que salen de la base de la pieza,
+**apilar** sobre lo de debajo con aviso si queda un vano, **cámara que vuela con
+WASD** con el puntero sobre el mapa, y un **presupuesto medido** que enseña lo
+que cuesta la colisión de tu mapa con su denominador al lado.
 
-Lo que todavía no hace —y es la fase 3 en adelante de
-`docs/propuestas/05-editor-de-mapas.md`—: rampas, vanos, salidas de duelo,
-zonas, simetría por giro y métricas de mapa en vivo. Y lo que **no** va a hacer
-hasta que el motor sepa chocar con ello: rotación libre, tejados y triángulos
-sólidos.
+**Y desde la vuelta 77 el panel flota** (ESPACIO lo abre y lo cierra, o un clic
+fuera), con cinco pestañas —Mapa, Construir, Duelo, Probar, Archivo— y una barra
+arriba que lleva el estado y los dos botones que se usan cada poco. La vista
+entera es del mapa.
+
+**La fase 3 está construida**: salidas con su rumbo y un botón para que se miren
+—más una medida que dice la distancia **y si hay línea de visión entre ellas**—,
+zona de aparición y caja de compra **como áreas**, simetría por giro de 180° con
+su comprobación de parejas, física propia del mapa con la cuenta del ápice
+delante, y «sin economía» con su dotación. Y un **fondo panorámico 360°**
+(`FONDOS`: noche, ciudad, volcán y nave), dibujado en un canvas, sin colisión y
+fuera del presupuesto.
+
+Al probar salen **la mira y el HUD del juego**, y tres interruptores: si hay
+muñecos, si **el disparo planta un muñeco** donde acabe el rayo, y **God mode**
+(tecla **G**) para volar y poder apuntar a una cornisa desde arriba.
+
+Lo que todavía no hace —y son las fases 4 y 5 de
+`docs/propuestas/05-editor-de-mapas.md`—: rampas, vanos y métricas de mapa en
+vivo más allá de la de salidas. Y lo que **no** va a hacer hasta que el motor
+sepa chocar con ello: rotación libre, tejados y triángulos sólidos.
 
 **El mundo va a 60 Hz fijos** (`SIM.hz`) desde la vuelta 44, dibuje el monitor lo
 que dibuje: el frame acumula tiempo real y gasta pasos con arrastre del resto, y
@@ -3791,10 +3896,10 @@ compra en la tienda del 1v1, y en el mapa que reparte (vuelta 72) tampoco.
 de `docs/propuestas/01-escenario-cobertura.md`. No los construyas hasta que el
 Plano A esté validado jugando.
 
-**El editor visual de mapas está a medias, y a propósito** (vueltas 74-76). Las
-**fases 1 y 2 están construidas** —ver §3 y §5—; las fases 3 a 5 están diseñadas
-y sin tocar en `docs/propuestas/05-editor-de-mapas.md`. Lo que hay que saber
-antes de seguir, porque es lo que decide el alcance:
+**El editor visual de mapas está a medias, y a propósito** (vueltas 74-77). Las
+**fases 1, 2 y 3 están construidas** —ver §3 y §5—; las fases 4 y 5 están
+diseñadas y sin tocar en `docs/propuestas/05-editor-de-mapas.md`. Lo que hay que
+saber antes de seguir, porque es lo que decide el alcance:
 
 - **La colisión es AABB**, y el editor no puede poder construir algo contra lo
   que el motor no sepa chocar. Rotación libre en Y, tejados sólidos y triángulos
