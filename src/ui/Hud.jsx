@@ -56,6 +56,16 @@ const SHIELD_BOX = (() => {
   return { x, y, width, height }
 })()
 
+/**
+ * Cómo dispara, en una palabra. Un cuchillo no es «SEMI»: no dispara (vuelta
+ * 71). Sale del modo del arma, que es el mismo campo que mira el motor.
+ */
+function modoDelArma(weaponKey) {
+  const modo = WEAPONS[weaponKey]?.mode
+  if (modo === 'melee') return 'CUERPO A CUERPO'
+  return modo === 'auto' ? 'AUTO' : 'SEMI'
+}
+
 const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
   const fpsRef = useRef(null)
   const timeRef = useRef(null)
@@ -186,17 +196,27 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
         missesRef.current.textContent = String(stats.misses)
         last.misses = stats.misses
       }
-      if (stats.ammo !== last.ammo && ammoRef.current) {
-        ammoRef.current.textContent = String(stats.ammo)
-        last.ammo = stats.ammo
+      /**
+       * **Un cuchillo no tiene cargador, y eso se dice** (vuelta 71). Con
+       * `magazine: 0` el contador pondría «0 / 0», que es exactamente lo que un
+       * arma rota pone en pantalla. El infinito ocupa el mismo sitio y no
+       * miente: no hay munición que contar.
+       */
+      const sinCargador = stats.magazine === 0
+      const municion = sinCargador ? '∞' : String(stats.ammo)
+      if (municion !== last.ammo && ammoRef.current) {
+        ammoRef.current.textContent = municion
+        last.ammo = municion
       }
-      if (stats.magazine !== last.magazine && magazineRef.current) {
-        magazineRef.current.textContent = String(stats.magazine)
-        last.magazine = stats.magazine
+      const tope = sinCargador ? '' : String(stats.magazine)
+      if (tope !== last.magazine && magazineRef.current) {
+        magazineRef.current.textContent = tope
+        magazineRef.current.previousElementSibling?.classList.toggle('hud__ammo-sep--oculta', sinCargador)
+        last.magazine = tope
       }
 
       // Parpadeo del contador: estado derivado, no un temporizador aparte.
-      const low = !stats.reloading && stats.ammo <= Math.max(1, Math.floor(stats.magazine * 0.2))
+      const low = !sinCargador && !stats.reloading && stats.ammo <= Math.max(1, Math.floor(stats.magazine * 0.2))
       if (low !== last.low && ammoBlockRef.current) {
         ammoBlockRef.current.classList.toggle('hud__ammo--low', low)
         last.low = low
@@ -593,7 +613,7 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed }, ref) {
           <span className="hud__weapon-name">
             {WEAPONS[weaponKey]?.label}
             <span className="hud__weapon-tag">
-              {WEAPONS[weaponKey]?.mode === 'auto' ? 'AUTO' : 'SEMI'}
+              {modoDelArma(weaponKey)}
               {suppressed ? ' · SIL' : ''}
             </span>
           </span>

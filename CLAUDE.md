@@ -68,6 +68,7 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Puntuación | `src/game/scoring.js` | Variables normalizadas, media ponderada y estrellas. |
 | Transición | `src/game/transition.js` | **Módulo sustituible entero.** Contrato único: `run(build)` tapa la escena, llama a `build()` y destapa. Nada más del motor sabe qué forma tiene. |
 | React | `src/App.jsx`, `src/ui/` | Sólo conoce la *fase* (inicio / juego / pausa / resumen) y el resumen final. |
+| Tajo | `src/game/slash.js` | El destello de un golpe de cuchillo. **Del motor, con su propia hoja de estilos**: sin arma en la mano, la pantalla es lo único que cuenta el golpe. |
 | Mirilla | `src/game/scope.js` | La lente del francotirador: negro alrededor, cruceta fina y punto rojo. **Del motor, con su propia hoja de estilos**, para que salga igual en los dos modos. |
 | Silueta del arma | `src/ui/weaponSilhouette.js` | Qué trazado toca —con supresor es otra foto— y el SVG como texto. **Sin React, para que lo usen los dos modos.** |
 | Armería | `src/ui/Armoury.jsx` | Panel de equipo (tecla B): silueta, ficha y «Equipar» por arma. Escribe en el store de ajustes, como opciones. |
@@ -1520,6 +1521,75 @@ Se baja sola al cambiar de arma, al pausar, al morir y al soltar el ratón. En
 pausa se baja **de golpe** y no interpolando, porque el reloj del mundo está
 parado y la transición cuelga de él.
 
+**Hay tres ranuras, y la tercera lleva cuchillo** (vuelta 71). `slot: 'melee'`
+se deriva del catálogo igual que la pistola (`MELEE_WEAPON`), la tecla es la
+**3** —reservada desde la vuelta 27 y sin lógica hasta ahora— y el cuchillo se
+lleva siempre: no se elige, como la pistola. Lo que convierte un arma en cuerpo
+a cuerpo es **tener bloque `melee`**, no llamarse de una manera ni ocupar una
+ranura: el motor mira el dato.
+
+**Dos golpes y ninguna tabla de combos.** Clic izquierdo flojo (25), clic derecho
+fuerte (55), los dos contra la misma vida de 100. Que «dos fuertes matan» y
+«cuatro flojos matan» no son dos reglas: son dos números, y un flojo más un
+fuerte suman solos. Medido: 2 fuertes, 4 flojos, 3 mezclando; con chaleco 3 y 6.
+
+**Y por la espalda no es más daño: es muerte.** Vive en `encajarImpacto` como un
+caso propio (`mortal`) y **por delante del casco y del escudo**, porque un número
+grande lo pararía un chaleco y entonces «siempre» sería «casi siempre». Medido: a
+vida llena con chaleco y casco, un golpe. Sólo el **fuerte**: un flojo por la
+espalda no mata de una.
+
+**El arco se mide con un vector, no con un ángulo** (`esPorLaEspalda`). El yaw de
+una cámara mira a −Z y el `facing` de un muñeco a +Z, y esta función la llaman
+los dos: pasar «el rumbo» sin más es el error de 180° de la vuelta 60 otra vez,
+y aquí se leería como que te matan de frente. Cada llamante convierte en su
+línea, donde está su convención.
+
+**El cuchillo no es un protocolo nuevo.** Un golpe viaja **dentro del disparo**,
+con un campo más (`d.m`: 1 flojo, 2 fuerte): mismo sellado en el paso, mismo
+`seq`, mismo veredicto, mismo rebobinado. Lo único que cambia es que se resuelve
+con `resolverCuchillada` en vez de `resolverDisparo` —alcance del arma, daño del
+golpe y si vino por detrás—, y que **la cadencia se exige por tipo de golpe**:
+alternar flojo y fuerte no cuela el fuerte al ritmo del flojo, porque la cuenta
+sale del mismo campo que el daño.
+
+**Y el rumbo de la víctima se rebobina** con su cuerpo. Es el único campo del
+historial que no dice dónde estaba sino cómo estaba puesta, y hace falta para
+una sola cosa: girarse a tiempo no puede salvar de un golpe que ya ocurrió. Se
+interpola **por el camino corto** (`mezclaDeRumbo`): entre 179° y −179° hay dos
+grados, y la media recta da 0, o sea mirando justo al revés.
+
+**Un arma que no se ve necesita que la pantalla la cuente** (vuelta 71). Vektor
+no dibuja el arma en la mano (vuelta 38) y eso no se toca, así que un cuchillo se
+queda sin lo que en otros juegos lo cuenta todo. Cuatro canales, y cada uno dice
+una cosa distinta:
+
+- **Antes de golpear**: la mira se abre y se tiñe de verde de acción cuando hay
+  alguien **a distancia de cuchillo**. Es lo único que se puede decir *antes*, y
+  sale del mismo rayo que resuelve el golpe, **una vez por paso de mundo y sólo
+  con el cuchillo en la mano**. Llega a la página por `onMeleeRange`, que es una
+  pulsación y no un valor por frame.
+- **Al golpear**: la cámara se mueve, por el mismo camino que el retroceso
+  (`applyRecoil`). El fuerte empuja más que el flojo — medido.
+- **Qué golpe ha sido**: el arco de `src/game/slash.js`, fino a la izquierda el
+  flojo y grueso a la derecha el fuerte; **por la espalda, los dos a la vez**. Lo
+  que distingue las tres cosas es **la forma**, que es la regla de la vuelta 67 —
+  el color sólo separa el fuerte, y en el verde de acción, el único de la paleta
+  que ya significa dos cosas porque no coinciden en pantalla.
+- **Si ha entrado**: el sonido. `playMelee` tiene una voz propia —ruido que
+  **sube** de tono, al revés que el silbido de una bala— y el cuerpo grave sólo
+  suena **si conecta**. Por la espalda añade un metal inarmónico que no lleva
+  ningún otro golpe.
+
+En red esos cuatro los decide **el veredicto local**, no el del servidor: es la
+regla de la marca de bala de la vuelta 64 —el del servidor llega un viaje después
+y contesta a otra pregunta—.
+
+**Y un cuchillazo no cuenta como disparo.** Ni `shots` ni `hits`: la precisión de
+la sesión es la de la puntería, y meter ahí los cuchillazos la convertiría en
+otra cosa. En el HUD, un arma sin cargador pone **∞** y no «0 / 0», que es lo que
+pone un arma rota.
+
 **Un arma pesa, y el peso lo traduce una sola función.** Cada entrada de
 `WEAPONS` declara `weight` en kilos y `weaponSpeedFactor` dice cuánto frena: peso
 gratis hasta `MOVEMENT.load.free`, un `perKg` de pérdida por encima y un suelo en
@@ -2970,6 +3040,15 @@ con sonido propio.
 | Rift | principal (tecla **1**) | auto | 600 | 30 | 2300 ms | sí | 3.6 kg | 5.88 u/s |
 | Volt | principal (tecla **1**) | auto | 800 | 25 | 1800 ms | sí | 2.6 kg | 6.14 u/s |
 | Scout | principal (tecla **1**) | semi | 48 | 10 | 2600 ms | **no** | 3.2 kg | 5.98 u/s |
+| Vanta | cuerpo a cuerpo (tecla **3**, siempre) | cuchillo | — | — | — | no | 0.6 kg | 6.50 u/s |
+
+**Vanta** (vuelta 71) es el **cuchillo**, y ocupa la tercera ranura —la tecla 3,
+reservada desde la vuelta 27—. Se lleva siempre, como la pistola. Clic izquierdo
+flojo (25 de daño, uno cada 400 ms), clic derecho fuerte (55, uno cada 857), y
+**un fuerte por la espalda mata siempre**. **Le falta la silueta**: su referencia
+(`Reference/Weapons/Vanta.png`) todavía no está en el repositorio, así que su
+ficha sale sin dibujo hasta que llegue y se pase `npm run trace:weapons`.
+`armeria43` lo dice en su volcado y se pondrá al día solo.
 
 **La Scout** (vuelta 70) es el primer **rifle de francotirador**: una bala al
 cuerpo mata a quien no lleve chaleco (110 de daño, `damageScale: 2.2`), dos con
@@ -3210,9 +3289,10 @@ muertes/reinicios se calculaban desde hacía vueltas con peso 0, y en la 34 se l
 dio peso. La fórmula no hubo que tocarla, que era justo lo que se buscaba al
 dejarles el hueco.
 
-**Lo que sí sigue reservado son tres teclas de equipo** (3, 5 y G): tienen bind y
-no tienen lógica. La 4 dejó de estarlo al llegar el escudo, y la 1 y la 2 al
-llegar las dos ranuras de arma.
+**Lo que sí sigue reservado son dos teclas de equipo** (5 y G): tienen bind y no
+tienen lógica. La 4 dejó de estarlo al llegar el escudo, la 1 y la 2 al llegar
+las dos ranuras de arma, y **la 3 en la vuelta 71, con el cuchillo** — que es
+exactamente para lo que se reservaron.
 
 ---
 

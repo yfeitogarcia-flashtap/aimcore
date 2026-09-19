@@ -21,8 +21,34 @@ import { ECONOMY, NET, PAUSE, ROUNDS, SIM, SIM_STEP_MS, WEAPONS, WEAPON_ORDER } 
 import { MovementController } from '../src/game/movement.js'
 import { encajarImpacto } from '../src/game/player.js'
 import { crearPose, cuerpoDeJugador } from './pose.js'
-import { direccionDeMira, resolverDisparo } from './disparo.js'
+import { direccionDeMira, resolverCuchillada, resolverDisparo } from './disparo.js'
 import { MSG, compraAbierta, desempaquetarTeclas, instanteDePaso, instanteEnPaso } from './protocolo.js'
+
+/**
+ * **Interpolación de rumbos, por el camino corto.** Entre 179° y −179° hay dos
+ * grados, no trescientos cincuenta y ocho, y la media recta de esos dos números
+ * da 0 — o sea mirando justo al revés de donde se miraba. Lo usa el rebobinado
+ * para saber hacia dónde miraba la víctima cuando le clavaron el cuchillo.
+ */
+/**
+ * **Qué golpe es**, del campo `m` que viaja dentro del disparo: 2 es fuerte y
+ * cualquier otra cosa es flojo. Un campo y no dos mensajes, porque un golpe de
+ * cuchillo es exactamente lo mismo que un disparo desde el punto de vista del
+ * protocolo —va sellado en la entrada de su paso, con su `seq` y su veredicto—
+ * y lo único que cambia es cómo se resuelve.
+ */
+function tipoDeGolpe(d) {
+  return d && d.m === 2 ? 'fuerte' : 'luz'
+}
+
+function mezclaDeRumbo(a, b, alfa) {
+  if (!Number.isFinite(a)) return b
+  if (!Number.isFinite(b)) return a
+  let d = b - a
+  while (d > Math.PI) d -= Math.PI * 2
+  while (d < -Math.PI) d += Math.PI * 2
+  return a + d * alfa
+}
 
 export class Partida {
   /**
@@ -847,6 +873,13 @@ export class Partida {
     const p = jugador.pose.position
     const cuerpo = cuerpoDeJugador(p.x, p.z, jugador.movimiento.feetY, jugador.movimiento.eyeHeight)
     cuerpo.n = n
+    // **Y hacia dónde miraba** (vuelta 71). Es lo único del cuerpo que no dice
+    // dónde está sino cómo estaba puesto, y hace falta para una sola cosa: la
+    // puñalada por la espalda se juzga contra el rumbo **rebobinado** de la
+    // víctima, que es hacia dónde miraba cuando le dieron y no hacia dónde mira
+    // ahora. Sin esto, girarse a tiempo salvaría de un golpe que ya había
+    // ocurrido.
+    cuerpo.yaw = jugador.pose.rotation.y
     jugador.historial[n % NET.historyTicks] = cuerpo
   }
 
@@ -883,6 +916,10 @@ export class Partida {
       legsTop: mezcla(a.legsTop, b.legsTop),
       torsoTop: mezcla(a.torsoTop, b.torsoTop),
       top: mezcla(a.top, b.top),
+      // **Un rumbo no se interpola como un número**: entre 179° y −179° la
+      // media recta da 0, o sea mirando justo al revés. Se interpola por el
+      // camino corto, que es el único que el jugador ha recorrido de verdad.
+      yaw: mezclaDeRumbo(a.yaw, b.yaw, alfa),
     }
   }
 
@@ -982,10 +1019,24 @@ export class Partida {
     // **Y con qué arma**: desde la vuelta 70 el daño no sale sólo de la zona.
     // El arma es la que el servidor le reconoce al tirador, no la que diga el
     // cliente en el momento de dibujar — la misma que ya valida la cadencia.
-    const veredicto = resolverDisparo(origen, d.yaw, d.pitch, cuerpo, this.escenario.occluders, tirador.arma)
+    /**
+     * **Un cuchillo se resuelve con su propia función** (vuelta 71), no con un
+     * `if` dentro del disparo: el alcance es el del arma, el daño lo pone el
+     * tipo de golpe y encima hay que decir si vino por la espalda. Lo que **no**
+     * cambia es nada de lo de alrededor —la cadencia, el rebobinado, el tope y
+     * el veredicto por `seq` son los mismos—, y eso es lo que hace que una
+     * mecánica nueva no sea un protocolo nuevo.
+     */
+    const cuchillo = Boolean(WEAPONS[tirador.arma]?.melee)
+    const tipo = tipoDeGolpe(d)
+    const veredicto = cuchillo
+      ? resolverCuchillada(origen, d.yaw, d.pitch, cuerpo, this.escenario.occluders, tirador.arma, tipo)
+      : resolverDisparo(origen, d.yaw, d.pitch, cuerpo, this.escenario.occluders, tirador.arma)
     // **El control**: el mismo disparo sin rebobinar nada. No decide nada, se
     // manda para poder medir qué compra la compensación.
-    const sin = resolverDisparo(origen, d.yaw, d.pitch, ahora, this.escenario.occluders, tirador.arma)
+    const sin = cuchillo
+      ? resolverCuchillada(origen, d.yaw, d.pitch, ahora, this.escenario.occluders, tirador.arma, tipo)
+      : resolverDisparo(origen, d.yaw, d.pitch, ahora, this.escenario.occluders, tirador.arma)
 
     salida.impacto = veredicto.impacto
     salida.zona = veredicto.zona
@@ -1005,7 +1056,16 @@ export class Partida {
       salida.lateral = +Math.abs((dx * -dir.z + dz * dir.x) / plano).toFixed(3)
     }
 
-    if (veredicto.impacto) salida.baja = this._aplicarDano(rival, veredicto.dano, tirador, veredicto.zona)
+    // **Por la espalda no es más daño: es muerte**, y viaja en el veredicto
+    // para que el tirador sepa al instante qué ha pasado — es la diferencia
+    // entre un golpe y el golpe.
+    salida.espalda = Boolean(veredicto.espalda)
+    if (veredicto.impacto) {
+      salida.baja = this._aplicarDano(
+        rival, veredicto.dano, tirador, veredicto.zona,
+        Boolean(veredicto.espalda) && tipo === 'fuerte',
+      )
+    }
     this._anotarVeredicto(tirador, salida)
   }
 
@@ -1036,7 +1096,16 @@ export class Partida {
     const arma = WEAPONS[WEAPON_ORDER[entrada.w]]
     if (!arma) return false
     const instante = instanteDePaso(entrada.n)
-    const intervalo = 60000 / arma.rpm - NET.shotRateSlackTicks * SIM_STEP_MS
+    /**
+     * **Y un cuchillo tiene dos ritmos, uno por golpe** (vuelta 71): el flojo
+     * se encadena y el fuerte no. Se le exige el del tipo que ha declarado, que
+     * es el mismo campo con el que se resuelve el golpe — declarar «fuerte»
+     * para pegar rápido sería pegar rápido con el daño del fuerte, así que la
+     * cuenta tiene que salir del mismo sitio que el daño.
+     */
+    const golpe = arma.melee ? arma.melee[tipoDeGolpe(entrada.d)] ?? arma.melee.luz : null
+    const rpm = golpe ? golpe.rpm : arma.rpm
+    const intervalo = 60000 / rpm - NET.shotRateSlackTicks * SIM_STEP_MS
     if (instante < tirador.ultimoTiroEn + intervalo) return false
     tirador.ultimoTiroEn = instante
     return true
@@ -1058,11 +1127,11 @@ export class Partida {
    * Devuelve si el disparo ha sido **baja**, que es lo que el tirador necesita
    * saber al instante.
    */
-  _aplicarDano(victima, dano, tirador, zona = 'torso') {
+  _aplicarDano(victima, dano, tirador, zona = 'torso', mortal = false) {
     if (victima.vida <= 0) return false
     const tras = encajarImpacto(
       { health: victima.vida, shield: victima.escudo, helmet: victima.casco },
-      { zone: zona, damage: dano, weaponKey: tirador.arma },
+      { zone: zona, damage: dano, weaponKey: tirador.arma, mortal },
     )
     victima.escudo = tras.shield
     victima.casco = tras.helmet

@@ -20,8 +20,8 @@
  * el mismo reparto que hace `engine._isBlockedByCover`.
  */
 import * as THREE from 'three'
-import { NET } from '../src/config.js'
-import { hitPlayer, zoneDamage } from '../src/game/player.js'
+import { NET, WEAPONS } from '../src/config.js'
+import { esPorLaEspalda, hitPlayer, zoneDamage } from '../src/game/player.js'
 import { hasLineOfSight } from '../src/game/sight.js'
 
 const _origen = new THREE.Vector3()
@@ -81,4 +81,62 @@ export function resolverDisparo(origen, yaw, pitch, cuerpo, oclusores, arma = nu
     dano: zoneDamage(golpe.zone, arma),
     tapado: false,
   }
+}
+
+
+/**
+ * **Una cuchillada, con el mismo código en los dos extremos** (vuelta 71).
+ *
+ * Es `resolverDisparo` con tres diferencias, y las tres son el cuchillo:
+ *
+ * 1. **El alcance es el del arma** (`melee.rangeU`, 1.6 u) y no el de una bala.
+ *    Eso es lo que convierte al cuchillo en un arma de llegar.
+ * 2. **El daño lo pone el tipo de golpe**, no la zona. Un cuchillo no elige
+ *    dónde clava: lo que cambia el resultado es flojo o fuerte, y los dos restan
+ *    de la misma vida —25 y 55 contra 100—, así que un flojo más un fuerte
+ *    suman solos y no hace falta una tabla de combinaciones.
+ * 3. **Y dice si vino por la espalda.** Quien decide qué se hace con eso es el
+ *    que aplica el daño: aquí sólo se mide, contra el rumbo **rebobinado** de
+ *    la víctima, que es hacia dónde miraba cuando le dieron.
+ *
+ * La zona que devuelve es siempre `torso`: es lo que hace que el chaleco cuente
+ * —la cabeza no la cubre— y es honesto, porque una puñalada no es un disparo a
+ * la cabeza aunque el cursor esté ahí.
+ *
+ * @param {'luz'|'fuerte'} tipo
+ */
+export function resolverCuchillada(origen, yaw, pitch, cuerpo, oclusores, arma, tipo) {
+  const fallo = { impacto: false, zona: null, distancia: 0, dano: 0, tapado: false, espalda: false }
+  const datos = WEAPONS[arma]?.melee
+  if (!cuerpo || !datos) return fallo
+  const golpe = datos[tipo] ?? datos.luz
+
+  const dir = direccionDeMira(yaw, pitch)
+  const corte = hitPlayer(origen, dir, cuerpo, datos.rangeU)
+  if (!corte) return fallo
+
+  // Mismo reparto que el disparo: el rayo de cobertura sólo a lo que entra. A
+  // metro y medio casi nunca habrá nada en medio, y «casi nunca» no es nunca:
+  // asomando la cabeza por encima de una caja se puede estar a tiro de cuchillo
+  // de alguien que está al otro lado.
+  if (oclusores && oclusores.length > 0) {
+    _origen.set(origen.x, origen.y, origen.z)
+    _impacto.set(
+      origen.x + dir.x * corte.distance,
+      origen.y + dir.y * corte.distance,
+      origen.z + dir.z * corte.distance,
+    )
+    if (!hasLineOfSight(_origen, _impacto, oclusores)) {
+      return { impacto: false, zona: null, distancia: corte.distance, dano: 0, tapado: true, espalda: false }
+    }
+  }
+
+  // **La cámara mira a −Z**, así que ése es el vector de hacia dónde mira la
+  // víctima. La conversión va aquí, donde está la convención, y no dentro de
+  // `esPorLaEspalda`, que la llaman también los muñecos con la contraria.
+  const fx = -Math.sin(cuerpo.yaw ?? 0)
+  const fz = -Math.cos(cuerpo.yaw ?? 0)
+  const espalda = esPorLaEspalda(origen.x, origen.z, cuerpo.x, cuerpo.z, fx, fz, datos.backArcDeg)
+
+  return { impacto: true, zona: 'torso', distancia: corte.distance, dano: golpe.dano, tapado: false, espalda }
 }

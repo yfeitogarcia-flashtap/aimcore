@@ -1,6 +1,7 @@
 import { useEffect } from 'react'
 import {
   MOVEMENT,
+  MELEE_WEAPON,
   PRIMARY_WEAPONS,
   SECONDARY_WEAPON,
   TARGET_TYPES,
@@ -82,7 +83,16 @@ function damageLine(weaponKey) {
  * que entre un arma nueva.
  */
 const SCALES = ['rpm', 'magazine', 'weight'].reduce((scales, field) => {
-  const values = Object.values(WEAPONS).map((weapon) => weapon[field])
+  /**
+   * **Y sólo de las que tienen ese número** (vuelta 71). Un cuchillo no tiene
+   * RPM —sus dos golpes tienen el suyo, en su bloque— así que el campo no
+   * existe, y un `undefined` en esta lista convertía el máximo en NaN y dejaba
+   * **todas** las barras sin dibujar. El tope de una comparación sale de lo que
+   * se puede comparar.
+   */
+  const values = Object.values(WEAPONS)
+    .map((weapon) => weapon[field])
+    .filter((v) => Number.isFinite(v))
   scales[field] = { min: Math.min(...values), max: Math.max(...values) }
   return scales
 }, {})
@@ -139,9 +149,14 @@ function SuppressorToggle({ on, onToggle }) {
   )
 }
 
+/** Con qué tecla sale cada ranura. La lista de teclas de equipo, en un sitio. */
+const SLOT_KEYS = { primary: '1', secondary: '2', melee: '3' }
+
 function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip, onSuppressor }) {
   const weapon = WEAPONS[weaponKey]
-  const fixed = weapon.slot === 'secondary'
+  // **Ni la pistola ni el cuchillo se equipan: se llevan.** Lo que decide que
+  // una ficha no tenga botón es que su ranura no se elige, y eso hoy son dos.
+  const fixed = weapon.slot === 'secondary' || weapon.slot === 'melee'
 
   return (
     <div className={`armoury__card${equipped ? ' armoury__card--equipped' : ''}`}>
@@ -192,12 +207,23 @@ function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip,
       </div>
 
       <div className="armoury__stats">
-        <Stat label="Cadencia" value={`${weapon.rpm} RPM`} field="rpm" amount={weapon.rpm} />
         <Stat
-          label="Cargador"
-          value={`${weapon.magazine} · ${(weapon.reloadMs / 1000).toFixed(1)} s`}
-          field="magazine"
-          amount={weapon.magazine}
+          label={weapon.melee ? 'Golpes' : 'Cadencia'}
+          value={weapon.melee
+            ? `flojo ${Math.round(60000 / weapon.melee.luz.rpm)} ms · fuerte ${Math.round(60000 / weapon.melee.fuerte.rpm)} ms`
+            : `${weapon.rpm} RPM`}
+          field={weapon.melee ? undefined : 'rpm'}
+          amount={weapon.melee ? undefined : weapon.rpm}
+        />
+        {/* Un cuchillo no tiene cargador ni recarga, y el hueco se ocupa con
+            lo que sí decide sus intercambios: hasta dónde llega. */}
+        <Stat
+          label={weapon.melee ? 'Alcance' : 'Cargador'}
+          value={weapon.melee
+            ? `${weapon.melee.rangeU.toFixed(1)} u · hay que llegar`
+            : `${weapon.magazine} · ${(weapon.reloadMs / 1000).toFixed(1)} s`}
+          field={weapon.melee ? undefined : 'magazine'}
+          amount={weapon.melee ? undefined : weapon.magazine}
         />
         <Stat
           label="Peso"
@@ -205,7 +231,16 @@ function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip,
           field="weight"
           amount={weapon.weight}
         />
-        <Stat label="Daño" value={damageLine(weaponKey)} />
+        {/* **El daño de un cuchillo no es por zonas**: una puñalada no elige
+            dónde clava, y lo que cambia el resultado es flojo o fuerte. Lo que
+            sí hay que decir es lo que de verdad decide una pelea a cuchillo:
+            que por la espalda mata, lleve lo que lleve el otro. */}
+        <Stat
+          label="Daño"
+          value={weapon.melee
+            ? `flojo ${weapon.melee.luz.dano} · fuerte ${weapon.melee.fuerte.dano} · espalda: mata`
+            : damageLine(weaponKey)}
+        />
         <Stat
           label="Escudo · precisión"
           value={`absorbe ${Math.round(weapon.shieldAbsorb * 100)}% · objetivo ${Math.round(weapon.precisionTarget * 100)}%`}
@@ -225,7 +260,12 @@ function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip,
  * }} props
  */
 export default function Armoury({ settings, equipped, onChange, onClose }) {
-  const order = [...Object.keys(PRIMARY_WEAPONS), SECONDARY_WEAPON]
+  /**
+   * **Y el cuchillo el último** (vuelta 71), que es el orden en que se llevan:
+   * principal, pistola, cuerpo a cuerpo. Sale de `MELEE_WEAPON`, derivado de la
+   * ranura como los otros dos — aquí no hay ninguna lista escrita a mano.
+   */
+  const order = [...Object.keys(PRIMARY_WEAPONS), SECONDARY_WEAPON, MELEE_WEAPON].filter(Boolean)
 
   // Escape cierra, como en cualquier panel del juego. La tecla de la armería ya
   // la conmuta el motor; ésta es la que espera quien no se sabe el bind.
@@ -258,7 +298,7 @@ export default function Armoury({ settings, equipped, onChange, onClose }) {
             equipped={key === settings.weapon}
             inHand={key === equipped?.weaponKey}
             suppressed={Boolean(settings.suppressor[key])}
-            slotKey={WEAPONS[key].slot === 'secondary' ? '2' : '1'}
+            slotKey={SLOT_KEYS[WEAPONS[key].slot] ?? '1'}
             onEquip={(next) => onChange({ weapon: next })}
             onSuppressor={toggleSuppressor}
           />

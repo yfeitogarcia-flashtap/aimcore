@@ -19,7 +19,7 @@
  * `protocolo.js`.
  */
 import { NET, PAUSE, ROUNDS, SIM_STEP_MS, WEAPONS, WEAPON_ORDER } from '../src/config.js'
-import { resolverDisparo } from './disparo.js'
+import { resolverCuchillada, resolverDisparo } from './disparo.js'
 import { cuerpoDeJugador } from './pose.js'
 import { MSG, desempaquetarTeclas, empaquetarTeclas, instanteDePaso, instanteEnPaso } from './protocolo.js'
 
@@ -369,6 +369,9 @@ export class ClienteRed {
         pitch: this._disparo.pitch,
         seq: ++this._seqDisparo,
       }
+      // 1 flojo, 2 fuerte; sin cuchillo no viaja. Un campo que no está es un
+      // campo que no ocupa sesenta veces por segundo.
+      if (this._disparo.golpe) d.m = this._disparo.golpe
       this._disparo = null
     }
 
@@ -449,7 +452,7 @@ export class ClienteRed {
    * de la entrada se muestrea al empezar el paso y el ratón se mueve entre
    * medias.
    */
-  disparar(ahoraMs, yaw, pitch) {
+  disparar(ahoraMs, yaw, pitch, golpe = 0) {
     // **En pausa no se anota nada.** Como el disparo se consume en el paso
     // siguiente y en pausa no hay pasos, uno anotado ahora saldría al reanudar:
     // una bala guardada durante la pausa, apuntada a donde el rival estaba
@@ -461,7 +464,12 @@ export class ClienteRed {
     // le están mandando la posición. Un disparo que sólo existe en una pantalla
     // es peor que un disparo que no sale.
     if (this.rondas.fase === 'compra' || this.rondas.fase === 'fin') return
-    this._disparo = { ts: ahoraMs, yaw, pitch }
+    // **Y qué golpe es, si lo que se empuña es un cuchillo** (vuelta 71). Va
+    // dentro del disparo y no en un mensaje aparte porque es exactamente lo
+    // mismo desde el punto de vista del protocolo: sellado en la entrada de su
+    // paso, con su `seq` y con su veredicto. Lo único que cambia es cómo se
+    // resuelve en el otro extremo.
+    this._disparo = { ts: ahoraMs, yaw, pitch, golpe }
   }
 
   /**
@@ -474,6 +482,19 @@ export class ClienteRed {
     const pose = this.poseDelRival()
     if (!pose) return { veredicto: { impacto: false, zona: null, distancia: 0, dano: 0, tapado: false }, enPaso: null }
     const cuerpo = cuerpoDeJugador(pose.x, pose.z, pose.feetY, pose.eyeHeight)
+    // **Y hacia dónde mira**, que es lo que decide si el cuchillo entra por la
+    // espalda. Viene en la foto desde la vuelta 60 —de ahí sale la brújula del
+    // rival— así que no hace falta mandar nada nuevo.
+    cuerpo.yaw = pose.yaw ?? 0
+    if (d.m) {
+      return {
+        veredicto: resolverCuchillada(
+          this.camara.position, d.yaw, d.pitch, cuerpo, this.oclusores, this.arma,
+          d.m === 2 ? 'fuerte' : 'luz',
+        ),
+        enPaso: pose.enPaso,
+      }
+    }
     return {
       veredicto: resolverDisparo(this.camara.position, d.yaw, d.pitch, cuerpo, this.oclusores, this.arma),
       enPaso: pose.enPaso,

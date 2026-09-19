@@ -22,6 +22,13 @@
   body.jugando #mira, body.jugando #vital, body.jugando #armaHud { display: block; }
   /* Con la mirilla puesta manda la suya (vuelta 70). */
   body.apuntando #mira { opacity: 0; }
+  /* Y con alguien a distancia de cuchillo, la mira se abre y se tiñe del verde
+     de acción (vuelta 71): es el aviso de que **ahí llegas**. */
+  body.aCuchillo #mira i { background: var(--action-color, #2FCB82); }
+  body.aCuchillo #mira i:nth-child(1) { top: calc((var(--crosshair-gap, 3px) * 2.2 + var(--crosshair-length, 7px)) * -1); }
+  body.aCuchillo #mira i:nth-child(2) { top: calc(var(--crosshair-gap, 3px) * 2.2); }
+  body.aCuchillo #mira i:nth-child(3) { left: calc((var(--crosshair-gap, 3px) * 2.2 + var(--crosshair-length, 7px)) * -1); }
+  body.aCuchillo #mira i:nth-child(4) { left: calc(var(--crosshair-gap, 3px) * 2.2); }
   body.jugando #dano { display: block; }
 
   /* **La mira es la del entrenamiento** (vuelta 67), no una escrita aquí: los

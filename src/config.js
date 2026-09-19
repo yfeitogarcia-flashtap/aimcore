@@ -165,6 +165,32 @@ export const SCOPE = {
   radioVmin: 38,
 }
 
+/**
+ * **El destello de un golpe de cuchillo** (vuelta 71). Lo dibuja
+ * `src/game/slash.js`; aquí están los números.
+ *
+ * Existe por una decisión vieja: **Vektor no dibuja el arma en la mano**
+ * (vuelta 38), así que un arma cuerpo a cuerpo se queda sin lo que en otros
+ * juegos lo cuenta todo —la animación— y hay que decir con la pantalla que has
+ * golpeado, qué golpe ha sido y si ha entrado por la espalda.
+ */
+export const MELEE_FX = {
+  /** El arco del golpe flojo: fino, pequeño y corto. */
+  grosorFinoPx: 2,
+  diametroFinoPx: 210,
+  duracionFinoMs: 170,
+  /** El del fuerte: más grueso, más grande y un pelo más largo. */
+  grosorFuertePx: 4,
+  diametroFuertePx: 280,
+  duracionFuerteMs: 230,
+  /**
+   * Cuánto gira el arco mientras pasa, en grados. Es lo que lo convierte en un
+   * filo que barre en vez de en una luz que aparece: sin giro, los dos golpes
+   * se distinguirían sólo por el grosor.
+   */
+  barridoDeg: 26,
+}
+
 export const LOOK = {
   sensitivity: 1.5,
   degreesPerCount: 0.022,
@@ -743,6 +769,75 @@ export const WEAPONS = {
      */
     recoilLoopFrom: 2,
   },
+  /**
+   * **Vanta: el cuchillo** (vuelta 71). La tercera ranura, la que llevaba
+   * reservada desde la vuelta 27 con su tecla (**3**) y sin lógica detrás.
+   *
+   * Dos ataques y ninguna tabla de combos: **clic izquierdo flojo, clic derecho
+   * fuerte**, y los dos restan de la misma vida. Que «dos fuertes matan» y
+   * «cuatro flojos matan» no son dos reglas, son 55 y 25 contra 100 — y un
+   * flojo más un fuerte suman solos, sin que nadie tenga que escribir esa
+   * combinación en ninguna parte.
+   *
+   * La puñalada por la espalda **no es más daño: es muerte**, pase lo que pase
+   * y lleve lo que lleve. Por eso vive en `encajarImpacto` como un caso propio
+   * y no como un número grande: un número grande lo pararía un chaleco.
+   */
+  'vanta': {
+    label: 'Vanta',
+    character: 'cuchillo',
+    slot: 'melee',
+    mode: 'melee',
+    /**
+     * Un cuchillo no tiene cargador ni recarga, y aquí van en cero **dichos**
+     * en vez de ausentes: el HUD y la armería preguntan por estos campos, y un
+     * `undefined` se dibuja como un hueco que parece un fallo. Cero es un dato.
+     */
+    magazine: 0,
+    reloadMs: 0,
+    supportsSuppressor: false,
+    precisionTarget: 0.9,
+    /** Un chaleco para un cuchillo es lo que es: la mitad. */
+    shieldAbsorb: 0.5,
+    /** 600 g: por debajo del peso gratis, así que con el cuchillo se corre. */
+    weight: 0.6,
+    /**
+     * El retroceso de un arma de fuego no se le aplica a un cuchillo: lo que
+     * empuja la cámara es el golpe, y eso lo declara cada ataque en su `kick`.
+     */
+    recoil: [],
+    recoilLoopFrom: 0,
+    /**
+     * **Lo que hace el cuchillo.** Que exista este bloque es lo que convierte a
+     * un arma en cuerpo a cuerpo: el motor no mira la ranura ni el nombre.
+     */
+    melee: {
+      /**
+       * Alcance, en unidades. 1.6 es poco más que un brazo —el cuerpo mide 0.29
+       * de ancho y el jugador 1.8 de alto—: hay que llegar, y llegar es el
+       * riesgo que se paga por lo que vale acertar.
+       */
+      rangeU: 1.6,
+      /**
+       * **El arco de espalda**, en grados y centrado en la nuca. 120° es lo que
+       * un jugador llamaría «por detrás»: no vale de costado, y no hace falta
+       * estar clavado en el eje. Se mide contra el rumbo **rebobinado** de la
+       * víctima, que es hacia dónde miraba cuando le dieron.
+       */
+      backArcDeg: 120,
+      /**
+       * Flojo: 25 contra 100 de vida son cuatro, y con chaleco seis. Rápido
+       * —150 «RPM», o sea uno cada 400 ms— porque es el que se encadena.
+       */
+      luz: { dano: 25, rpm: 150, kick: [0.5, -0.7] },
+      /**
+       * Fuerte: 55, o sea dos. A la mitad de ritmo que el flojo (uno cada 857
+       * ms), que es lo que impide que el fuerte sea simplemente el bueno: se
+       * falla y se ha perdido casi un segundo.
+       */
+      fuerte: { dano: 55, rpm: 70, kick: [1.4, 1.1] },
+    },
+  },
 }
 
 /**
@@ -794,6 +889,16 @@ export const WEAPON_ORDER = Object.keys(WEAPONS)
 /** La pistola, la única de su ranura. */
 export const SECONDARY_WEAPON = Object.keys(WEAPONS).find(
   (key) => WEAPONS[key].slot === 'secondary',
+)
+
+/**
+ * **El cuerpo a cuerpo, la única de su ranura** (vuelta 71). Se deriva igual
+ * que la pistola y por la misma razón: no hay una segunda lista que pueda
+ * quedarse a medias, y el día que haya dos cuchillos esto será la lista de
+ * ellos y no una constante que alguien se olvide de tocar.
+ */
+export const MELEE_WEAPON = Object.keys(WEAPONS).find(
+  (key) => WEAPONS[key].slot === 'melee',
 )
 
 /**
@@ -884,13 +989,15 @@ export const KEYBINDS = {
   use: { label: 'Usar / artilugio', default: 'KeyE', contextual: true, group: 'Combate' },
 
   // La 1 y la 2 dejan de estar reservadas en la vuelta 39: equipan de verdad,
-  // cada una su ranura. La 3 sigue siendo sólo tecla.
+  // cada una su ranura. **Y la 3 en la 71**, con el cuchillo: llevaba cuarenta
+  // vueltas siendo sólo tecla, que es exactamente para lo que se reservó —el
+  // mapa de controles tiene que ser el definitivo desde el principio, o cuando
+  // llegue la mecánica alguien ya habrá puesto ahí su bind favorito—.
   primary: { label: 'Arma principal', default: 'Digit1', group: 'Equipo' },
   secondary: { label: 'Pistola', default: 'Digit2', group: 'Equipo' },
-  melee: { label: 'Cuerpo a cuerpo', default: 'Digit3', reserved: true, group: 'Equipo' },
+  melee: { label: 'Cuerpo a cuerpo', default: 'Digit3', group: 'Equipo' },
   // El escudo tampoco está reservado: aplica una carga del inventario (ver
-  // `PLAYER.shield`). El cuerpo a cuerpo, el artilugio y el arrojadizo siguen
-  // siendo sólo tecla.
+  // `PLAYER.shield`). El artilugio y el arrojadizo siguen siendo sólo tecla.
   shield: { label: 'Escudo', default: 'Digit4', group: 'Equipo' },
   gadget: { label: 'Artilugio', default: 'Digit5', reserved: true, group: 'Equipo' },
   throwable: { label: 'Arrojadizo', default: 'KeyG', reserved: true, group: 'Equipo' },

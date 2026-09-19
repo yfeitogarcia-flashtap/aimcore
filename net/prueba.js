@@ -98,6 +98,12 @@ const motor = new Engine(lienzo, {
    * que de verdad se comparte, la dibuja el motor.
    */
   onScope: (puesta) => document.body.classList.toggle('apuntando', puesta),
+  /**
+   * **La mira dice si hay alguien a distancia de cuchillo** (vuelta 71). Es lo
+   * único que un arma sin modelo en la mano puede decir **antes** de golpear, y
+   * llega como pulsación —al entrar y al salir del alcance—, no por frame.
+   */
+  onMeleeRange: (dentro) => document.body.classList.toggle('aCuchillo', dentro),
 }, { escenario: ESCENARIO })
 
 /**
@@ -889,13 +895,18 @@ function pintarVitales(stats) {
 /** El cargador, que cambia disparo a disparo. Mismo criterio: sólo si cambia. */
 let municionPintada = ''
 function pintarArmaEnVivo(stats) {
+  // Un cuchillo no tiene cargador (vuelta 71): «0 / 0» es lo que pone un arma
+  // rota, y el infinito ocupa el mismo sitio sin mentir. Igual que en el HUD
+  // del entrenamiento, que es el mismo bloque.
+  const sinCargador = stats.magazine === 0
   const texto = stats.reloading
     ? `${'·'.repeat(1 + Math.floor(stats.reloadProgress * 6))}`
-    : `${stats.ammo} / ${stats.magazine}`
+    : sinCargador ? '∞' : `${stats.ammo} / ${stats.magazine}`
   if (texto === municionPintada) return
   municionPintada = texto
   $('municion').textContent = texto
-  $('municion').classList.toggle('mal', !stats.reloading && stats.ammo <= Math.max(1, stats.magazine * 0.25))
+  $('municion').classList.toggle('mal',
+    !sinCargador && !stats.reloading && stats.ammo <= Math.max(1, stats.magazine * 0.25))
 }
 
 /**

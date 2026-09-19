@@ -29,6 +29,7 @@ import {
   PLAYER,
   RECOIL_RESET_MS,
   RENDER,
+  MELEE_WEAPON,
   SECONDARY_WEAPON,
   DEATHMATCH_DURATIONS,
   SESSION_DURATION_S,
@@ -45,6 +46,7 @@ import {
 import { createScene } from './scene.js'
 import { Scenario } from './scenario.js'
 import { Scope } from './scope.js'
+import { Slash } from './slash.js'
 import { Objective, OUTCOME } from './objective.js'
 import { computeScore } from './scoring.js'
 import { createSceneTransition } from './transition.js'
@@ -60,6 +62,7 @@ import {
   playHit,
   playKill,
   playLanding,
+  playMelee,
   playObjectiveDefused,
   playObjectiveExplosion,
   playShieldCharge,
@@ -74,12 +77,19 @@ import { DummyMarkers, facingDesdeCamara } from './markers.js'
 import { MuzzleFlash } from './muzzleFlash.js'
 import { Impacts } from './impacts.js'
 import { PickupField } from './pickups.js'
-import { PlayerStatus, playerBody } from './player.js'
+import { PlayerStatus, esPorLaEspalda, hitPlayer, playerBody } from './player.js'
 import { getSettings, subscribeSettings, updateSettings } from '../settings.js'
 import { eventCode, getKeybinds, keysOf, subscribeKeybinds, typingInField } from '../keybinds.js'
 
 /** Centro exacto de la pantalla: el crosshair no se mueve, así que es constante. */
 const SCREEN_CENTER = new THREE.Vector2(0, 0)
+
+/**
+ * Cámara de mentira para pedirle a `playerBody` el cuerpo del rival sin alocar
+ * nada por paso. Es la misma idea que `net/pose.js`, aquí porque el motor no
+ * importa de `net/` — la red vive en `net/` y no entra en el juego (vuelta 45).
+ */
+const _cuerpoDelRival = { position: { x: 0, y: 0, z: 0 } }
 
 const DEG_TO_RAD = Math.PI / 180
 
@@ -210,6 +220,12 @@ export class Engine {
      */
     this._scopeOn = false
     this._scopeT = 0
+    /**
+     * **¿Hay alguien a distancia de cuchillo?** (vuelta 71). Es lo único que un
+     * arma sin modelo en la mano puede decir **antes** de golpear, y por eso es
+     * la mitad de su feedback: la mira lo dice cambiando de forma.
+     */
+    this._meleeRange = false
     this._sensNormal = LOOK.sensitivity
     this._sensMirilla = LOOK.sensitivity
 
@@ -360,7 +376,12 @@ export class Engine {
      * todo lo demás —las RPM, el retroceso, el silenciador—: la ranura sólo
      * dice de dónde salió.
      */
-    this.slots = { primary: getSettings().weapon, secondary: SECONDARY_WEAPON }
+    /**
+     * **Tres ranuras desde la vuelta 71.** La de cuerpo a cuerpo llevaba su
+     * tecla reservada desde la 27 y sin nada detrás; ahora tiene el cuchillo, y
+     * se deriva del catálogo igual que la pistola — no hay una segunda lista.
+     */
+    this.slots = { primary: getSettings().weapon, secondary: SECONDARY_WEAPON, melee: MELEE_WEAPON }
     this.slot = 'primary'
     /**
      * **El arma que dejas se queda como estaba.** Aquí se guarda el cargador de
@@ -599,6 +620,20 @@ export class Engine {
      * eso está el anillo de la mira.
      */
     cliente.onTiroLocal = (veredicto, d) => {
+      /**
+       * **Y con el cuchillo, el destello y el sonido** (vuelta 71). Van aquí y
+       * no donde se golpea por la misma razón que la marca de bala: quien sabe
+       * si has conectado —y si ha sido por la espalda— es el veredicto contra el
+       * rival **que estabas viendo**, no el del servidor, que llega un viaje
+       * después. Un cuchillazo no deja marca en la pared: lo que dice dónde ha
+       * ido es el arco.
+       */
+      if (d.m) {
+        const tipo = d.m === 2 ? 'fuerte' : 'luz'
+        playMelee(tipo, Boolean(veredicto.impacto), Boolean(veredicto.espalda))
+        this.slash?.show(tipo, Boolean(veredicto.espalda))
+        return
+      }
       if (!veredicto.impacto) this._impactoDeRed(d.yaw, d.pitch)
     }
 
@@ -703,6 +738,8 @@ export class Engine {
     if (parent) parent.appendChild(this.cssRenderer.domElement)
     // La lente va donde el lienzo, no en el HUD: es parte de lo que se ve.
     this.scope = new Scope(parent || document.body)
+    // Y el destello del cuchillo, por lo mismo: es del mundo, no del HUD.
+    this.slash = new Slash(parent || document.body)
 
     this._resizeObserver = new ResizeObserver(this._onResize)
     this._resizeObserver.observe(this.canvas.parentElement || this.canvas)
@@ -717,6 +754,8 @@ export class Engine {
   dispose() {
     this.scope?.dispose()
     this.scope = null
+    this.slash?.dispose()
+    this.slash = null
     this._running = false
     cancelAnimationFrame(this._rafId)
     this.canvas.removeEventListener('mousedown', this._onMouseDown)
@@ -1393,6 +1432,15 @@ export class Engine {
        * una u otra. La Scout no admite supresor y sí mirilla, así que la
        * decisión la toma el dato del arma y no un modo.
        */
+      // **Y en un cuchillo es el golpe fuerte** (vuelta 71). Sigue siendo la
+      // misma regla —«la segunda función del arma que llevas»— y por eso no hay
+      // un tercer sitio donde decidirlo: mirilla, supresor o golpe fuerte, lo
+      // dice el arma.
+      if (this.weapon.melee) {
+        const ts = Number.isFinite(event.timeStamp) && event.timeStamp > 0 ? event.timeStamp : performance.now()
+        this._tryMelee('fuerte', this.gameTime, ts)
+        return
+      }
       if (this.weapon.scope) this._alternarMirilla()
       else this._alternarSupresor()
       return
@@ -1422,6 +1470,15 @@ export class Engine {
     // lo más cercano bajo el punto de mira — ver `_tryPanelAction`.
     if (this._tryPanelAction(now)) {
       this._triggerConsumedByPanel = true
+      return
+    }
+
+    // **Un cuchillo no tiene cargador que sonar en seco** (vuelta 71): el clic
+    // izquierdo es el golpe flojo y no hay munición de por medio. Va antes de
+    // la comprobación de abajo por eso mismo — con `magazine: 0`, un cuchillo
+    // estaría siempre «vacío».
+    if (this.weapon.melee) {
+      this._tryMelee('luz', now, ts)
       return
     }
 
@@ -2079,6 +2136,13 @@ export class Engine {
       return
     }
 
+    // **Y la tercera**, que hasta la vuelta 71 era una tecla sin efecto.
+    if (this._isBind('melee', event)) {
+      event.preventDefault()
+      this._equipSlot('melee')
+      return
+    }
+
     if (this._isBind('cycleWeapon', event)) {
       event.preventDefault()
       this._runPanelAction('weapon')
@@ -2327,6 +2391,142 @@ export class Engine {
     this._sprayIndex += 1
     this._consumeAmmo(weapon, now)
     return true
+  }
+
+  /**
+   * **Un golpe de cuchillo** (vuelta 71). Es `_tryShoot` sin nada de lo que un
+   * cuchillo no tiene: ni munición, ni recarga, ni patrón de retroceso.
+   *
+   * **El ritmo lo pone el golpe, no el arma**, y se mide desde el anterior:
+   * flojo cada 400 ms, fuerte cada 857. Que el reloj sea el mismo para los dos
+   * es lo que impide alternarlos para pegar el doble de rápido — y es
+   * exactamente lo que hace el servidor con la misma cuenta (`_cadenciaValida`),
+   * así que lo que el cliente predice es lo que el otro extremo acepta.
+   *
+   * **No cuenta como disparo.** Ni sube `shots` ni `hits`: la precisión de la
+   * sesión es la de la puntería, y meter ahí los cuchillazos la convertiría en
+   * otra cosa.
+   *
+   * @param {'luz'|'fuerte'} tipo
+   */
+  _tryMelee(tipo, now, instanteReal = this._simTime) {
+    const datos = this.weapon.melee
+    if (!datos) return false
+    // Abatido, el cuchillo se calla igual que el arma. En red manda el servidor.
+    if (this.enRed ? this.net.vida <= 0 : !this.status.alive) return false
+
+    const golpe = datos[tipo] ?? datos.luz
+    const intervalMs = 60000 / golpe.rpm
+    if (now < this._lastShotAt + intervalMs) return false
+    this._lastShotAt = now
+    // Se deja también en el reloj del arma de fuego: cambiar del cuchillo a la
+    // pistola no puede regalar el disparo que el cuchillo acababa de gastar.
+    this._nextShotAt = now + intervalMs
+
+    this._golpear(tipo, instanteReal)
+    // **El golpe empuja la cámara**, que es el otro sustituto de la animación
+    // que no hay: es el mismo camino que el retroceso de un arma, así que se
+    // siente como algo que ha salido de tus manos aunque no se vea nada.
+    this.controls.applyRecoil(golpe.kick[0], golpe.kick[1])
+    return true
+  }
+
+  /**
+   * Resuelve el golpe y da la cara: sonido, destello y —en red— el aviso al
+   * servidor. En red el veredicto bueno llega un viaje después; lo que decide
+   * **qué destello y qué sonido** es el local, que es el que sabe contra qué
+   * estabas pegando. Es la misma regla que la marca de bala de la vuelta 64.
+   */
+  _golpear(tipo, instanteReal = this._simTime) {
+    if (this.enRed) {
+      this.camera.updateMatrixWorld()
+      this.net.disparar(instanteReal, this.camera.rotation.y, this.camera.rotation.x, tipo === 'fuerte' ? 2 : 1)
+      return
+    }
+
+    this.camera.updateMatrixWorld()
+    const hit = this._blancoACuchillo()
+    let espalda = false
+    if (hit) {
+      const datos = this.weapon.melee
+      const instancia = hit.instance
+      /**
+       * **El `facing` de un muñeco mira a +Z**, al revés que el yaw de una
+       * cámara (ver `facingDesdeCamara`, en `markers.js`). La conversión va
+       * aquí, donde está la convención, y no dentro de `esPorLaEspalda`, que la
+       * llaman los dos.
+       */
+      const fx = Math.sin(instancia.facing ?? 0)
+      const fz = Math.cos(instancia.facing ?? 0)
+      // Un muñeco guarda su sitio en el grupo, que es lo que se mueve: no hay
+      // un `position` suelto que pueda quedarse viejo.
+      const p = this.camera.position
+      const q = instancia.group.position
+      espalda = tipo === 'fuerte' && esPorLaEspalda(p.x, p.z, q.x, q.z, fx, fz, datos.backArcDeg)
+      const golpe = datos[tipo] ?? datos.luz
+      const { killed } = this.targets.applyMelee(hit, this.gameTime, espalda ? Infinity : golpe.dano)
+      if (killed) {
+        this.kills += 1
+        this.status.onKill()
+      }
+    }
+    playMelee(tipo, Boolean(hit), espalda)
+    this.slash?.show(tipo, espalda)
+  }
+
+  /**
+   * **Contra qué se está pegando**, si es que hay algo. Es el mismo rayo que
+   * resuelve el golpe, acotado al alcance del arma, y **corre una vez por paso
+   * de mundo y sólo con el cuchillo en la mano**: ni por frame ni con un arma
+   * de fuego equipada, que es lo que lo deja fuera del presupuesto caliente.
+   */
+  _blancoACuchillo() {
+    const datos = this.weapon.melee
+    if (!datos || !this.targets.hasActive) return null
+    this.targets.updateMatrices()
+    this.raycaster.setFromCamera(SCREEN_CENTER, this.camera)
+    const hit = this.targets.raycast(this.raycaster)
+    if (!hit || hit.distance > datos.rangeU) return null
+    // A metro y medio casi nunca habrá una caja en medio, y «casi nunca» no es
+    // nunca: asomando por encima de una se puede estar a distancia de cuchillo
+    // de alguien que está al otro lado.
+    const superficie = this._superficieBajoElRayo()
+    if (superficie && superficie.distancia < hit.distance) return null
+    return hit
+  }
+
+  /**
+   * El aviso de «hay alguien a distancia de cuchillo». **Es una pulsación**, no
+   * un valor por frame: se manda al entrar y al salir del alcance, así que la
+   * página puede pintarlo con una clase sin repintar nada sesenta veces por
+   * segundo.
+   */
+  _updateMeleeRange() {
+    let dentro = false
+    if (this.weapon.melee && this.phase === PHASE.RUNNING) {
+      dentro = this.enRed ? this._rivalACuchillo() : this._blancoACuchillo() !== null
+    }
+    if (dentro === this._meleeRange) return
+    this._meleeRange = dentro
+    this.callbacks.onMeleeRange?.(dentro)
+  }
+
+  /**
+   * Lo mismo contra el rival del duelo, con el cuerpo **tal como se dibuja** —el
+   * mismo que resolvería el golpe— y con la dirección que ya tiene el
+   * `raycaster`, que lleva el cabeceo dentro. El cuerpo sale de `playerBody`,
+   * que es la única fórmula: montar aquí una segunda serían dos siluetas.
+   */
+  _rivalACuchillo() {
+    const pose = this.net?.poseDelRival?.()
+    if (!pose || pose.vivo === false) return false
+    const datos = this.weapon.melee
+    _cuerpoDelRival.position.x = pose.x
+    _cuerpoDelRival.position.z = pose.z
+    const cuerpo = playerBody(_cuerpoDelRival, pose.eyeHeight, pose.feetY)
+    this.camera.updateMatrixWorld()
+    this.raycaster.setFromCamera(SCREEN_CENTER, this.camera)
+    return Boolean(hitPlayer(this.camera.position, this.raycaster.ray.direction, cuerpo, datos.rangeU))
   }
 
   /**
@@ -2832,6 +3032,15 @@ export class Engine {
     if (this._triggerHeld && !this._triggerConsumedByPanel && this.weapon.mode === 'auto') {
       this._tryShoot(this.gameTime)
     }
+    // **Y el cuchillo encadena flojos mientras se mantenga el botón.** Es lo
+    // que hace cualquiera con un cuchillo en la mano, y el ritmo lo pone su
+    // cadencia igual que a un arma automática.
+    if (this._triggerHeld && !this._triggerConsumedByPanel && this.weapon.melee) {
+      this._tryMelee('luz', this.gameTime)
+    }
+    // El aviso de «hay alguien a distancia de cuchillo», una vez por paso de
+    // mundo y sólo con el cuchillo en la mano.
+    this._updateMeleeRange()
 
     // Las marcas de bala se apagan con el **reloj del mundo** y en los dos
     // modos, así que van aquí y no dentro del combate —que en red vuelve antes—.

@@ -61,7 +61,7 @@ const _toPlayer = new THREE.Vector3()
  * @returns {{health:number, shield:number, helmet:boolean, damage:number,
  *   helmetBroken:boolean, shieldHit:boolean, killed:boolean}}
  */
-export function encajarImpacto(estado, { zone, damage, weaponKey }) {
+export function encajarImpacto(estado, { zone, damage, weaponKey, mortal = false }) {
   const salida = {
     health: estado.health,
     shield: estado.shield,
@@ -70,6 +70,20 @@ export function encajarImpacto(estado, { zone, damage, weaponKey }) {
     helmetBroken: false,
     shieldHit: false,
     killed: false,
+  }
+  /**
+   * **La puñalada por la espalda mata, y mata antes que nada** (vuelta 71).
+   * Va aquí arriba, por delante del casco y del escudo, porque **no es más
+   * daño: es muerte**. Un número grande lo pararía un chaleco y entonces «un
+   * fuerte por la espalda mata siempre» pasaría a ser «mata casi siempre», que
+   * es otra regla. Lo que se anota como daño es la vida que quedaba, para que
+   * los acumulados del resumen sigan sumando lo que de verdad se quitó.
+   */
+  if (mortal) {
+    salida.health = 0
+    salida.damage = estado.health
+    salida.killed = true
+    return salida
   }
   if (zone === 'head' && estado.helmet) {
     salida.helmet = false
@@ -475,6 +489,39 @@ function _mejorTapa(yTapa, radio, origin, direction, dx, dz, maxDistance, mejor)
   const pz = dz + direction.z * t
   if (px * px + pz * pz > radio * radio) return mejor
   return t
+}
+
+/**
+ * **¿El golpe viene por la espalda?** (vuelta 71)
+ *
+ * Se mide el ángulo entre hacia dónde mira la víctima y hacia dónde está quien
+ * le pega: por detrás es lo contrario de mirarse, o sea un coseno negativo. El
+ * arco (`arcoDeg`) es el cono completo centrado en la nuca, así que 120°
+ * significa 60° a cada lado y de costado no cuenta.
+ *
+ * **El rumbo entra como vector, no como ángulo, a propósito.** Un yaw de cámara
+ * mira a −Z y el `facing` de un muñeco mira a +Z (ver `facingDesdeCamara`, en
+ * `markers.js`): el mismo número significa lo contrario según de dónde venga, y
+ * esta función la llaman los dos. Que cada uno traiga su vector deja la
+ * conversión donde está la convención y no aquí dentro, que es donde un signo
+ * invertido no se ve nunca — un error de 180° aquí sería «te matan de frente».
+ *
+ * @param {number} ax,az dónde está quien ataca
+ * @param {number} vx,vz dónde está la víctima
+ * @param {number} fx,fz hacia dónde mira la víctima, unitario y en el plano
+ * @param {number} arcoDeg el cono completo, en grados
+ */
+export function esPorLaEspalda(ax, az, vx, vz, fx, fz, arcoDeg) {
+  const dx = ax - vx
+  const dz = az - vz
+  const largo = Math.hypot(dx, dz)
+  // Encima de ella no es ni por delante ni por detrás: no cuenta como espalda.
+  if (!(largo > 1e-6)) return false
+  const coseno = (dx * fx + dz * fz) / largo
+  // El ángulo entre «hacia dónde mira» y «dónde está el atacante». Por la
+  // espalda del todo son 180°.
+  const anguloDeg = (Math.acos(Math.max(-1, Math.min(1, coseno))) * 180) / Math.PI
+  return anguloDeg >= 180 - arcoDeg / 2
 }
 
 /** Punto al que apunta quien dispara al jugador: el pecho, no los pies. */

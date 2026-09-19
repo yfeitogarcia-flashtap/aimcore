@@ -24,7 +24,7 @@ import { FEEDBACK } from '../config.js'
  * modos desde esta vuelta y lo que tocará una pantalla de opciones el día que
  * se pueda diseñar la propia.
  */
-const Crosshair = forwardRef(function Crosshair({ hidden = false }, ref) {
+const Crosshair = forwardRef(function Crosshair({ hidden = false, melee = false }, ref) {
   const ringRef = useRef(null)
 
   useImperativeHandle(ref, () => ({
@@ -52,7 +52,10 @@ const Crosshair = forwardRef(function Crosshair({ hidden = false }, ref) {
   }), [])
 
   return (
-    <div className={`crosshair${hidden ? ' crosshair--hidden' : ''}`} aria-hidden="true">
+    <div
+      className={`crosshair${hidden ? ' crosshair--hidden' : ''}${melee ? ' crosshair--melee' : ''}`}
+      aria-hidden="true"
+    >
       <span className="crosshair__bar crosshair__bar--top" />
       <span className="crosshair__bar crosshair__bar--right" />
       <span className="crosshair__bar crosshair__bar--bottom" />

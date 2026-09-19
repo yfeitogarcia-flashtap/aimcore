@@ -421,8 +421,25 @@ export class TargetManager {
    * @returns {{ killed: boolean, zone: string }}
    */
   applyHit(hit, now, weaponKey = null) {
+    return this._restar(hit, now, zoneDamage(hit.part.zone, weaponKey))
+  }
+
+  /**
+   * **Un cuchillazo** (vuelta 71). El daño no sale de la zona sino del golpe
+   * —flojo o fuerte, lo dice el arma— y por la espalda llega `Infinity`, que es
+   * cómo se dice «esto no es más daño, es muerte» sin inventar un número.
+   *
+   * Es la misma resta que un disparo y por eso comparte el cuerpo entero: el
+   * parpadeo de la zona, el pop al caer y la cuenta de vivos no tienen por qué
+   * saber qué te ha matado.
+   */
+  applyMelee(hit, now, dano) {
+    return this._restar(hit, now, dano)
+  }
+
+  _restar(hit, now, dano) {
     const { instance, part } = hit
-    instance.health -= zoneDamage(part.zone, weaponKey)
+    instance.health -= dano
 
     if (instance.health > 0) {
       // Sobrevive: la zona parpadea para que se vea que el disparo entró.

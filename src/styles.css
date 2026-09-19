@@ -668,6 +668,19 @@ body {
    la lente tapa el borde de la pantalla y ese anillo ahí no dice nada. */
 .crosshair--hidden { opacity: 0; }
 
+/* **Con alguien a distancia de cuchillo la mira se abre y se tiñe** (vuelta
+   71). Es la única forma de decir «ahí llegas» en un juego que no dibuja el
+   arma en la mano, y va en el verde de acción porque es exactamente eso: lo
+   que pasa si pulsas. */
+.crosshair--melee .crosshair__bar { background: var(--action-color); }
+.crosshair--melee .crosshair__bar--top { top: calc((var(--crosshair-gap) * 2.2 + var(--crosshair-length)) * -1); }
+.crosshair--melee .crosshair__bar--bottom { top: calc(var(--crosshair-gap) * 2.2); }
+.crosshair--melee .crosshair__bar--left { left: calc((var(--crosshair-gap) * 2.2 + var(--crosshair-length)) * -1); }
+.crosshair--melee .crosshair__bar--right { left: calc(var(--crosshair-gap) * 2.2); }
+
+/* Sin cargador que contar no hay barra que separar (el cuchillo, vuelta 71). */
+.hud__ammo-sep--oculta { visibility: hidden; }
+
 .crosshair__bar {
   position: absolute;
   background: var(--crosshair-color);
@@ -1614,10 +1627,10 @@ body {
      cupieran de sobra.
      **Y crece con el arsenal** (vuelta 70): con la Scout son cuatro, y a 780 px
      la cuarta caía sola a una segunda fila — donde `subgrid` ya no la alinea
-     con las de arriba, porque cada fila de fichas alinea las suyas. Con 900 px
-     entran las cuatro en una. El día que sean más de las que caben, lo correcto
+     con las de arriba, porque cada fila de fichas alinea las suyas. Con 1100 px
+     —y el relleno del panel descontado— entran las cinco en una. El día que sean más de las que caben, lo correcto
      es justo lo que pasa: se reparten en filas y cada fila cuadra por dentro. */
-  width: min(900px, calc(100vw - 48px));
+  width: min(1100px, calc(100vw - 48px));
   max-height: calc(100vh - 48px);
   overflow-y: auto;
   text-align: left;
@@ -1640,15 +1653,22 @@ body {
    navegador y no hay número que mantener. */
 .armoury__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
-  grid-template-rows: repeat(7, auto);
+  grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+  /* Seis filas de ficha **más las cinco estadísticas** (vuelta 71). Hasta aquí
+     `subgrid` alineaba los seis bloques y las estadísticas de dentro iban en
+     flujo normal: con las cuatro armas de fuego cuadraba de casualidad —el
+     mismo texto ocupa las mismas líneas— y con el cuchillo dejó de cuadrar, que
+     es lo que pasa siempre que algo cuadra por casualidad. Ahora las filas de
+     estadística **son filas de la rejilla**, así que un valor que ocupe dos
+     líneas empuja el suyo en las cinco fichas y no sólo en la suya. */
+  grid-template-rows: repeat(11, auto);
   gap: 12px;
 }
 
 .armoury__card {
   display: grid;
   grid-template-rows: subgrid;
-  grid-row: span 7;
+  grid-row: span 11;
   row-gap: 8px;
   justify-items: center;
   align-content: start;
@@ -1763,9 +1783,13 @@ body {
 }
 
 .armoury__stats {
-  display: flex;
-  flex-direction: column;
-  gap: 7px;
+  /* Subrejilla dentro de la subrejilla: las cinco estadísticas ocupan cinco
+     filas de la rejilla de arriba, que es lo que las alinea entre fichas por
+     mucho que una ocupe dos líneas. */
+  display: grid;
+  grid-template-rows: subgrid;
+  grid-row: span 5;
+  row-gap: 7px;
   width: 100%;
   padding-top: 8px;
   border-top: 1px solid var(--panel-border);

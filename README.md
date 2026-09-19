@@ -982,6 +982,34 @@ se traduce al nuevo en vez de caer al valor de fábrica.
 | **Rift** | principal (**1**) | auto | 600 | 30 | 2.3 s | sí | 3.6 kg | 5.88 u/s | rifle: subida vertical marcada los primeros ocho disparos, luego deriva a la izquierda |
 | **Volt** | principal (**1**) | auto | 800 | 25 | 1.8 s | sí | 2.6 kg | 6.14 u/s | SMG: patada más inmediata pero la mitad de techo vertical, y más bamboleo lateral que vertical |
 | **Scout** | principal (**1**) | semi | 48 | 10 | 2.6 s | **no** | 3.2 kg | 5.98 u/s | francotirador: una patada sola y grande, 2.4° de golpe |
+| **Vanta** | cuchillo (**3**) | — | — | — | — | no | 0.6 kg | 6.50 u/s | cada golpe empuja la cámara: el flojo poco, el fuerte el doble |
+
+### Vanta, el cuchillo
+
+**La tercera ranura**, en la tecla **3**, y se lleva siempre igual que la
+pistola. **Clic izquierdo, golpe flojo; clic derecho, golpe fuerte.** Dos fuertes
+matan, cuatro flojos también, y las mezclas suman solas: no hay combinaciones que
+aprenderse, hay 25 y 55 contra 100 de vida. Con chaleco hacen falta tres fuertes
+o seis flojos.
+
+**Y un golpe fuerte por la espalda mata siempre**, lleve el otro lo que lleve:
+vida llena, chaleco y casco puestos, da igual. No es más daño — es otra cosa.
+Sólo el fuerte: un flojo por detrás no mata de una.
+
+**Cómo se sabe lo que pasa, si Vektor no dibuja el arma en la mano.** Cuatro
+avisos, y cada uno dice algo distinto:
+
+- **La mira se abre y se pone verde** cuando hay alguien a distancia de
+  cuchillo. Es lo único que se puede saber *antes* de golpear.
+- **La cámara se mueve** al golpear, como con el retroceso de un arma. El fuerte
+  empuja el doble que el flojo.
+- **Un arco cruza la pantalla**: fino y a la izquierda el flojo, grueso, verde y
+  a la derecha el fuerte. **Por la espalda salen los dos a la vez**, cerrándose.
+- **Y suena distinto**: el filo sube de tono al pasar, el golpe grave sólo suena
+  si has conectado, y la puñalada por la espalda añade un metal que no lleva
+  ningún otro golpe.
+
+*Le falta la silueta del HUD: su referencia todavía no está en el repositorio.*
 
 ### La Scout, y la mirilla
 

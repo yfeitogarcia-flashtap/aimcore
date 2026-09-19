@@ -643,6 +643,100 @@ export function playHit() {
  * parecidas, en medio de una ráfaga no habría forma de saber si el rival ha
  * caído o sólo le has rozado.
  */
+/**
+ * **El cuchillo** (vuelta 71): tres voces y ninguna es la del disparo bajada de
+ * volumen, que es la regla del silbido de la vuelta 40.
+ *
+ * Lo que hay que poder distinguir con los ojos en otra parte son **tres** cosas,
+ * y cada una cambia algo distinto:
+ *
+ * - **El filo al aire** es ruido por un pasa-banda que **sube** de tono (1.4 →
+ *   4.5 kHz en 70 ms). Que suba es lo que se oye como algo que pasa rápido por
+ *   delante; el silbido de una bala hace justo lo contrario, y por eso no se
+ *   confunden.
+ * - **Que ha entrado** añade un golpe corto y grave: el cuerpo. Sin él, acertar
+ *   y fallar suenan igual, que es el problema entero de un arma que no se ve.
+ * - **El fuerte** es el mismo filo más lento y más abajo (0.9 → 2.8 kHz en 110
+ *   ms) con el doble de cuerpo. No es más volumen: es más peso.
+ * - **Y por la espalda** lleva además un metal inarmónico —la misma relación
+ *   1.48 de la voz seca del disparo— que no lleva ningún otro golpe. Es lo que
+ *   dice «esto ha sido lo otro» sin mirar la pantalla.
+ *
+ * @param {'luz'|'fuerte'} tipo
+ * @param {boolean} conecta si el golpe ha entrado en un cuerpo
+ * @param {boolean} espalda si además ha sido por detrás
+ */
+export function playMelee(tipo, conecta = false, espalda = false) {
+  if (!ctx || !master || !noiseBuffer) return
+  const t = ctx.currentTime
+  const fuerte = tipo === 'fuerte'
+  const level = AUDIO.shotVolume
+
+  // 1. El filo.
+  const noise = ctx.createBufferSource()
+  noise.buffer = noiseBuffer
+  const band = ctx.createBiquadFilter()
+  band.type = 'bandpass'
+  band.Q.value = 1.6
+  const dur = fuerte ? 0.11 : 0.07
+  band.frequency.setValueAtTime(fuerte ? 900 : 1400, t)
+  band.frequency.exponentialRampToValueAtTime(fuerte ? 2800 : 4500, t + dur)
+  const gFilo = ctx.createGain()
+  gFilo.gain.setValueAtTime(0.0001, t)
+  gFilo.gain.exponentialRampToValueAtTime((fuerte ? 0.30 : 0.20) * level, t + 0.004)
+  gFilo.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.03)
+  noise.connect(band).connect(gFilo).connect(master)
+  noise.start(t)
+  noise.stop(t + dur + 0.06)
+  noise.onended = () => {
+    noise.disconnect()
+    band.disconnect()
+    gFilo.disconnect()
+  }
+
+  if (!conecta) return
+
+  // 2. El cuerpo: el golpe grave que dice que ha entrado.
+  const golpe = ctx.createOscillator()
+  golpe.type = 'triangle'
+  golpe.frequency.setValueAtTime(fuerte ? 165 : 230, t + 0.012)
+  golpe.frequency.exponentialRampToValueAtTime(fuerte ? 70 : 120, t + 0.012 + (fuerte ? 0.14 : 0.08))
+  const gCuerpo = ctx.createGain()
+  gCuerpo.gain.setValueAtTime(0.0001, t + 0.012)
+  gCuerpo.gain.exponentialRampToValueAtTime((fuerte ? 0.40 : 0.22) * level, t + 0.018)
+  gCuerpo.gain.exponentialRampToValueAtTime(0.0001, t + 0.012 + (fuerte ? 0.18 : 0.10))
+  golpe.connect(gCuerpo).connect(master)
+  golpe.start(t + 0.012)
+  golpe.stop(t + 0.22)
+  golpe.onended = () => {
+    golpe.disconnect()
+    gCuerpo.disconnect()
+  }
+
+  if (!espalda) return
+
+  // 3. El metal de la puñalada por la espalda. Inarmónico (×1.48), como la voz
+  // seca del disparo: un tono musical aquí sonaría a premio de máquina
+  // recreativa y esto no es un premio, es una ejecución.
+  for (const [hz, retardo] of [[880, 0.02], [880 * 1.48, 0.026]]) {
+    const osc = ctx.createOscillator()
+    osc.type = 'square'
+    osc.frequency.setValueAtTime(hz, t + retardo)
+    osc.frequency.exponentialRampToValueAtTime(hz * 0.55, t + retardo + 0.2)
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, t + retardo)
+    g.gain.exponentialRampToValueAtTime(0.16 * level, t + retardo + 0.005)
+    g.gain.exponentialRampToValueAtTime(0.0001, t + retardo + 0.24)
+    osc.connect(g).connect(master)
+    osc.start(t + retardo)
+    osc.stop(t + retardo + 0.28)
+    osc.onended = () => {
+      osc.disconnect()
+      g.disconnect()
+    }
+  }
+}
+
 export function playKill() {
   if (!ctx || !master) return
   const t = ctx.currentTime

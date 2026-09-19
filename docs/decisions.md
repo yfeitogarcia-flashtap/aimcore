@@ -8132,6 +8132,123 @@ Tres bancos daban por sabido que las armas eran tres:
 
 ---
 
+## Ronda 71 — Vanta, y cómo se cuenta un arma que no se ve
+
+La tecla 3 llevaba **cuarenta y cuatro vueltas** reservada y sin lógica. Eso era
+la apuesta de la vuelta 27 —«el mapa de controles tiene que ser el definitivo
+desde el principio, o cuando llegue la mecánica alguien ya habrá puesto ahí su
+bind favorito»— y esta vuelta la cobra: el cuchillo entra en su tecla, sin
+discutirla con nadie.
+
+### Dos números, no una tabla de combos
+
+El encargo pedía que «dos fuertes maten», que «cuatro o cinco flojos maten» y que
+las mezclas sumaran «de forma natural, sin necesidad de una tabla de combos
+aparte». Eso no es una funcionalidad: es una consecuencia de no escribir la tabla.
+Flojo 25 y fuerte 55 contra 100 de vida, restando de la misma vida por la misma
+escalera (`encajarImpacto`) que un disparo, y las combinaciones salen solas —
+medido: 2 fuertes, 4 flojos, 3 mezclando; con chaleco 3 y 6.
+
+### La puñalada por la espalda **no es un número grande**
+
+Es la decisión que más fácil habría sido hacer mal. «Un ataque fuerte por la
+espalda mata siempre, sin excepción» no se implementa con 999 de daño: lo pararía
+un chaleco, y entonces «siempre» sería «casi siempre» — que es otra regla, y la
+que el jugador descubriría en el peor momento.
+
+Va en `encajarImpacto` como caso propio (`mortal`) y **por delante del casco y
+del escudo**, o sea antes que nada. Medido a vida llena con chaleco y casco: un
+golpe. Con 150 de escudo: un golpe.
+
+### Y el arco de espalda entra como vector, no como ángulo
+
+`esPorLaEspalda` la llaman dos sitios con **convenciones opuestas**: el yaw de
+una cámara mira a −Z y el `facing` de un muñeco a +Z (la trampa de la vuelta 60,
+que allí pintó la brújula apuntando a la espalda del rival). Pasar «el rumbo» sin
+más habría sido el mismo error de 180° otra vez, y aquí se lee como **que te
+matan de frente**.
+
+La función pide el vector de hacia dónde mira la víctima y cada llamante lo
+construye en su línea, donde está su convención. Un signo invertido se ve ahí;
+dentro de una función compartida, no se ve nunca.
+
+### El rumbo de la víctima también se rebobina
+
+El historial del servidor guardaba dónde estaba cada cuerpo en cada paso, y eso
+bastaba para las balas. Un cuchillo necesita además **hacia dónde miraba**: si se
+juzgara contra el rumbo actual, girarse a tiempo salvaría de un golpe que ya
+había ocurrido, que es exactamente lo que la compensación de retraso viene a
+impedir.
+
+Y se interpola **por el camino corto**. Entre 179° y −179° hay dos grados, no
+trescientos cincuenta y ocho, y la media recta de esos dos números da 0 — o sea
+mirando justo al revés. `mezclaDeRumbo`, a nivel de módulo.
+
+### Una mecánica nueva no es un protocolo nuevo
+
+Un golpe viaja **dentro del disparo**, con un campo más (`d.m`). Mismo sellado en
+el paso, mismo `seq`, mismo veredicto, mismo rebobinado, mismo tope. Lo único que
+cambia es con qué función se resuelve.
+
+Lo que sí hubo que partir es la cadencia: **se exige la del tipo de golpe**, y la
+cuenta sale del mismo campo que el daño. Sin eso, alternar flojo y fuerte colaba
+el fuerte al ritmo del flojo — medido antes y después.
+
+### Lo que de verdad costaba: contarlo sin enseñar nada
+
+Vektor no dibuja el arma en la mano (vuelta 38) y eso no se toca. Un arma de
+fuego sobrevive a eso porque la bala habla —el anillo de la mira, la marca en la
+pared, el sonido—; un cuchillo, no: sin animación, golpear al aire y matar a
+alguien se ven exactamente igual.
+
+Cuatro canales, y **cada uno contesta una pregunta distinta**, que es la misma
+disciplina que las tres señales de que te disparan de la vuelta 40:
+
+- **¿Llego?** La mira se abre y se tiñe. Es lo único que se puede decir *antes*, y
+  sale del mismo rayo que resuelve el golpe — una vez por paso de mundo y sólo
+  con el cuchillo en la mano.
+- **¿He golpeado?** La cámara se mueve, por el mismo camino que el retroceso.
+- **¿Qué golpe?** El arco: fino a la izquierda, grueso a la derecha. **Por la
+  forma, no por el color** (regla de la vuelta 67) — el color sólo separa el
+  fuerte, y en el verde de acción, que es el único de la paleta que ya significa
+  dos cosas porque no coinciden nunca en pantalla.
+- **¿Ha entrado?** El sonido, y **sólo si conecta**: el filo suena siempre, el
+  cuerpo grave no. Por la espalda añade un metal inarmónico que no lleva ningún
+  otro golpe.
+
+En red los cuatro los decide el **veredicto local**, no el del servidor: es la
+regla de la marca de bala de la vuelta 64, porque el del servidor llega un viaje
+después y contesta a otra pregunta.
+
+### Y lo que el quinto arma destapó en la armería
+
+`subgrid` alineaba los **seis bloques** de cada ficha y las estadísticas de
+dentro iban en flujo normal. Con cuatro armas de fuego cuadraba —el mismo texto
+ocupa las mismas líneas— y con el cuchillo dejó de cuadrar, que es lo que pasa
+siempre que algo cuadra por casualidad: sus valores son más cortos, ocupan una
+línea donde los otros ocupan dos, y a partir de ahí la columna entera se desfasa.
+
+Ahora las cinco estadísticas **son filas de la rejilla** (11 en total, con
+`subgrid` anidado), así que un valor de dos líneas empuja el suyo en las cinco
+fichas y no sólo en la suya. Es la promesa de la vuelta 43 —«comparar es mirar la
+misma fila»— hecha cierta para cualquier texto en vez de para el que había.
+
+Y dos más, pequeñas y del mismo tipo: **el tope de una barra sale de lo que se
+puede comparar** (un `undefined` de un arma sin RPM convertía el máximo en NaN y
+dejaba **todas** las barras sin dibujar), y el panel creció a 1100 px para que
+las cinco quepan en una fila.
+
+### Lo que falta
+
+`Reference/Weapons/Vanta.png` **no está en el repositorio**. La mecánica está
+entera; lo que no hay es su silueta, así que su ficha sale sin dibujo. En cuanto
+llegue es `npm run trace:weapons` y ya: la lista de armas a trazar se deriva de
+`WEAPONS` desde la vuelta 70. `armeria43` lo imprime en su volcado y afirma que
+**no falta ninguna que sí tenga referencia**, así que el día que llegue sigue en
+verde sin tocar nada.
+
+---
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
