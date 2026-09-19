@@ -203,7 +203,24 @@ function alCambiarLosMapas(ruta) {
 
 const editor = {
   name: 'vektor-editor',
-  apply: 'serve',
+
+  /**
+   * **El registro también se regenera al construir** (vuelta 76).
+   *
+   * Es un fichero generado y versionado, como `weaponPaths.js`, así que lo
+   * normal es que el commiteado cuadre. Pero un clon limpio con mapas nuevos
+   * —o un `dist/` hecho sin haber levantado nunca `npm run dev`— construía con
+   * el registro que hubiera, no con los mapas que hay. Aquí no hay nada que
+   * curar en caliente: o cuadra, o el build falla ruidosamente, que es lo
+   * correcto para lo que se despliega.
+   */
+  buildStart() {
+    regenerarRegistro()
+  },
+
+  // Sin `apply: 'serve'`: eso apagaría el plugin entero al construir y con él
+  // el `buildStart` de arriba. Lo de desarrollo ya se queda en desarrollo solo,
+  // porque `configureServer` no corre al construir.
   configureServer(servidor) {
     /**
      * **Al arrancar, el registro se regenera.** Un mapa borrado a mano dejaba

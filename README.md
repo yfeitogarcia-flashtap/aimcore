@@ -582,8 +582,8 @@ En ambos casos: una diana a la vez, *pop* al acertar y otra en menos de
 
 ## El editor de mapas
 
-Desde la vuelta 74 los mapas se dibujan en vez de escribirse. Es la **fase 1**:
-cajas, probar y guardar.
+Desde la vuelta 74 los mapas se dibujan en vez de escribirse, y desde la 76 se
+construye de verdad: formas, imán, candados, deshacer y presupuesto.
 
 ```bash
 npm run editor     # abre /editor/ directamente
@@ -595,19 +595,51 @@ herramienta de autor, no una pantalla del juego.
 
 ### Dibujar
 
-- **Añadir caja** pone una pieza delante; se arrastra con el ratón y se ajusta
-  sola a la rejilla (0.5 u de partida, y el paso se cambia en el panel).
+- **Seis formas** en el panel —cubo, prisma, muro, bordillo, plataforma y
+  parapeto— que ponen una pieza delante de la cámara. Son **la misma caja** con
+  otros números: lo que distingue un muro de un bordillo no es su geometría.
+- Se arrastra con el ratón y se ajusta sola a la rejilla. **El incremento se
+  elige**: de 1 unidad entera a 1/10, y es el mismo que usan las flechas de los
+  tiradores del panel.
+- **Imán**: al soltar una pieza cerca de la cara de otra, se pega a ella. Es lo
+  que evita el hueco de dos centímetros que no se ve editando y sí jugando.
 - **Clic izquierdo** selecciona y arrastra, **botón derecho** orbita, **rueda**
-  acerca, **botón central o Mayús+derecho** desplaza la vista.
+  acerca, **botón central o Mayús+derecho** desplaza la vista. Y con el ratón
+  sobre el mapa, **WASD vuela** —Q/E baja y sube, Mayús corre—.
 - Cada pieza tiene ancho, fondo y **altura del vocabulario de siempre**
   (`bordillo`, `baja`, `media`, `alta`, `bloque`, `plataforma`, `parapeto`,
   `torre`, `atalaya`), con su gris — que en Vektor no es decoración: **el tono
-  dice la altura**.
+  dice la altura**. También se puede escribir una altura a mano.
+- **Un candado por dimensión**: con el ancho bloqueado, esa medida no la mueve
+  nada —ni el número, ni el tirador, ni una forma nueva—.
+- **Base** dice desde qué altura empieza la pieza, y **Apilar** la apoya en el
+  techo de la que tenga debajo. Si la dejas con aire debajo el editor **avisa**:
+  se dibuja y para las balas, pero el juego todavía no comprueba que no te
+  levantes debajo agachado.
+- **Tres láseres de alineación**, uno por eje, que se encienden por separado.
 - **90°** intercambia ancho y fondo. No hay rotación libre, y no es un olvido:
   la colisión del juego es de cajas alineadas a los ejes, así que una caja
   girada se dibujaría girada y **se chocaría sin girar**. Está explicado en
   `docs/propuestas/05-editor-de-mapas.md` §3.
+- **Deshacer y rehacer** con los botones o con **Ctrl+Z** / **Ctrl+Mayús+Z**.
 - **Abrir** carga cualquiera de los mapas de hoy para tocarlo.
+
+### Cuánto mide y cuánto cuesta
+
+La sala va de **10 a 200 u de lado** y de **4 a 60 de alto**. No es un consejo:
+lo acota el mismo saneado que lee un mapa al montarlo, así que un número fuera
+de rango no llega al juego ni escribiéndolo a mano en el fichero.
+
+Debajo, el **presupuesto**: cuánto le cuesta al juego la colisión de tu mapa,
+medido corriendo dos mil pasos de movimiento de verdad contra la geometría que
+tienes delante, con las piezas y los triángulos al lado. Se compara con los
+**0.2 ms por paso** que el proyecto presupuesta.
+
+Conviene saber lo que salió al medirlo: **por geometría no se pasa**. Mil
+quinientas piezas cuestan 0.0004 ms por paso. El aviso está para el día que una
+pieza cueste de verdad —un vano, un tejado, una rotación—; lo que hace hoy es
+enseñarte lo que cuesta tu mapa. Y **el tamaño de la sala y el presupuesto no
+se derivan el uno del otro**: una sala enorme con cuatro cajas es barata.
 
 ### Probar
 
@@ -617,6 +649,11 @@ para capturar el ratón y andar; **ESC** vuelve a editar.
 
 Un mapa con física propia se prueba con la suya: en uno con la gravedad de Los
 Pilares el salto sube 3.25 u y no 1.25.
+
+Salen **la mira y el HUD del juego** —los mismos componentes que el duelo y el
+entrenamiento, no una versión aparte— y un interruptor decide si hay **muñecos**
+o la sala está completamente vacía. Para medir geometría lo segundo; para ver
+cómo se juega, lo primero.
 
 ### Versiones: guardar con comentario y volver atrás
 
@@ -665,11 +702,14 @@ notarlo más que por un parpadeo. Y la dirección lleva el mapa abierto
 
 ### Lo que todavía no hace
 
-Rampas, vanos y ventanales, salidas de duelo, zonas de aparición, simetría por
-giro, métricas en vivo, deshacer/rehacer y aviso de presupuesto. Son las fases
-2 a 4, diseñadas en `docs/propuestas/05-editor-de-mapas.md`. Los mapas de hoy
-conservan sus rutas, recogibles y sitios de explosivo al guardarlos, pero el
-editor no los edita: salen de un barrido medido, no de ponerlos a ojo.
+Rampas, salidas de duelo, zonas de aparición, simetría por giro y métricas de
+mapa en vivo (distancia entre salidas, líneas de visión, tiempo de cruce). Son
+las fases 3 a 5, diseñadas en `docs/propuestas/05-editor-de-mapas.md`. Los mapas
+de hoy conservan sus rutas, recogibles y sitios de explosivo al guardarlos, pero
+el editor no los edita: salen de un barrido medido, no de ponerlos a ojo.
+
+Y lo que no va a hacer hasta que el motor sepa chocar con ello: **rotación
+libre, tejados y triángulos sólidos**.
 
 ## Escenarios
 

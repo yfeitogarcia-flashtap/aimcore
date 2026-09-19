@@ -8916,6 +8916,187 @@ no llamando a funciones:
 `editor74` sigue verde con el punto de guardado en su forma nueva.
 
 
+## Ronda 76 — El editor construye de verdad
+
+La fase 2 tal como estaba planteada —menú de formas, candados por eje, rejilla e
+imán, giro de 90°, deshacer/rehacer y aviso de presupuesto— más siete ajustes
+que salieron de usar la fase 1. Lo que sigue es lo que **no** salió como estaba
+escrito, que es de lo único que merece la pena acordarse.
+
+Y una condición que gobernó la vuelta entera: **los mapas oficiales están
+editados a mano en la máquina de Yago** —Plano A, El Espejo y Los Pilares—, con
+cambios razonados y probados que no están en el repositorio. Nada de esta vuelta
+toca `SCENARIOS` ni `src/maps/index.js`.
+
+### 76.1 El instrumento se midió antes de creérselo, y costó tres versiones
+
+El presupuesto estaba diseñado como «se mide en vez de contarse», y eso era lo
+correcto. Lo que no se había previsto es que **un paso de mundo no se puede
+cronometrar en un navegador**: `performance.now()` viene acotado a 100 µs fuera
+de un contexto aislado y un paso contra diecisiete cajas cuesta mucho menos que
+eso.
+
+Las dos primeras versiones **salían verdes midiendo el reloj**:
+
+| Versión | Qué cronometraba | Qué decía |
+|---|---|---|
+| paso a paso, p99 de 400 | un paso | **0.000 ms en Los Pilares** |
+| bloques de 25, p99 de 40 | 25 pasos | **0.0010 con 0 piezas y 0.0010 con 600** |
+| total de 2000 pasos, media | la tanda entera | 0 piezas 0.0000 · 200 0.0001 · **1500 0.0004** |
+
+Sólo la tercera responde a lo que se le pone delante. Es la regla de la vuelta
+46 —una proporción necesita que se vea su denominador— aplicada al cronómetro, y
+la de la 62 —cinco disparos y la mediana, con las capturas completas impresas al
+lado— por la misma puerta. El banco lo guarda **enseñando la escalera**: un
+número que sale igual con 0 piezas que con 600 no mide el mapa.
+
+**Y medirlo cambia para qué sirve el panel.** Con colisión AABB y mallas
+fundidas por tipo, un mapa **no puede** romper el presupuesto por geometría:
+1500 piezas cuestan 0.0004 ms por paso contra los 0.2 presupuestados y los 0.07
+de un paso real con ocho muñecos. El aviso queda como cortafuegos para el día
+que una pieza cueste de verdad —un vano, un tejado, una rotación libre— y lo que
+el panel hace hoy es enseñar lo que cuesta tu mapa. Son dos cosas y conviene no
+confundirlas al leerlo.
+
+### 76.2 «Sin muñecos» no es «un mapa sin rutas»
+
+El interruptor de probar con o sin muñecos se escribió primero quitándole las
+rutas al mapa antes de montarlo, razonando que de ahí sale dónde puede nacer
+uno. **Es falso, y el banco lo cazó a la primera**: sin rutas las dianas no
+desaparecen, se muestrean por cono como en la sala vacía. Salía una igual.
+
+Lo correcto es que **si un mundo tiene muñecos es del mundo**, y entra por la
+misma puerta que el escenario: `new Engine(…, { escenario, dianas })`, la de la
+vuelta 60. La alternativa —escribir `simultaneousTargets` en el store— era
+reescribirle al jugador sus ajustes por abrir el editor, que es exactamente el
+fallo que esa puerta existe para no repetir.
+
+Por dentro no hay un camino nuevo: `dianas: false` pone `maxAlive` a cero y no
+siembra. Las dos cosas hacen falta, porque la primera diana la saca
+`beginSession` por su cuenta.
+
+### 76.3 El HUD al probar es el del juego, montado una vez
+
+Probar no enseñaba ni mira ni HUD. Lo que hacía falta no era escribirlos: es
+`montarCapaDeDuelo`, lo mismo que la vuelta 73 llevó a la página del duelo. Una
+tercera versión aquí habría sido el fallo de producto de la vuelta 63 por la
+puerta del editor — un mapa se prueba con lo que se ve jugando o no se está
+probando lo mismo.
+
+Se monta **una vez**, al arrancar la página y no en cada «Probar»: React monta y
+desmonta en modo estricto, y pagar ese baile por prueba además de perder el HUD
+entre ellas no tiene sentido.
+
+Y una trampa de medida: **la mira mide 0×0 y se ve igual**. Su caja es un punto
+y quien dibuja son sus cuatro trazos, colocados en absoluto, así que preguntarle
+al navegador si el contenedor «es visible» dice que no. Se mide un trazo.
+
+### 76.4 «Base» era un desplegable, y el encargo tenía razón
+
+Lo que uno quiere al apilar es poner una caja encima de otra, y con un menú de
+nombres de alturas (`media`, `alta`) eso hay que deducirlo. Ahora son dos
+controles y una frase: un **número** —desde qué altura empieza— y un botón que
+la apoya en el techo de lo que tenga debajo.
+
+Y **subir una pieza la sube entera**. La primera versión del campo numérico
+movía sólo la base, o sea aplastaba la caja contra su propio techo hasta hacerla
+desaparecer. El grosor se conserva, que es lo que uno acaba de dibujar.
+
+### 76.5 WASD no puede pedir el botón del ratón
+
+La fase 1 dejó el vuelo detrás del botón derecho para no robarle las teclas a
+quien escribe en el panel. Usándolo se ve el precio: se mira una esquina, se
+suelta, y para acercarse hay que volver a agarrar.
+
+Las dos condiciones que de verdad hacían falta son **el puntero sobre la vista**
+y **el foco fuera de un campo**; el botón las cumplía de rebote. Es
+`typingInField` (vuelta 56) en esta página — el editor sí tiene campos de texto,
+así que la pregunta «¿esto es escribir o es jugar?» hay que contestarla, no
+evitarla. Al salir el puntero de la vista se sueltan las teclas, o cruzar al
+panel con W apretada dejaría la cámara volando sola.
+
+### 76.6 Dos ids iguales, y el síntoma no se parece
+
+`#paso` estaba dos veces: el tirador numérico de la fase 1 y el desplegable de
+incrementos de ésta. El navegador no se queja, `getElementById` devuelve el
+primero y el banco murió con un «Element is not a `<select>`». Un id repetido es
+una variable global duplicada con otro nombre.
+
+### 76.7 El borrador no manda sobre la dirección
+
+Un borrador de **otro** mapa se ignora si la barra pide uno concreto. Sin esto,
+`/editor/#pilares` abría lo último que se hubiera tocado y no había forma de
+decir cuál se quiere — y la primera versión del banco lo leyó como «Los Pilares
+tiene 3 piezas».
+
+### 76.8 Y el tamaño de la sala ya tenía tope, pero no se veía
+
+`SALA` acota lado a 10–200 u y alto a 4–60 desde la fase 1, y lo aplica el mismo
+saneado que lee un mapa al montarlo: un número fuera de rango no llega al juego
+venga del editor o de un fichero escrito a mano. Lo que faltaba era **decirlo en
+la pantalla** y que los campos lo lleven en su `min`/`max`.
+
+**No se ató al presupuesto, y no debe atarse.** Son dos límites distintos: el de
+la sala es duro y del formato, el presupuesto es una medida de lo que cuesta la
+colisión. Una sala de 200×200 con cuatro cajas es barata y una de 40×40 con
+cuatrocientas no lo sería; derivar uno del otro mentiría en los dos sentidos.
+
+### 76.8b Y una tanda entera de falsos negativos, otra vez por lo mismo
+
+La batería del entrenamiento salió con **nueve suites en rojo** y varias con
+`0 pass` —la página ni cargaba—, con síntomas que no se parecían entre sí: picos
+de audio a 0.0000, la casilla del silenciador que no conmuta, el explosivo que
+no se desactiva. Ninguno tenía nada que ver con esta vuelta.
+
+Son dos causas encadenadas y las dos están ya escritas en `CLAUDE.md` §4; lo que
+faltó fue aplicarlas:
+
+1. **La primera tanda corrió a la vez que los bancos del editor**, que escriben
+   mapas de prueba y con ellos reescriben el registro, o sea recargan la página
+   por debajo de la suite que está midiendo. Es «un banco de red se pasa solo»
+   (vuelta 61) aplicado al editor.
+2. **La segunda corrió contra un servidor con el store duplicado por HMR.** Se
+   había tocado `src/game/engine.js` con Vite corriendo, y el síntoma fue el
+   de siempre: `updateSettings({ scenario })` devolvía el valor nuevo y
+   **el motor seguía montando `empty`**. Medido: `scenario.key` se quedaba en
+   `empty` seis segundos después del cambio; con el servidor recién lanzado,
+   `largoYPuerta` con sus 20 piezas en 300 ms.
+
+Lo que hay que llevarse: **antes de creerse un rojo, relanza el servidor y
+comprueba que nada más está tocando el puerto.** Y la regla nueva que esta
+vuelta añade a la lista: **los bancos del editor cuentan como «tocar el
+servidor»**, porque guardar un mapa invalida `config.js`.
+
+### 76.9 Qué se ha verificado y cómo
+
+`ed76.mjs`, contra la página y por la interfaz, **41 aserciones**:
+
+- **Que las formas son presets de la misma caja** y ninguna es algo contra lo
+  que el motor no sepa chocar; que el giro de 90° intercambia ancho y fondo
+  **conservando el centro**.
+- **Que un candado es que esa medida no la toca nada**, y que soltarlo la
+  devuelve.
+- **Que el imán pega a la cara de al lado y apagado no pega** — medido con un
+  paso de rejilla que **no cae solo en la cara**, porque con paso 1 las dos
+  columnas coincidirían en lo mismo (vuelta 46).
+- **Que subir una pieza conserva su grosor**, que apilar la apoya en el techo de
+  la de abajo, y que un vano se avisa en vez de prohibirse o callarse.
+- **Que rehacer devuelve el mapa al dígito** y que un cambio nuevo tira la rama.
+- **Que el presupuesto sube con la geometría** (0 · 600 · 1500 piezas) y sigue
+  muy por debajo del presupuesto del proyecto, con su denominador impreso.
+- **Que WASD mueve la cámara y el ratón sigue orbitando.**
+- **Que los tres láseres se encienden y se apagan por separado.**
+- **Que probar trae la mira y el HUD del juego** —medidos por un trazo de la
+  mira y por la clase `hud-layer` del contenedor— con vida, bloque de arma y la
+  marca de Vektor.
+- **Que sin muñecos la sala está vacía y es el cupo a cero**, con el mapa
+  conservando sus rutas; y que con el interruptor puesto sale al menos uno.
+- Y **cero errores de página**, contados como fallo.
+
+`editor74` y `hist75` siguen verdes, y la batería del entrenamiento también.
+
+
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

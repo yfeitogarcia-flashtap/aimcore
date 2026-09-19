@@ -172,8 +172,10 @@ export class Engine {
   /**
    * @param {HTMLCanvasElement} canvas
    * @param {object} [callbacks]
-   * @param {{escenario?: string}} [opciones] `escenario` **fija** el mapa y deja
-   *   fuera el ajuste del jugador. Lo usa el duelo, que siempre juega el Plano A.
+   * @param {{escenario?: string|object, dianas?: boolean}} [opciones] `escenario`
+   *   **fija** el mapa y deja fuera el ajuste del jugador; `dianas: false` monta
+   *   el mismo mundo sin muñecos. Las dos son opciones **del mundo que se monta**,
+   *   no preferencias de nadie.
    */
   constructor(canvas, callbacks = {}, opciones = {}) {
     this.canvas = canvas
@@ -192,6 +194,20 @@ export class Engine {
      * Con esto el duelo dice qué mapa juega y no toca nada de nadie.
      */
     this._escenarioFijo = opciones.escenario ?? null
+
+    /**
+     * **Que un mundo tenga muñecos es del mundo, no del jugador** (vuelta 76).
+     *
+     * Lo pide el editor —probar un mapa es medir su geometría, y un muñeco
+     * disparándote mientras mides estorba— y entra por la misma puerta que el
+     * escenario, por la misma razón: el ajuste `simultaneousTargets` es del
+     * jugador y reescribírselo sería el fallo de la vuelta 60 otra vez.
+     *
+     * Y es esto y no quitarle las rutas al mapa: sin rutas las dianas **no
+     * desaparecen**, se muestrean por cono como en la sala vacía. Lo que se
+     * apaga aquí es el cupo (`maxAlive`) y la siembra, que es donde nacen.
+     */
+    this._conDianas = opciones.dianas !== false
 
     this.renderer = new THREE.WebGLRenderer({
       canvas,
@@ -951,6 +967,9 @@ export class Engine {
     // ya abatidos, borraba la ronda y la volvía a llenar entera —y con el
     // jugador parado en su zona, encima de él—.
     const rebuilt = this.targets.configure(settings)
+    // Sin dianas el cupo es cero, así que `update` no siembra nunca: es el
+    // mismo mecanismo de siempre en su extremo, no un segundo camino.
+    if (!this._conDianas) this.targets.maxAlive = 0
     this._syncMarkers(settings)
     // El cupo de ronda sí se recalcula siempre: cambiar el selector de
     // simultáneas con el explosivo puesto cambia cuántos quedan por salir, y
@@ -1288,7 +1307,10 @@ export class Engine {
     // sembrar, porque la primera diana sale dentro de `beginSession`.
     const conExplosivo = this.mode === 'timed' && this.objective.available
     this.targets.setRoundBudget(conExplosivo ? this.targets.maxAlive : 0)
-    this.targets.beginSession(this.camera, now)
+    // La primera diana la siembra `beginSession` por su cuenta, así que un
+    // mundo sin dianas tampoco puede pasar por aquí.
+    if (this._conDianas) this.targets.beginSession(this.camera, now)
+    else this.targets.clear()
     // El explosivo sólo existe con escenario y con cronómetro. En práctica libre
     // no: esa modalidad existe para no terminar sola, y un explosivo que la
     // cerrase a los 45 s rompería su único contrato.

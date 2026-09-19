@@ -436,8 +436,61 @@ cualquiera. Cinco reglas:
 Y «no perder trabajo» y «volver atrás» son **dos fallos distintos**: el
 historial cubre el segundo y un **borrador en `localStorage`** el primero, que
 es lo que sobrevive a cerrar la pestaña sin guardar. Qué se abre al entrar, en
-orden: relevo, borrador, lo que diga la dirección (`/editor/#clave`), mapa en
-blanco.
+orden: relevo, **lo que diga la dirección** (`/editor/#clave`), borrador, mapa
+en blanco — y el borrador sólo manda si es **de ese mismo mapa** (vuelta 76):
+pedir un mapa por su dirección y que se abra lo último que tocaste es no tener
+forma de decir cuál quieres.
+
+**Y con qué se construye, que es la fase 2** (vuelta 76). Seis formas —cubo,
+prisma, muro, bordillo, plataforma y parapeto—, y **las seis son la misma caja**
+con otros números y otro `kind`: lo que distingue un muro de un bordillo no es
+su geometría, porque no hay más geometría que la que la colisión sabe resolver.
+Encima, un candado por dimensión, rejilla de 1 u a 1/10, imán a la cara de al
+lado, giro de 90°, deshacer/rehacer y tres láseres de alineación por eje. Cuatro
+cosas de ahí son reglas y no tuning:
+
+- **El presupuesto se mide, y el instrumento se midió antes de creérselo.** Un
+  paso de mundo **no se puede cronometrar en un navegador** —`performance.now()`
+  viene acotado a 100 µs y un paso contra diecisiete cajas cuesta mucho menos—,
+  así que las dos primeras versiones salieron verdes midiendo el reloj: paso a
+  paso daba **0.000 ms en Los Pilares** y por bloques de 25 daba **lo mismo con
+  0 piezas que con 600**. Lo que tiene resolución es el **total**: dos mil pasos
+  cuestan milisegundos enteros y la media por paso sale de dividir eso. Es la
+  regla de la vuelta 46 aplicada al cronómetro, y el banco la guarda enseñando
+  la escalera (0 → 600 → 1500 piezas). **Y lo que sale de medirlo cambia para
+  qué sirve el panel**: con colisión AABB y mallas fundidas por tipo un mapa
+  **no puede** romper el presupuesto por geometría —1500 piezas cuestan 0.0004
+  ms por paso contra 0.2—, así que el aviso es un cortafuegos para el día que
+  una pieza cueste de verdad y lo que el panel hace hoy es enseñar lo que cuesta
+  tu mapa.
+- **Si un mundo tiene muñecos es del mundo, y entra por la puerta del
+  escenario**: `new Engine(…, { escenario, dianas })`. Quitarle las rutas al
+  mapa —que fue lo primero que se probó— **no vale**: sin rutas las dianas no
+  desaparecen, se muestrean por cono como en la sala vacía, y salía una igual. Y
+  tocar `simultaneousTargets` tampoco, que es el ajuste del jugador (vuelta 60).
+- **Al probar, el HUD y la mira son los del juego**, montados por
+  `montarCapaDeDuelo` **una vez** al arrancar la página y no por prueba. Una
+  tercera versión aquí sería el fallo de la vuelta 63 por la puerta del editor.
+  Ojo al medirlo: **la mira mide 0×0 y se ve igual** —su caja es un punto y
+  dibujan sus cuatro trazos, en absoluto—, así que se mide un trazo.
+- **Subir una pieza la sube entera.** `base` es un número —desde qué altura
+  empieza— y apilar es un botón que la pone en el techo de lo que haya debajo.
+  Mover sólo la base aplastaría la caja contra su propio techo hasta hacerla
+  desaparecer, que es lo que hacía la primera versión.
+
+Y el vuelo de la cámara **no pide el botón del ratón** (vuelta 76): las dos
+condiciones que hacían falta son **el puntero sobre la vista** y **el foco fuera
+de un campo**, y el botón las cumplía de rebote a cambio de dejar el vuelo
+inalcanzable justo cuando se usa. Es `typingInField` (vuelta 56) en una página
+que sí tiene campos de texto.
+
+**El tamaño de la sala tiene tope, y no es el presupuesto.** `SALA` acota lado a
+10–200 u y alto a 4–60, y lo aplica el mismo saneado que lee un mapa al
+montarlo: un número fuera de rango no llega al juego venga del editor o de un
+fichero escrito a mano. **No se derivan el uno del otro y no deben**: el de la
+sala es duro y del formato, el presupuesto es una medida de lo que cuesta la
+colisión — una sala de 200×200 con cuatro cajas es barata y una de 40×40 con
+cuatrocientas no lo sería.
 
 Y dos cosas que salieron construyéndolo y valen fuera del editor:
 
@@ -3009,6 +3062,20 @@ motor lee una y la UI escribe en la otra. El síntoma es una función que "no
 hace nada" sin ningún error en consola — ya pasó una vez con el modo dinámico,
 que parecía roto y no lo estaba.
 
+**Y no hace falta tocar `config.js`: basta con tocar lo que lo importa** (vuelta
+76). Editando `src/game/engine.js` con el servidor levantado, la batería entera
+salió con **nueve suites en rojo** y varias con `0 pass`, y el síntoma medido
+fue el de siempre por otra puerta: `updateSettings({ scenario })` devolvía el
+valor nuevo y **el motor seguía montando `empty`** seis segundos después. Con el
+servidor recién lanzado, `largoYPuerta` con sus 20 piezas en 300 ms. Ninguno de
+los nueve rojos tenía que ver con el cambio.
+
+**Y los bancos del editor cuentan como tocar el servidor.** Guardar un mapa
+reescribe el registro, y el registro lo importa `config.js`: la página se recarga
+**por debajo de la suite que esté midiendo**. Es «un banco de red se pasa solo»
+(vuelta 61) aplicado al editor — `editor74`, `hist75` y `ed76` no se pasan a la
+vez que la batería del entrenamiento.
+
 **Si un resultado te parece extraño, reinicia el servidor de desarrollo antes de
 creerte el diagnóstico.** No depures un falso negativo durante media hora.
 
@@ -3326,20 +3393,31 @@ decide el servidor mientras el rebobinado cabe bajo el tope de 200 ms, contra un
 tocar una aserción, salen verdes contra el Durable Object: la migración de la 47
 no cambió nada.
 
-**Y desde la vuelta 74 hay un editor de mapas, en su fase 1** (`/editor/`,
-sólo con `npm run dev` o `npm run editor`). Se dibujan cajas sobre la rejilla
-vacía —crear, seleccionar, arrastrar con imán a la rejilla, medir por número,
-girar 90°, duplicar y borrar—, se abren los cuatro mapas de hoy para tocarlos, y
-se prueba **con el motor de verdad**: «Probar» construye un `Engine` contra la
-definición que hay delante, con su sala, su física y su colisión. Guardar
-escribe `src/maps/<clave>.js` y el mapa **ya es un escenario**: sale en el
-selector sin tocar `config.js` y el huésped de Node lo ve igual.
+**Y desde la vuelta 74 hay un editor de mapas; desde la 76 va por su fase 2**
+(`/editor/`, sólo con `npm run dev` o `npm run editor`). Se dibujan cajas sobre
+la rejilla vacía, se abren los mapas de hoy para tocarlos, y se prueba **con el
+motor de verdad**: «Probar» construye un `Engine` contra la definición que hay
+delante, con su sala, su física y su colisión. Guardar escribe
+`src/maps/<clave>.js` y el mapa **ya es un escenario**: sale en el selector sin
+tocar `config.js` y el huésped de Node lo ve igual. Cada guardado pregunta qué
+cambia y anota una versión con su fecha, y hay borrador para lo que no se ha
+guardado (vuelta 75).
 
-Lo que todavía no hace —y es la fase 2 en adelante de
+Con la fase 2 ya se construye de verdad: **seis formas** —cubo, prisma, muro,
+bordillo, plataforma y parapeto, que son la misma caja con otros números—,
+**candado por dimensión**, **rejilla de 1 u a 1/10**, **imán** a la cara de al
+lado, giro de 90°, **deshacer/rehacer** (Ctrl+Z), **tres láseres de alineación**
+por eje, **apilar** sobre lo de debajo con aviso si queda un vano, **cámara que
+vuela con WASD** con el puntero sobre el mapa, y un **presupuesto medido** que
+enseña lo que cuesta la colisión de tu mapa con su denominador al lado. Al
+probar salen **la mira y el HUD del juego**, y un interruptor decide si hay
+muñecos o la sala está vacía.
+
+Lo que todavía no hace —y es la fase 3 en adelante de
 `docs/propuestas/05-editor-de-mapas.md`—: rampas, vanos, salidas de duelo,
-zonas, simetría por giro, métricas en vivo, deshacer/rehacer y presupuesto. Y
-lo que **no** va a hacer hasta que el motor sepa chocar con ello: rotación
-libre, tejados y triángulos sólidos.
+zonas, simetría por giro y métricas de mapa en vivo. Y lo que **no** va a hacer
+hasta que el motor sepa chocar con ello: rotación libre, tejados y triángulos
+sólidos.
 
 **El mundo va a 60 Hz fijos** (`SIM.hz`) desde la vuelta 44, dibuje el monitor lo
 que dibuje: el frame acumula tiempo real y gasta pasos con arrastre del resto, y
@@ -3713,10 +3791,10 @@ compra en la tienda del 1v1, y en el mapa que reparte (vuelta 72) tampoco.
 de `docs/propuestas/01-escenario-cobertura.md`. No los construyas hasta que el
 Plano A esté validado jugando.
 
-**El editor visual de mapas está a medias, y a propósito** (vuelta 74). La
-**fase 1 está construida** —ver §3 y §5—; las fases 2 a 5 están diseñadas y sin
-tocar en `docs/propuestas/05-editor-de-mapas.md`. Lo que hay que saber antes de
-seguir, porque es lo que decide el alcance:
+**El editor visual de mapas está a medias, y a propósito** (vueltas 74-76). Las
+**fases 1 y 2 están construidas** —ver §3 y §5—; las fases 3 a 5 están diseñadas
+y sin tocar en `docs/propuestas/05-editor-de-mapas.md`. Lo que hay que saber
+antes de seguir, porque es lo que decide el alcance:
 
 - **La colisión es AABB**, y el editor no puede poder construir algo contra lo
   que el motor no sepa chocar. Rotación libre en Y, tejados sólidos y triángulos
@@ -3733,7 +3811,10 @@ seguir, porque es lo que decide el alcance:
   ocupa su huella entera de 0 a 2.6. Lo que no existe es una pieza con **aire
   debajo**, y ése es el dintel de un vano. Es lo que obliga a escribir la
   comprobación de no levantarse debajo de algo, y `slide69` [9] se pondrá rojo,
-  que es para lo que está. Va en la fase 2.
+  que es para lo que está. **Desde la vuelta 76 se puede dibujar** —`base` es un
+  número en el panel— así que el editor **avisa** al dejar una pieza con aire
+  debajo, en vez de prohibirlo o callarlo: se dibuja y para las balas, y lo que
+  falta es esa comprobación.
 
 Lo que **no** entra ahí y conviene no dejarse arrastrar: la duración de una
 ronda, cuántas hay y los segundos de fase de compra **no son del mapa** —viven

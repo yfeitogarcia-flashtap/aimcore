@@ -154,3 +154,47 @@ body.jugando #lienzo { display: none; }
 }
 #dlg-guardar textarea:focus { outline: 1px solid var(--accion); }
 #dlg-guardar .botonera { margin: 12px 0 0; }
+
+/* --- Fase 2 (vuelta 76) ------------------------------------------------- */
+
+h3 {
+  margin: 10px 0 6px;
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--apagado);
+}
+
+/** Presets: la misma caja con otro tamaño y otro `kind`. */
+.formas { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 4px; }
+.formas button { padding: 5px 2px; font-size: 10px; }
+.formas button b { display: block; color: var(--texto); font-size: 11px; }
+.formas button span { color: var(--apagado); }
+
+/** Los candados van justo bajo su dimensión, alineados con ella. */
+.candados label { font-size: 10px; color: var(--apagado); }
+.candados input { width: auto; margin-right: 3px; }
+label.ancho2 { grid-column: span 2; }
+
+.checkline { display: flex; align-items: center; gap: 6px; }
+.checkline input { width: auto; }
+
+/** Un aviso no es un problema: el mapa se guarda igual, pero hay que saberlo. */
+.aviso {
+  margin: 8px 0 0;
+  padding: 6px 8px;
+  border-left: 2px solid var(--naranja);
+  background: #e4462b14;
+  color: var(--texto);
+  font-size: 10px;
+}
+.aviso[hidden] { display: none; }
+
+/** El presupuesto se lee de un vistazo: verde cabe, naranja aprieta. */
+#presupuesto { margin-top: 8px; font-size: 10px; }
+#presupuesto.aprieta { color: var(--naranja); }
+#presupuesto.cabe { color: var(--accion); }
+
+/* La capa del HUD va encima del lienzo del juego y no come clics. */
+#capa { position: absolute; inset: 0; pointer-events: none; }
+#capa .overlay { pointer-events: auto; }
