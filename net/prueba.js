@@ -21,7 +21,7 @@
  * avisos de conexión, las pausas y los números de F3.
  */
 import { masterGain } from '../src/audio/sfx.js'
-import { COLORS, CROSSHAIR, ECONOMY, NET, ROUNDS, TARGET, TEAMS, WEAPONS } from '../src/config.js'
+import { COLORS, CROSSHAIR, DUEL_SCENARIOS, ECONOMY, NET, ROUNDS, TARGET, TEAMS, WEAPONS } from '../src/config.js'
 import { Engine } from '../src/game/engine.js'
 import { Avatar } from '../src/game/avatar.js'
 import { hasLineOfSight } from '../src/game/sight.js'
@@ -32,7 +32,7 @@ import { conRedSimulada, transporteWebSocket } from './transporte.js'
 import { weaponSilhouetteSvg } from '../src/ui/weaponSilhouette.js'
 import { normalizarCodigo } from './codigo.js'
 import { compraAbierta } from './protocolo.js'
-import { codigoDeLaDireccion, direccionDeLaBarra, enlaceDeSala, urlDeSala } from './sala-cliente.js'
+import { codigoDeLaDireccion, direccionDeLaBarra, enlaceDeSala, mapaDeLaDireccion, urlDeSala } from './sala-cliente.js'
 
 const lienzo = document.getElementById('lienzo')
 const aviso = document.getElementById('aviso')
@@ -69,7 +69,15 @@ for (const [nombre, valor] of [
  * cualquier ajuste en mitad de un duelo reconstruía el escenario en caliente. El
  * escenario de una partida no es una preferencia de nadie.
  */
-const ESCENARIO = NET.escenario
+/**
+ * **Y desde la vuelta 72 hay dos mapas de duelo**, así que el de esta partida
+ * sale de la dirección —donde lo puso quien la creó— y no de una constante. Lo
+ * que manda de verdad sigue siendo el servidor: lo dice en la bienvenida, y si
+ * no coincide con lo que se ha montado aquí, la página se recarga con el bueno
+ * (ver `onBienvenida`). Es el mismo reparto que el resto de las opciones de la
+ * sala desde la vuelta 67: el cliente propone, la sala dispone.
+ */
+const ESCENARIO = mapaDeLaDireccion()
 
 /**
  * **El motor completo, con la red enchufada** (vuelta 56). Hasta aquí esta
@@ -90,7 +98,9 @@ const motor = new Engine(lienzo, {
   // se ha pedido —la tecla es suya, reasignable en opciones— y quién la dibuja
   // depende de dónde se juegue: en el juego es el panel de React, aquí es la
   // tienda de abajo. Lo que el motor no hace en red es pausar.
-  onArmoury: () => alternarTienda(),
+  // Y en un mapa que reparte no hay nada que abrir: la tecla no hace nada,
+  // que es más honesto que un panel con todo apagado (vuelta 72).
+  onArmoury: () => { if (cliente.conEconomia) alternarTienda() },
   /**
    * **Apuntando con mirilla se quita la mira de la página** (vuelta 70): la
    * lente trae la suya —cruceta fina y punto rojo— y dos miras a la vez es una
@@ -143,7 +153,7 @@ const enlace = { latenciaMs: 0, jitterMs: 0, perdida: 0 }
 const codigo = codigoDeLaDireccion()
 history.replaceState(null, '', direccionDeLaBarra(codigo))
 $('codigo').textContent = codigo
-$('enlace').value = enlaceDeSala(codigo)
+$('enlace').value = enlaceDeSala(codigo, window.location, ESCENARIO)
 
 /**
  * **La página ensambla la red; el motor sólo la usa.** El cliente se construye
@@ -230,7 +240,7 @@ const cliente = new ClienteRed({
   controles: motor.controls,
   oclusores: motor.scenario.occluders,
   transporte: conRedSimulada(
-    transporteWebSocket(urlDeSala(codigo, window.location, paseDeVuelta, compraElegida)),
+    transporteWebSocket(urlDeSala(codigo, window.location, paseDeVuelta, compraElegida, ESCENARIO)),
     enlace,
   ),
 })
@@ -239,6 +249,17 @@ cliente.onBienvenida = (m) => {
   // salida: deducir el color del id (`p1`, `p2`) parece equivalente y no lo es,
   // porque el id es un contador que no para —dos jugadores pueden ser `p3` y
   // `p5` y quedarse otra vez del mismo color—.
+  /**
+   * **El mapa lo dice la sala** (vuelta 72). Si se ha montado otro —alguien
+   * abrió un enlace sin el mapa puesto, o pidió uno y la sala ya existía con
+   * otro—, lo correcto es recargar con el bueno: seguir jugando contra una
+   * geometría que el servidor no tiene sería una corrección por paso contra
+   * paredes que sólo existen en una pantalla.
+   */
+  if (m.escenario && m.escenario !== ESCENARIO) {
+    window.location.href = enlaceDeSala(codigo, window.location, m.escenario)
+    return
+  }
   const mio = equipos[m.equipo % equipos.length]
   const suyo = equipos[(m.equipo + 1) % equipos.length]
   fantasma.setColor(TEAMS[mio].color)
@@ -1206,6 +1227,33 @@ cliente.onEconomia = (eco) => {
   pintarTienda()
 }
 
+/**
+ * **El selector de mapa** (vuelta 72), al lado del de la fase de compra y con
+ * exactamente las mismas reglas: es del anfitrión, sólo mientras no haya
+ * entrado nadie, y cambiarlo **empieza otra partida** —una sala ya creada no se
+ * reconfigura—. La lista sale de `DUEL_SCENARIOS`, derivada del propio dato:
+ * añadir un mapa de duelo es marcarlo `soloDuelo`, no tocar este desplegable.
+ */
+const mapaSel = $('mapaSel')
+for (const [clave, def] of Object.entries(DUEL_SCENARIOS)) {
+  const opcion = document.createElement('option')
+  opcion.value = clave
+  opcion.textContent = def.label
+  mapaSel.appendChild(opcion)
+}
+mapaSel.value = ESCENARIO
+mapaSel.addEventListener('change', () => {
+  if (!puedeConfigurar()) {
+    pintarConfigurable()
+    return
+  }
+  const destino = new URL(window.location.href)
+  destino.searchParams.set('mapa', mapaSel.value)
+  destino.hash = ''
+  destino.pathname = destino.pathname.replace(/\/duelo\/[^/]+$/, '/duelo')
+  window.location.href = destino.toString()
+})
+
 // **El selector de la fase de compra**, en la pantalla donde se crea la partida.
 const selector = $('compraSel')
 for (const segundos of ROUNDS.compraOpciones) {
@@ -1265,20 +1313,36 @@ function puedeConfigurar() {
   return cliente.anfitrion && cliente.ocupadas < 2
 }
 
+/**
+ * **Un mapa que reparte no tiene fase de compra** (vuelta 72), así que su
+ * selector se apaga y dice por qué. No es la misma puerta que la de arriba —eso
+ * es de quién manda; esto es de qué mapa se juega— y por eso se pregunta al
+ * dato del escenario y no al servidor: la respuesta no depende de la sala.
+ */
+function reparteElMapa(clave) {
+  return Boolean(DUEL_SCENARIOS[clave]?.duelo?.dotacion)
+}
+
 function pintarConfigurable() {
   const puede = puedeConfigurar()
-  selector.disabled = !puede
-  selector.title = puede
-    ? 'cambiarla empieza una partida nueva, con otro código'
-    : cliente.anfitrion
-      ? 'ya hay alguien dentro: cambiarla le dejaría fuera'
-      : 'la elige quien crea la partida'
+  const reparte = reparteElMapa(mapaSel.value)
+  selector.disabled = !puede || reparte
+  mapaSel.disabled = !puede
+  selector.title = reparte
+    ? 'este mapa reparte el equipo: no hay tienda ni fase de compra'
+    : puede
+      ? 'cambiarla empieza una partida nueva, con otro código'
+      : cliente.anfitrion
+        ? 'ya hay alguien dentro: cambiarla le dejaría fuera'
+        : 'la elige quien crea la partida'
   // Corto a propósito: va en la fila del número, y el menú no puede crecer.
-  $('compraQuien').textContent = puede
-    ? '· cambiarla empieza otra'
-    : cliente.anfitrion
-      ? '· con rival, ya no'
-      : '· la elige el anfitrión'
+  $('compraQuien').textContent = reparte
+    ? '· el mapa reparte'
+    : puede
+      ? '· cambiarla empieza otra'
+      : cliente.anfitrion
+        ? '· con rival, ya no'
+        : '· la elige el anfitrión'
 }
 pintarConfigurable()
 

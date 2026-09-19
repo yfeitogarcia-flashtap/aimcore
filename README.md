@@ -223,7 +223,8 @@ ven, sin un solo error en pantalla—. El paso a paso completo está en
 
 Se entra por el botón **Duelo 1v1** de la pantalla de inicio. Lleva a la página
 del duelo, que crea una partida sola y enseña su código, el enlace para copiar,
-un campo para entrar en el código de otro y el selector de fase de compra.
+un campo para entrar en el código de otro y los selectores de **mapa** y de fase
+de compra.
 
 **Las opciones de la partida son de quien la crea**, y sólo hasta que entra el
 rival: al que se une por el enlace le salen apagadas, porque cambiarlas no
@@ -253,8 +254,36 @@ plataformas ni rampas — la altura es donde un 1v1 se desequilibra primero, y e
 se añade midiendo, no de entrada.
 
 El Plano A («Largo y Puerta») se queda para el aim trainer y los muñecos, y por
-eso el mapa del duelo **no sale en el selector de escenarios**: no tiene
+eso los mapas del duelo **no salen en el selector de escenarios**: no tienen
 explosivo, ni recogibles, ni nada que buscar.
+
+### El otro mapa: Los Pilares
+
+Se elige en el desplegable de **mapa**, junto al código, antes de pasarle el
+enlace a nadie. Y no es «El Espejo con otras cajas»: **se mueve distinto**.
+
+- **Pesa menos.** La gravedad de este mapa es menos de la mitad de la normal, así
+  que un salto sube **3.3 unidades** —contra 1.25— y dura **1.4 segundos** contra
+  medio. Coger carrerilla antes de saltar cambia de verdad dónde acabas.
+- **El aire manda.** El techo del air-strafe sube a 12 u/s (contra 9.5), y con un
+  vuelo tan largo eso son 17 unidades de salto. Los vanos entre plataformas están
+  medidos contra ese número: quien no estrafee se queda corto.
+- **Hay altura, y subir es una decisión.** Las **torres** (3.2 u) se suben desde
+  el suelo justo, y las **atalayas** (6 u) sólo desde una torre. La del centro es
+  lo único que corta la línea recta entre las dos salidas, y para tomarla hay que
+  cruzar un vano a la vista de todos.
+- **Y las líneas de tiro son largas**: la sala mide 56 de lado y las dos salidas
+  están a 48 unidades, sin verse entre ellas.
+
+**Aquí no se compra: se reparte.** No hay tienda, ni dinero, ni elección de arma.
+Cada ronda —y también al reaparecer— te dan **Scout, chaleco y el cuchillo**, y
+nada más. Sin casco a propósito: con el chaleco hacen falta dos balas al cuerpo y
+**una a la cabeza sigue matando de un tiro**, que es lo que hace que un mapa de
+francotiradores se juegue apuntando arriba. Tampoco hay fase de compra: las
+rondas se encadenan, y el selector de fase sale apagado diciendo por qué.
+
+Lo demás es idéntico a El Espejo: las mismas 14 rondas, la misma condición de
+victoria, la misma reconexión.
 
 ### Las rondas
 
@@ -266,9 +295,8 @@ tandas de dos rondas hasta que alguien acabe una tanda por delante.
 
 Entre ronda y ronda hay **15 segundos de fase de compra**: cada jugador vuelve a
 su salida, se queda encerrado en una caja de 4 u alrededor de ella y **no recibe
-la posición del rival**, así que no hay forma de verse ni de dispararse. Todavía
-no hay tienda —no hay economía— así que de momento es la ventana para elegir con
-qué sales.
+la posición del rival**, así que no hay forma de verse ni de dispararse. Es la
+ventana de la tienda, que se cuenta un poco más abajo.
 
 Todo es configurable en `ROUNDS` (`src/config.js`).
 
@@ -310,6 +338,11 @@ sabes no cambiará de sitio.
 
 **Con el arma en la mano, el clic derecho pone y quita el supresor.** No cuesta
 dinero y se puede hacer en cualquier momento — es tu arma.
+
+**Y en Los Pilares nada de esto existe.** Ese mapa reparte el equipo en vez de
+venderlo, así que no hay tienda, ni dinero, ni fase de compra: la tecla de la
+armería no abre nada y el selector de fase sale apagado. No es lo mismo que
+elegir «sin fase», que es justo lo contrario —ahí se compra todo el rato—.
 
 ### El dinero
 

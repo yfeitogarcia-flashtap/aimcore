@@ -32,7 +32,7 @@
  * palanca manual para hablar con el huésped desde la página de desarrollo, que
  * es lo que usan los bancos.
  */
-import { NET } from '../src/config.js'
+import { NET, escenarioDeDuelo } from '../src/config.js'
 import { generarCodigo, normalizarCodigo, rutaDeSala } from './codigo.js'
 
 /** El código que pide la dirección, o uno nuevo. */
@@ -52,7 +52,7 @@ export function codigoDeLaDireccion(ubicacion = window.location) {
  * @param {string} codigo
  * @param {Location} [ubicacion]
  */
-export function urlDeSala(codigo, ubicacion = window.location, pase = null, compra = null) {
+export function urlDeSala(codigo, ubicacion = window.location, pase = null, compra = null, mapa = null) {
   // **El pase de reconexión viaja en la dirección** (vuelta 62), no en un
   // mensaje: el servidor tiene que decidir si esto es una butaca nueva o una que
   // ya estaba **antes** de que llegue ningún mensaje, que es cuando reparte
@@ -65,6 +65,13 @@ export function urlDeSala(codigo, ubicacion = window.location, pase = null, comp
   const partes = []
   if (pase) partes.push(`pase=${encodeURIComponent(pase)}`)
   if (compra !== null && Number.isFinite(compra)) partes.push(`compra=${compra}`)
+  /**
+   * **Y en qué mapa se juega** (vuelta 72), por el mismo camino y por el mismo
+   * motivo: desde que hay dos mapas de duelo, cuál es se decide **al crear la
+   * sala** —antes de que llegue ningún mensaje— y sólo cuenta lo que diga quien
+   * la creó.
+   */
+  if (mapa) partes.push(`mapa=${encodeURIComponent(mapa)}`)
   const cola = partes.length ? `?${partes.join('&')}` : ''
   if (sirveElHuesped(ubicacion)) {
     const esquema = ubicacion.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -98,9 +105,23 @@ export function sirveElHuesped(ubicacion = window.location) {
  * dictar; con Vite esa ruta la inventa su servidor de desarrollo pero el enlace
  * sigue saliendo con almohadilla, que es lo que valía hasta ahora.
  */
-export function enlaceDeSala(codigo, ubicacion = window.location) {
-  if (sirveElHuesped(ubicacion)) return `${ubicacion.origin}/duelo/${codigo}`
-  return `${ubicacion.origin}${ubicacion.pathname}#${codigo}`
+export function enlaceDeSala(codigo, ubicacion = window.location, mapa = null) {
+  /**
+   * **Y el mapa va en el enlace** (vuelta 72). Podría no ir —el servidor dice
+   * en la bienvenida en qué mapa se juega de verdad, y la página se corrige—,
+   * pero corregirse es **recargar**: quien abre el enlace de una partida en Los
+   * Pilares vería El Espejo un instante y luego un recargado. Con el mapa
+   * puesto, monta el bueno a la primera. Sigue siendo el servidor quien manda:
+   * esto sólo ahorra el rebote.
+   */
+  const cola = mapa ? `?mapa=${encodeURIComponent(mapa)}` : ''
+  if (sirveElHuesped(ubicacion)) return `${ubicacion.origin}/duelo/${codigo}${cola}`
+  return `${ubicacion.origin}${ubicacion.pathname}${cola}#${codigo}`
+}
+
+/** El mapa que pide la dirección, saneado contra el catálogo de duelo. */
+export function mapaDeLaDireccion(ubicacion = window.location) {
+  return escenarioDeDuelo(new URLSearchParams(ubicacion.search).get('mapa') ?? '')
 }
 
 /**

@@ -37,7 +37,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as THREE from 'three'
 import { WebSocketServer } from 'ws'
-import { NET, SIM, SIM_STEP_MS } from '../src/config.js'
+import { NET, SIM, SIM_STEP_MS, escenarioDeDuelo } from '../src/config.js'
 import { Scenario } from '../src/game/scenario.js'
 import { MSG } from './protocolo.js'
 import { Partida } from './partida.js'
@@ -91,14 +91,21 @@ class Sala {
    *   antes de que llegue ningún mensaje. Quien entra después no la cambia — el
    *   segundo jugador no puede reescribirle la partida al primero.
    */
-  constructor(codigo, compraSegundos = null) {
+  constructor(codigo, compraSegundos = null, mapa = null) {
     this.codigo = codigo
+    /**
+     * **En qué mapa se juega esta sala** (vuelta 72). Como la fase de compra:
+     * lo decide quien la crea, viaja en la dirección del socket y al segundo en
+     * entrar se le ignora. El saneado es el compartido (`escenarioDeDuelo`), no
+     * uno de aquí: dos saneados es como una sala acaba jugándose en dos mapas.
+     */
+    this.mapa = escenarioDeDuelo(mapa ?? ESCENARIO)
     /**
      * El escenario se monta **una vez por sala**, no por conexión: son 20 piezas
      * de geometría con sus oclusores, y montarlo dos veces serían dos mundos
      * distintos con los mismos datos.
      */
-    this.escenario = new Scenario(new THREE.Scene(), ESCENARIO)
+    this.escenario = new Scenario(new THREE.Scene(), this.mapa)
     this.partida = new Partida({
       escenario: this.escenario,
       colchon: COLCHON,
@@ -278,10 +285,10 @@ class Sala {
  */
 const salas = new Map()
 
-function salaDe(codigo, compraSegundos = null) {
+function salaDe(codigo, compraSegundos = null, mapa = null) {
   let sala = salas.get(codigo)
   if (!sala) {
-    sala = new Sala(codigo, compraSegundos)
+    sala = new Sala(codigo, compraSegundos, mapa)
     salas.set(codigo, sala)
   }
   return sala
@@ -519,7 +526,10 @@ servidor.on('upgrade', (peticion, socket, cabeza) => {
     // por el mismo motivo: sólo la pone quien crea la sala (vuelta 64).
     const compra = url.searchParams.get('compra')
     const segundos = compra === null ? null : Number(compra)
-    salaDe(codigo, Number.isFinite(segundos) ? segundos : null).entra(ws, url.searchParams.get('pase'))
+    // Y el mapa, por el mismo camino y con el mismo reparto: sólo cuenta el de
+    // quien crea la sala.
+    const sala = salaDe(codigo, Number.isFinite(segundos) ? segundos : null, url.searchParams.get('mapa'))
+    sala.entra(ws, url.searchParams.get('pase'))
   })
 })
 

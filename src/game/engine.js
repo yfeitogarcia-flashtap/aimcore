@@ -1090,11 +1090,18 @@ export class Engine {
   _publishWeapon(settings) {
     // El silenciador sólo cuenta si el arma **vigente** lo admite: la pistola lo
     // lleva y el Rift no, así que esto cambia al cambiar de ranura.
-    // **En red el supresor es del inventario, no del ajuste guardado**: es del
-    // arma de esta partida, y quien lleva la cuenta de lo que tienes es el
-    // servidor (vuelta 64). Fuera de la red sigue siendo el ajuste de siempre.
-    const puesto = this.enRed
-      ? Boolean(this._invRed?.supresor?.[this.weaponKey])
+    // **Con economía el supresor es del inventario, no del ajuste guardado**: es
+    // del arma de esta partida, y quien lleva la cuenta de lo que tienes es el
+    // servidor (vuelta 64). Sin ella sigue siendo el ajuste de siempre.
+    //
+    // **Y la pregunta es si hay inventario, no si hay red** (vuelta 72): un
+    // huésped sin rondas no manda ninguno, así que con `enRed` a secas esto
+    // leía un `null` y el supresor no se podía poner **de ninguna manera** —ni
+    // por el ajuste, que se ignoraba, ni por el servidor, que no contesta—. Se
+    // deduce del dato que llega, que es la regla de la casa: un segundo
+    // interruptor de «aquí hay economía» sería otra cosa que se desincroniza.
+    const puesto = this._invRed
+      ? Boolean(this._invRed.supresor?.[this.weaponKey])
       : Boolean(settings.suppressor[this.weaponKey])
     this.suppressorEnabled = puesto && this.weapon.supportsSuppressor
     // **Y lo que pesa se nota al andar.** Va aquí y no en `_equipSlot` porque
@@ -1343,8 +1350,10 @@ export class Engine {
   _alternarSupresor() {
     const arma = this.weapon
     if (!arma?.supportsSuppressor) return
-    if (this.enRed) {
-      // En red se pide: lo que tienes lo lleva el servidor.
+    if (this._invRed) {
+      // Con inventario del servidor se pide: lo que tienes lo lleva él. Y la
+      // condición es tener inventario y no estar en red, por lo mismo que en
+      // `_publishWeapon` (vuelta 72).
       this.net.comprar('supresor', this.weaponKey)
       return
     }
@@ -2334,14 +2343,14 @@ export class Engine {
       // **Se conmuta el del arma que llevas**, no un interruptor del jugador:
       // desde la vuelta 43 cada arma tiene el suyo y la armería enseña los tres.
       // Un arma que no lo admita no se toca.
-      case 'suppressor': {
-        if (!this.weapon.supportsSuppressor) break
-        const suppressor = getSettings().suppressor
-        updateSettings({
-          suppressor: { ...suppressor, [this.weaponKey]: !suppressor[this.weaponKey] },
-        })
+      // **Y por el mismo camino que el clic derecho** (vuelta 72). Aquí había una
+      // segunda copia que escribía el ajuste siempre, y en una partida con
+      // economía el ajuste no es lo que se lleva: el supresor salía con el clic
+      // derecho y **no con su tecla**, que es la diferencia entre modos que la
+      // vuelta 63 llama fallo de producto.
+      case 'suppressor':
+        this._alternarSupresor()
         break
-      }
       case 'options':
         if (this.isLocked) document.exitPointerLock()
         this.callbacks.onOpenOptions?.()

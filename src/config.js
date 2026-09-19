@@ -869,6 +869,33 @@ export const LEGACY_WEAPON_KEYS = {
  * que te quedas cuando la principal está vacía o no es la adecuada para la
  * distancia, y para eso tiene que estar siempre.
  */
+/**
+ * **La física de un mapa** (vuelta 72), con `MOVEMENT` como valor por defecto.
+ *
+ * Hasta aquí la gravedad, el impulso del salto y el techo del aire eran del
+ * juego. Con un mapa pensado para volar —gravedad baja y air-strafe, al estilo
+ * de los mapas de francotirador de Counter-Strike— pasan a ser **del mapa**, y
+ * `MOVEMENT` pasa a ser lo que vale si el mapa no dice otra cosa.
+ *
+ * **Sale del escenario y no de un ajuste ni de un modo**, y eso es lo que la
+ * hace segura en red: los dos extremos montan el mismo mapa —lo dice la sala— y
+ * derivan los mismos números sin que viaje ninguno. Un campo de física en el
+ * protocolo sería una física que se puede mentir.
+ *
+ * Y son **tres números y no cuatro**: el modelo del aire (`airVector`), la
+ * aceleración aérea y el resto del movimiento siguen siendo del juego. Lo que
+ * un mapa puede cambiar es cuánto pesas, cuánto saltas y hasta dónde puedes
+ * acelerar en el aire; cómo se acelera, no.
+ */
+export function fisicaDeEscenario(key) {
+  const propia = (key && SCENARIOS[key]?.fisica) || null
+  return {
+    gravity: propia?.gravity ?? MOVEMENT.gravity,
+    jumpSpeed: propia?.jumpSpeed ?? MOVEMENT.jumpSpeed,
+    airStrafeMaxSpeed: propia?.airStrafeMaxSpeed ?? MOVEMENT.airStrafeMaxSpeed,
+  }
+}
+
 export const PRIMARY_WEAPONS = Object.fromEntries(
   Object.entries(WEAPONS).filter(([, weapon]) => weapon.slot === 'primary'),
 )
@@ -1771,6 +1798,15 @@ export const COVER = {
     bloque: 4.8,
     plataforma: 2.6,
     parapeto: 3.8,
+    /**
+     * **Las dos alturas de Los Pilares** (vuelta 72). No son cobertura: son
+     * suelo. Y sus números salen de la física de ese mapa, no de gusto: con su
+     * gravedad un salto sube 3.26 u, así que a la **torre** (3.2) se sube desde
+     * el suelo —por los pelos, contando el escalón— y a la **atalaya** (6.0)
+     * sólo desde una torre. Subir es una decisión y no un paseo.
+     */
+    torre: 3.2,
+    atalaya: 6.0,
   },
 
   /**
@@ -1790,6 +1826,10 @@ export const COVER = {
     plataforma: '#3A3A3A',
     parapeto: '#9A9A9A',
     rampa: '#4E4E4E',
+    // Siguen la rampa: más alto, más claro. La atalaya es lo más claro del
+    // juego porque es lo más alto, que es lo que la codificación promete.
+    torre: '#8E8E8E',
+    atalaya: '#D2D2D2',
   },
 
   /** Aristas: un tono por encima del relleno, para que el bloque tenga borde. */
@@ -2103,6 +2143,145 @@ export const SCENARIOS = {
      * Salen del mismo barrido que las del Plano A (`rutas-buscar.mjs`), con las
      * dos bandas de aparición excluidas.
      */
+    routes: [],
+  },
+
+  /**
+   * **Los Pilares: el mapa de francotirador** (vuelta 72).
+   *
+   * Inspiración declarada, no copia: los mapas de *scout* de Counter-Strike se
+   * juegan con la gravedad baja, y lo que los hace lo que son no es el arma —es
+   * que el aire se gobierna y llegar a un sitio alto es una decisión con
+   * trayectoria—. Aquí eso sale de tres números (`fisica`) y de un plano hecho
+   * para ellos: torres macizas, vanos anchos y líneas de tiro de punta a punta.
+   *
+   * Las mismas cuatro reglas de El Espejo (vuelta 66): **giro de 180°** y no
+   * espejo, **salidas declaradas con su rumbo**, **fuera del selector de
+   * escenarios** y, aquí sí, altura — que es justo lo que aquella vuelta dejó
+   * para «cuando se pueda medir jugando», y lo que este mapa viene a probar.
+   */
+  pilares: {
+    label: 'Los Pilares',
+    soloDuelo: true,
+    /**
+     * **Sala grande y alta.** 56 de lado contra los 40 del Espejo porque una
+     * línea de tiro de francotirador necesita fondo, y 20 de alto porque con
+     * esta gravedad un salto encadenado desde una atalaya sube de verdad.
+     */
+    room: { width: 56, depth: 56, height: 20 },
+    spawn: { x: 0, z: 24 },
+
+    /**
+     * **La física del mapa** (vuelta 72), y es lo único de este escenario que
+     * cambia cómo se mueve el jugador. Tres números:
+     *
+     * - `gravity` **13** contra 30. Un salto sube 3.26 u y dura 1.42 s, contra
+     *   1.25 u y 0.58 s. De ahí sale todo lo demás: los vanos, las alturas de
+     *   las torres y que valga la pena coger carrerilla.
+     * - `jumpSpeed` **9.2**: un pelo más que el de siempre, porque lo que
+     *   decide la altura es la gravedad y este número se queda para afinar el
+     *   ápice sin tocar el tiempo de vuelo.
+     * - `airStrafeMaxSpeed` **12** contra 9.5. El techo del aire sube porque
+     *   aquí el aire **es** el juego: con 1.42 s de vuelo, 12 u/s son 17 u de
+     *   salto, que es exactamente el vano más ancho del plano. Un jugador que
+     *   no estrafee cruza 13 y se queda corto.
+     *
+     * Lo que **no** cambia: el modelo del aire, la aceleración, las marchas de
+     * a pie y el peso de las armas. Un mapa puede decir cuánto pesas y hasta
+     * dónde aceleras; cómo se acelera, no.
+     */
+    fisica: {
+      gravity: 13,
+      jumpSpeed: 9.2,
+      airStrafeMaxSpeed: 12,
+    },
+
+    duelo: {
+      /**
+       * **48 u entre salidas**, en extremos opuestos y con su rumbo. La línea
+       * recta entre las dos la corta la torre central, así que el primer
+       * segundo no decide la ronda.
+       */
+      salidas: [
+        { x: 0, z: 24, yaw: 0 },
+        { x: 0, z: -24, yaw: Math.PI },
+      ],
+      /**
+       * **Aquí no se compra: se reparte** (vuelta 72). El mapa declara con qué
+       * sale cada jugador en cada ronda —y al reaparecer—, y con eso el
+       * servidor no necesita ni tienda ni dinero: `sinEconomia` no es «la
+       * tienda cerrada», que es lo que significaba una fase de compra a cero,
+       * sino que **no hay tienda**.
+       *
+       * Scout, chaleco y cuchillo. Sin casco a propósito: con el chaleco hacen
+       * falta dos balas al cuerpo y **una a la cabeza sigue matando**, que es
+       * lo que hace que un mapa de francotiradores se juegue apuntando arriba.
+       */
+      sinEconomia: true,
+      dotacion: { arma: 'scout', chaleco: true, casco: false },
+    },
+
+    /**
+     * **Media sala, y la otra media la pone el giro.** Lo de aquí es el lado
+     * del que sale en (0, 24).
+     *
+     * Y **todas las piezas nacen en el suelo**, incluidas las torres: no hay ni
+     * un voladizo. No es una limitación de estilo, es una regla con fecha —
+     * `slide69` [9] la vigila—: la colisión sabe pasar por debajo de una pieza
+     * con la base levantada, y el día que exista una hay que escribir la
+     * comprobación de no levantarse dentro de ella. Un mapa de saltos es el
+     * peor sitio para estrenar ese agujero.
+     */
+    boxes: [
+      ...giro180([
+        // **La pantalla de aparición**, como en El Espejo: desde la salida del
+        // otro no se ve el punto donde apareces. `media` y no más alta por lo
+        // de siempre (vuelta 43): a metro y medio de la cara, una pieza alta es
+        // una pared gris.
+        { x: -9, z: 19.5, w: 18, d: 1.2, kind: 'media' },
+
+        // **Las dos torres de salida.** Lo primero a lo que se sube, y se sube
+        // desde el suelo: 3.2 contra los 3.26 que da un salto aquí. Desde
+        // arriba se ve el centro entero por encima de la pantalla.
+        { x: -20, z: 9, w: 6, d: 6, kind: 'torre' },
+        { x: 14, z: 9, w: 6, d: 6, kind: 'torre' },
+
+        // **La atalaya del flanco.** A 6 u sólo se llega desde una torre, y de
+        // una torre a ella hay 9 u de vano: se cruza estrafeando, no andando.
+        // Es el sitio desde el que se domina el carril largo de ese lado.
+        { x: -25, z: -4, w: 5, d: 8, kind: 'atalaya' },
+
+        // Cobertura de a pie en el centro: lo que deja cruzar sin volar, para
+        // el que prefiera jugar el mapa por abajo.
+        { x: -6, z: 11, w: 5, d: 1.6, kind: 'baja' },
+        { x: 6.5, z: 3.5, w: 1.6, d: 7, kind: 'media' },
+        { x: -14, z: 1, w: 4, d: 1.6, kind: 'baja' },
+
+        // Bordillo al pie de la torre del este: se salta, y desde él la torre
+        // queda a un salto corto en vez de a uno justo.
+        { x: 14, z: 16, w: 6, d: 1.5, kind: 'bordillo' },
+      ]),
+
+      /**
+       * **La torre central**, centrada en el origen y por eso fuera del giro.
+       * Es lo único que corta la recta entre las dos salidas, y es `atalaya`:
+       * quien la toma ve las dos mitades, y para tomarla hay que llegar desde
+       * una torre cruzando 8.5 u de vano a la vista de todos.
+       */
+      { x: -4, z: -4, w: 8, d: 8, kind: 'atalaya' },
+    ],
+
+    ramps: [],
+
+    /** Una banda por salida, igual que El Espejo. */
+    spawnZone: [
+      { x: -28, z: 19.5, w: 56, d: 8.5 },
+      { x: -28, z: -28, w: 56, d: 8.5 },
+    ],
+
+    /** Ni explosivo ni recogibles: es un mapa de duelo. */
+    objectiveSites: [],
+    pickups: [],
     routes: [],
   },
 
@@ -2520,6 +2699,27 @@ export const SCENARIOS = {
 export const TRAINER_SCENARIOS = Object.fromEntries(
   Object.entries(SCENARIOS).filter(([, definition]) => !definition.soloDuelo),
 )
+
+/**
+ * **Los mapas de duelo**, derivados del propio dato (`soloDuelo`) igual que
+ * `TRAINER_SCENARIOS` se deriva de lo contrario. Desde la vuelta 72 hay dos —El
+ * Espejo y Los Pilares— y por eso hace falta una lista: hasta aquí el escenario
+ * del duelo era un solo nombre en `NET.escenario`.
+ */
+export const DUEL_SCENARIOS = Object.fromEntries(
+  Object.entries(SCENARIOS).filter(([, def]) => def.soloDuelo),
+)
+
+/**
+ * **Qué mapa juega una sala**, saneado. Lo miran los dos extremos —el huésped
+ * al crearla y la página al montar el motor— y por eso vive aquí y no en cada
+ * uno: dos saneados es como una sala acaba jugándose en dos mapas distintos, y
+ * el síntoma sería una corrección por paso contra paredes que sólo existen en
+ * un lado.
+ */
+export function escenarioDeDuelo(key) {
+  return DUEL_SCENARIOS[key] ? key : NET.escenario
+}
 
 export function scenarioHasCover(key) {
   const definition = SCENARIOS[key] ?? SCENARIOS.empty

@@ -53,7 +53,7 @@
  * clavada en el centro a la altura de pie, que es la línea base de puntería.
  */
 
-import { COVER, LANDING, MOVEMENT, ROOM, weaponSpeedFactor } from '../config.js'
+import { COVER, LANDING, MOVEMENT, ROOM, fisicaDeEscenario, weaponSpeedFactor } from '../config.js'
 import { defaultKeybinds, keysOf, typingInField } from '../keybinds.js'
 
 const DEG_TO_RAD = Math.PI / 180
@@ -226,6 +226,8 @@ export class MovementController {
 
     /** Sala vigente. La marca el escenario; la vacía usa la de siempre. */
     this.room = ROOM
+    /** Física vigente. La marca el escenario; sin él, la de `MOVEMENT`. */
+    this.fisica = fisicaDeEscenario(null)
     /** Caja de la fase de compra, o null. Ver `setCorralito`. */
     this._corralito = null
 
@@ -460,6 +462,17 @@ export class MovementController {
     const spawn = scenario ? scenario.spawn : null
     this.spawnX = spawn ? spawn.x : 0
     this.spawnZ = spawn ? spawn.z : 0
+    /**
+     * **Y su física** (vuelta 72). Un mapa puede pesar menos: la gravedad, el
+     * impulso del salto y el techo del aire salen de aquí y no de `MOVEMENT`,
+     * que pasa a ser **lo que vale si el mapa no dice otra cosa**.
+     *
+     * Se lee del escenario y no de un ajuste ni de un modo, y eso es lo que la
+     * hace segura en red: los dos extremos montan el mismo mapa —lo dice la
+     * sala— y por tanto derivan los mismos números sin que viaje ninguno. Un
+     * campo de física en el protocolo sería una física que se puede mentir.
+     */
+    this.fisica = scenario ? scenario.fisica : fisicaDeEscenario(null)
   }
 
   /**
@@ -816,7 +829,7 @@ export class MovementController {
     if (x * delta >= 0) return
     this.airStrafing = true
 
-    const max = MOVEMENT.airStrafeMaxSpeed
+    const max = this.fisica.airStrafeMaxSpeed
     if (this._airSpeed >= max) return
     const cap = MOVEMENT.airStrafeMaxYawRateDeg * DEG_TO_RAD * dt
     const turned = Math.abs(delta) < cap ? Math.abs(delta) : cap
@@ -882,7 +895,7 @@ export class MovementController {
 
     // El techo, igual de duro que en el modelo escalar: aquí se acota el módulo
     // del vector, que es el **único** sitio donde puede crecer.
-    const max = MOVEMENT.airStrafeMaxSpeed
+    const max = this.fisica.airStrafeMaxSpeed
     const speed = Math.hypot(this._airVelX, this._airVelZ)
     if (speed > max) {
       const scale = max / speed
@@ -997,7 +1010,7 @@ export class MovementController {
   _apexFeetY() {
     const v0 = this._launchVelocity
     if (v0 <= 0) return this.feetY
-    return this._launchY + (v0 * v0) / (2 * MOVEMENT.gravity)
+    return this._launchY + (v0 * v0) / (2 * this.fisica.gravity)
   }
 
   /**
@@ -1092,7 +1105,7 @@ export class MovementController {
    */
   _fallSpeedFrom(ground) {
     const drop = this._launchY - ground
-    const impactSq = this._launchVelocity * this._launchVelocity + 2 * MOVEMENT.gravity * drop
+    const impactSq = this._launchVelocity * this._launchVelocity + 2 * this.fisica.gravity * drop
     return impactSq > 0 ? Math.sqrt(impactSq) : 0
   }
 
@@ -1111,7 +1124,7 @@ export class MovementController {
     const ground = this.scenario
       ? this.scenario.groundHeightAt(position.x, position.z, this.feetY)
       : 0
-    const total = (this._launchVelocity + this._fallSpeedFrom(ground)) / MOVEMENT.gravity
+    const total = (this._launchVelocity + this._fallSpeedFrom(ground)) / this.fisica.gravity
     const left = total - this._airTime
     return left > 0 ? left : 0
   }
@@ -1124,7 +1137,7 @@ export class MovementController {
   _feetYAfter(dt) {
     if (!this.airborne) return this.feetY
     const t = this._airTime + dt
-    return this._launchY + this._launchVelocity * t - 0.5 * MOVEMENT.gravity * t * t
+    return this._launchY + this._launchVelocity * t - 0.5 * this.fisica.gravity * t * t
   }
 
   _updateVertical(dt, now) {
@@ -1152,7 +1165,7 @@ export class MovementController {
         marchaDeSalida = MOVEMENT.slide.keepSpeedOnJump ? this.currentSpeed : this.topSpeed
         this._terminarDeslizamiento(now)
       }
-      this._takeOff(MOVEMENT.jumpSpeed * this.jumpFactor(now), this._isChainPress(), dt, marchaDeSalida)
+      this._takeOff(this.fisica.jumpSpeed * this.jumpFactor(now), this._isChainPress(), dt, marchaDeSalida)
       // La pulsación se gasta al despegar, y ésa es la mitad del mecanismo: una
       // pulsación despega **una vez**. Dejar SPACE apoyada ya no rebota en cada
       // aterrizaje, porque la tecla apretada no vuelve a ser un flanco.
@@ -1178,7 +1191,7 @@ export class MovementController {
       this._takeOff(0, false, dt, marchaAlCaer)
     }
 
-    const g = MOVEMENT.gravity
+    const g = this.fisica.gravity
     this._airTime += dt
     const t = this._airTime
     this.feetY = this._launchY + this._launchVelocity * t - 0.5 * g * t * t
@@ -1453,7 +1466,7 @@ export class MovementController {
    * que un mismo salto suena y hunde la cámara igual a 60 que a 240 Hz.
    */
   _land(ground, now) {
-    const g = MOVEMENT.gravity
+    const g = this.fisica.gravity
     const fallSpeed = this._fallSpeedFrom(ground)
 
     // Instante exacto del contacto, por el mismo motivo que la velocidad de

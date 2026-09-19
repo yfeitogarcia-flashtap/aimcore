@@ -245,7 +245,7 @@
   /* **Un control que no es tuyo se ve apagado** (vuelta 67): el desplegable de
      la fase de compra sólo lo maneja quien creó la partida, y al que se une por
      el enlace tiene que decírselo la forma, no un intento fallido. */
-  #compraSel:disabled { opacity: .45; cursor: not-allowed; border-style: dashed; }
+  #compraSel:disabled, #mapaSel:disabled { opacity: .45; cursor: not-allowed; border-style: dashed; }
   .linea button { background: #2FCB82; color: #08130D; border: 0; border-radius: 3px;
     padding: 6px 10px; font: inherit; font-weight: 700; cursor: pointer; }
   #otro { text-transform: uppercase; letter-spacing: .12em; }
@@ -393,8 +393,13 @@
          nueva, que es lo único honesto: una sala ya creada no se reconfigura.
          Lo que se enseña debajo es lo que dice el servidor, no lo que pide el
          selector. -->
-    <div class="fila"><span class="apagado">fase de compra</span>
-      <select id="compraSel" class="control"></select></div>
+    <!-- **El mapa va en la misma fila que la fase** (vuelta 72), no en una
+         nueva: el menú ya se salió de una ventana pequeña una vez por crecer un
+         renglón (vuelta 62) y las dos cosas son lo mismo —opciones de la
+         partida, de quien la crea y hasta que entre alguien—. -->
+    <div class="fila"><span class="apagado">mapa y compra</span>
+      <span><select id="mapaSel" class="control"></select>
+      <select id="compraSel" class="control"></select></span></div>
 
     <!-- **De quién son las opciones** (vuelta 67) va aquí y no en una fila
          nueva: el menú ya se salió de una ventana pequeña una vez por crecer un

@@ -59,7 +59,7 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Capa | Dónde | Qué hace |
 |---|---|---|
 | Motor | `src/game/` | Bucle rAF, input, raycast, dianas, armas, panel de acciones. **Vive fuera de React.** El mundo avanza en **pasos fijos de 60 Hz** (`_advanceSimulation` / `_simStep`); el frame sólo dibuja. Con `usarRed(cliente)` la verdad del movimiento, el disparo, la vida y la reaparición pasa al servidor (vuelta 56). |
-| Escenario | `src/game/scenario.js` | Convierte los datos de `SCENARIOS` en mallas, colisionadores, oclusores y **rutas**. Y publica su sala (`scenario.room`) y su zona de aparición (`isInSpawnZone`). |
+| Escenario | `src/game/scenario.js` | Convierte los datos de `SCENARIOS` en mallas, colisionadores, oclusores y **rutas**. Y publica su sala (`scenario.room`), su zona de aparición (`isInSpawnZone`), su **física** (`scenario.fisica`) y lo que reparte si en él no se compra (`dotacionDeDuelo`). |
 | Línea de visión | `src/game/sight.js` | `hasLineOfSight`: el **único** raycast de «¿se ve eso desde aquí?». Lo usan la aparición y los marcadores. |
 | Sala | `src/game/scene.js` | Rejilla y paredes, reconstruibles con `setRoom`: cada escenario tiene su tamaño. |
 | Audio espacial | `src/audio/spatial.js` | Listener en la cámara y emisores posicionados. **Genérico:** no sabe del explosivo. |
@@ -267,12 +267,76 @@ compra; el camino de una a otra son **45.6 u (7.0 s)**, idéntico en los dos
 sentidos, y el **primer contacto posible cae a los 3.5 s**; asomándose por el
 mismo extremo los dos ven exactamente lo mismo (20 y 32 puestos de 154).
 
-**Y el escenario del duelo es uno, y lo dice `config.js`** (`NET.escenario`).
-Lo miran los dos extremos —la página monta el motor con él y el huésped monta la
-partida—: el cliente predice su propio movimiento contra la geometría que tiene
-montada, así que dos escenarios distintos serían una corrección por paso contra
-paredes que sólo existen en un lado. Hasta la 65 estaba escrito dos veces y
-funcionaba porque decían lo mismo.
+**Y el escenario de una partida es uno, y lo eligen los dos extremos leyendo lo
+mismo.** Hasta la 65 estaba escrito dos veces y funcionaba porque decían lo
+mismo; desde la 65 lo dice `NET.escenario`, que es el de fábrica, y desde la
+**72 hay dos mapas de duelo** y cuál juega una sala lo decide quien la crea. Lo
+que no cambia es la regla: el cliente predice su propio movimiento contra la
+geometría que tiene montada, así que dos escenarios distintos serían una
+corrección por paso contra paredes que sólo existen en un lado. De ahí, tres
+piezas:
+
+- **El mapa viaja en la dirección del socket** (`?mapa=`), como el pase de
+  reconexión y la fase de compra y por el mismo motivo: la sala se configura **al
+  nacer**, antes de que llegue ningún mensaje, y al segundo en entrar se le
+  ignora.
+- **El saneado es uno y lo usan los dos** (`escenarioDeDuelo`, junto a
+  `DUEL_SCENARIOS`, derivada de `soloDuelo` como `TRAINER_SCENARIOS` se deriva de
+  lo contrario). Dos saneados es como una sala acaba jugándose en dos mapas, y el
+  síntoma no sería un error: sería esa corrección por paso.
+- **Y el enlace que se copia lleva el mapa.** No haría falta —el servidor lo dice
+  en la bienvenida y la página se corrige—, pero corregirse es **recargar**: sin
+  él, quien abre el enlace ve El Espejo un instante y luego un rebote.
+
+**La física es del mapa, y `MOVEMENT` es lo que vale si el mapa no dice otra
+cosa** (vuelta 72). Tres números —`gravity`, `jumpSpeed`, `airStrafeMaxSpeed`—
+salen de `fisicaDeEscenario(key)`, los publica `scenario.fisica` y los lee
+`movement.fisica`. Los Pilares pesa 13 contra 30; todos los demás mapas salen con
+la de siempre **dígito a dígito**, que está medido y no supuesto (`pilares72`).
+
+Dos cosas que **son** el diseño:
+
+- **Sale del escenario y no de un ajuste ni de un modo, y eso es lo que la hace
+  segura en red**: los dos extremos montan el mismo mapa —lo dice la sala— y
+  derivan los mismos números **sin que viaje ninguno**. Un campo de física en el
+  protocolo sería una física que se puede mentir; una física que sólo conociera
+  un lado sería una corrección por paso, que es el agujero del arma de la vuelta
+  56 por otra puerta.
+- **Son tres números y no todos.** El modelo del aire (`airVector`), la
+  aceleración aérea y las marchas de a pie siguen siendo del juego. Un mapa puede
+  decir cuánto pesas, cuánto saltas y hasta dónde aceleras en el aire; **cómo** se
+  acelera, no. Si eso se abriera, dos mapas serían dos juegos.
+
+Y lo que un mapa construye con su física sale de ella, no del gusto: en Los
+Pilares un salto sube 3.26 u, así que la `torre` mide **3.2** —se sube desde el
+suelo por los pelos, contando el escalón— y la `atalaya` **6.0** —ahí sólo se
+llega desde una torre—. Si algún día cambia esa gravedad, esas dos alturas se
+recalculan con ella.
+
+**Un mapa puede repartir en vez de vender, y «sin economía» no es «sin fase de
+compra»** (vuelta 72). Son lo contrario: desde la 65, **a cero la tienda no
+cierra**, se compra durante la ronda entera. Lo que declara un mapa con
+`duelo.sinEconomia` y `duelo.dotacion` es que **no hay tienda**, ni dinero, ni
+elección de arma. Cuatro reglas:
+
+- **Se reparte por el inventario de siempre** (`Partida._dotar`), así que llega
+  al cliente por `MSG.ECONOMIA` y el arma **se pone en la mano sola**, que es lo
+  que ya hacía una compra desde la vuelta 67. Una segunda forma de entregar un
+  arma serían dos maneras distintas de acabar empuñándola.
+- **Y se reparte después de quitar.** `_perderEquipo` deja sin chaleco al que
+  cayó, y aquí morir no puede costar el equipo: no hay forma de recuperarlo. El
+  orden de esas dos líneas **es** la regla.
+- **Un mapa que reparte no tiene fase de compra, ni pidiéndola.**
+  `configurarCompra` la fija en cero aunque el selector diga otra cosa, y el
+  selector se apaga diciendo por qué. Quince segundos encerrado en una caja con
+  una tienda que no vende nada son quince segundos de nada, y un control que
+  promete lo que el servidor va a ignorar es el fallo de la vuelta 67 otra vez.
+  **El supresor sigue funcionando**, y el corte va deliberadamente después de él:
+  no es una compra, es un interruptor del arma que ya llevas (vuelta 64).
+- **Y que no hay economía lo dice la bienvenida** (`eco`), que hasta aquí valía
+  1 con que hubiera rondas. Son dos preguntas distintas: se puede jugar a rondas
+  y repartir. Deducirlo de que no llegue un mensaje es adivinar por silencio, que
+  es lo que la 64 ya prohibió.
 
 **Al duelo se entra por un botón, y ese botón es un enlace** (vuelta 66). El
 menú principal tiene **Duelo 1v1** al lado de los otros modos y lo único que hace
@@ -1439,6 +1503,19 @@ Tres consecuencias que **son** el sistema:
   armas que lo admiten—, que es la misma idea que `LEGACY_WEAPON_KEYS` y
   `LEGACY_KEYBINDS`. Y el saneado acota contra `supportsSuppressor`: lo que
   decide es el dato del arma, no lo que diga localStorage.
+- **Y ponérselo es un solo camino** (`_alternarSupresor`), que llaman la tecla y
+  el clic derecho (vuelta 72). Había dos —el clic le preguntaba al servidor y la
+  tecla escribía el ajuste— y en una partida con economía el ajuste **no es lo
+  que llevas**, así que el supresor salía con el ratón y no con su tecla desde la
+  vuelta 64. No lo cazó nadie porque los bancos de audio lo conmutan con la tecla
+  y los de la tienda con el ratón. Es la convención de la 63 en una acción de
+  dos teclas.
+- **Y quién manda sobre él lo dice el dato, no el modo**: vale el ajuste guardado
+  mientras no haya llegado inventario del servidor (`_invRed`), y el del servidor
+  en cuanto llega. `enRed` no servía —un huésped sin rondas no manda inventario,
+  y ahí el supresor no se podía poner de ninguna manera—, y un segundo
+  interruptor de «aquí hay economía» sería una cosa más que mantener en
+  sincronía.
 
 **El retroceso es una fuerza continua, no una animación con final** (vuelta 61).
 El patrón de `WEAPONS[x].recoil` describe **la subida**, que es de una vez; al
@@ -2758,6 +2835,22 @@ Y el de Node además **cachea en memoria lo que sirve, comprimido**, así que ni
 siquiera reconstruir `dist/` por debajo le cambia nada: hay que reiniciar el
 proceso.
 
+**Y el huésped lleva también su propia copia de `config.js`, que no es la del
+build** (vuelta 72). Importa `src/config.js` directamente al arrancar, así que
+las reglas del servidor —los topes de pausa, el escenario de fábrica, la
+economía— son las que había **cuando se lanzó ese proceso**. Reconstruir `dist/`
+no le cambia ninguna.
+
+De ahí un falso negativo que costó un rato: `pausa54-tope` se pasa con los topes
+de pausa bajados, y un huésped viejo seguía dueño del puerto —el `kill` no había
+matado nada— así que las siete aserciones salieron en rojo como si el juego
+hubiera dejado de caducar las pausas. **Comprueba el proceso, no el puerto**: que
+`/salud` conteste no dice que conteste el que acabas de lanzar, y un `node` que
+no consigue el puerto muere con una excepción en su registro y no se queja en
+ningún otro sitio. Y donde se pueda, que lo compruebe el banco: el tope de la
+pausa viaja en la foto, así que `pausa54-tope` **pregunta al huésped cuál lleva**
+antes de medir, y se entera al primer segundo en vez de a los catorce.
+
 **Y el huésped tiene dos interruptores para poder medir, no para jugar** (la
 segunda, de la vuelta 62):
 
@@ -2861,6 +2954,24 @@ pared. Cruzarlo son 45.6 u (7.0 s) y el primer contacto posible cae a los **3.5
 s**. Sin altura y sin rampas a propósito. No sale en el selector de escenarios: el
 Plano A se queda para el entrenamiento y los muñecos.
 
+**Y desde la vuelta 72 hay un segundo mapa de duelo: Los Pilares**, el de
+francotirador. Lo que lo distingue no son las cajas: es que **pesa menos**
+—gravedad 13 contra 30, ápice de 3.25 u y 1.4 s de vuelo contra 1.25 y 0.58— y
+que el techo del aire sube a 12 u/s, así que el air-strafe deja de ser una
+técnica de nicho y pasa a ser cómo se llega a los sitios. Sala de 56×56×20, 48 u
+entre salidas sin verse, torres de 3.2 u que se suben desde el suelo y atalayas
+de 6 u a las que sólo se llega desde una torre, con una centrada que corta la
+recta entre las dos salidas. Simetría por giro, como El Espejo, y fuera del
+selector de escenarios por lo mismo.
+
+**En él no se compra: se reparte.** Ni tienda, ni dinero, ni elección de arma:
+cada ronda y cada reaparición dan **Scout, chaleco y cuchillo**, y nada más —sin
+casco, así que una bala a la cabeza sigue matando de un tiro—. Y no tiene fase de
+compra: las rondas se encadenan. Ojo con no confundirlo con «sin fase» (vuelta
+65), que es lo contrario: allí la tienda no cierra nunca. El mapa se elige en la
+página del duelo antes de pasar el enlace, y viaja en la dirección del socket
+como la fase de compra.
+
 **Y desde la vuelta 56 el duelo lo lleva el motor completo** (la «Opción B»).
 La página del duelo ya no monta una escena mínima: instancia `engine.js` y le
 entrega el cliente de red. Lo que eso trae a una partida real es **el arma de
@@ -2881,7 +2992,9 @@ entre ronda y ronda hay una fase de compra —**15 s de fábrica y elegible al c
 la partida**, incluida la opción de no tenerla— con cada jugador encerrado en su
 caja y sin recibir la posición del otro. Tuning en `ROUNDS` y `ECONOMY`.
 **Sin fase** (la opción de partida rápida) la tienda no cierra: se compra durante
-la ronda entera, con el mundo corriendo (vuelta 65).
+la ronda entera, con el mundo corriendo (vuelta 65). Y desde la **72 un mapa
+puede no tener economía en absoluto** —Los Pilares reparte— que es lo contrario
+de «sin fase», no lo mismo.
 
 **Y desde la vuelta 65 el hitbox del rival es su silueta.** Lo que recibe
 disparos era el cilindro de la colisión —0.4 de radio a cualquier altura— y lo
@@ -2973,6 +3086,12 @@ fue el suelo entre ellas.
 Cruzarlo en diagonal cuesta **8.1 s** en vez de 16.8. El vocabulario de piezas y
 la rampa de grises están en `COVER`; la geometría, en `SCENARIOS`.
 
+Y **dos más que no salen en ese selector, porque son de duelo** (`soloDuelo`, de
+donde se deriva `TRAINER_SCENARIOS` y, desde la 72, también `DUEL_SCENARIOS`):
+**El Espejo** (40×40, plano, simétrico por giro) y **Los Pilares** (56×56×20, con
+su propia física y su propia dotación). El desplegable de mapa de la página del
+duelo sale de esa segunda lista.
+
 **Catorce rutas y 68 puntos**, de 4 a 6 puntos cada una, repartidas por las seis
 zonas: El Balcón 4, Los Cajones 3, El Largo 2, Pasillo trasero 2, Vestíbulo 2 y
 La Puerta 1. Cualquiera de los 68 es sitio de aparición **y** destino de
@@ -3028,6 +3147,12 @@ que se pueda. Límites
 reales de la sala con margen de seguridad. Por encima de `ACCURACY.speedThreshold` y
 siempre en el aire se aplica dispersión de disparo (dirección y magnitud
 aleatorias, sumada al recoil, sin mover la cámara).
+
+**Y desde la vuelta 72 esos tres números son del mapa**: gravedad, impulso del
+salto y techo del aire salen de `scenario.fisica`, con los de `MOVEMENT` de valor
+por defecto. Todos los mapas menos Los Pilares llevan los de siempre, medido
+dígito a dígito. Lo que un mapa **no** puede cambiar es el modelo del aire, la
+aceleración aérea ni las marchas de a pie.
 
 **Armas:** tres arquetipos con cargador, recarga por tiempo (manual con R o
 automática al llegar a 0), patrón de recoil acumulativo por disparo consecutivo
@@ -3264,9 +3389,11 @@ muere con la sala y eres `p1` o `p2`. El plan y lo que cuesta cada paso están e
 `docs/propuestas/02-multijugador-1v1.md`; el despliegue, en
 `docs/despliegue-cloudflare.md`.
 
-**Economía: tampoco.** La armería de la vuelta 42 equipa y nada más — sin precios,
-sin dinero y sin botón de comprar. Comprar depende de rondas y de una economía que
-no existen, y un `$0` en la ficha prometería una mecánica que no hay.
+**La economía existe, pero sólo en el duelo** (vuelta 64). La armería del
+entrenamiento sigue siendo la de la vuelta 42: equipa y nada más, sin precios,
+sin dinero y sin botón de comprar — ahí no hay rondas que la sostengan, y un `$0`
+en la ficha prometería una mecánica que en ese modo no hay. Lo que se compra se
+compra en la tienda del 1v1, y en el mapa que reparte (vuelta 72) tampoco.
 
 **En diseño, aún no construido:** los Planos B (*El Patio*) y C (*La Ejecución*)
 de `docs/propuestas/01-escenario-cobertura.md`. No los construyas hasta que el
@@ -3278,8 +3405,10 @@ tocarlo, en las convenciones. Se entra corriendo y pulsando agacharse —el gest
 pedido era W + CTRL + SPACE y Ctrl+W cierra la pestaña, convención de la vuelta
 27— y se sale soltando, agotando el tiempo o saltando.
 
-**El salto ya no depende del refresco.** Con `jumpSpeed 8.67` y `gravity 30`:
-ápice **1.2528 u** y **578 ms** de vuelo, iguales en cualquier monitor
+**El salto ya no depende del refresco.** Con `jumpSpeed 8.67` y `gravity 30`
+—los de `MOVEMENT`, que desde la vuelta 72 son el **valor por defecto** y no la
+única física posible—: ápice **1.2528 u** y **578 ms** de vuelo, iguales en
+cualquier monitor
 (desviación 0.036% entre 60 y 240 Hz, y esa pizca es dónde caen las muestras, no
 la trayectoria). La cobertura `baja` de 1.25 **es saltable de forma fiable** —
 verificado 12 de 12 a 60, 144 y 240 Hz.

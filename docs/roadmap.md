@@ -349,6 +349,12 @@ Lo que falta no es el formato, es todo lo demás:
   código.
 - **Un editor**, o no. Hoy un mapa se escribe a mano en un fichero de datos, y
   eso ya es utilizable por alguien técnico.
+- **Y qué puede declarar un mapa además de geometría.** Desde la vuelta 72 un
+  escenario trae su **física** (gravedad, salto, techo del aire) y su
+  **dotación** (con qué sale cada uno si en él no se compra). Para un mapa del
+  build eso es una ventaja; para uno de terceros es una superficie que hay que
+  acotar: una gravedad de 0.1 no rompe el netcode —los dos extremos la derivan
+  del mismo dato— pero sí rompe el juego.
 
 - **Bloqueante:** 2.2/2.3 (subir algo pide saber quién lo sube) y almacenamiento,
   que hoy es deliberadamente cero: «una partida vive en memoria y muere con la

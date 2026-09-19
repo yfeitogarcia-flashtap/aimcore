@@ -17,7 +17,7 @@
 
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { COVER, SCENARIOS, coverEdgeColor, coverHeight, scenarioRoom } from '../config.js'
+import { COVER, SCENARIOS, coverEdgeColor, coverHeight, fisicaDeEscenario, scenarioRoom } from '../config.js'
 
 /**
  * Prisma triangular para las rampas: rectángulo abajo y una única arista
@@ -151,6 +151,23 @@ export class Scenario {
   }
 
   /**
+   * **Con qué se sale en este mapa, si es que no se compra** (vuelta 72).
+   *
+   * `sinEconomia` no es «la tienda cerrada» —eso era una fase de compra a
+   * cero—: es que **no hay tienda**, ni dinero, ni elección de arma. Lo declara
+   * el mapa y lo mira el servidor, que es quien reparte; el cliente se entera
+   * por la bienvenida, como de todo lo demás de la sala.
+   *
+   * Devuelve `null` cuando el mapa sí tiene economía, que es lo que deja el
+   * camino de siempre intacto sin un solo `if` extra en la partida.
+   */
+  get dotacionDeDuelo() {
+    const duelo = this.definition.duelo
+    if (!duelo?.sinEconomia) return null
+    return duelo.dotacion ?? { arma: null, chaleco: false, casco: false }
+  }
+
+  /**
    * Sala de este escenario: la de `ROOM` salvo que traiga la suya. Es la
    * medida que consumen la grilla, los límites de movimiento, el acotado de
    * dianas y el tablero de acciones, así que **no hay dos versiones** del
@@ -158,6 +175,17 @@ export class Scenario {
    */
   get room() {
     return scenarioRoom(this.key)
+  }
+
+  /**
+   * **La física de este mapa** (vuelta 72): gravedad, impulso del salto y techo
+   * del aire, con los de `MOVEMENT` de valor por defecto. Sale de aquí por la
+   * misma razón que la sala: **no hay dos versiones** que se puedan
+   * desincronizar, y el servidor la deriva del mismo dato que el cliente sin
+   * que viaje ningún número.
+   */
+  get fisica() {
+    return fisicaDeEscenario(this.key)
   }
 
   /**

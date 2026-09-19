@@ -81,6 +81,17 @@ export class Partida {
     compraSegundos = ROUNDS.compraSegundos,
   }) {
     this.escenario = escenario
+    /**
+     * **La dotación del mapa, si no se compra en él** (vuelta 72). `null` es el
+     * camino de siempre: hay economía y cada uno lleva lo que ha pagado. Con
+     * dotación no hay tienda ni dinero, y cada ronda —y cada reaparición, que
+     * con rondas es lo mismo— reparte esto y nada más.
+     *
+     * Se lee **antes** que la fase de compra, porque es lo que la decide: un
+     * mapa que reparte no tiene fase, y eso no puede depender del orden en que
+     * el constructor lea sus campos.
+     */
+    this.dotacion = escenario.dotacionDeDuelo
     this.compraSegundos = ROUNDS.compraSegundos
     this.configurarCompra(compraSegundos)
     this.colchon = colchon
@@ -170,6 +181,11 @@ export class Partida {
    * es un acotado que se despega. A cero, no hay fase.
    */
   configurarCompra(segundos) {
+    // **Un mapa que reparte no tiene fase de compra, y no es elegible**
+    // (vuelta 72). Quince segundos encerrado en una caja con una tienda que no
+    // vende nada son quince segundos de nada; y dejarlo al selector sería un
+    // control que promete algo que el servidor no va a hacer.
+    if (this.dotacion) { this.compraSegundos = 0; return }
     if (!Number.isFinite(segundos)) return
     this.compraSegundos = Math.max(0, Math.min(60, Math.round(segundos)))
   }
@@ -400,7 +416,14 @@ export class Partida {
          * como hasta la 63. Sin este campo el cliente tendría que **deducirlo**
          * de que no le llegue un mensaje, que es adivinar por silencio.
          */
-        eco: this.conRondas ? 1 : 0,
+        /**
+         * **Si hay economía**, que no es lo mismo que si hay rondas (vuelta
+         * 72): un mapa puede jugarse a rondas y repartir el equipo en vez de
+         * venderlo. El cliente lo necesita para no ofrecer una tienda que el
+         * servidor va a rechazar — que es el fallo de la vuelta 65 por la otra
+         * punta.
+         */
+        eco: this.conRondas && !this.dotacion ? 1 : 0,
       }),
     )
   }
@@ -1217,6 +1240,11 @@ export class Partida {
       this._enviarEconomia(jugador)
       return
     }
+    // **Y en un mapa sin economía se acaba aquí: no hay tienda que abrir.**
+    // El corte va **después** del supresor a propósito: conmutarlo no es una
+    // compra, es un interruptor del arma que ya llevas (vuelta 64), así que
+    // sigue funcionando en cualquier fase y en cualquier mapa.
+    if (this.dotacion) return
     // Lo demás sí es comprar, y **cuándo lo dice `compraAbierta`**, que es la
     // misma función que mira el panel del cliente (vuelta 65). Con fase, la
     // ventana es la fase; sin ella, la ronda entera — a cero se pidió una
@@ -1306,6 +1334,23 @@ export class Partida {
     jugador.casco = false
   }
 
+  /**
+   * **Lo que reparte el mapa**, cuando en él no se compra (vuelta 72). Va por
+   * el inventario de siempre, así que llega al cliente por `MSG.ECONOMIA` y de
+   * ahí al motor: el arma se pone en la mano sola, que es exactamente lo que ya
+   * hace una compra (vuelta 67). Una segunda forma de entregar un arma serían
+   * dos maneras de acabar empuñándola.
+   *
+   * El cuchillo no está aquí porque no hace falta: se lleva siempre, como la
+   * pistola, y eso lo sabe el motor sin preguntarle a nadie.
+   */
+  _dotar(jugador) {
+    if (!this.dotacion) return
+    jugador.inventario.primaria = this.dotacion.arma ?? null
+    jugador.escudo = this.dotacion.chaleco ? ECONOMY.escudoPorChaleco : 0
+    jugador.casco = Boolean(this.dotacion.casco)
+  }
+
   // ------------------------------------------------------------------ rondas
 
   /**
@@ -1353,6 +1398,11 @@ export class Partida {
     this._repartirDinero()
     for (const jugador of this.jugadores.values()) {
       if (jugador.vida <= 0) this._perderEquipo(jugador)
+      // **Y si el mapa reparte, se reparte después de quitar** (vuelta 72): el
+      // orden importa porque `_perderEquipo` deja al que cayó sin chaleco, y en
+      // un mapa sin economía morir no puede costar el equipo — no hay forma de
+      // recuperarlo.
+      this._dotar(jugador)
       this._reaparecer(jugador)
       jugador.historial.fill(null)
       this._enviarEconomia(jugador)

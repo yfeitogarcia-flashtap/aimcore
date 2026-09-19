@@ -8249,6 +8249,181 @@ verde sin tocar nada.
 
 ---
 
+## Ronda 72 — Los Pilares: la física es del mapa, y en él no se compra
+
+Tres encargos que parecían tres y eran uno: **un mapa puede cambiar las reglas
+del mundo**, y todo lo que hace falta para que eso no se convierta en un modo
+aparte.
+
+Hasta aquí el duelo era un juego con un mapa. Desde esta vuelta son dos mapas, y
+uno de ellos pesa menos, se juega con rifle de francotirador y no tiene tienda.
+Nada de eso es un modo: es dato del escenario, y el motor, el servidor y la
+página lo leen del mismo sitio.
+
+### La física sale del escenario, no de un ajuste ni de un modo
+
+`MOVEMENT.gravity`, `MOVEMENT.jumpSpeed` y `MOVEMENT.airStrafeMaxSpeed` dejan de
+ser del juego y pasan a ser **lo que vale si el mapa no dice otra cosa**
+(`fisicaDeEscenario`, `scenario.fisica`, `movement.fisica`).
+
+Que salga del escenario es lo que la hace segura en red, y no es un detalle de
+estilo: **los dos extremos montan el mismo mapa —lo dice la sala— y derivan los
+mismos números sin que viaje ninguno**. Un campo de física en el protocolo sería
+una física que se puede mentir, y una física que sólo conociera un lado sería una
+corrección por paso —el mismo agujero que el arma en cada entrada de la vuelta
+56, y el mismo que el escenario único de la 65—.
+
+Y son **tres números y no todos**: el modelo del aire, la aceleración aérea y las
+marchas de a pie siguen siendo del juego. Un mapa puede decir cuánto pesas,
+cuánto saltas y hasta dónde aceleras en el aire; **cómo** se acelera, no. Si eso
+se abriera, dos mapas serían dos juegos.
+
+Medido (`pilares72` [1], [2], [6], [7]): El Espejo y el Plano A salen con la
+física de siempre **dígito a dígito** —nadie recalibra nada—, montar Los Pilares
+la cambia y volver a El Espejo la devuelve, y el salto pasa de 1.25 u de ápice y
+578 ms a **3.25 u y 1415 ms**. Corriendo, un salto avanza 9.21 u contra 3.79.
+
+### Y las dos alturas del mapa salen de esa física, no del gusto
+
+`torre` 3.2 y `atalaya` 6.0. Con un ápice de 3.26 y el escalón de la casa, a una
+torre **se sube desde el suelo por los pelos** y a una atalaya **no**: hay que
+subir a una torre primero. Es la única forma de que subir sea una decisión y no
+un paseo, y son números derivados —si algún día cambia la gravedad de este mapa,
+estas dos alturas se recalculan con ella—.
+
+### Los Pilares: las cuatro reglas de El Espejo, más la que aquella dejó pendiente
+
+Giro de 180° y no espejo, salidas declaradas con su rumbo, fuera del selector de
+escenarios. Y **altura**, que es justo lo que la vuelta 66 dejó escrito para
+«cuando se pueda medir jugando»: «una plataforma simétrica se puede hacer; la
+altura es donde un 1v1 se desequilibra primero». Este mapa existe para medirlo.
+
+Sala de 56×56×20 —una línea de tiro de francotirador necesita fondo—, 48 u entre
+salidas **sin línea de visión entre ellas**, 16 piezas con su pareja girada y una
+sola centrada en el origen: la atalaya central, que es lo único que corta la
+recta entre las dos salidas.
+
+Y **todas las piezas nacen en el suelo, ni un voladizo**. No es estilo: es la
+regla que `slide69` [9] vigila desde la vuelta 69 —la colisión sabe pasar por
+debajo de una pieza con la base levantada y nadie ha escrito la comprobación de
+no levantarse dentro de ella—. Un mapa de saltos es el peor sitio para estrenar
+ese agujero.
+
+### «Sin economía» no es «sin fase de compra», y la 65 explica por qué
+
+La vuelta 65 cerró un fallo por un lado: «sin fase» significaba que **no había
+ventana donde meter la tienda**, así que la ventana pasó a ser la ronda entera.
+El encargo de esta vuelta es exactamente lo contrario —«nunca se puede comprar
+nada, ni con fase ni sin ella»— y por eso **no se pudo reutilizar el cero**: a
+cero, desde la 65, la tienda está abierta todo el rato.
+
+Lo que decide es el mapa (`duelo.sinEconomia` + `duelo.dotacion`), y de ahí salen
+tres consecuencias que son el sistema:
+
+- **`_dotar` entra por el inventario de siempre**, así que llega al cliente por
+  `MSG.ECONOMIA` y el arma se pone en la mano sola — que es exactamente lo que ya
+  hacía una compra desde la vuelta 67. Una segunda forma de entregar un arma
+  serían dos maneras distintas de acabar empuñándola.
+- **Se reparte después de quitar.** `_perderEquipo` deja sin chaleco al que cayó,
+  y en un mapa sin economía morir no puede costar el equipo: no hay forma de
+  recuperarlo. El orden de esas dos líneas **es** la regla.
+- **Y el mapa que reparte no tiene fase de compra, ni pidiéndola.**
+  `configurarCompra` la fija en cero aunque el selector diga otra cosa. Quince
+  segundos encerrado en una caja con una tienda que no vende nada son quince
+  segundos de nada, y un selector que promete algo que el servidor va a ignorar
+  es el fallo de la vuelta 67 otra vez.
+
+El supresor **sigue funcionando**, y el corte va deliberadamente después de él:
+no es una compra, es un interruptor del arma que ya llevas (vuelta 64).
+
+Y que no hay economía **lo dice la bienvenida** (`eco`), que hasta aquí era `1`
+si había rondas. Ahora son dos preguntas distintas: se puede jugar a rondas y
+repartir el equipo en vez de venderlo. Deducirlo del silencio era lo que la
+vuelta 64 ya había prohibido.
+
+### El mapa viaja como la fase de compra, y por el mismo motivo
+
+`?mapa=` en la dirección del socket: la sala se configura **al nacer**, antes de
+que llegue ningún mensaje, y al segundo en entrar se le ignora. Mismo camino que
+el pase de reconexión (vuelta 62) y la fase de compra (vuelta 64), mismo saneado
+compartido (`escenarioDeDuelo`, junto a `DUEL_SCENARIOS`) por la misma razón que
+`net/codigo.js`: dos saneados es como una sala acaba jugándose en dos mapas, y el
+síntoma sería una corrección por paso contra paredes que sólo existen en un lado.
+
+El enlace que se copia lo lleva también. No haría falta —el servidor dice en la
+bienvenida en qué mapa se juega y la página se corrige— pero corregirse es
+**recargar**, y quien abre el enlace vería El Espejo un instante y luego un
+rebote. Sigue mandando el servidor; esto sólo ahorra el parpadeo.
+
+### Lo que la batería completa destapó, que no era de esta vuelta
+
+Seis bancos salían en rojo y **ninguno por el código de la 72**. Cinco son la
+misma clase de fallo que la vuelta 57 dejó anotada —«una suite verde tampoco
+está verificada por estar verde»— y el sexto era un bug de verdad, de la vuelta
+64, que llevaba ocho vueltas escondido.
+
+- **`tiro46` medía en dos salas a la vez.** Abría dos pestañas sin código, así
+  que cada una creaba su partida y las dos eran `p1`. No da un error: da una
+  tabla entera de `0/0` y `NaN%`. Es el fallo que `red45` ya había tenido y que
+  no se propagó a su hermano.
+- **`jugable48` y `reaparecer50` disparaban contra una pared, desde la vuelta
+  66.** El Espejo aparta las dos salidas 32 u **sin línea de visión entre ellas**
+  —a propósito: la ronda no puede empezar resuelta— y los dos bancos seguían
+  disparando desde el punto de aparición. «0 de daño» se leía como una regresión
+  del disparo en red y era el mapa haciendo su trabajo.
+- **`jugable48` medía una mira de tamaño cero.** Desde la vuelta 67 `#mira` es un
+  ancla de 0×0 con los cuatro trazos posicionados encima, así que su
+  `getBoundingClientRect` da 0 con la mira perfectamente puesta.
+- **Y `reaparecer50` contaba dos teletransportes.** Colocar a un jugador *es* un
+  teletransporte (`MSG.COLOCAR` llama a `movimiento.reset()`), así que dejarlo
+  dentro de la ventana de análisis metía un salto de más y la fila decía «el
+  salto se dibuja en 2 frames».
+
+Y un quinto que no era del banco sino del entorno, y que es el de la §4 de
+`CLAUDE.md` por una puerta nueva: **`pausa54-tope` salió siete veces en rojo
+contra un huésped viejo**. Ese banco se pasa con los topes de pausa bajados, y el
+huésped lleva **su propia copia de `config.js`** —la importa al arrancar, no sale
+del build—, así que un proceso que seguía dueño del puerto medía con los topes de
+antes. El `kill` no había matado nada y `/salud` contestaba tan contento. El
+arreglo va en el banco y es de la misma familia que los otros: **el tope
+viaja en la foto, así que ahora se le pregunta al huésped cuál lleva** antes de
+medir, y se sabe al primer segundo en vez de a los catorce.
+
+Y **el sexto sí era del juego**, que es para lo que sirve pasar la batería
+entera: `audio63` medía el disparo silenciado idéntico al normal, dígito a
+dígito. El supresor tenía **dos caminos** —el clic derecho preguntaba al
+servidor (`_alternarSupresor`) y la tecla escribía el ajuste guardado
+(`_runPanelAction`)— y en una partida con economía el ajuste no es lo que se
+lleva. O sea: **el supresor salía con el ratón y no con su tecla**, desde la
+vuelta 64, y no lo cazó nadie porque los bancos de audio lo conmutan con la
+tecla y los de la tienda con el ratón. Es exactamente la diferencia que la
+vuelta 63 llama fallo de producto, y el arreglo es el de siempre: un solo
+camino, y la tecla llama al del clic.
+
+Debajo había medio fallo más, del mismo sitio: la pregunta era **`enRed`** y
+tenía que ser **«¿hay inventario del servidor?»**. Un huésped sin rondas no
+manda ninguno, así que ahí el supresor no se podía poner de ninguna manera —ni
+por el ajuste, que se ignoraba, ni por el servidor, que no contesta—. Se deduce
+del dato que llega (`_invRed`), no de un segundo interruptor de «aquí hay
+economía» que habría que mantener en sincronía.
+
+Los cinco primeros se arreglaron en el banco y el sexto en el juego, y todos
+tienen el mismo antídoto, que ya estaba escrito: **una proporción necesita que
+se vea su denominador** (vuelta 46) y **un techo necesita que se vea su suelo**
+(vuelta 57). `tiro46` afirma ahora que los dos están en la misma sala antes de
+medir; `jugable48` y `reaparecer50`, que hay línea de tiro entre los dos
+puestos; `pausa54-tope`, que el huésped lleva la config que este proceso está
+leyendo; y `duelo72` [5] afirma que **los dos saltos que compara avanzan de
+verdad** antes de comparar cuál avanza más — sin eso, «7.08 contra 0.00» pasaba
+tan campante. El del supresor tiene su propio guardia, `duelo72` [7]: que la
+tecla y el clic derecho lo dejen donde estaba.
+
+Y una lección de fondo, que es la de la vuelta 57 subida un escalón: **ninguno
+de los seis se vio pasando el banco de la vuelta**. Salieron pasando los de
+todas las demás.
+
+---
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.
@@ -8430,6 +8605,24 @@ objetivo era medir tiempos y rendimiento de verdad.
   abatido, que F3 enseña y esconde los números, que el fantasma viene apagado,
   que tocar un control no captura el ratón, que escribir un código no mueve al
   jugador, y que dos personas se ven, se disparan y se matan.
+
+- **Que la física es del mapa y no se ha escapado a ninguno** (`pilares72.mjs`,
+  sin navegador): que sin mapa, en El Espejo y en el Plano A los tres números
+  salen **idénticos** a los de `MOVEMENT`; que montar Los Pilares los cambia y
+  volver a El Espejo los devuelve —no quedan pegados—; que su salto sube 3.25 u
+  contra 1.25 y avanza 9.21 contra 3.79 **medido paso a paso**, no con la
+  fórmula; que sus torres se suben desde el suelo y sus atalayas no; que las 17
+  piezas tienen su pareja girada salvo la centrada; que las dos salidas están a
+  48 u **sin línea de visión** con la geometría montada; que no sale en el
+  selector de entrenamiento y que el saneado sólo deja pasar mapas de duelo.
+- **Y que en él no se compra, se reparte** (`pilares72.mjs` [8], `duelo72.mjs`):
+  que la bienvenida dice `eco 0` con rondas encendidas; que pedir un arma o un
+  casco no cambia nada ni cobra nada; que la fase de compra sale a cero **y no la
+  abre el selector**; que la ronda 1 empieza jugando; y que al que muere le
+  vuelve la dotación entera en la ronda siguiente —chaleco incluido— sin quedarse
+  un casco que el mapa no reparte. Con dos navegadores además: que los dos montan
+  el mismo mapa desde el enlace, que la Scout sale **en la mano**, que la tecla de
+  la armería no abre nada y que El Espejo sigue exactamente igual.
 
 Lo que **no** está verificado automáticamente: la sensación de juego, el balance
 entre armas y la legibilidad del HUD en pantallas pequeñas. Eso sigue siendo

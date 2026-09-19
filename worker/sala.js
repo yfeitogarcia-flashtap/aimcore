@@ -26,7 +26,7 @@
  * Es la misma decisión que ya se tomó en la vuelta 44 y el mismo número.
  */
 import * as THREE from 'three'
-import { NET, SIM, SIM_STEP_MS } from '../src/config.js'
+import { NET, SIM, SIM_STEP_MS, escenarioDeDuelo } from '../src/config.js'
 import { Scenario } from '../src/game/scenario.js'
 import { MSG } from '../net/protocolo.js'
 import { Partida } from '../net/partida.js'
@@ -61,6 +61,8 @@ export class Sala {
     this.partida = new Partida({ escenario: this.escenario, depurar: !!env.VEKTOR_DEBUG })
     /** Si ya se configuró la fase de compra: sólo la pone quien crea la sala. */
     this._compraPuesta = false
+    /** Y si ya se eligió mapa (vuelta 72), que va por el mismo camino. */
+    this._mapaPuesto = false
     this.reloj = null
     this.arranque = 0
   }
@@ -73,11 +75,33 @@ export class Sala {
     // **La duración de la fase de compra viaja en la dirección** (vuelta 64) y
     // sólo la pone quien crea la sala: el segundo en entrar no le reescribe la
     // partida al primero. El acotado es de `Partida`, que es quien lo sabe.
+    const consulta = new URL(peticion.url).searchParams
     if (!this._compraPuesta && this.partida.vacia) {
-      const compra = Number(new URL(peticion.url).searchParams.get('compra'))
+      const compra = Number(consulta.get('compra'))
       if (Number.isFinite(compra)) {
         this.partida.configurarCompra(compra)
         this._compraPuesta = true
+      }
+    }
+
+    /**
+     * **Y el mapa** (vuelta 72), con el mismo reparto. Aquí cuesta un poco más
+     * que en el huésped de Node: el objeto se construye antes de que exista una
+     * petición, así que el escenario ya está montado cuando llega el mapa. Se
+     * rehace —la sala está vacía, no hay mundo que perder— y con él la partida,
+     * que es quien lo lleva dentro.
+     *
+     * Este huésped es **respaldo desde la vuelta 58** y no donde se juega, pero
+     * una regla del juego que sólo valga en uno de los dos es peor que no
+     * tenerla: el día que haya que volver aquí, se vuelve entero.
+     */
+    if (!this._mapaPuesto && this.partida.vacia) {
+      this._mapaPuesto = true
+      const mapa = escenarioDeDuelo(consulta.get('mapa') ?? ESCENARIO)
+      if (mapa !== this.escenario.key) {
+        this.escenario = new Scenario(new THREE.Scene(), mapa)
+        this.partida = new Partida({ escenario: this.escenario, depurar: !!this.env.VEKTOR_DEBUG })
+        if (this._compraPuesta) this.partida.configurarCompra(Number(consulta.get('compra')))
       }
     }
 
