@@ -580,6 +580,62 @@ dianas, en lugar de que el cono te siga y el movimiento no cuente para nada.
 En ambos casos: una diana a la vez, *pop* al acertar y otra en menos de
 100 ms, sesión de 30 segundos y resumen con precisión, dianas y dianas/s.
 
+## El editor de mapas
+
+Desde la vuelta 74 los mapas se dibujan en vez de escribirse. Es la **fase 1**:
+cajas, probar y guardar.
+
+```bash
+npm run editor     # abre /editor/ directamente
+# o: npm run dev y entra a http://localhost:5173/editor/
+```
+
+**Sólo existe en desarrollo.** No entra en lo que se despliega: es una
+herramienta de autor, no una pantalla del juego.
+
+### Dibujar
+
+- **Añadir caja** pone una pieza delante; se arrastra con el ratón y se ajusta
+  sola a la rejilla (0.5 u de partida, y el paso se cambia en el panel).
+- **Clic izquierdo** selecciona y arrastra, **botón derecho** orbita, **rueda**
+  acerca, **botón central o Mayús+derecho** desplaza la vista.
+- Cada pieza tiene ancho, fondo y **altura del vocabulario de siempre**
+  (`bordillo`, `baja`, `media`, `alta`, `bloque`, `plataforma`, `parapeto`,
+  `torre`, `atalaya`), con su gris — que en Vektor no es decoración: **el tono
+  dice la altura**.
+- **90°** intercambia ancho y fondo. No hay rotación libre, y no es un olvido:
+  la colisión del juego es de cajas alineadas a los ejes, así que una caja
+  girada se dibujaría girada y **se chocaría sin girar**. Está explicado en
+  `docs/propuestas/05-editor-de-mapas.md` §3.
+- **Abrir** carga cualquiera de los mapas de hoy para tocarlo.
+
+### Probar
+
+**Probar** no es una vista previa: monta el **motor completo** contra el mapa
+que tienes delante, con su sala, su física, su colisión y su movimiento. Clic
+para capturar el ratón y andar; **ESC** vuelve a editar.
+
+Un mapa con física propia se prueba con la suya: en uno con la gravedad de Los
+Pilares el salto sube 3.25 u y no 1.25.
+
+### Guardar, que es publicar
+
+**Guardar** escribe `src/maps/<clave>.js` y con eso el mapa **ya existe**: sale
+en el selector de escenarios del juego sin tocar `config.js`, y el servidor de
+partidas lo ve igual. No hay un paso de publicación aparte — el fichero *es* el
+mapa, y para quitarlo se borra.
+
+El panel dice lo que el saneado ha tenido que tirar (una altura que no existe,
+una pieza de tamaño cero, un campo desconocido) en vez de callárselo.
+
+### Lo que todavía no hace
+
+Rampas, vanos y ventanales, salidas de duelo, zonas de aparición, simetría por
+giro, métricas en vivo, deshacer/rehacer y aviso de presupuesto. Son las fases
+2 a 4, diseñadas en `docs/propuestas/05-editor-de-mapas.md`. Los mapas de hoy
+conservan sus rutas, recogibles y sitios de explosivo al guardarlos, pero el
+editor no los edita: salen de un barrido medido, no de ponerlos a ojo.
+
 ## Escenarios
 
 Se elige en **Opciones → Escenario**, y es una variante activable: la sala vacía

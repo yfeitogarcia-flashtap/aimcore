@@ -1,0 +1,86 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Editor de mapas · Vektor</title>
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="stylesheet" href="/editor/editor.css" />
+  </head>
+  <body>
+    <!-- Dos lienzos y no uno: el de editar lo lleva esta página y el de jugar
+         lo lleva el motor, que se construye y se destruye al entrar y salir de
+         «probar». Compartirlo sería pelearse con él por la cámara. -->
+    <div id="vista">
+      <canvas id="lienzo"></canvas>
+      <div id="caja-juego" hidden><canvas id="juego"></canvas></div>
+      <p id="pista">Clic para jugar · <b>ESC</b> vuelve a editar</p>
+    </div>
+
+    <aside id="panel">
+      <header>
+        <h1>Editor de mapas</h1>
+        <p class="nota">Sólo en desarrollo · el fichero <b>es</b> el mapa</p>
+      </header>
+
+      <section>
+        <h2>Mapa</h2>
+        <label>Clave <input id="clave" type="text" spellcheck="false" /></label>
+        <label>Nombre <input id="label" type="text" /></label>
+        <div class="trio">
+          <label>Ancho <input id="sala-w" type="number" step="1" /></label>
+          <label>Fondo <input id="sala-d" type="number" step="1" /></label>
+          <label>Alto <input id="sala-h" type="number" step="1" /></label>
+        </div>
+        <div class="trio">
+          <label>Salida X <input id="spawn-x" type="number" step="0.5" /></label>
+          <label>Salida Z <input id="spawn-z" type="number" step="0.5" /></label>
+          <label>Rejilla <input id="paso" type="number" step="0.25" min="0.25" /></label>
+        </div>
+      </section>
+
+      <section>
+        <h2>Piezas <span id="cuenta" class="nota"></span></h2>
+        <div class="botonera">
+          <button id="anadir" type="button">Añadir caja</button>
+          <button id="duplicar" type="button">Duplicar</button>
+          <button id="borrar" type="button">Borrar</button>
+        </div>
+        <ul id="lista"></ul>
+      </section>
+
+      <section id="pieza" hidden>
+        <h2>Pieza seleccionada</h2>
+        <div class="trio">
+          <label>X <input id="p-x" type="number" step="0.5" /></label>
+          <label>Z <input id="p-z" type="number" step="0.5" /></label>
+          <label>&nbsp;</label>
+        </div>
+        <div class="trio">
+          <label>Ancho <input id="p-w" type="number" step="0.5" min="0.1" /></label>
+          <label>Fondo <input id="p-d" type="number" step="0.5" min="0.1" /></label>
+          <label>Giro <button id="p-giro" type="button" title="Intercambia ancho y fondo">90°</button></label>
+        </div>
+        <label>Altura <select id="p-kind"></select></label>
+        <label>Base <select id="p-base"></select></label>
+      </section>
+
+      <section>
+        <h2>Archivo</h2>
+        <label>Abrir <select id="abrir"></select></label>
+        <div class="botonera">
+          <button id="probar" type="button" class="accion">Probar</button>
+          <button id="guardar" type="button" class="accion">Guardar</button>
+        </div>
+        <p id="estado" class="nota"></p>
+        <ul id="problemas"></ul>
+      </section>
+
+      <footer class="nota">
+        Clic izquierdo selecciona y arrastra · botón derecho orbita · rueda acerca
+      </footer>
+    </aside>
+
+    <script type="module" src="/editor/editor.js"></script>
+  </body>
+</html>

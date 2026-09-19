@@ -1,0 +1,99 @@
+/* La página del editor. Paleta de Vektor, nada más: es una herramienta. */
+:root {
+  --fondo: #0a0a0a;
+  --panel: #131313;
+  --linea: #262626;
+  --texto: #d8d8d8;
+  --apagado: #7a7a7a;
+  --naranja: #e4462b;
+  --accion: #2fcb82;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  height: 100vh;
+  background: var(--fondo);
+  color: var(--texto);
+  font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+#vista { position: relative; overflow: hidden; }
+#lienzo, #juego { display: block; width: 100%; height: 100%; }
+#caja-juego { position: absolute; inset: 0; }
+#caja-juego[hidden] { display: none; }
+
+#pista {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 5px 12px;
+  border-radius: 3px;
+  background: #000000aa;
+  color: var(--apagado);
+  pointer-events: none;
+}
+#pista[hidden] { display: none; }
+
+#panel {
+  overflow-y: auto;
+  padding: 14px;
+  background: var(--panel);
+  border-left: 1px solid var(--linea);
+}
+
+h1 { margin: 0; font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase; }
+h1::first-letter { color: var(--naranja); }
+h2 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--apagado);
+}
+section { padding: 14px 0; border-top: 1px solid var(--linea); }
+header { padding-bottom: 12px; }
+footer { padding-top: 12px; border-top: 1px solid var(--linea); }
+.nota { margin: 4px 0 0; color: var(--apagado); font-size: 11px; }
+
+label { display: block; margin-bottom: 6px; color: var(--apagado); }
+.trio { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+
+input, select, button {
+  width: 100%;
+  padding: 4px 6px;
+  border: 1px solid var(--linea);
+  border-radius: 2px;
+  background: #0d0d0d;
+  color: var(--texto);
+  font: inherit;
+}
+input:focus, select:focus { outline: 1px solid var(--accion); }
+
+button { cursor: pointer; }
+button:hover { border-color: var(--apagado); }
+button.accion { border-color: var(--accion); color: var(--accion); }
+.botonera { display: flex; gap: 6px; margin-bottom: 8px; }
+
+#lista { margin: 0; padding: 0; list-style: none; max-height: 190px; overflow-y: auto; }
+#lista li {
+  padding: 3px 6px;
+  border-left: 2px solid transparent;
+  color: var(--apagado);
+  cursor: pointer;
+  white-space: nowrap;
+}
+#lista li:hover { background: #ffffff0a; }
+#lista li.puesta { border-left-color: var(--accion); background: #ffffff10; color: var(--texto); }
+
+/* Un problema se cuenta, no se calla: si el saneado tira algo, sale aquí. */
+#problemas { margin: 8px 0 0; padding-left: 16px; color: var(--naranja); font-size: 11px; }
+#problemas:empty { display: none; }
+
+body.jugando { grid-template-columns: 1fr 0; }
+body.jugando #panel { display: none; }

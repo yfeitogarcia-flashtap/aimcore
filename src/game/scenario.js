@@ -17,7 +17,7 @@
 
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { COVER, SCENARIOS, coverEdgeColor, coverHeight, fisicaDeEscenario, scenarioRoom } from '../config.js'
+import { COVER, claveDeEscenario, coverEdgeColor, coverHeight, definicionDeEscenario, fisicaDeEscenario, scenarioRoom } from '../config.js'
 
 /**
  * Prisma triangular para las rampas: rectángulo abajo y una única arista
@@ -85,12 +85,14 @@ function clampAgainstBand(to, from, lo, hi) {
 export class Scenario {
   /**
    * @param {THREE.Scene} scene
-   * @param {string} key clave dentro de SCENARIOS
+   * @param {string|object} escenario una clave de `SCENARIOS` **o** la
+   *   definición entera, que es como el editor monta un mapa que todavía no
+   *   está en ningún catálogo (vuelta 74).
    */
-  constructor(scene, key) {
+  constructor(scene, escenario) {
     this.scene = scene
-    this.key = SCENARIOS[key] ? key : 'empty'
-    this.definition = SCENARIOS[this.key]
+    this.key = claveDeEscenario(escenario)
+    this.definition = definicionDeEscenario(escenario)
 
     this.group = new THREE.Group()
     this.materials = []
@@ -174,7 +176,10 @@ export class Scenario {
    * tamaño de la sala que se puedan desincronizar.
    */
   get room() {
-    return scenarioRoom(this.key)
+    // Contra `this.definition` y no contra la clave: un mapa recién dibujado en
+    // el editor todavía no está en el catálogo, y preguntar por su nombre
+    // devolvería la sala de la sala vacía (vuelta 74).
+    return scenarioRoom(this.definition)
   }
 
   /**
@@ -185,7 +190,10 @@ export class Scenario {
    * que viaje ningún número.
    */
   get fisica() {
-    return fisicaDeEscenario(this.key)
+    // Contra la definición, por lo mismo que la sala: preguntar por el nombre
+    // le devolvería a un mapa sin guardar la gravedad de fábrica, y eso es un
+    // mapa que se prueba con una física que no es la suya.
+    return fisicaDeEscenario(this.definition)
   }
 
   /**
@@ -209,7 +217,14 @@ export class Scenario {
     /** Geometrías agrupadas por tipo de pieza, para fusionarlas de una vez. */
     const byKind = new Map()
 
-    for (const box of definition.boxes) {
+    /**
+     * **Un mapa puede no traer geometría, y eso no puede tumbar la escena**
+     * (vuelta 74). Los cuatro escenarios escritos a mano declaran siempre las
+     * dos listas, así que hasta aquí daba igual; desde que un mapa puede venir
+     * de un fichero, uno a medio escribir dejaba `definition.boxes` sin
+     * definir y el `for` se llevaba por delante el montaje entero.
+     */
+    for (const box of definition.boxes ?? []) {
       const height = coverHeight(box.kind)
       const bottom = box.base ? coverHeight(box.base) : 0
       const thickness = height - bottom
@@ -231,7 +246,7 @@ export class Scenario {
       byKind.get(box.kind).push(geometry)
     }
 
-    for (const ramp of definition.ramps) {
+    for (const ramp of definition.ramps ?? []) {
       const top = coverHeight(ramp.top)
       this.ramps.push({
         minX: ramp.x,

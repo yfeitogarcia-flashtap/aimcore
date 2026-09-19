@@ -1,9 +1,14 @@
 # Propuesta 05 — Editor visual de mapas
 
-**Estado:** diseñada, **sin construir nada**. El encargo (vuelta 74) fue
+**Estado:** **fase 1 construida en la vuelta 74**; las fases 2 a 6 siguen
+diseñadas y sin tocar. Lo que cambió al construirla está en §8.
+
+**Estado original:** diseñada, sin construir nada. El encargo (vuelta 74) fue
 proponer cómo dividirla en fases y contestar dos preguntas concretas: si los
 parámetros de partida entran en la primera versión, y cómo un mapa del editor
-se vuelve un escenario jugable.
+se vuelve un escenario jugable. Las dos respuestas —**el fichero es el mapa** y
+**los parámetros se parten en dos**— se aceptaron tal cual, y el recorte de la
+rotación libre (§3) también.
 
 **Qué se pide:** poder diseñar y editar mapas de Vektor sin escribir código:
 grilla vacía con el movimiento real para probar, menú de formas, escalado por
@@ -372,3 +377,42 @@ de paso es el único que sigue siendo cierto el día que la colisión cambie.
    `src/game/metricas.js` y una sola implementación.
 4. **Que el editor engorde el juego.** Se cierra sacándolo de `dist/` en la
    fase 1.
+
+---
+
+## 8. Lo que cambió al construir la fase 1 (vuelta 74)
+
+El diseño se sostuvo entero. Lo que se aprendió construyéndolo:
+
+**Lo que se hizo**, y es lo que la fase 1 prometía: los tres puntos de §2
+(`Scenario`, `scenarioRoom` y `fisicaDeEscenario` aceptan una definición),
+`src/maps/*.js` fundidos en `SCENARIOS`, `/editor/` como tercera página **fuera
+de `dist/`**, cajas con imán a la rejilla y edición por número, giro de 90°,
+abrir los cuatro mapas de hoy, guardar, y **probar con el motor completo**.
+
+**Lo que se movió de sitio:** el registro de mapas iba a salir de
+`import.meta.glob` y no puede: `vite.config.js` importa `src/config.js`, y el
+huésped de Node también, así que el registro tiene que ser un módulo con
+importaciones estáticas. Lo genera el editor al guardar y el servidor de
+desarrollo al arrancar, como `weaponPaths.js`.
+
+**Tres fallos que el diseño no vio** (el detalle en `docs/decisions.md` §74.5):
+
+1. **`Scenario.room` y `Scenario.fisica` preguntaban por la clave**, no por la
+   definición. Un mapa sin guardar se probaba con la sala de la sala vacía y la
+   gravedad de fábrica, en silencio. Es la mitad invisible de §2.
+2. **Un mapa sin `boxes` tumbaba el montaje de la escena entera.** Con cuatro
+   escenarios escritos a mano no podía pasar; con ficheros, sí.
+3. **Un bucle infinito de reinicios del servidor de desarrollo**, porque el
+   registro cae dentro del grafo de la configuración de Vite. El síntoma fue la
+   batería entera con «0 pass» y la primera hipótesis fue la equivocada. Se
+   corta escribiendo el registro **sólo si cambia**.
+
+**Lo que sigue en pie sin tocar:** la regla de §3 —el editor no puede poder
+construir algo contra lo que el motor no sepa chocar—, el reparto de formas, las
+fases 2 a 5 y la 6 fuera de alcance.
+
+**Y una medida que la fase 1 deja lista para la 4:** el paseo de prueba ya se
+mide contra el mapa editado —6.24 u/s de marcha sostenida, parada en z 8.400
+contra una cara en 8.0, ápice de 3.23 u contra 3.26 calculadas, todo a 5.5 fps—
+con las mismas funciones que usará el panel de métricas.

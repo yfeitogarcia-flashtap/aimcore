@@ -8596,6 +8596,181 @@ la vuelta 40 de 34 a 10.
 
 ---
 
+## Ronda 74 — El editor de mapas, fase 1
+
+El encargo fue un editor visual para diseñar y editar mapas sin escribir código,
+con dos preguntas abiertas: si los parámetros de partida entraban en la primera
+versión y cómo un mapa dibujado se vuelve jugable. El diseño entero está en
+`docs/propuestas/05-editor-de-mapas.md`; aquí van las decisiones y lo que salió
+al construirlo.
+
+### 74.1 El recorte de la rotación, y por qué se propuso antes de empezar
+
+El encargo pedía rotación en X e Y, tejados y triángulos. La colisión de Vektor
+es **AABB**: `resolveAxis` resuelve un eje cada vez contra seis cifras, sin
+orientación en ningún sitio, y de eso viven `giro180` (girar una caja es mandar
+su esquina máxima al otro lado del origen) y la predicción de cliente, que pide
+que los dos extremos lleguen al mismo resultado dígito a dígito.
+
+Una caja girada 30° se **dibuja** girada, **para las balas** bien —el rayo va
+contra la malla— y **se choca sin girar**. Eso no da un error: da andar contra
+aire en una esquina y atravesar la pared en la otra, y en red una corrección por
+paso. De ahí la regla que gobierna el proyecto entero:
+
+> **El editor no puede poder construir algo contra lo que el motor no sepa
+> chocar.**
+
+Un editor con rotación libre sobre colisión AABB no es un editor con una
+limitación: es una máquina de fabricar mapas rotos, y el fallo se descubre
+cayéndose por un tejado, no con un banco en rojo. La rotación libre queda como
+**vuelta propia del motor** (fase 5), y la decisión —acordada con el encargo— es
+no hacerla hasta haber construido dos o tres mapas con lo demás y ver qué se
+echa en falta de verdad. Lo que la sustituye mientras tanto es el giro de **90°**
+—intercambiar ancho y fondo— más la composición de cajas, que es lo que hay en
+los cuatro mapas de hoy.
+
+### 74.2 «El fichero es el mapa», que es la respuesta a cómo se publica
+
+Las tres opciones eran exportar algo que se nos pase, publicar a un servidor, o
+escribir en el repositorio. Se eligió la tercera y con una forma concreta:
+`src/maps/*.js` se funden en `SCENARIOS`, así que **guardar y publicar son la
+misma acción** — el mapa sale en el selector sin tocar `config.js` y el huésped
+lo ve igual. No hay un paso de publicación que se pueda olvidar ni un formato de
+exportación distinto del que el motor lee.
+
+Publicar **a un servidor** se descartó para este proyecto, y no por pereza: la
+geometría de una partida tiene que existir idéntica en los dos clientes **y en
+el servidor**, que corre `movement.js` contra un `Scenario` de verdad. Un mapa
+que sólo viviera en el navegador de quien lo dibujó es la corrección por paso de
+la vuelta 65 otra vez. Que un mapa viaje es «mapas de comunidad» y es una vuelta
+suya, con tope de tamaño, saneado de geometría ajena y moderación.
+
+Tres decisiones de forma, y ninguna es de gusto:
+
+- **Módulos `.js`, no `.json` ni `import.meta.glob`.** El huésped de Node
+  importa `src/config.js` directamente (vuelta 72), así que un mapa lo tienen
+  que poder leer los tres montajes **sin ponerse de acuerdo**: el barrido de
+  directorio de Vite no existe en Node, y los atributos de importación de JSON
+  no se comportan igual en los dos.
+- **La clave la declara el fichero**, no su nombre. Dos sitios diciendo cómo se
+  llama un mapa es cómo acaba llamándose de dos maneras.
+- **El formato vive en un sitio** (`src/maps/formato.js`) y lo miran el editor y
+  el cargador, que es la regla de `compraAbierta` y `escenarioDeDuelo`. Y
+  `sanearMapa` devuelve `{ mapa, problemas }`: lo que tira **se cuenta**, porque
+  un campo que desaparece en silencio al guardar es cómo un mapa pierde su
+  física sin que nadie se entere.
+
+### 74.3 Los parámetros de partida se parten en dos
+
+La segunda pregunta. La respuesta sale de una separación que el código ya tenía:
+
+- **Lo que es del mapa va en el editor**, y pronto, porque **sin ello las
+  métricas mienten**: la altura a la que se llega de un salto es
+  `jumpSpeed² / (2·gravity)`, así que un panel que no sepa la gravedad del mapa
+  no puede decir si una torre se sube.
+- **Lo que es de la partida, no.** La duración de una ronda, cuántas hay y los
+  segundos de fase de compra viven en `ROUNDS` y se eligen **por sala al
+  crearla** (`?compra=`, vuelta 64). Meterlos en el fichero del mapa sería
+  modelarlos en el sitio equivocado y crear dos sitios que dicen lo mismo — que
+  es exactamente cómo una sala acaba jugándose con dos reglas distintas. Van en
+  la página del duelo, como selectores, cuando se quieran.
+
+### 74.4 Lo que hizo falta para que existiera: el escenario suelta su clave
+
+Un escenario **era** una entrada de `SCENARIOS`, y eso vale mientras todos los
+mapas estén escritos en `config.js`. Un mapa recién dibujado no está en ningún
+catálogo, así que `Scenario`, `scenarioRoom` y `fisicaDeEscenario` pasan a
+aceptar **la definición o su nombre** (`definicionDeEscenario`,
+`claveDeEscenario`). Es la única pieza sin la que no arranca ninguna fase, y es
+pequeña.
+
+**Y la mitad que no se ve**: los dos captadores de `Scenario` —`room` y
+`fisica`— preguntaban por `this.key`. Con un mapa sin guardar, cuya clave no
+está en el catálogo, eso devolvía la sala de la sala vacía y la gravedad de
+fábrica: **el mapa se probaba con una física que no era la suya**, y en silencio.
+Van contra `this.definition`.
+
+### 74.5 Tres fallos que salieron construyéndolo
+
+- **Un mapa sin `boxes` tumbaba la escena entera.** Los cuatro escenarios
+  escritos a mano declaran siempre las dos listas, así que `for (const box of
+  definition.boxes)` nunca había visto un `undefined`. Un fichero a medio
+  escribir —que ahora puede existir— se llevaba por delante el montaje.
+  `definition.boxes ?? []`.
+- **Borrar un mapa a mano no rompe el editor: rompe el juego.** El registro es
+  generado y sus importaciones son estáticas, así que un fichero que falta es un
+  `ERR_MODULE_NOT_FOUND` **en `config.js`**, o sea la página, el duelo y el
+  huésped. El servidor de desarrollo regenera el registro al arrancar, con lo
+  que se cura solo; en el build tiene que fallar ruidosamente, que es lo
+  correcto.
+- **Y un bucle infinito de reinicios, que es el más instructivo.**
+  `vite.config.js` importa `src/config.js` —para la ruta del duelo— y `config.js`
+  importa el registro de mapas, así que **el registro está en el grafo de la
+  configuración**: tocarlo reinicia el servidor de desarrollo, y reiniciarlo
+  vuelve a regenerarlo. El síntoma no fue un error: fue la batería entera con
+  «0 pass», que es el falso negativo de la vuelta 45 por una puerta nueva — y la
+  primera hipótesis (haber tocado `config.js` con Vite corriendo) era la de
+  siempre y **no era la causa**. Lo que lo delató fue mirar el registro del
+  servidor en vez de la salida de los bancos. Se corta escribiendo **sólo si el
+  contenido cambia**.
+
+### 74.5b Y tres del banco, que son de método
+
+Ninguna era del juego, y las tres se leían como si lo fueran:
+
+- **La sonda va dentro de la página, una muestra por frame** (vuelta 49). Medir
+  con `evaluate` desde fuera mete el viaje de ida y vuelta en la distancia y no
+  en el tiempo: la misma marcha salía 6.44 u/s en una máquina tranquila y 3.64
+  en una cargada, y la parada contra la caja salía en z 8.830 en vez de 8.400.
+  Con la sonda dentro sale 6.24 y 8.400 **a 5.5 fps**.
+- **Y se arma antes del gesto que mide.** Capturar la altura de partida en el
+  `evaluate` que sigue a la pulsación de salto la toma con el jugador ya
+  subiendo: medía lo que le quedaba, no el salto — 1.78 u contra 3.26.
+- **Un banco que dibuja por software paga por píxel.** A 1000×700 la página caía
+  a 1.3 fps y las cuatro medidas de movimiento dejaban de significar nada; a
+  640×420 sube a 5.5. Por eso el banco **imprime sus fps** y afirma antes que
+  nada que ha visto frames de verdad: sin esa premisa, un 2.30 u/s se lee como
+  una regresión del juego. Es la regla de la vuelta 61 —un banco se pasa solo—
+  por la puerta del tamaño de la ventana.
+- **Y el guardado se pide por HTTP, no desde la página.** Guardar reescribe el
+  registro, el registro cuelga de la configuración de Vite y eso reinicia el
+  servidor y recarga la página: el `evaluate` moría con un «Execution context
+  was destroyed» que no se parece en nada a su causa.
+
+### 74.6 Qué se ha verificado y cómo
+
+`editor74.mjs`, con el servidor de desarrollo levantado:
+
+- **Que un escenario montado desde una definición es el mismo que montado desde
+  su clave**, para los cuatro mapas de hoy y comparando la huella entera —sala,
+  física, aparición, cajas y rampas—. Y que un mapa **sin catálogo** trae su
+  sala (24×24×8), su física (gravedad 13, techo del aire 12) y su geometría, que
+  es lo que el fallo de §74.4 se comía.
+- **Que un mapa da la vuelta entera sin perder un dígito**: los cuatro se sanean
+  sin una sola queja, se escriben como módulo, se vuelven a leer y salen
+  idénticos — y el escenario montado desde lo que volvió es el mismo mundo.
+- **Que el saneado se queja en vez de callarse**: de cuatro piezas mal (altura
+  desconocida, tamaño cero, base por encima de su techo) entra una, y hay cuatro
+  quejas contando el campo inventado.
+- **Que probar es el motor**: el escenario del motor es el del editor, el
+  jugador sale donde dice el mapa, **anda a 6.24 u/s** sostenidos por suelo
+  libre —el suelo antes que el techo, regla de la vuelta 57—, se **para en
+  z 8.400** contra una caja cuya cara está en 8.0 (radio 0.4) y **salta 3.23 u**
+  en un mapa cuya física calcula 3.26. Todo ello **a 5.5 fps**, que el banco
+  imprime al lado: es el denominador de la vuelta 46, y es lo que hace legible
+  que los números no cuelguen del refresco.
+- **Que guardar es publicar**: el fichero se escribe declarando su clave, y **un
+  proceso de Node recién arrancado** —no una reimportación con `?v=`, que
+  invalida `config.js` y no su registro— lo ve como un escenario más, en el
+  selector, y montado desde el fichero es el mapa que se dibujó.
+- Y **cero errores de página**, contados como fallo (vuelta 60).
+
+La batería del entrenamiento (46 suites) y los bancos de escenario
+—`mapa66`, `pilares72`, `rutas`, `spawn43`, `hitbox65`, `vanta71`, `audit`,
+`rondas62`— siguen verdes: el cambio de `SCENARIOS` a una fusión y el de
+`Scenario` a aceptar definiciones no movieron nada.
+
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

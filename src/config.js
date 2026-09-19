@@ -6,6 +6,8 @@
  * escribirá sobre estos mismos campos (sensibilidad, crosshair, duración...).
  */
 
+import { MAPAS_DE_FICHERO } from './maps/index.js'
+
 /** Paleta. Sin texturas, sin sombras, sin post-procesado. */
 export const COLORS = {
   /** Fondo de la escena. */
@@ -224,8 +226,36 @@ export const ROOM = {
  * alrededor por el que se sigue pudiendo caminar, y recorrer el mapa cuesta lo
  * mismo. El límite de la sala **es** el límite jugable.
  */
-export function scenarioRoom(key) {
-  const definition = SCENARIOS[key]
+/**
+ * **Un escenario puede no venir de una clave** (vuelta 74).
+ *
+ * Hasta aquí un escenario *era* una entrada de `SCENARIOS`, y eso vale mientras
+ * todos los mapas estén escritos en este fichero. Un mapa recién dibujado en el
+ * editor no está en ningún catálogo todavía, así que quien monta un escenario
+ * tiene que aceptar **la definición** igual que acepta su nombre.
+ *
+ * Son dos preguntas y por eso son dos funciones: *qué* mapa es y *cómo se
+ * llama*. Lo segundo hace falta porque la bienvenida de una partida manda la
+ * clave (`partida.js`) y el motor compara claves para no remontar el mundo sin
+ * motivo.
+ */
+export function definicionDeEscenario(escenario) {
+  if (escenario && typeof escenario === 'object') return escenario
+  return SCENARIOS[escenario] ?? SCENARIOS.empty
+}
+
+/**
+ * La clave de un escenario. Una definición suelta declara la suya (`clave`),
+ * que es la misma que la del fichero del que sale: **el mapa dice cómo se
+ * llama**, y no su nombre de fichero ni quien lo carga.
+ */
+export function claveDeEscenario(escenario) {
+  if (escenario && typeof escenario === 'object') return escenario.clave ?? '(sin guardar)'
+  return SCENARIOS[escenario] ? escenario : 'empty'
+}
+
+export function scenarioRoom(escenario) {
+  const definition = definicionDeEscenario(escenario)
   return definition && definition.room ? { ...ROOM, ...definition.room } : ROOM
 }
 
@@ -887,8 +917,8 @@ export const LEGACY_WEAPON_KEYS = {
  * un mapa puede cambiar es cuánto pesas, cuánto saltas y hasta dónde puedes
  * acelerar en el aire; cómo se acelera, no.
  */
-export function fisicaDeEscenario(key) {
-  const propia = (key && SCENARIOS[key]?.fisica) || null
+export function fisicaDeEscenario(escenario) {
+  const propia = (escenario && definicionDeEscenario(escenario)?.fisica) || null
   return {
     gravity: propia?.gravity ?? MOVEMENT.gravity,
     jumpSpeed: propia?.jumpSpeed ?? MOVEMENT.jumpSpeed,
@@ -1995,7 +2025,7 @@ export function giro180(piezas) {
   ]
 }
 
-export const SCENARIOS = {
+const ESCENARIOS_INTEGRADOS = {
   empty: {
     label: 'Sala vacía',
     /** Sin geometría: el Gridshot de siempre, con su muestreo por cono. */
@@ -2696,6 +2726,20 @@ export const SCENARIOS = {
  * arma: no hay una segunda lista que mantener, y el día que un mapa cambie de
  * bando cambia en los tres sitios a la vez —el selector, el saneado y esto—.
  */
+/**
+ * **Los escenarios, y no todos vienen escritos aquí** (vuelta 74).
+ *
+ * A los cuatro de siempre se suman los que haya en `src/maps/`, que es lo que
+ * escribe el editor. **Guardar y publicar son la misma acción**: no hay un paso
+ * de publicación aparte que se pueda olvidar, ni un formato de exportación
+ * distinto del que el motor lee — el fichero *es* el mapa.
+ *
+ * Los integrados van primero y los de fichero pueden pisarlos, que es lo que
+ * deja abrir El Espejo en el editor, cambiarle una caja y probarlo sin tocar
+ * este fichero. Para volver al de fábrica se borra el de `src/maps/`.
+ */
+export const SCENARIOS = { ...ESCENARIOS_INTEGRADOS, ...MAPAS_DE_FICHERO }
+
 export const TRAINER_SCENARIOS = Object.fromEntries(
   Object.entries(SCENARIOS).filter(([, definition]) => !definition.soloDuelo),
 )
@@ -2721,8 +2765,8 @@ export function escenarioDeDuelo(key) {
   return DUEL_SCENARIOS[key] ? key : NET.escenario
 }
 
-export function scenarioHasCover(key) {
-  const definition = SCENARIOS[key] ?? SCENARIOS.empty
+export function scenarioHasCover(escenario) {
+  const definition = definicionDeEscenario(escenario)
   return (definition.boxes?.length ?? 0) > 0 || (definition.ramps?.length ?? 0) > 0
 }
 

@@ -83,6 +83,9 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Fogonazo | `src/game/muzzleFlash.js` | El destello de cada disparo enemigo. Pool de estrellas aditivas; sólo dibuja. |
 | Recogibles | `src/game/pickups.js` | Cruces de vida, cargas de escudo y casco por el suelo. |
 | Config | `src/config.js` | Todo el tuning, sin excepción. |
+| Formato de mapa | `src/maps/formato.js` | Qué campos tiene un mapa, el saneado y el serializador. **Lo miran el editor y el cargador**, que es lo que evita que un mapa se guarde con su física y se abra sin ella. |
+| Mapas de fichero | `src/maps/index.js` | Registro **generado** de los mapas que escribe el editor, fundido en `SCENARIOS`. Importaciones estáticas para que lo lean igual Vite y Node. |
+| Editor | `editor/` | La página de dibujar mapas (`/editor/`). **Sólo en desarrollo**: no entra en `dist/`. Hospeda el motor entero para probar, como el duelo. |
 | Partida (servidor) | `net/partida.js` | **Todo lo que decide el servidor**, sin saber por dónde viaja: entradas, pasos, disparo, rebobinado y fotos. Un jugador entra con una función `enviar(texto)` y nada más. **No hay red en este fichero.** |
 | Huésped de Node | `net/servidor.mjs` | Node + `ws`, y desde la vuelta 58 **el del despliegue**: encamina por código de sala, lleva un reloj por sala y sirve `dist/`. El mismo fichero en local y en Fly. |
 | Huésped de Cloudflare | `worker/sala.js` | El Durable Object. Lo mismo, con las piezas de Cloudflare. **Respaldo** desde la 58; ya no es donde se juega. |
@@ -346,6 +349,62 @@ Pilares un salto sube 3.26 u, así que la `torre` mide **3.2** —se sube desde 
 suelo por los pelos, contando el escalón— y la `atalaya` **6.0** —ahí sólo se
 llega desde una torre—. Si algún día cambia esa gravedad, esas dos alturas se
 recalculan con ella.
+
+**El editor de mapas, y las cinco reglas que lo hacen seguro** (vuelta 74,
+fase 1). Se dibuja en `/editor/` y se prueba ahí mismo **con el motor de
+verdad**. Lo que hay que respetar al seguir construyéndolo:
+
+- **Un escenario puede no venir de una clave.** `Scenario`, `scenarioRoom` y
+  `fisicaDeEscenario` aceptan **la definición o su nombre**
+  (`definicionDeEscenario` / `claveDeEscenario`), porque un mapa recién
+  dibujado no está en ningún catálogo. Y ojo con la mitad que no se ve: los dos
+  captadores de `Scenario` —`room` y `fisica`— preguntan por
+  **`this.definition`** y no por `this.key`. Con la clave, un mapa sin guardar
+  recibía la sala de la sala vacía y la gravedad de fábrica, o sea **se probaba
+  con una física que no era la suya**.
+- **El fichero es el mapa.** `src/maps/*.js` se funden en `SCENARIOS`, así que
+  guardar y publicar son la misma acción: el mapa sale en el selector sin tocar
+  `config.js`. Tres cosas que son el diseño y no una preferencia:
+  - **Módulos `.js`, no `.json` ni `import.meta.glob`.** El huésped de Node
+    importa `src/config.js` directamente (vuelta 72), así que un mapa lo tienen
+    que poder leer **los tres montajes sin ponerse de acuerdo**; el barrido de
+    directorio de Vite no existe en Node y los atributos de importación de JSON
+    no valen igual en los dos.
+  - **La clave la declara el fichero** (`clave`), no su nombre. Dos sitios
+    diciendo cómo se llama un mapa es cómo acaba llamándose de dos maneras.
+  - **El registro se regenera al arrancar el servidor de desarrollo.** Un mapa
+    borrado a mano dejaba una importación apuntando a un fichero que no está, y
+    eso no rompe el editor: rompe `config.js`, o sea **el juego entero deja de
+    cargar**. Lo cazó el banco de esta vuelta dejándose un mapa a medio limpiar.
+- **Probar es el motor, no una vista previa.** `new Engine(lienzo, {}, {
+  escenario })`, que es la puerta que abrió la vuelta 60 justo para esto — y por
+  eso el editor **no toca los ajustes del jugador**. Medido (`editor74`): el
+  jugador sale donde dice el mapa, anda a **6.24 u/s** sostenidos por suelo
+  libre, se para en **z 8.400** contra una caja cuya cara está en 8.0 (radio
+  0.4) y salta **3.23 u** en un mapa cuya física calcula 3.26 — y todo eso a
+  **5.5 fps**, porque las sondas van dentro de la página y no cuelgan del
+  refresco.
+- **El editor no puede poder construir algo contra lo que el motor no sepa
+  chocar.** La colisión es AABB, así que hoy se dibujan cajas alineadas a los
+  ejes y el giro es de **90°** —intercambiar ancho y fondo—. Rotación libre,
+  tejados sólidos y triángulos que se choquen son una vuelta del motor, no una
+  herramienta más en el panel; el porqué y lo que se paga, en
+  `docs/propuestas/05-editor-de-mapas.md` §3.
+- **Lo que el saneado tira, lo cuenta.** `sanearMapa` devuelve
+  `{ mapa, problemas }` y el panel los enseña: un campo que desaparece en
+  silencio al guardar es cómo un mapa pierde su física sin que nadie se entere.
+  Por eso `CAMPOS` es exhaustivo y un campo desconocido **se dice**.
+
+Y dos cosas que salieron construyéndolo y valen fuera del editor:
+
+- **Un mapa puede no traer geometría.** `definition.boxes ?? []` en
+  `scenario.js`: los cuatro escenarios escritos a mano declaran siempre las dos
+  listas, así que hasta aquí daba igual; uno de fichero a medio escribir se
+  llevaba por delante el montaje de la escena entera.
+- **Guardar recarga la página, a propósito.** Reescribir el registro cuelga de
+  `config.js`, y parchear ese módulo en caliente es justo lo que duplica el
+  store de ajustes (§4). Una recarga entera cuesta medio segundo y cierra esa
+  puerta.
 
 **Un mapa puede repartir en vez de vender, y «sin economía» no es «sin fase de
 compra»** (vuelta 72). Son lo contrario: desde la 65, **a cero la tienda no
@@ -2950,6 +3009,13 @@ ningún otro sitio. Y donde se pueda, que lo compruebe el banco: el tope de la
 pausa viaja en la foto, así que `pausa54-tope` **pregunta al huésped cuál lleva**
 antes de medir, y se entera al primer segundo en vez de a los catorce.
 
+**Y `src/maps/index.js` es generado: no lo edites a mano** (vuelta 74). Lo
+reescribe el editor al guardar y el servidor de desarrollo al arrancar. Si
+borras un mapa a mano y no levantas `npm run dev`, la importación se queda
+apuntando a un fichero que no existe y **lo que falla no es el editor: es
+`config.js`**, o sea el juego entero y también el huésped. El síntoma es un
+`ERR_MODULE_NOT_FOUND` con la ruta del mapa borrado.
+
 **Y el huésped tiene dos interruptores para poder medir, no para jugar** (la
 segunda, de la vuelta 62):
 
@@ -3152,6 +3218,21 @@ decide el servidor mientras el rebobinado cabe bajo el tope de 200 ms, contra un
 4.3 µs por disparo y 3.8 KB de historial por jugador. Y los mismos bancos, sin
 tocar una aserción, salen verdes contra el Durable Object: la migración de la 47
 no cambió nada.
+
+**Y desde la vuelta 74 hay un editor de mapas, en su fase 1** (`/editor/`,
+sólo con `npm run dev` o `npm run editor`). Se dibujan cajas sobre la rejilla
+vacía —crear, seleccionar, arrastrar con imán a la rejilla, medir por número,
+girar 90°, duplicar y borrar—, se abren los cuatro mapas de hoy para tocarlos, y
+se prueba **con el motor de verdad**: «Probar» construye un `Engine` contra la
+definición que hay delante, con su sala, su física y su colisión. Guardar
+escribe `src/maps/<clave>.js` y el mapa **ya es un escenario**: sale en el
+selector sin tocar `config.js` y el huésped de Node lo ve igual.
+
+Lo que todavía no hace —y es la fase 2 en adelante de
+`docs/propuestas/05-editor-de-mapas.md`—: rampas, vanos, salidas de duelo,
+zonas, simetría por giro, métricas en vivo, deshacer/rehacer y presupuesto. Y
+lo que **no** va a hacer hasta que el motor sepa chocar con ello: rotación
+libre, tejados y triángulos sólidos.
 
 **El mundo va a 60 Hz fijos** (`SIM.hz`) desde la vuelta 44, dibuje el monitor lo
 que dibuje: el frame acumula tiempo real y gasta pasos con arrastre del resto, y
@@ -3525,34 +3606,39 @@ compra en la tienda del 1v1, y en el mapa que reparte (vuelta 72) tampoco.
 de `docs/propuestas/01-escenario-cobertura.md`. No los construyas hasta que el
 Plano A esté validado jugando.
 
-**Y el editor visual de mapas** (vuelta 74), diseñado en
-`docs/propuestas/05-editor-de-mapas.md` y **sin una línea construida**. Lo que
-hay que saber antes de meterle mano, porque es lo que decide su alcance:
+**El editor visual de mapas está a medias, y a propósito** (vuelta 74). La
+**fase 1 está construida** —ver §3 y §5—; las fases 2 a 5 están diseñadas y sin
+tocar en `docs/propuestas/05-editor-de-mapas.md`. Lo que hay que saber antes de
+seguir, porque es lo que decide el alcance:
 
 - **La colisión es AABB**, y el editor no puede poder construir algo contra lo
   que el motor no sepa chocar. Rotación libre en Y, tejados sólidos y triángulos
   que se chocan **no existen hoy** —`resolveAxis` resuelve un eje cada vez
   contra `minX/maxX/minZ/maxZ/bottom/top`, sin orientación en ningún sitio— y
   una caja girada se dibujaría girada, pararía las balas bien y se chocaría sin
-  girar. Giros de 90° sí son gratis: son intercambiar ancho y fondo.
+  girar. Giros de 90° sí son gratis: son intercambiar ancho y fondo. Es la
+  fase 5, con su propio banco, y **la decisión es no hacerla hasta haber
+  construido dos o tres mapas** con lo demás y ver qué se echa en falta de
+  verdad.
 - **El primer ventanal es el día del que habla la nota de la vuelta 69**, y
   ojo con la letra pequeña: `base` **ya la usan tres piezas** —los tres
   parapetos del Balcón— pero las tres se apoyan sobre la plataforma maciza, que
   ocupa su huella entera de 0 a 2.6. Lo que no existe es una pieza con **aire
   debajo**, y ése es el dintel de un vano. Es lo que obliga a escribir la
   comprobación de no levantarse debajo de algo, y `slide69` [9] se pondrá rojo,
-  que es para lo que está.
-- **Y el eje de todo es que un escenario pueda no venir de una clave.**
-  `Scenario`, `scenarioRoom` y `fisicaDeEscenario` sólo saben leer una clave de
-  `SCENARIOS`, y un mapa recién dibujado no está en ningún catálogo. De esa
-  misma pieza sale la respuesta a cómo se publica: **el fichero es el mapa**, no
-  hay un paso de publicación aparte.
+  que es para lo que está. Va en la fase 2.
 
 Lo que **no** entra ahí y conviene no dejarse arrastrar: la duración de una
 ronda, cuántas hay y los segundos de fase de compra **no son del mapa** —viven
 en `ROUNDS` y se eligen por sala al crearla— así que van en la página del duelo,
 no en el editor. Lo que sí es del mapa es su física y su dotación, que ya lo
 son desde la 72.
+
+Y **editar rutas, recogibles y sitios de explosivo se queda fuera** del editor:
+salen de un barrido medido (`rutas-buscar.mjs`), no de ponerlos a ojo. Un punto
+de ruta colocado a mano es un muñeco apareciendo dentro de una pared. Lo natural
+es que el editor **llame** a ese barrido sobre el mapa terminado; hasta entonces
+esos tres campos se conservan tal cual al guardar y no se tocan.
 
 **El deslizamiento ya no está aquí: se construyó en la vuelta 69.** El diseño
 sigue en `docs/propuestas/04-deslizamiento.md` y lo que hay que saber para

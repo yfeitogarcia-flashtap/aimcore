@@ -16,7 +16,8 @@
     "host": "npm run build && node net/servidor.mjs",
     "worker": "npm run build && wrangler dev --local --port 8787",
     "deploy": "npm run build && wrangler deploy",
-    "start": "node net/servidor.mjs"
+    "start": "node net/servidor.mjs",
+    "editor": "vite --open /editor/"
   },
   "dependencies": {
     "react": "^18.3.1",
