@@ -1,6 +1,10 @@
 # Propuesta 04 — Deslizamiento (*slide*)
 
-**Estado:** diseñada, **sin construir nada**. El encargo (vuelta 68) fue
+**Estado:** **construida en la vuelta 69** y encendida
+(`MOVEMENT.slide.enabled: true`), con la ventana para quitarla intacta. Lo que
+este documento dice sigue valiendo; lo que cambió al construirlo está en §8.
+
+**Estado original:** diseñada, **sin construir nada**. El encargo (vuelta 68) fue
 diseñarla «para cuando encaje en el roadmap» y dejar **una ventana hacia atrás
 abierta**: poder revertirla si rompe el juego o si no sale de calidad. Este
 documento es el diseño y esa ventana está en §6.
@@ -241,3 +245,33 @@ puede coger cuando se quiera.
 sea de lo que más se nota y lo más difícil de deshacer una vez que la gente lo
 tiene en los dedos. La Fase 1 del roadmap —que la partida aguante una tarde— pesa
 más que esto.
+
+
+---
+
+## 8. Lo que cambió al construirlo (vuelta 69)
+
+Dos cosas, y las dos las destapó el banco.
+
+- **§2 hablaba de velocidad y hacía falta hablar de distancia.** «`v(t)` es una
+  recta» es cierto y no basta: mover `v·dt` cada paso es integrar por Euler una
+  recta, y eso se pasa de largo en `(v0 − vfin)/2 · dt`, o sea **más cuanto menos
+  refresco**. Medido: **4.309 u a 60 Hz contra 4.245 a 240, un 1.49%** — justo lo
+  que §5.1 venía a impedir. Lo que se mueve cada paso es `d(t) − d(t − dt)` con
+  `d(t) = v0·t − ½at²`, y el reloj acotado a la duración por los dos lados para
+  que el paso que cruza el final recorra lo que quedaba y ni una unidad más.
+  Después: **4.20875 u en los tres refrescos, 0.0000%**.
+- **§4.3 no hacía falta, y lo que hacía falta era saberlo.** La colisión sí sabe
+  pasar por debajo de algo (`box.bottom >= headY` en `resolveAxis`), así que la
+  preocupación era razonable; pero **ninguna pieza de ningún escenario tiene la
+  base levantada** —todas nacen en el suelo—, de modo que agacharse no abre ni un
+  paso y no hay dónde levantarse dentro de nada. No se escribió la comprobación:
+  se escribió el aviso. `slide69` [9] recorre los tres escenarios y se pone rojo
+  el día que alguien declare una plataforma por la que se pueda andar por debajo,
+  que es el día en que esto hay que construir.
+
+Y una que no cambió pero conviene subrayar, porque es la que protege lo que ya
+existía: **§4.1 se cumplió tal cual**. Saltar desde un deslizamiento despega con
+la carrera (6.5) y no con el empujón (9.43), medido en los tres refrescos, y lo
+mismo al tirarse por una cornisa — que no estaba en la propuesta y es la misma
+puerta.

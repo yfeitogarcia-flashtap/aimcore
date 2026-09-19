@@ -7966,6 +7966,77 @@ que conviene no perder aunque no se construya nunca:
 
 ---
 
+## Ronda 69 — El deslizamiento
+
+El diseño estaba escrito desde la 68 (`docs/propuestas/04-deslizamiento.md`) y el
+encargo fue «adelante con la implementación completa», con el gesto corregido:
+correr + agacharse, porque Ctrl+W cierra la pestaña. Lo interesante de esta vuelta
+no es lo que se construyó —que es lo que decía el papel— sino las dos cosas que
+el papel no podía saber.
+
+### Una recta también se puede integrar mal
+
+La propuesta decía «`v(t)` es una recta, así que hay forma cerrada y no depende
+del refresco». Es cierto de la **velocidad** y falso de lo que importa, que es la
+**distancia**: mover `v·dt` cada paso es una suma de Riemann por la izquierda de
+una función que baja, y eso se pasa de largo exactamente en `(v0 − vfin)/2 · dt`
+— o sea **más cuanto más grande es el paso**.
+
+Medido con el primer intento: **4.309 u a 60 Hz, 4.254 a 144 y 4.245 a 240**, un
+1.49% de dispersión. Es el mismo orden de magnitud que el que la vuelta 44 cerró
+con el tick fijo, y por la misma causa: una integración donde había una forma
+cerrada.
+
+Lo que se mueve cada paso es `d(t) − d(t − dt)`, con `d(t) = v0·t − ½at²`, y el
+reloj **acotado a la duración por los dos lados**. Eso último no es cosmético:
+hace que el paso que cruza el final recorra justo lo que quedaba, así que la suma
+telescopa a `d(duración)` sea cual sea el tamaño del paso. Después: **4.20875 u
+en los tres refrescos, dispersión 0.0000%**.
+
+De ahí sale además un detalle de orden que parece un capricho y es el mecanismo:
+`_updateSlide` mira el reloj **antes** de sumarle el paso. Sumando primero, el
+paso que cruza el final deja de ser un paso de deslizamiento y ese último trozo
+se pierde — y lo que se pierde depende del refresco, que es lo que se acaba de
+arreglar.
+
+### El techo que no hay
+
+La propuesta apuntaba un riesgo (§4.3): levantarse de un deslizamiento debajo de
+una caja. La preocupación era razonable, porque la colisión **sí** sabe pasar por
+debajo de algo: `resolveAxis` descarta una pieza con `box.bottom >= headY`, y un
+agachado mide 1.05 contra 1.70.
+
+Pero **ninguna pieza de ningún escenario tiene la base levantada**: las 37 cajas
+de los tres mapas nacen en el suelo. No hay ni un hueco por el que colarse
+agachado, así que no hay dónde levantarse dentro de nada.
+
+Así que no se escribió la comprobación: se escribió el aviso. `slide69` [9]
+recorre los tres escenarios y **se pone rojo el día que alguien declare una
+plataforma de verdad** —una por la que se pueda andar por debajo—, que es el día
+en que esa comprobación hay que construir. Construir hoy la máquina para un caso
+que no existe habría sido código sin forma de probarlo.
+
+### Lo que sí salió como estaba escrito
+
+- **Saltar no se lleva la marcha del deslizamiento** (§4.1): se despega con la
+  carrera (6.5) y no con el empujón (9.43), medido en los tres refrescos, y el
+  vuelo no pasa del techo del aire. Se aplica igual al tirarse por una cornisa,
+  que no estaba en la propuesta y es la misma puerta. La marcha de salida va
+  **como argumento de `_takeOff`** y no como campo: se gasta en el mismo paso, y
+  un campo que sobrevive a un paso es un campo que hay que mandar por la red.
+- **El flanco sale de la máscara** (§3.1), así que el protocolo no creció: lo que
+  creció fue `snapshot()`, de 25 campos a 32. `red45`, con un deslizamiento cada
+  2.3 s en la rotación de gestos, sale con **cero correcciones y error cero**.
+- **La marcha que se exige es la de antes de agacharse.** En el paso del flanco
+  la tecla ya está pulsada, así que preguntar por la marcha vigente diría «2.6»
+  y no se podría entrar nunca. Se compara contra **tu** carrera, no contra un
+  número suelto, y por eso un rifle se desliza igual que una pistola — medido con
+  las tres.
+- **Y el interruptor es de verdad un interruptor**: apagado, el mismo paseo por
+  el Plano A acaba en la **misma coordenada hasta el último decimal**.
+
+---
+
 ## 13. Bugs con enseñanza duradera
 
 Recopilación de los fallos cuyo diagnóstico cambió una convención del proyecto.

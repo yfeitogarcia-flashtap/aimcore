@@ -199,6 +199,31 @@ export class MovementController {
     this._stillJumps = 0
     this._flightMaxSpeed = 0
 
+    /**
+     * **Deslizamiento** (vuelta 69). Seis campos y ninguno más, y los seis
+     * viajan en `snapshot()` porque sobreviven a un paso:
+     *  - `sliding` y `_slideTime`: si hay uno en marcha y cuánto lleva. La
+     *    velocidad es una **forma cerrada** de ese tiempo, no una integración.
+     *  - `_slideDirX/_slideDirZ`: hacia dónde, congelado al entrar. Un
+     *    deslizamiento no se gobierna: es lo que lo distingue de correr
+     *    agachado, y de paso es lo que lo deja resuelto en forma cerrada.
+     *  - `_slideSpeed0`: el empujón de entrada, congelado con el arma que se
+     *    llevaba — cambiar de arma a media caída no lo acelera.
+     *  - `_slideEndedAt`: cuándo acabó el último, para el enfriamiento.
+     * Y `_crouchWasDown`, que es lo que convierte la tecla en **flanco**: lo
+     * que arranca un deslizamiento es pulsar, no tener pulsado. Se deduce de la
+     * máscara del paso anterior, así que no hace falta un campo nuevo en el
+     * protocolo — los dos extremos ejecutan los mismos pasos con las mismas
+     * máscaras y deducen el mismo flanco.
+     */
+    this.sliding = false
+    this._slideTime = 0
+    this._slideDirX = 0
+    this._slideDirZ = 0
+    this._slideSpeed0 = 0
+    this._slideEndedAt = -Infinity
+    this._crouchWasDown = false
+
     /** Sala vigente. La marca el escenario; la vacía usa la de siempre. */
     this.room = ROOM
     /** Caja de la fase de compra, o null. Ver `setCorralito`. */
@@ -328,6 +353,11 @@ export class MovementController {
     if (this.airborne) {
       return MOVEMENT.airVector ? Math.hypot(this._airVelX, this._airVelZ) : this._airSpeed
     }
+    // Deslizándose la marcha no la ponen las teclas: la pone la recta que va
+    // del empujón a la marcha de agachado. Y sí es «la marcha vigente», que es
+    // lo que esta propiedad significa — quien salta desde un deslizamiento pide
+    // la suya aparte (ver `_updateVertical`).
+    if (this.sliding) return this._velocidadDeDeslizamiento()
     let speed = MOVEMENT.speed
     if (this.keys.walk && MOVEMENT.walkSpeed < speed) speed = MOVEMENT.walkSpeed
     if (this.keys.crouch && MOVEMENT.crouchSpeed < speed) speed = MOVEMENT.crouchSpeed
@@ -377,6 +407,10 @@ export class MovementController {
     // soltarlas no te para. Preguntar por las teclas diría que está quieto
     // alguien que va cruzando la sala por el aire.
     if (this.airborne && MOVEMENT.airVector) return this.currentSpeed
+    // Un deslizamiento avanza sin teclas: la dirección se congeló al entrar.
+    // Preguntar por las teclas diría que está quieto alguien que cruza un vano
+    // a 9 u/s, y de esto cuelgan las pisadas y la dispersión por velocidad.
+    if (this.sliding) return this.currentSpeed
     const keys = this.keys
     const moving = keys.forward || keys.back || keys.left || keys.right
     return moving ? this.currentSpeed : 0
@@ -486,6 +520,17 @@ export class MovementController {
      * posiciones en las que nunca estuvo.
      */
     out.poseEpoch = this.poseEpoch
+    // **Deslizamiento** (vuelta 69): los seis campos que sobreviven a un paso,
+    // más la máscara de agachado del paso anterior, que es de donde sale el
+    // flanco. Sin esto, la reconciliación reejecuta entradas con un
+    // deslizamiento a medias y cada foto trae una corrección.
+    out.sliding = this.sliding
+    out.slideTime = this._slideTime
+    out.slideDirX = this._slideDirX
+    out.slideDirZ = this._slideDirZ
+    out.slideSpeed0 = this._slideSpeed0
+    out.slideEndedAt = this._slideEndedAt
+    out.crouchWasDown = this._crouchWasDown
     return out
   }
 
@@ -524,6 +569,15 @@ export class MovementController {
     // teletransporte. Un estado antiguo sin el campo deja la de aquí como
     // estaba, que es lo que valía antes de que viajara.
     if (Number.isFinite(state.poseEpoch)) this.poseEpoch = state.poseEpoch
+    this.sliding = Boolean(state.sliding)
+    this._slideTime = Number.isFinite(state.slideTime) ? state.slideTime : 0
+    this._slideDirX = Number.isFinite(state.slideDirX) ? state.slideDirX : 0
+    this._slideDirZ = Number.isFinite(state.slideDirZ) ? state.slideDirZ : 0
+    this._slideSpeed0 = Number.isFinite(state.slideSpeed0) ? state.slideSpeed0 : 0
+    // Como los dos centinelas del salto: lo que no sea finito vuelve a
+    // significar «nunca», que es lo que JSON hace con `-Infinity`.
+    this._slideEndedAt = Number.isFinite(state.slideEndedAt) ? state.slideEndedAt : -Infinity
+    this._crouchWasDown = Boolean(state.crouchWasDown)
     p.y = this.feetY + this.eyeHeight - this.landingDip
   }
 
@@ -556,6 +610,7 @@ export class MovementController {
     this.chainedJump = false
     this._stillJumps = 0
     this._flightMaxSpeed = 0
+    this._pararDeslizamiento()
     this._airSpeed = this.topSpeed
     this._airVelX = 0
     this._airVelZ = 0
@@ -592,6 +647,9 @@ export class MovementController {
    */
   update(dt, now = performance.now()) {
     if (!this.enabled) return
+    // Antes que la horizontal, porque decide con qué marcha y hacia dónde se
+    // mueve este paso.
+    this._updateSlide(dt, now)
     // Antes que la horizontal: lo que se gane este frame ya mueve este frame.
     if (MOVEMENT.airVector) this._updateAirAccel(dt)
     else this._updateAirStrafe(dt)
@@ -642,7 +700,13 @@ export class MovementController {
       // El vector es **estado guardado**: al contrario que la marcha escalar,
       // que se recalcula cada frame desde las teclas, un NaN aquí se queda.
       Number.isFinite(this._airVelX) &&
-      Number.isFinite(this._airVelZ)
+      Number.isFinite(this._airVelZ) &&
+      // El deslizamiento también es estado guardado: su velocidad sale de un
+      // tiempo que se acumula y de un empujón que se congeló al entrar.
+      Number.isFinite(this._slideTime) &&
+      Number.isFinite(this._slideSpeed0) &&
+      Number.isFinite(this._slideDirX) &&
+      Number.isFinite(this._slideDirZ)
 
     if (sano) {
       this._safeX = position.x
@@ -672,6 +736,7 @@ export class MovementController {
     this._flightMaxSpeed = 0
     this._landedAt = -Infinity
     this._jumpPressedAt = -Infinity
+    this._pararDeslizamiento()
     this.eyeHeight = MOVEMENT.standHeight
     this.landingDip = 0
     this._dipFrom = 0
@@ -831,13 +896,12 @@ export class MovementController {
    * de suelo en la dirección que pidan las teclas. Sin teclas se despega sin
    * velocidad horizontal, que es lo mismo que hacía el modelo escalar.
    */
-  _seedAirVelocity() {
+  _seedAirVelocity(speed = this.currentSpeed) {
     if (!this._readWish()) {
       this._airVelX = 0
       this._airVelZ = 0
       return
     }
-    const speed = this.currentSpeed
     this._airVelX = this._wishX * speed
     this._airVelZ = this._wishZ * speed
   }
@@ -860,6 +924,19 @@ export class MovementController {
       if (this._airVelX === 0 && this._airVelZ === 0) return
       wantedX = fromX + this._airVelX * dt
       wantedZ = fromZ + this._airVelZ * dt
+    } else if (this.sliding) {
+      // La dirección se congeló al entrar: deslizarse no se gobierna, y por eso
+      // lo que decide dónde acabas es **desde dónde entraste**.
+      //
+      // Y lo que avanza el paso **no es velocidad × dt**: es la diferencia de
+      // dos distancias resueltas en forma cerrada. Con la velocidad, la suma de
+      // los pasos es una integración de Euler de una recta y se pasa de largo
+      // en `(v0 − vfin)/2 × dt`, o sea **más cuanto menos refresco**: medido
+      // antes de esto, 4.309 u a 60 Hz contra 4.245 a 240, un 1.49%. Es la
+      // misma razón por la que el salto no integra su parábola.
+      const step = this._avanceDeDeslizamiento(dt)
+      wantedX = fromX + this._slideDirX * step
+      wantedZ = fromZ + this._slideDirZ * step
     } else {
       if (!this._readWish()) return
       const step = this.currentSpeed * dt
@@ -1066,7 +1143,16 @@ export class MovementController {
     // el suelo o dentro de la gracia de borde, así que sigue sin haber doble
     // salto posible.
     if (this._pulsacionDeSaltoViva(now) && (!this.airborne || this._enGraciaDeBorde())) {
-      this._takeOff(MOVEMENT.jumpSpeed * this.jumpFactor(now), this._isChainPress(), dt)
+      // **Saltar es la salida del deslizamiento** (vuelta 69), y la marcha con
+      // la que se sale se decide **antes** de cerrarlo, porque cerrarlo devuelve
+      // `currentSpeed` a la de agachado —la tecla sigue pulsada— y eso sería
+      // saltar a 2.6 desde un gesto que se hace a 9.4.
+      let marchaDeSalida = 0
+      if (this.sliding) {
+        marchaDeSalida = MOVEMENT.slide.keepSpeedOnJump ? this.currentSpeed : this.topSpeed
+        this._terminarDeslizamiento(now)
+      }
+      this._takeOff(MOVEMENT.jumpSpeed * this.jumpFactor(now), this._isChainPress(), dt, marchaDeSalida)
       // La pulsación se gasta al despegar, y ésa es la mitad del mecanismo: una
       // pulsación despega **una vez**. Dejar SPACE apoyada ya no rebota en cada
       // aterrizaje, porque la tecla apretada no vuelve a ser un flanco.
@@ -1081,7 +1167,15 @@ export class MovementController {
         return
       }
       // Se ha salido de un borde andando: cae desde parado.
-      this._takeOff(0, false, dt)
+      // Deslizándose vale lo mismo que saltando: el vuelo se siembra con la
+      // carrera y no con el empujón, o tirarse por una cornisa sería la forma
+      // barata de llegar al techo del aire.
+      let marchaAlCaer = 0
+      if (this.sliding) {
+        marchaAlCaer = MOVEMENT.slide.keepSpeedOnJump ? this.currentSpeed : this.topSpeed
+        this._terminarDeslizamiento(now)
+      }
+      this._takeOff(0, false, dt, marchaAlCaer)
     }
 
     const g = MOVEMENT.gravity
@@ -1118,6 +1212,126 @@ export class MovementController {
     const over = this._stillJumps - fatigue.freeJumps + 1
     if (over <= 0) return 1
     return Math.max(fatigue.minFactor, 1 - fatigue.penaltyPerJump * over)
+  }
+
+  /**
+   * **El deslizamiento**, entero: cuándo empieza, cuándo acaba y nada más.
+   *
+   * Corre **antes** que la horizontal porque decide con qué marcha y hacia
+   * dónde se mueve este paso. Con el interruptor apagado es esta línea y ya:
+   * no hay ningún otro sitio del juego que pregunte por el deslizamiento.
+   *
+   * **Empieza en el flanco de la tecla de agachado**, no mientras esté pulsada,
+   * que es la misma regla que el salto desde la vuelta 68 y por el mismo
+   * motivo: si no, agacharse y correr sería deslizarse sin parar.
+   */
+  _updateSlide(dt, now) {
+    const cfg = MOVEMENT.slide
+    if (!cfg.enabled) return
+
+    const agachado = this.keys.crouch
+    const flanco = agachado && !this._crouchWasDown
+    this._crouchWasDown = agachado
+
+    if (this.sliding) {
+      // Tres finales, y ninguno necesita saber por qué: soltar la tecla, que se
+      // acabe el tiempo, o dejar el suelo. El cuarto —saltar— lo cierra
+      // `_updateVertical`, que es quien despega.
+      //
+      // **El tiempo se mira antes de sumar el paso**, a propósito: así el paso
+      // que cruza el final sigue siendo un paso de deslizamiento, y el avance
+      // —que se calcula acotando el reloj a la duración— recorre exactamente lo
+      // que faltaba y ni una unidad más. Sumando primero, ese último trozo se
+      // perdería, y lo que se perdiera dependería del refresco.
+      if (!agachado || this.airborne || this._slideTime * 1000 >= cfg.durationMs) {
+        this._terminarDeslizamiento(now)
+        return
+      }
+      this._slideTime += dt
+      return
+    }
+
+    if (!flanco || this.airborne) return
+    if (now - this._slideEndedAt < cfg.cooldownMs) return
+    /**
+     * **La marcha que se exige es la de antes de agacharse.** En el paso del
+     * flanco la tecla ya está pulsada, así que `currentSpeed` devolvería la de
+     * agachado (2.6) y no se podría entrar nunca. Y se compara contra **tu**
+     * carrera, no contra un número suelto: el peso del arma se va en la
+     * división y un rifle se desliza igual que una pistola.
+     */
+    const marchaSinAgachar = (this.keys.walk ? MOVEMENT.walkSpeed : MOVEMENT.speed) * this.loadFactor
+    if (marchaSinAgachar < cfg.minSpeedFactor * this.topSpeed) return
+    // Y hay que ir a algún sitio: la dirección del deslizamiento es la que se
+    // pide en el instante de entrar, y sin teclas no hay ninguna.
+    if (!this._readWish()) return
+
+    this.sliding = true
+    this._slideTime = 0
+    this._slideDirX = this._wishX
+    this._slideDirZ = this._wishZ
+    this._slideSpeed0 = cfg.boostFactor * this.topSpeed
+  }
+
+  /**
+   * La marcha del deslizamiento en este instante: **una recta**, no una
+   * integración. Va del empujón de entrada a la marcha de agachado en
+   * `durationMs`, así que la desaceleración sale de despejarla y un
+   * deslizamiento mide lo mismo a 60 que a 240 Hz —y seguiría midiendo lo mismo
+   * si un día el servidor simulara a otro ritmo, que es para lo que la forma
+   * cerrada existe en esta casa—.
+   */
+  _velocidadDeDeslizamiento() {
+    const total = MOVEMENT.slide.durationMs / 1000
+    const fin = MOVEMENT.crouchSpeed * this.loadFactor
+    if (!(total > 0)) return fin
+    const t = this._slideTime > total ? total : this._slideTime
+    const v = this._slideSpeed0 - ((this._slideSpeed0 - fin) / total) * t
+    return v > fin ? v : fin
+  }
+
+  /**
+   * **Cuánto avanza este paso**, en forma cerrada. La distancia recorrida en
+   * `t` con una velocidad que baja en línea recta es
+   * `d(t) = v0·t − ½·a·t²`, y lo del paso es `d(t) − d(t − dt)`. El reloj se
+   * acota a la duración por los dos lados, así que el paso que cruza el final
+   * recorre justo lo que quedaba: la suma telescopa a `d(duración)` **sea cual
+   * sea el tamaño del paso**.
+   */
+  _avanceDeDeslizamiento(dt) {
+    const total = MOVEMENT.slide.durationMs / 1000
+    if (!(total > 0)) return 0
+    const fin = MOVEMENT.crouchSpeed * this.loadFactor
+    const a = (this._slideSpeed0 - fin) / total
+    const d = (t) => {
+      const c = t < 0 ? 0 : t > total ? total : t
+      return this._slideSpeed0 * c - 0.5 * a * c * c
+    }
+    return d(this._slideTime) - d(this._slideTime - dt)
+  }
+
+  /** Cierra el deslizamiento y arranca su enfriamiento. */
+  _terminarDeslizamiento(now) {
+    if (!this.sliding) return
+    this.sliding = false
+    this._slideTime = 0
+    this._slideEndedAt = now
+  }
+
+  /**
+   * Borra el deslizamiento **sin** enfriamiento, que es otra cosa: lo llaman la
+   * reaparición y la red de seguridad de `_guardState`. Un teletransporte no
+   * deja a medias un gesto, lo cancela; y cobrar el enfriamiento de un
+   * deslizamiento que el jugador no llegó a hacer sería castigarle por morirse.
+   */
+  _pararDeslizamiento() {
+    this.sliding = false
+    this._slideTime = 0
+    this._slideDirX = 0
+    this._slideDirZ = 0
+    this._slideSpeed0 = 0
+    this._slideEndedAt = -Infinity
+    this._crouchWasDown = false
   }
 
   /**
@@ -1199,16 +1413,20 @@ export class MovementController {
    *   ms a 60 Hz contra 4.2 a 240: una diferencia por refresco de las que aquí
    *   se arreglan, no se documentan.
    */
-  _takeOff(velocity, chained = false, dt = 0) {
+  _takeOff(velocity, chained = false, dt = 0, marchaForzada = 0) {
     // `currentSpeed` se lee **antes** de marcar `airborne`, así que devuelve la
     // marcha de suelo: es la que se congela (escalar) o la que siembra el
-    // vector.
-    this._airSpeed = chained ? this._landingSpeed : this.currentSpeed
+    // vector. `marchaForzada` es la puerta de un solo uso del deslizamiento
+    // (vuelta 69): quien despega desde uno no se lleva sus 9.43 u/s, se lleva
+    // su carrera. Va como argumento y no como campo a propósito — se gasta en
+    // el mismo paso, así que no hay nada que guardar ni que mandar por la red.
+    const marcha = chained ? this._landingSpeed : marchaForzada || this.currentSpeed
+    this._airSpeed = marcha
     if (chained) {
       this._airVelX = this._landingVelX
       this._airVelZ = this._landingVelZ
     } else {
-      this._seedAirVelocity()
+      this._seedAirVelocity(marcha)
     }
     this.chainedJump = chained
     // Vuelo nuevo, marca a cero: la marcha la mide `update()` frame a frame, y

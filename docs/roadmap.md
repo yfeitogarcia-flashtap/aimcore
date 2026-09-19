@@ -179,7 +179,7 @@ dejó escrito que ése es el día en que esto se puede hacer.
 - **Rompe:** el fogonazo y el silbido son mundo, no interfaz, y los dos llevan
   presupuesto por frame. Medir antes de encenderlos con más de dos jugadores.
 
-### 1.6 Deslizamiento (*slide*)
+### 1.6 Deslizamiento (*slide*) — **hecho en la vuelta 69**
 
 Pedido en la vuelta 68 y **ya diseñado**:
 `docs/propuestas/04-deslizamiento.md`. Correr y agacharse para tirarse al suelo
@@ -196,8 +196,12 @@ W + CTRL + SPACE, y **Ctrl+W cierra la pestaña** (convención de la vuelta 27).
 gesto propuesto es correr + agacharse, con SPACE como salida.
 
 - **Bloqueante:** nada.
-- **Medible:** `slide69.mjs`, ocho medidas en la propuesta §5 — la primera, que
-  un deslizamiento mida lo mismo a 60, 144 y 240 Hz.
+- **Medido** (`slide69.mjs`): **4.20875 u en los tres refrescos**, dispersión
+  0.0000%, una vez que el avance dejó de ser `v·dt` y pasó a ser la diferencia
+  de dos distancias cerradas. Y el resto de §5: 1 deslizamiento manteniendo la
+  tecla, salto a 6.5 y no a 9.43, 0 u de desvío girando 180°/s, cero
+  correcciones en `red45` y el interruptor apagado dejando el paseo en la misma
+  coordenada hasta el último decimal.
 - **Rompe:** la marcha congelada del despegue (deslizarse y saltar llegaría al
   techo del aire gratis), el hitbox-silueta de la vuelta 65 con un blanco bajo y
   rápido, y levantarse debajo de una caja, que hoy no se comprueba porque no hacía

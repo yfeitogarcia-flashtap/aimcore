@@ -609,6 +609,64 @@ paso o ninguno, según cuál de los dos relojes vaya por delante. Por la red la
 pone `pressJump`, que es su sitio. Medido en `red45`: cero correcciones y error
 de reconciliación cero **saltando**.
 
+**El deslizamiento es una recta, y lo que avanza cada paso no es velocidad por
+delta** (vuelta 69). Correr y **pulsar** la tecla de agacharse tira al jugador al
+suelo con un empujón de `slide.boostFactor` (1.45 × tu carrera = 9.43 u/s, justo
+por debajo del techo del aire) que baja en línea recta hasta la marcha de
+agachado en `durationMs`. Se sale soltando la tecla, agotado el tiempo, saltando
+o dejando el suelo. Seis reglas, y ninguna es decoración:
+
+- **Lo que se integra se rompe con el refresco.** La velocidad es una recta, así
+  que sumar `v·dt` paso a paso es una integración de Euler que se pasa de largo
+  en `(v0 − vfin)/2 · dt` — **más cuanto menos refresco**: medido, 4.309 u a 60
+  Hz contra 4.245 a 240, un **1.49%**. Lo que se mueve cada paso es la
+  diferencia de dos **distancias** cerradas, `d(t) − d(t − dt)` con
+  `d(t) = v0·t − ½at²`, y el reloj se acota a la duración por los dos lados para
+  que el paso que cruza el final recorra justo lo que quedaba. Medido después:
+  **4.20875 u en los tres refrescos, dispersión 0.0000%**. Es la misma regla que
+  la parábola del salto, y la misma razón.
+- **Empieza en el flanco de la tecla, y el flanco sale de la máscara.** Mantener
+  agachado da **un** deslizamiento (medido: 1 en 4 s), como mantener SPACE da un
+  salto desde la 68. Y el flanco se deduce comparando la máscara de este paso
+  con la del anterior (`_crouchWasDown`), así que **no hace falta un campo nuevo
+  en el protocolo**: los dos extremos ejecutan los mismos pasos con las mismas
+  máscaras.
+- **La marcha que se exige es la de antes de agacharse.** En el paso del flanco
+  la tecla ya está pulsada, así que `currentSpeed` diría 2.6 y no se podría
+  entrar nunca. Y se compara contra **tu** carrera (`minSpeedFactor`), no contra
+  un número suelto: el peso del arma se va en la división y un rifle se desliza
+  igual que una pistola — medido con las tres.
+- **No se gobierna.** La dirección se congela al entrar: girar el ratón 180°/s no
+  mueve el deslizamiento de su recta (medido, 0 u de desvío). Es lo que lo
+  distingue de correr agachado, y de paso es lo que lo deja resuelto en forma
+  cerrada.
+- **Saltar desde un deslizamiento no se lleva su marcha.** La marcha se congela
+  al despegar, así que despegar a 9.43 sería volar a 9.43 y el air-strafe
+  remataría hasta 9.5 — lo que hoy cuesta tres encadenados bien hechos. El vuelo
+  se siembra con **tu carrera** (medido: 6.5 clavado en los tres refrescos), y lo
+  mismo al tirarse por una cornisa. La marcha de salida va **como argumento de
+  `_takeOff`**, no como campo: se gasta en el mismo paso, así que no hay nada que
+  guardar ni que mandar. `slide.keepSpeedOnJump` está para probar lo contrario
+  jugando.
+- **Y los siete campos viajan.** `sliding`, el reloj, la dirección congelada, el
+  empujón congelado, el enfriamiento y la máscara de agachado están en
+  `snapshot()` (25 → 32). Medido en `red45` con un deslizamiento cada 2.3 s:
+  **cero correcciones y error de reconciliación cero**.
+
+**`MOVEMENT.slide.enabled` es la ventana hacia atrás, y no es un ajuste del
+jugador**: no sale en el panel, igual que `airVector`. A `false`, `_updateSlide`
+es un `return` en la primera línea y no hay ningún otro sitio del juego que
+pregunte por el deslizamiento — medido: el mismo paseo por el Plano A acaba en la
+**misma coordenada hasta el último decimal**.
+
+**Y levantarse debajo de una caja no se comprueba, porque hoy no puede pasar.**
+La colisión sí sabe pasar por debajo de algo (`box.bottom >= headY` en
+`resolveAxis`), pero **ninguna pieza de ningún escenario tiene la base
+levantada**: todas nacen en el suelo, así que agacharse no abre ni un paso. El
+día que un mapa declare una plataforma de verdad —una por la que se pueda andar
+por debajo— hay que escribir esa comprobación, y `slide69` [9] se pondrá rojo
+para recordarlo.
+
 **Hay dos modelos de aire conviviendo tras `MOVEMENT.airVector`, y uno se
 borrará.** El interruptor es de prueba, no un ajuste de juego: no está en el
 panel. `true` (por defecto) es el **vector de velocidad**; `false`, la **marcha
@@ -2824,6 +2882,12 @@ salirse de un borde deja `MOVEMENT.coyoteMs` (110) para saltar igual—, **salto
 encadenado** con SPACE dentro de
 `MOVEMENT.chainJumpWindowMs` (130 ms a cada lado del aterrizaje exacto), que
 conserva la marcha del aterrizaje —con vector, también **la dirección**—, y
+**deslizamiento** (vuelta 69): corriendo, **pulsar** la tecla de agacharse tira
+al jugador al suelo a 9.43 u/s —justo por debajo del techo del aire— frenando en
+recta hasta 2.6 en 700 ms y **4.21 u** de recorrido, idénticas a 60, 144 y 240
+Hz; se sale soltando la tecla, agotado el tiempo o saltando, y el salto sale con
+tu carrera y no con el empujón. No se gobierna: la dirección se congela al
+entrar. Tuning en `MOVEMENT.slide`, con `enabled` como ventana para quitarlo. Y
 **air-strafe**: en el aire, girar el ratón hacia el lado de la tecla de estrafe
 acelera hasta `MOVEMENT.airStrafeMaxSpeed` (9.5 contra 6.5 de carrera) y sin
 pasar de ahí nunca. Con el modelo vectorial (por defecto) el ritmo de giro
@@ -3038,7 +3102,7 @@ lo pide explícitamente, no se añade.
 `docs/roadmap.md`**, ordenado por dependencia y sin fechas: reconexión, condición
 de victoria, escudo y casco en red, identidad y cuentas, el SDK Social de
 Discord, el modo de eliminación, el modo FlickLAB con ranking, los Planos B y C,
-los mapas de comunidad, el **deslizamiento**, la economía y la monetización. Ese fichero **no autoriza
+los mapas de comunidad, la economía y la monetización. Ese fichero **no autoriza
 nada** —esta sección sigue mandando— y está para no reconstruir la lista cada vez
 buscando en `decisions.md` la vuelta en que salió cada idea.
 
@@ -3057,15 +3121,11 @@ no existen, y un `$0` en la ficha prometería una mecánica que no hay.
 de `docs/propuestas/01-escenario-cobertura.md`. No los construyas hasta que el
 Plano A esté validado jugando.
 
-**Y el deslizamiento** (vuelta 68), en `docs/propuestas/04-deslizamiento.md`:
-correr y agacharse para tirarse al suelo conservando la marcha. Diseñado entero
-—con su ventana para revertirlo, `MOVEMENT.slide.enabled`, que es el precedente
-de `airVector`— y **sin una línea escrita**. Dos avisos de ahí que conviene no
-perder: el gesto pedido era **W + CTRL + SPACE** y Ctrl+W cierra la pestaña
-(convención de la vuelta 27), así que el propuesto es correr + agacharse; y
-deslizarse y saltar llegaría al techo del aire gratis si el despegue conservara
-la marcha del deslizamiento, que es la mecánica que más se practica tirada por
-la ventana.
+**El deslizamiento ya no está aquí: se construyó en la vuelta 69.** El diseño
+sigue en `docs/propuestas/04-deslizamiento.md` y lo que hay que saber para
+tocarlo, en las convenciones. Se entra corriendo y pulsando agacharse —el gesto
+pedido era W + CTRL + SPACE y Ctrl+W cierra la pestaña, convención de la vuelta
+27— y se sale soltando, agotando el tiempo o saltando.
 
 **El salto ya no depende del refresco.** Con `jumpSpeed 8.67` y `gravity 30`:
 ápice **1.2528 u** y **578 ms** de vuelo, iguales en cualquier monitor

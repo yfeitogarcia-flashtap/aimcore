@@ -72,6 +72,13 @@ Sólo con la variante de movimiento activa (`MOVEMENT.enabled`):
 - **A o D en el aire, girando el ratón hacia ese mismo lado**: **air-strafe**.
   Ganas velocidad por encima de tu carrera mientras estrafeas sin avanzar. Ver
   la sección propia más abajo.
+- **Corriendo, pulsar C**: **deslizamiento**. Te tiras al suelo conservando la
+  marcha —y de entrada mejorándola: 9.4 u/s contra los 6.5 de carrera— y frenas
+  en línea recta hasta la marcha de agachado, unos 4.2 metros de recorrido. Se
+  sale soltando C, dejando que se agote o **saltando**, y el salto sale con tu
+  carrera, no con el empujón. No se gobierna: la dirección es la que llevabas al
+  entrar. Hay que venir corriendo (andando con SHIFT no entra) y hay un
+  enfriamiento entre uno y otro.
 - **C** mantenido: agacharse. Baja la altura de la cámara y reduce la velocidad
   mientras se mantiene. Con SHIFT y C a la vez manda la marcha más lenta de las
   dos, o sea agachado.

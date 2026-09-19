@@ -938,6 +938,72 @@ export const MOVEMENT = {
   coyoteMs: 110,
 
   /**
+   * **Deslizamiento** (*slide*, vuelta 69). Correr y pulsar la tecla de
+   * agacharse tira al jugador al suelo conservando —y de entrada mejorando— la
+   * marcha; se sale soltando la tecla, agotado el tiempo, o saltando.
+   *
+   * El diseño entero, con sus tres riesgos y el porqué de cada número, está en
+   * `docs/propuestas/04-deslizamiento.md`.
+   *
+   * **`enabled` es la ventana hacia atrás, y no es un ajuste del jugador**: no
+   * sale en el panel, igual que `airVector`. A `false`, `_updateSlide` es un
+   * `return` en la primera línea y no hay ningún otro sitio del juego que
+   * pregunte por el deslizamiento — medido: el mismo paseo por el Plano A acaba
+   * en la misma coordenada hasta el último decimal que antes de escribirlo.
+   */
+  slide: {
+    enabled: true,
+
+    /**
+     * El empujón de entrada, en múltiplos de **tu** carrera (la de tu arma).
+     * 1.45 × 6.50 = **9.43 u/s**, justo por debajo del techo del aire (9.5):
+     * deslizarse es ir tan rápido como un air-strafe perfecto, pero en línea
+     * recta y pegado al suelo. Anclarlo ahí deja el techo de velocidad del
+     * juego en un solo número, así que no hay que recalibrar nada de lo que
+     * cuelga de él —las pisadas, la dispersión por velocidad, el silbido—.
+     */
+    boostFactor: 1.45,
+
+    /**
+     * Lo que dura, en ms. La velocidad **no se integra**: es una recta cerrada
+     * en `_slideTime` que va del empujón a la marcha de agachado, así que la
+     * desaceleración sale de despejarla —(9.43 − 2.60) / 0.7 = 9.76 u/s²— y no
+     * de teclear un número. Lo que avanza es el área bajo esa recta: **4.2 u**,
+     * dos cuerpos y medio, o sea cruzar un vano y no cruzar el mapa.
+     */
+    durationMs: 700,
+
+    /**
+     * **Hay que venir corriendo**, y se mide contra **tu** carrera para que el
+     * peso del arma no decida quién puede deslizarse: con 0.9, andar (4.2 de
+     * 6.5, o sea 0.65) no entra y correr (1.0) sí, lleves la pistola o la Rift.
+     * Es la misma forma que el umbral de las pisadas de la vuelta 63.
+     *
+     * Y se mide sobre la marcha que tendrías **sin** la tecla de agachado: en
+     * el paso del flanco esa tecla ya está pulsada, así que preguntar por la
+     * marcha vigente diría «2.6» siempre y no se podría entrar nunca.
+     */
+    minSpeedFactor: 0.9,
+
+    /**
+     * Enfriamiento entre deslizamientos, desde que acaba uno. Sin él,
+     * encadenarlos es un segundo modelo de movimiento en el que correr no se
+     * usa nunca.
+     */
+    cooldownMs: 1200,
+
+    /**
+     * **Saltar desde un deslizamiento no se lleva su marcha**, y es la regla que
+     * protege lo que ya existe: la marcha se congela al despegar, así que
+     * despegar a 9.43 es volar a 9.43 y el air-strafe puede rematar hasta 9.5
+     * —lo que hoy cuesta tres encadenados bien hechos—. El vuelo se siembra con
+     * tu carrera. El interruptor está para poder probar lo contrario jugando;
+     * el valor de fábrica es el que no regala el techo del aire.
+     */
+    keepSpeedOnJump: false,
+  },
+
+  /**
    * **Qué modelo de aire se usa**, mientras se decide cuál se queda:
    *
    * - `true` — **vector de velocidad**. En el aire el jugador tiene una
