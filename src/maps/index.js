@@ -14,5 +14,11 @@
  * acaba llamándose de dos maneras.
  */
 
+import mapa_largoYPuerta from './largoYPuerta.js'
+import mapa_test_map_190926 from './test-map-190926.js'
+
 /** @type {Record<string, object>} */
-export const MAPAS_DE_FICHERO = {}
+export const MAPAS_DE_FICHERO = {
+  'largoYPuerta': mapa_largoYPuerta,
+  'test-map-190926': mapa_test_map_190926,
+}
