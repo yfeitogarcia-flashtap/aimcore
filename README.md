@@ -618,6 +618,36 @@ para capturar el ratón y andar; **ESC** vuelve a editar.
 Un mapa con física propia se prueba con la suya: en uno con la gravedad de Los
 Pilares el salto sube 3.25 u y no 1.25.
 
+### Versiones: guardar con comentario y volver atrás
+
+Cada **Guardar** pregunta *qué cambia en este guardado*. Esa nota, con su fecha,
+queda en el historial del mapa (`src/maps/historial/<clave>.json`) y la lista
+sale en el panel: la más reciente arriba, marcada como la que está en el disco.
+
+**Restaurar carga, no escribe.** Pulsar una versión te la pone delante en el
+editor; se vuelve la de verdad cuando guardas —y eso anota una versión más, no
+borra nada—. Así puedes mirar cómo estaba el mapa hace tres guardados sin
+comprometerte, y si no era ésa, abres otra.
+
+Dos detalles que ahorran sorpresas:
+
+- **Guardar dos veces lo mismo no crea dos versiones.** Si nada ha cambiado, el
+  panel lo dice y no anota. Un historial lleno de versiones idénticas es un
+  historial en el que no se encuentra la que importa.
+- **No se borran versiones viejas nunca.** Lo que se le pide a un historial es
+  exactamente lo viejo. Si la lista se hace muy larga, el panel avisa y lo podas
+  tú editando ese JSON.
+
+Y aparte del historial hay un **borrador**: lo que estás editando se guarda en
+el navegador según lo tocas, así que cerrar la pestaña o recargar no se lleva lo
+que todavía no habías guardado. Son dos cosas distintas — una te devuelve a una
+versión *guardada*, la otra salva lo que aún no lo está.
+
+El historial es un fichero del repositorio, así que viaja en git con el mapa
+cuando tú commitees. **No usamos commits por guardado a propósito**: la historia
+de este repositorio está cuidada, y cuarenta commits de «he movido una caja» la
+llenarían de ruido.
+
 ### Guardar, que es publicar
 
 **Guardar** escribe `src/maps/<clave>.js` y con eso el mapa **ya existe**: sale
@@ -627,6 +657,11 @@ mapa, y para quitarlo se borra.
 
 El panel dice lo que el saneado ha tenido que tirar (una altura que no existe,
 una pieza de tamaño cero, un campo desconocido) en vez de callárselo.
+
+Guardar **recarga la página**, y es correcto: `SCENARIOS` acaba de cambiar. El
+mapa que tenías abierto y la cámara cruzan la recarga, así que no deberías
+notarlo más que por un parpadeo. Y la dirección lleva el mapa abierto
+(`/editor/#clave`), por si lo quieres en marcadores.
 
 ### Lo que todavía no hace
 

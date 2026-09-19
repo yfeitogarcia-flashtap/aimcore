@@ -56,7 +56,7 @@ h2 {
   text-transform: uppercase;
   color: var(--apagado);
 }
-section { padding: 14px 0; border-top: 1px solid var(--linea); }
+section { padding: 11px 0; border-top: 1px solid var(--linea); }
 header { padding-bottom: 12px; }
 footer { padding-top: 12px; border-top: 1px solid var(--linea); }
 .nota { margin: 4px 0 0; color: var(--apagado); font-size: 11px; }
@@ -80,7 +80,7 @@ button:hover { border-color: var(--apagado); }
 button.accion { border-color: var(--accion); color: var(--accion); }
 .botonera { display: flex; gap: 6px; margin-bottom: 8px; }
 
-#lista { margin: 0; padding: 0; list-style: none; max-height: 190px; overflow-y: auto; }
+#lista { margin: 0; padding: 0; list-style: none; max-height: 118px; overflow-y: auto; }
 #lista li {
   padding: 3px 6px;
   border-left: 2px solid transparent;
@@ -97,3 +97,60 @@ button.accion { border-color: var(--accion); color: var(--accion); }
 
 body.jugando { grid-template-columns: 1fr 0; }
 body.jugando #panel { display: none; }
+/**
+ * **Y el lienzo de editar se esconde mientras se juega.** Quedaba debajo del
+ * del motor, a tamaño completo, así que el navegador componía **dos superficies
+ * WebGL** por frame: medido, el motor dentro del editor iba a 2.3 fps contra
+ * los 25 de la página del juego. Esconderlo y parar su bucle lo devuelve a su
+ * sitio.
+ */
+body.jugando #lienzo { display: none; }
+
+/* --- Versiones (vuelta 75) --------------------------------------------- */
+
+#versiones { margin: 0; padding: 0; list-style: none; max-height: 150px; overflow-y: auto; }
+#versiones li {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px;
+  align-items: center;
+  padding: 5px 6px;
+  border-left: 2px solid var(--linea);
+}
+#versiones li:hover { background: #ffffff0a; border-left-color: var(--apagado); }
+#versiones .cuando { color: var(--apagado); font-size: 10px; }
+#versiones .que { color: var(--texto); white-space: normal; overflow-wrap: anywhere; }
+#versiones button { width: auto; padding: 2px 8px; font-size: 10px; }
+/* La última es la que está en el disco: se marca, y no se ofrece restaurar. */
+#versiones li.actual { border-left-color: var(--accion); }
+#versiones li.actual .cuando::after { content: ' · en el disco'; color: var(--accion); }
+
+#sin-versiones[hidden] { display: none; }
+
+/* --- El diálogo de guardar --------------------------------------------- */
+
+#dlg-guardar {
+  width: min(420px, 90vw);
+  padding: 16px;
+  border: 1px solid var(--linea);
+  border-radius: 3px;
+  background: var(--panel);
+  color: var(--texto);
+  font: inherit;
+}
+#dlg-guardar::backdrop { background: #000000cc; }
+#dlg-guardar h2 { margin-bottom: 10px; }
+#dlg-guardar #dlg-clave { color: var(--texto); text-transform: none; letter-spacing: 0; }
+#dlg-guardar textarea {
+  width: 100%;
+  margin-top: 4px;
+  padding: 6px;
+  border: 1px solid var(--linea);
+  border-radius: 2px;
+  background: #0d0d0d;
+  color: var(--texto);
+  font: inherit;
+  resize: vertical;
+}
+#dlg-guardar textarea:focus { outline: 1px solid var(--accion); }
+#dlg-guardar .botonera { margin: 12px 0 0; }

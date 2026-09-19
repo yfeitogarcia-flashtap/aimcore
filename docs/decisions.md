@@ -8726,12 +8726,17 @@ Ninguna era del juego, y las tres se leían como si lo fueran:
 - **Y se arma antes del gesto que mide.** Capturar la altura de partida en el
   `evaluate` que sigue a la pulsación de salto la toma con el jugador ya
   subiendo: medía lo que le quedaba, no el salto — 1.78 u contra 3.26.
-- **Un banco que dibuja por software paga por píxel.** A 1000×700 la página caía
-  a 1.3 fps y las cuatro medidas de movimiento dejaban de significar nada; a
-  640×420 sube a 5.5. Por eso el banco **imprime sus fps** y afirma antes que
-  nada que ha visto frames de verdad: sin esa premisa, un 2.30 u/s se lee como
-  una regresión del juego. Es la regla de la vuelta 61 —un banco se pasa solo—
-  por la puerta del tamaño de la ventana.
+- **Un banco que dibuja por software paga por píxel.** A 1000×700 la página
+  caía a 1.3 fps; a 640×420 sube. Por eso el banco **imprime sus fps** y afirma
+  antes que nada que ha visto frames de verdad. Es la regla de la vuelta 61 —un
+  banco se pasa solo— por la puerta del tamaño de la ventana.
+- **Y la lección de fondo, que llegó en la 75: la velocidad de un jugador se
+  mide con el reloj del mundo.** Con pocos frames `SIM.maxFrameDeltaMs` hace que
+  el mundo vaya a cámara lenta *a propósito*, así que dividir por tiempo de
+  pared mide el refresco y no el juego: el mismo paseo daba **2.61 u/s contra
+  pared y 5.88 contra `gameTime`**. Los rojos de esa tanda no eran del juego ni
+  del entorno: eran del divisor. Y los topes de espera van en el mismo reloj,
+  con el de pared sólo de seguro.
 - **Y el guardado se pide por HTTP, no desde la página.** Guardar reescribe el
   registro, el registro cuelga de la configuración de Vite y eso reinicia el
   servidor y recarga la página: el `evaluate` moría con un «Execution context
@@ -8753,12 +8758,15 @@ Ninguna era del juego, y las tres se leían como si lo fueran:
   desconocida, tamaño cero, base por encima de su techo) entra una, y hay cuatro
   quejas contando el campo inventado.
 - **Que probar es el motor**: el escenario del motor es el del editor, el
-  jugador sale donde dice el mapa, **anda a 6.24 u/s** sostenidos por suelo
+  jugador sale donde dice el mapa, **anda a 5.88 u/s** sostenidos por suelo
   libre —el suelo antes que el techo, regla de la vuelta 57—, se **para en
-  z 8.400** contra una caja cuya cara está en 8.0 (radio 0.4) y **salta 3.23 u**
-  en un mapa cuya física calcula 3.26. Todo ello **a 5.5 fps**, que el banco
-  imprime al lado: es el denominador de la vuelta 46, y es lo que hace legible
-  que los números no cuelguen del refresco.
+  z 8.400** contra una pieza cuya cara está en 8.0 (radio 0.4), y un mapa con
+  física propia le llega al movimiento con sus tres números y despega. La
+  marcha va contra **el reloj del mundo** y el banco imprime a qué porcentaje
+  del tiempo real corre. Con eso sale verde **a 0.3 fps y con el mundo al 3%
+  del tiempo real**: los mismos 5.88 u/s y la misma z 8.400. Una medida de este
+  juego que dependa del refresco está mal hecha, porque el juego no depende de
+  él desde la vuelta 44.
 - **Que guardar es publicar**: el fichero se escribe declarando su clave, y **un
   proceso de Node recién arrancado** —no una reimportación con `?v=`, que
   invalida `config.js` y no su registro— lo ve como un escenario más, en el
@@ -8769,6 +8777,143 @@ La batería del entrenamiento (46 suites) y los bancos de escenario
 —`mapa66`, `pilares72`, `rutas`, `spawn43`, `hitbox65`, `vanta71`, `audit`,
 `rondas62`— siguen verdes: el cambio de `SCENARIOS` a una fusión y el de
 `Scenario` a aceptar definiciones no movieron nada.
+
+
+## Ronda 75 — El historial de un mapa
+
+El encargo, tras probar la fase 1 del editor: backup o control de cambios, un
+comentario al guardar, y una lista de versiones con fecha para restaurar.
+
+### 75.1 Por qué no es git, que era lo obvio
+
+Guardar con un comentario, listar por fecha y volver atrás **es** git. La razón
+de no usarlo no es técnica y conviene dejarla escrita porque la propuesta se
+repetirá: **la historia de este repositorio está curada** —sus mensajes son el
+porqué de cada vuelta, y se leen— y cuarenta commits de «he movido una caja» la
+degradarían. Son dos cosas con lectores distintos y con vidas distintas:
+
+> La historia del repo es un artefacto; la de un mapa mientras se construye es
+> material de trabajo.
+
+Así que el historial es un fichero al lado del mapa
+(`src/maps/historial/<clave>.json`) y **git lo hace duradero al ritmo de quien
+commitea**, no al de cada guardado. No hay un segundo sistema de durabilidad: el
+fichero viaja en git como todo lo demás.
+
+Y es **JSON aunque el mapa sea un módulo**, por una asimetría que vale la pena
+ver: el mapa lo tienen que leer los tres montajes (Vite, Node y el navegador) y
+su historial **sólo el servidor de desarrollo**. Lo que no entra en el juego no
+paga el formato del juego.
+
+### 75.2 Restaurar carga, no escribe
+
+La versión se pone delante en el editor y se vuelve la del disco **al guardar**.
+De ahí salen tres propiedades que no se tienen con un restaurar que escribe:
+volver atrás **no puede romper el mapa**, se puede mirar una versión vieja sin
+comprometerse, y lo restaurado queda como **una versión más** y nunca como un
+borrado — o sea que restaurar también es deshacible.
+
+### 75.3 Dos fallos distintos, dos mecanismos
+
+«Backup automático» y «control de cambios» suenan a lo mismo y no lo son:
+
+- **Volver a una versión guardada** → el historial.
+- **No perder lo que todavía no has guardado** → un borrador en `localStorage`,
+  que sobrevive a cerrar la pestaña.
+
+Y un tercero que salió del primero: **guardar recarga la página**, porque el
+mapa es un fichero que `config.js` importa y `SCENARIOS` acaba de cambiar. Lo
+que cruza la recarga es un **relevo** por `sessionStorage` con el mapa exacto y
+la cámara. Volver a leer el mapa de `SCENARIOS` no vale: la recarga llega antes
+de que el servidor sirva el registro nuevo, así que **guardar te dejaba delante
+de un mapa en blanco** — el mapa estaba en el disco y el editor no lo enseñaba,
+que desde fuera se lee como haberlo perdido.
+
+Qué se abre al entrar, en orden: relevo, borrador, lo que diga la dirección
+(`/editor/#clave`), mapa en blanco.
+
+### 75.4 Y el hallazgo grande: `vite.config.js` no puede importar `src/`
+
+Importaba `src/config.js` —para la ruta del duelo— y `config.js` importa el
+registro de mapas. Consecuencia: **cada mapa era una dependencia de la
+configuración de Vite**. De ahí salían tres problemas que parecían distintos:
+
+1. **Guardar reiniciaba el servidor entero**, no sólo recargaba la página.
+2. **Regenerar el registro también**, y por eso la vuelta 74 tuvo que escribirlo
+   sólo si cambia para no entrar en bucle. El arreglo era bueno y la causa
+   estaba una capa más abajo.
+3. Y el que no tiene vuelta: con el registro apuntando a un mapa borrado, **el
+   servidor de desarrollo no podía ni arrancar**, y lo único que podía curarlo
+   —`regenerarRegistro`— vive dentro del servidor que no arranca. Un mapa
+   borrado a mano dejaba el proyecto sin forma de levantarse salvo editando el
+   registro a mano.
+
+Los módulos se cargan ahora **al atender**, con el especificador construido en
+tiempo de ejecución para que el empaquetador de la configuración no los siga. El
+precio es el de siempre y ya estaba escrito (§4 de `CLAUDE.md`): tocar
+`config.js` o `formato.js` pide reiniciar el servidor de desarrollo.
+
+Y el registro se regenera además **cuando un mapa aparece o desaparece**, no
+sólo al arrancar: borrarlo a mano con el servidor levantado ya no rompe nada.
+
+### 75.4b Y lo que costó más caro: un `await` en el camino de todas las peticiones
+
+Sacar `config.js` de la configuración obligó a cargarlo al atender, y la primera
+versión dejó el middleware del duelo **`async`**: un `await` antes de
+`siguiente()`, en **cada** petición del servidor de desarrollo, que en
+desarrollo son cientos de módulos por carga de página.
+
+No dio ningún error. Dio **diecinueve suites en rojo** con síntomas que no se
+parecían entre sí —binds que no responden, audio con el pico a 0.0000, una
+desactivación que no llega a término, velocidades `undefined`— y que eran todas
+lo mismo: esperas que se agotaban porque la página tardaba más en estar lista.
+
+Lo que lo encontró no fue depurar los síntomas, que apuntaban a cinco sitios
+distintos: fue **poner el `vite.config.js` de antes y volver a pasar una suite**.
+Verde con el viejo, rojo con el nuevo, y ahí se acabó la búsqueda. Es la
+disciplina de la vuelta 61 —comprobar contra qué se está midiendo— aplicada a un
+fichero de configuración.
+
+El arreglo: `configureServer` **es** `async` y resuelve lo que haga falta al
+arrancar, y el middleware que registra dentro es **síncrono**. El camino
+caliente del servidor de desarrollo no lleva promesas, igual que el bucle del
+juego no asigna memoria. Y el del editor sale pronto mirando el prefijo de la
+URL cruda antes de construir un `URL`.
+
+### 75.5 Dos cosas más que se arreglaron de camino
+
+- **El módulo lo escribe el servidor, no el navegador.** Hasta aquí la página
+  mandaba el texto del fichero y el endpoint lo volcaba tal cual: un punto de
+  escritura arbitraria —aunque sea de desarrollo— y, peor, una segunda idea de
+  cómo se serializa un mapa. Ahora viaja **el dato**, se sanea con la misma
+  función que usa el editor y el fichero sale de `mapaComoModulo`.
+- **El desplegable de «Abrir» decía otro mapa.** Asignarle una clave que
+  todavía no está entre sus opciones —un mapa recién guardado— deja al navegador
+  con la de antes, así que enseñaba «El Espejo» con otro mapa delante. Se
+  comprueba contra **sus opciones**, no contra `SCENARIOS`.
+
+### 75.6 Qué se ha verificado y cómo
+
+`hist75.mjs`, contra la página y por la interfaz —botón, diálogo, comentario—,
+no llamando a funciones:
+
+- **Que guardar pregunta y anota**: el mapa y su historial quedan en el disco,
+  con una versión que lleva su comentario, su fecha y **el mapa entero dentro**
+  (no un parche). Y que tras la recarga que provoca guardar **sigue abierto el
+  mapa guardado**, con la dirección diciéndolo.
+- **Que dos guardados iguales no son dos versiones**, y que el panel lo dice en
+  vez de callárselo.
+- **Que la lista sale con fecha, comentario y piezas**, la más reciente arriba y
+  marcada como la que está en el disco.
+- **Que restaurar carga y no escribe**: el editor enseña la versión vieja y el
+  fichero del disco **no se ha tocado**; el comentario del próximo guardado
+  viene propuesto («restaurado de…»); y guardar deja **una versión más**, no un
+  borrado.
+- **Que el borrador sobrevive a recargar**: lo que no se había guardado sigue
+  ahí tras F5, y el panel dice que es un borrador.
+- Y **cero errores de página**, contados como fallo.
+
+`editor74` sigue verde con el punto de guardado en su forma nueva.
 
 
 ## 13. Bugs con enseñanza duradera

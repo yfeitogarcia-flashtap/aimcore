@@ -413,6 +413,42 @@ construir algo contra lo que el motor no sepa chocar—, el reparto de formas, l
 fases 2 a 5 y la 6 fuera de alcance.
 
 **Y una medida que la fase 1 deja lista para la 4:** el paseo de prueba ya se
-mide contra el mapa editado —6.24 u/s de marcha sostenida, parada en z 8.400
-contra una cara en 8.0, ápice de 3.23 u contra 3.26 calculadas, todo a 5.5 fps—
-con las mismas funciones que usará el panel de métricas.
+mide contra el mapa editado —5.88 u/s de marcha sostenida contra el reloj del
+mundo, parada en z 8.400 contra una cara en 8.0— con las mismas funciones que
+usará el panel de métricas.
+
+---
+
+## 9. Lo que se añadió después de la fase 1: historial de versiones (vuelta 75)
+
+No estaba en el plan y se pidió al probarla: poder volver a una versión anterior
+de un mapa sin romperlo. Entra aquí y no en la fase 2 porque es **la red debajo
+de todo lo demás** — construir con confianza pide poder deshacer lo construido.
+
+**Lo que se descartó, y es lo que parecía obvio:** hacerlo con git. Guardar con
+un comentario, listar por fecha y volver atrás *es* git. La razón de no usarlo
+no es técnica: la historia de este repositorio está curada y cuarenta commits de
+«he movido una caja» la degradarían. Son dos cosas con lectores distintos — la
+historia del repo es un artefacto, la de un mapa mientras se construye es
+material de trabajo. El historial es un fichero al lado del mapa y git lo hace
+duradero **al ritmo de quien commitea**.
+
+**Y restaurar carga, no escribe.** La versión se pone delante en el editor y se
+vuelve la del disco al guardar, con lo que volver atrás no puede romper el mapa
+y queda como una versión más, nunca como un borrado.
+
+De paso cerró tres cosas de la fase 1 que estaban mal y no se habían visto:
+
+1. **Guardar te dejaba delante de un mapa en blanco.** La recarga que provoca
+   escribir un mapa llegaba antes de que el servidor sirviera el registro nuevo.
+   Lo cruza un relevo por `sessionStorage`, y la dirección lleva el mapa abierto.
+2. **`vite.config.js` importaba `src/config.js`**, así que cada mapa era una
+   dependencia de la configuración: guardar reiniciaba el servidor entero y, con
+   el registro roto, **el servidor no podía ni arrancar** — y lo único que podía
+   curarlo vivía dentro. Ahora no importa nada de `src/`.
+3. **El módulo lo escribía el navegador.** La página mandaba el texto del
+   fichero y el servidor lo volcaba: un punto de escritura arbitraria y una
+   segunda idea de cómo se serializa un mapa. Ahora viaja el dato y el fichero
+   sale de `mapaComoModulo`, la misma función que usa el editor.
+
+Nada de esto cambia el plan: las fases 2 a 5 siguen como estaban.

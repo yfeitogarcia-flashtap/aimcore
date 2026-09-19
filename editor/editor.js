@@ -44,6 +44,51 @@ let paso = 0.5
 let sucio = true
 /** El motor, sólo mientras se prueba. */
 let motor = null
+/** Lo que se propone como comentario del próximo guardado. */
+let comentarioSugerido = ''
+/** Guardado del borrador, aplazado: escribir por cada píxel arrastrado es tonto. */
+let aplazado = 0
+
+/**
+ * **Dónde vive el borrador.** Es la mitad «no pierdas lo que estás haciendo»
+ * del encargo, y es un fallo distinto del que cubre el historial: aquél deja
+ * volver a una versión **guardada**, y esto salva lo que todavía no lo está.
+ * Por eso son dos cosas y no una.
+ *
+ * `localStorage` es por origen, como en el resto del juego: cambiar de puerto
+ * deja el borrador atrás, una vez.
+ */
+const BORRADOR = 'vektor.editor.borrador.v1'
+
+/**
+ * **El relevo de después de guardar.**
+ *
+ * Guardar escribe un fichero que `config.js` importa, así que Vite recarga la
+ * página **siempre** — y con razón: `SCENARIOS` acaba de cambiar. Lo que no
+ * puede pasar es que esa recarga se lleve por delante lo que tenías delante.
+ *
+ * Volver a leer el mapa de `SCENARIOS` no vale: la recarga llega antes de que
+ * el servidor sirva el registro nuevo, así que a veces el mapa recién guardado
+ * todavía no está ahí y te devolvía uno en blanco. Lo que cruza la recarga es
+ * **el estado exacto**, por `sessionStorage`, que muere con la pestaña porque
+ * es lo que tiene que hacer.
+ */
+const RELEVO = 'vektor.editor.relevo.v1'
+
+/**
+ * **Qué mapa está abierto va en la dirección** (`/editor/#clave`).
+ *
+ * No es un adorno: guardar un mapa **nuevo** reescribe el registro, y eso
+ * reinicia el servidor y recarga la página. Sin esto, la recarga te devolvía un
+ * mapa en blanco justo después de guardar — el mapa estaba en el disco y el
+ * editor no lo enseñaba, que desde fuera se lee como haberlo perdido.
+ *
+ * Y de paso la dirección de un mapa se puede guardar en marcadores.
+ */
+function anotarEnLaBarra(clave) {
+  const quiere = clave ? `#${clave}` : ''
+  if (location.hash !== quiere) history.replaceState(null, '', `${location.pathname}${quiere}`)
+}
 
 // ---------------------------------------------------------------- escena
 
@@ -274,7 +319,10 @@ function campo(id, aplicar) {
   })
 }
 
-campo('clave', (v) => { mapa.clave = v.trim().replace(/[^a-zA-Z0-9_-]/g, '-') })
+campo('clave', (v) => {
+  mapa.clave = v.trim().replace(/[^a-zA-Z0-9_-]/g, '-')
+  anotarEnLaBarra(mapa.clave)
+})
 campo('label', (v) => { mapa.label = v })
 campo('sala-w', (v) => { mapa.room = { ...mapa.room, width: Number(v) } })
 campo('sala-d', (v) => { mapa.room = { ...mapa.room, depth: Number(v) } })
@@ -351,7 +399,15 @@ function cargar(definicion, clave) {
   seleccion = -1
   sucio = true
   contar(problemas)
+  anotarEnLaBarra(mapa.clave)
+  // Que el desplegable diga qué hay abierto. Se comprueba **contra sus
+  // opciones** y no contra `SCENARIOS`: un mapa recién guardado ya está en el
+  // catálogo pero todavía no en este desplegable, y asignar un valor que no
+  // existe deja al navegador con el de antes — o sea enseñando otro mapa.
+  const abribles = [...$('abrir').options].map((o) => o.value)
+  $('abrir').value = abribles.includes(mapa.clave) ? mapa.clave : ''
   pintarPanel()
+  pintarVersiones()
 }
 
 function contar(problemas, estado = '') {
@@ -364,26 +420,117 @@ $('abrir').addEventListener('change', (evento) => {
   cargar(clave ? SCENARIOS[clave] : mapaNuevo(), clave || undefined)
 })
 
-$('guardar').addEventListener('click', async () => {
+/**
+ * **Guardar pregunta qué cambia.** Un historial sin comentarios es una lista de
+ * fechas: sirve para saber que hubo diez guardados y no para encontrar el
+ * bueno. El comentario es lo único que hace que una versión se pueda elegir sin
+ * abrirlas todas.
+ */
+$('guardar').addEventListener('click', () => {
   const { mapa: limpio, problemas } = sanearMapa(mapa)
   if (!limpio.clave) { contar(['hace falta una clave para guardar'], ''); return }
+  $('dlg-clave').textContent = limpio.clave
+  $('dlg-comentario').value = comentarioSugerido
+  $('dlg-nota').textContent = problemas.length
+    ? `${problemas.length} cosa(s) que el saneado va a dejar fuera — ver el panel`
+    : `${limpio.boxes.length} pieza(s)`
+  $('dlg-guardar').showModal()
+  $('dlg-comentario').focus()
+})
+
+$('dlg-guardar').addEventListener('close', () => {
+  if ($('dlg-guardar').returnValue !== 'guardar') return
+  guardar($('dlg-comentario').value)
+})
+
+async function guardar(comentario) {
+  const { mapa: limpio, problemas } = sanearMapa(mapa)
   contar(problemas, 'guardando…')
   try {
     const respuesta = await fetch('/__editor/guardar', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ clave: limpio.clave, modulo: mapaComoModulo(limpio) }),
+      // Va **el dato**, no el texto del fichero: quien serializa un mapa es el
+      // servidor, con la misma función que usa esta página (vuelta 75).
+      body: JSON.stringify({ clave: limpio.clave, mapa: limpio, comentario }),
     })
     const cuerpo = await respuesta.json()
     if (!respuesta.ok) { contar([cuerpo.error ?? 'no se ha podido guardar'], ''); return }
-    contar(problemas, `guardado en ${cuerpo.fichero} · recargando`)
-    // **Recargar entera y no dejar que HMR parchee.** Guardar reescribe el
-    // registro de mapas, que cuelga de `config.js`, y parchear ese módulo en
-    // caliente es justo lo que duplica el store de ajustes (§4 de CLAUDE.md).
-    setTimeout(() => location.reload(), 400)
+
+    comentarioSugerido = ''
+    localStorage.removeItem(BORRADOR)
+    const nota = cuerpo.anotada ? `versión ${cuerpo.versiones}` : 'sin cambios: no se anota versión'
+    const estado = `guardado en ${cuerpo.fichero} · ${nota}`
+
+    // El relevo se deja puesto **antes** de tocar la pantalla: la recarga de
+    // Vite puede llegar en cualquier momento a partir de aquí.
+    try {
+      sessionStorage.setItem(RELEVO, JSON.stringify({ mapa: limpio, orbita, estado }))
+    } catch { /* sin relevo se recarga en blanco, que es molesto y no es perder nada */ }
+
+    contar(cuerpo.problemas ?? problemas, estado)
+    pintarVersiones()
   } catch (error) {
     contar([`no se ha podido guardar: ${error.message}`], '')
   }
+}
+
+// ---------------------------------------------------------------- versiones
+
+function cuando(iso) {
+  const d = new Date(iso)
+  return d.toLocaleString('es-ES', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' })
+}
+
+async function pintarVersiones() {
+  const clave = mapa.clave
+  const lista = $('versiones')
+  if (!clave) { lista.innerHTML = ''; $('sin-versiones').hidden = false; $('cuenta-versiones').textContent = ''; return }
+  try {
+    const respuesta = await fetch(`/__editor/historial?clave=${encodeURIComponent(clave)}`)
+    const { versiones, aviso } = await respuesta.json()
+    $('cuenta-versiones').textContent = versiones.length ? `${versiones.length}` : ''
+    $('sin-versiones').hidden = versiones.length > 0
+    // De la más reciente hacia atrás: lo que se busca casi siempre es lo último.
+    lista.innerHTML = [...versiones].reverse().map((v, desdeArriba) => `
+      <li class="${desdeArriba === 0 ? 'actual' : ''}">
+        <span>
+          <span class="que">${escapar(v.comentario)}</span><br>
+          <span class="cuando">${cuando(v.instante)} · ${v.piezas} pieza(s)</span>
+        </span>
+        <button type="button" data-i="${v.indice}">Restaurar</button>
+      </li>`).join('')
+    if (aviso) {
+      contar([], `el historial de este mapa pasa de ${aviso} versiones: conviene podarlo a mano`)
+    }
+  } catch {
+    lista.innerHTML = ''
+    $('cuenta-versiones').textContent = '(sin servidor)'
+  }
+}
+
+/** Un comentario lo escribe una persona, así que no se mete en el DOM sin más. */
+function escapar(texto) {
+  const nodo = document.createElement('span')
+  nodo.textContent = texto
+  return nodo.innerHTML
+}
+
+/**
+ * **Restaurar carga, no escribe.** La versión se pone delante en el editor y
+ * se vuelve la del disco cuando se guarda. Así volver atrás **no puede romper
+ * el mapa**: se puede mirar una versión vieja sin comprometerse, y si no era
+ * ésa, se abre otra.
+ */
+$('versiones').addEventListener('click', async (evento) => {
+  const boton = evento.target.closest('button[data-i]')
+  if (!boton) return
+  const respuesta = await fetch(`/__editor/historial?clave=${encodeURIComponent(mapa.clave)}&i=${boton.dataset.i}`)
+  if (!respuesta.ok) { contar(['esa versión no está'], ''); return }
+  const version = await respuesta.json()
+  cargar(version.mapa, mapa.clave)
+  comentarioSugerido = `restaurado de ${cuando(version.instante)} («${version.comentario}»)`
+  contar([], `cargada la versión de ${cuando(version.instante)} · guarda para dejarla fija`)
 })
 
 // ---------------------------------------------------------------- probar
@@ -400,6 +547,8 @@ function probar() {
   contar(problemas, 'probando · ESC para volver')
 
   document.body.classList.add('jugando')
+  cancelAnimationFrame(bucle)
+  bucle = 0
   $('caja-juego').hidden = false
   motor = new Engine($('juego'), {}, { escenario: limpio })
   motor.start()
@@ -414,6 +563,7 @@ function dejarDeProbar() {
   document.body.classList.remove('jugando')
   contar([], '')
   redimensionar()
+  if (!bucle) frame()
 }
 
 $('probar').addEventListener('click', probar)
@@ -435,16 +585,96 @@ function redimensionar() {
 }
 window.addEventListener('resize', redimensionar)
 
+/**
+ * El bucle de editar. **Se para del todo mientras se prueba**: devolver pronto
+ * seguía pidiendo un frame por frame al mismo navegador que está corriendo el
+ * juego, y el juego es lo único que importa en ese momento.
+ */
+let bucle = 0
 function frame() {
-  requestAnimationFrame(frame)
-  if (motor) return
-  if (sucio) { sucio = false; remontar() }
+  bucle = requestAnimationFrame(frame)
+  if (sucio) { sucio = false; remontar(); anotarBorrador() }
   colocarCamara()
   renderer.render(scene, camara)
 }
 
+// ---------------------------------------------------------------- borrador
+
+/**
+ * Guarda el borrador **aplazado**: `sucio` se levanta en cada píxel de un
+ * arrastre, y escribir en `localStorage` sesenta veces por segundo es la misma
+ * clase de trabajo tirado que fundir geometrías por evento.
+ */
+function anotarBorrador() {
+  clearTimeout(aplazado)
+  aplazado = setTimeout(() => {
+    // Sin persistencia se edita igual, pero tragárselo en silencio es
+    // indistinguible de un editor que pierde el trabajo por su cuenta
+    // (la regla del `try/catch` de la vuelta 60).
+    try { localStorage.setItem(BORRADOR, JSON.stringify(mapa)) } catch (error) {
+      contar([`no se puede guardar el borrador: ${error.message}`], '')
+    }
+  }, 400)
+}
+
+function recuperarBorrador() {
+  let guardado = null
+  try { guardado = localStorage.getItem(BORRADOR) } catch { return false }
+  if (!guardado) return false
+  try {
+    cargar(JSON.parse(guardado))
+    contar([], 'borrador recuperado · «Abrir» lo descarta')
+    return true
+  } catch {
+    return false
+  }
+}
+
+/**
+ * **Qué se abre al entrar, en este orden y por este motivo:**
+ *
+ * 1. El **borrador**, si lo hay: es lo que estabas haciendo y no habías
+ *    guardado, y perderlo al recargar es justo lo que viene a evitar.
+ * 2. Lo que diga la **dirección**: al guardar un mapa nuevo la página recarga
+ *    —el registro cambia y con él la configuración de Vite— y el borrador se
+ *    ha borrado porque ya está en el disco. Sin este paso, guardar te dejaba
+ *    delante de un mapa en blanco.
+ * 3. Un mapa **en blanco**.
+ */
+function recuperarRelevo() {
+  let guardado = null
+  try { guardado = sessionStorage.getItem(RELEVO) } catch { return false }
+  if (!guardado) return false
+  // Se consume: un relevo que sobrevive a su recarga volvería a abrirse la
+  // próxima vez y pisaría lo que estuvieras haciendo.
+  try { sessionStorage.removeItem(RELEVO) } catch { /* da igual */ }
+  try {
+    const { mapa: guardadoMapa, orbita: vista, estado } = JSON.parse(guardado)
+    cargar(guardadoMapa)
+    if (vista) { orbita.radio = vista.radio; orbita.yaw = vista.yaw; orbita.pitch = vista.pitch }
+    contar([], estado ?? '')
+    return true
+  } catch {
+    return false
+  }
+}
+
+function abrirLoQueToque() {
+  // El relevo primero: es lo que acaba de guardarse, y la recarga que lo trae
+  // aquí es consecuencia de haberlo guardado.
+  if (recuperarRelevo()) return
+  if (recuperarBorrador()) return
+  const deLaBarra = decodeURIComponent(location.hash.slice(1))
+  if (deLaBarra && SCENARIOS[deLaBarra]) {
+    cargar(SCENARIOS[deLaBarra], deLaBarra)
+    contar([], `abierto ${deLaBarra} · guardado en src/maps/`)
+    return
+  }
+  cargar(mapaNuevo())
+}
+
 rellenarAlturas()
-cargar(mapaNuevo())
+abrirLoQueToque()
 redimensionar()
 frame()
 

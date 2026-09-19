@@ -372,18 +372,26 @@ verdad**. Lo que hay que respetar al seguir construyéndolo:
     no valen igual en los dos.
   - **La clave la declara el fichero** (`clave`), no su nombre. Dos sitios
     diciendo cómo se llama un mapa es cómo acaba llamándose de dos maneras.
-  - **El registro se regenera al arrancar el servidor de desarrollo.** Un mapa
-    borrado a mano dejaba una importación apuntando a un fichero que no está, y
-    eso no rompe el editor: rompe `config.js`, o sea **el juego entero deja de
-    cargar**. Lo cazó el banco de esta vuelta dejándose un mapa a medio limpiar.
+  - **El registro se regenera al arrancar y cada vez que aparece o desaparece
+    un mapa.** Un mapa borrado a mano dejaba una importación apuntando a un
+    fichero que no está, y eso no rompe el editor: rompe `config.js`, o sea
+    **todas las páginas a la vez**.
+  - **Y `vite.config.js` no importa nada de `src/`** (vuelta 75). Importaba
+    `config.js` para la ruta del duelo, así que **cada mapa era una dependencia
+    de la configuración** — y de ahí salían tres cosas que parecían distintas:
+    guardar reiniciaba el servidor entero, regenerar el registro también (por
+    eso se escribe sólo si cambia), y con el registro roto **el servidor no
+    podía ni arrancar**, con lo que lo único que podía curarlo vivía dentro del
+    servidor que no arrancaba. Ahora esos módulos se cargan **al atender**, con
+    el especificador construido en tiempo de ejecución para que el empaquetador
+    de la configuración no los siga.
 - **Probar es el motor, no una vista previa.** `new Engine(lienzo, {}, {
   escenario })`, que es la puerta que abrió la vuelta 60 justo para esto — y por
   eso el editor **no toca los ajustes del jugador**. Medido (`editor74`): el
-  jugador sale donde dice el mapa, anda a **6.24 u/s** sostenidos por suelo
-  libre, se para en **z 8.400** contra una caja cuya cara está en 8.0 (radio
-  0.4) y salta **3.23 u** en un mapa cuya física calcula 3.26 — y todo eso a
-  **5.5 fps**, porque las sondas van dentro de la página y no cuelgan del
-  refresco.
+  jugador sale donde dice el mapa, anda a **5.88 u/s** sostenidos por suelo
+  libre —medidos contra el reloj del mundo—, se para en **z 8.400** contra una
+  pieza cuya cara está en 8.0 (radio 0.4), y un mapa con física propia le llega
+  al movimiento con **sus tres números** y despega de verdad.
 - **El editor no puede poder construir algo contra lo que el motor no sepa
   chocar.** La colisión es AABB, así que hoy se dibujan cajas alineadas a los
   ejes y el giro es de **90°** —intercambiar ancho y fondo—. Rotación libre,
@@ -394,6 +402,42 @@ verdad**. Lo que hay que respetar al seguir construyéndolo:
   `{ mapa, problemas }` y el panel los enseña: un campo que desaparece en
   silencio al guardar es cómo un mapa pierde su física sin que nadie se entere.
   Por eso `CAMPOS` es exhaustivo y un campo desconocido **se dice**.
+
+**Un mapa tiene historial, y no es git** (vuelta 75). Cada guardado pregunta
+**qué cambia** y anota una versión con su comentario y su fecha en
+`src/maps/historial/<clave>.json`; el panel las lista y se puede volver a
+cualquiera. Cinco reglas:
+
+- **No es git, y la razón no es técnica.** Guardar con un comentario, listar por
+  fecha y volver atrás *es* git. Pero la historia de este repositorio está
+  curada —sus mensajes son el porqué de cada vuelta— y cuarenta commits de «he
+  movido una caja» la degradarían. **La historia del repo es un artefacto; la de
+  un mapa mientras se construye es material de trabajo.** El fichero viaja en
+  git cuando tú commitees, o sea a tu ritmo y no al de cada guardado.
+- **Restaurar carga, no escribe.** La versión se pone delante en el editor y se
+  vuelve la del disco al guardar. Así volver atrás **no puede romper el mapa**:
+  se mira una versión vieja sin comprometerse, y guardar la deja fija como una
+  versión más — nunca como un borrado.
+- **No se trunca por antigüedad.** Lo que se le pide a un historial es
+  exactamente lo viejo, así que tirar las primeras entradas es tirar lo único
+  que no se puede reconstruir. Lo que sí se evita es anotar dos veces lo mismo:
+  **si el mapa no ha cambiado no hay versión nueva**, y el panel lo dice.
+- **Y el historial es JSON aunque el mapa sea un módulo**, por una asimetría que
+  conviene ver: el mapa lo tienen que leer **los tres montajes** y su historial
+  **sólo el servidor de desarrollo**. Lo que no entra en el juego no paga el
+  formato del juego.
+- **Guardar recarga la página siempre, y el estado cruza la recarga.** El mapa
+  es un fichero que `config.js` importa, así que Vite invalida el módulo y
+  recarga — con razón, porque `SCENARIOS` acaba de cambiar. Lo que cruza es el
+  **relevo** (`sessionStorage`): el mapa exacto y la cámara. Volver a leerlo de
+  `SCENARIOS` no vale, porque la recarga llega antes de que el servidor sirva el
+  registro nuevo y a veces devolvía un mapa en blanco justo después de guardar.
+
+Y «no perder trabajo» y «volver atrás» son **dos fallos distintos**: el
+historial cubre el segundo y un **borrador en `localStorage`** el primero, que
+es lo que sobrevive a cerrar la pestaña sin guardar. Qué se abre al entrar, en
+orden: relevo, borrador, lo que diga la dirección (`/editor/#clave`), mapa en
+blanco.
 
 Y dos cosas que salieron construyéndolo y valen fuera del editor:
 
@@ -3010,11 +3054,15 @@ pausa viaja en la foto, así que `pausa54-tope` **pregunta al huésped cuál lle
 antes de medir, y se entera al primer segundo en vez de a los catorce.
 
 **Y `src/maps/index.js` es generado: no lo edites a mano** (vuelta 74). Lo
-reescribe el editor al guardar y el servidor de desarrollo al arrancar. Si
-borras un mapa a mano y no levantas `npm run dev`, la importación se queda
-apuntando a un fichero que no existe y **lo que falla no es el editor: es
-`config.js`**, o sea el juego entero y también el huésped. El síntoma es un
-`ERR_MODULE_NOT_FOUND` con la ruta del mapa borrado.
+reescribe el editor al guardar, y el servidor de desarrollo al arrancar **y
+cada vez que un mapa aparece o desaparece** (vuelta 75), así que borrar un mapa
+a mano con `npm run dev` levantado se cura solo.
+
+Con el servidor **parado** no: la importación se queda apuntando a un fichero
+que no existe y **lo que falla no es el editor, es `config.js`** —o sea el
+juego, el duelo y el huésped— con un `ERR_MODULE_NOT_FOUND` que lleva la ruta
+del mapa borrado. Levantar `npm run dev` lo arregla; que pueda levantarse es
+justo lo que garantiza que `vite.config.js` no importe nada de `src/`.
 
 **Y el huésped tiene dos interruptores para poder medir, no para jugar** (la
 segunda, de la vuelta 62):
@@ -3049,6 +3097,65 @@ Y si alguna vez lo compruebas grepeando el bundle: **sólo valen los accesos a
 propiedad** (`recoilLoopFrom`, `_escenarioFijo`). Un nombre de función o una
 constante de módulo salen a cero por estar renombrada la una e inlineada la otra,
 y eso no dice nada de si están.
+
+**Lo que está en el camino de todas las peticiones se paga en todas** (vuelta
+75). Sacar `src/config.js` de la configuración de Vite obligó a cargarlo al
+atender, y la primera versión dejó el middleware del duelo **`async`**: un
+`await` antes de `siguiente()`, en cada petición del servidor de desarrollo, que
+en desarrollo son **cientos de módulos por carga de página**.
+
+No dio ningún error. Dio una página que tarda más en estar lista, y con ella
+**diecinueve suites en rojo** con síntomas que no se parecían entre sí: binds
+que no responden, audio con el pico a 0.0000, una desactivación que no llega a
+término, velocidades `undefined`. Todas eran esperas que se agotaban, y ninguna
+apuntaba a la causa.
+
+Dos reglas de ahí:
+
+- **Lo que se necesite en un middleware se resuelve al arrancar**, no al
+  atender: `configureServer` puede ser `async` y registrar dentro un middleware
+  **síncrono**. El camino caliente del servidor de desarrollo no lleva promesas,
+  igual que el bucle del juego no asigna memoria.
+- **Y se sale pronto.** El middleware del editor comprueba el prefijo de la URL
+  cruda antes de construir un `URL`: mil objetos por carga de página para servir
+  dos rutas.
+
+Y cómo se encontró, que es lo repetible: no depurando los síntomas —eran cinco
+suites distintas diciendo cinco cosas— sino **poniendo el `vite.config.js` de
+antes y volviendo a pasar una**. Verde con el viejo, rojo con el nuevo: ahí se
+acabó la búsqueda.
+
+**Y la velocidad de un jugador se mide con el reloj del mundo, no con el de
+pared** (vuelta 75). Es la consecuencia práctica de `SIM.maxFrameDeltaMs`: con
+el navegador ahogado el mundo va **a cámara lenta a propósito** —es lo que evita
+la espiral de la muerte— así que dividir distancia entre tiempo de pared mide el
+refresco y no el juego. Medido en `editor74` con WebGL por software: el mismo
+paseo daba **2.61 u/s contra reloj de pared y 5.88 contra `engine.gameTime`**.
+
+Puesto así, el banco **sale verde a 0.3 fps con el mundo corriendo al 3% del
+tiempo real**: la marcha sigue dando 5.88 y la parada contra la pieza sigue
+cayendo en z 8.400 clavada. Eso es lo que hay que exigirle a una medida de este
+juego, porque es lo que el juego promete desde la vuelta 44.
+
+Tres cautelas que vienen con ello:
+
+- **Los topes de espera van en tiempo de mundo**, con el de pared sólo de
+  seguro. Puestos en pared, treinta segundos son seis décimas de juego al 2% y
+  el jugador ni llega al muro; puestos en frames, a 1 fps son quince minutos y
+  el banco se come su propio plazo.
+- **Y el banco imprime a qué porcentaje del tiempo real corre el mundo**, que es
+  el denominador que hace legible todo lo demás (vuelta 46).
+- **Lo que no se puede medir así, no se mide aquí.** El ápice de un salto pide
+  muchas muestras por vuelo y este contenedor ha dado 0.2 fps, o sea **menos de
+  una muestra por vuelo**: eso no se arregla esperando. `editor74` comprueba que
+  los tres números de la física llegan al movimiento y que se despega; el ápice
+  lo mide `pilares72`, sin navegador.
+
+Ojo también al comparar dos páginas en el mismo navegador: la segunda sale peor
+por desgaste, no por su código. Midiendo el motor dentro del editor **en primer
+lugar** da 15.5 fps contra los 19.7 de la página del juego; midiéndolo el
+último, 2.3 contra 25.3. La conclusión de «el editor es diez veces más lento»
+era del orden de la medida.
 
 **Y un banco de red se pasa solo, nunca a la vez que otro** (vuelta 61). Cada uno
 abre dos navegadores con WebGL por software; varios a la vez se quitan frames

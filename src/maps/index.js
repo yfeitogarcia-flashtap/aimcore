@@ -14,14 +14,5 @@
  * acaba llamándose de dos maneras.
  */
 
-
-
-
-
-
-
-
-
-
 /** @type {Record<string, object>} */
 export const MAPAS_DE_FICHERO = {}

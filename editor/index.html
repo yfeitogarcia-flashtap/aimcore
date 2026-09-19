@@ -76,10 +76,34 @@
         <ul id="problemas"></ul>
       </section>
 
+      <section>
+        <h2>Versiones <span id="cuenta-versiones" class="nota"></span></h2>
+        <!-- Restaurar **carga**, no escribe: la versión se pone delante en el
+             editor y se vuelve la de verdad al guardar. Así volver atrás no
+             puede romper el mapa que hay en el disco. -->
+        <ul id="versiones"></ul>
+        <p id="sin-versiones" class="nota">Este mapa todavía no tiene guardados.</p>
+      </section>
+
       <footer class="nota">
         Clic izquierdo selecciona y arrastra · botón derecho orbita · rueda acerca
       </footer>
     </aside>
+
+    <dialog id="dlg-guardar">
+      <form method="dialog">
+        <h2>Guardar <span id="dlg-clave"></span></h2>
+        <label>Qué cambia en este guardado
+          <textarea id="dlg-comentario" rows="3" maxlength="200"
+            placeholder="p. ej. subo la torre del este a atalaya"></textarea>
+        </label>
+        <p id="dlg-nota" class="nota"></p>
+        <div class="botonera">
+          <button value="cancelar" type="submit">Cancelar</button>
+          <button value="guardar" type="submit" class="accion" id="dlg-ok">Guardar</button>
+        </div>
+      </form>
+    </dialog>
 
     <script type="module" src="/editor/editor.js"></script>
   </body>
