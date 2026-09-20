@@ -141,7 +141,15 @@ body.jugando #lateral { display: none; }
   display: flex;
   flex-direction: column;
   gap: 2px;
-  width: 56px;
+  /**
+   * **76 y no 56** (vuelta 81). El raíl lleva la palabra debajo de cada icono
+   * desde la 78 —un raíl de pictogramas es un examen— y «Dispositivos» no
+   * cabía en 56: se cortaba en «ispositivo», que es peor que no ponerla, y a
+   * 68 se partía por la mitad de la palabra.
+   * Ensanchar el raíl es lo barato: las secciones crecen a lo largo de él y la
+   * columna de contenido no se entera, que es justo lo que el raíl vino a dar.
+   */
+  width: 76px;
   padding: 6px 4px;
   background: #0d0d0de8;
   border-right: 1px solid var(--linea);
@@ -158,11 +166,35 @@ body.jugando #lateral { display: none; }
   border-radius: 3px;
   background: none;
   color: var(--apagado);
-  font-size: 9px;
+  /**
+   * **8 px y no 9** (vuelta 81). El raíl lleva la palabra debajo de cada icono
+   * desde la 78 —un raíl de pictogramas es un examen— y la palabra tiene que
+   * caber **entera y en una línea**: «Dispositivos» a 9 px se partía en
+   * «Dispositiv / os», que se lee peor que el pictograma solo. Baja para todos
+   * y no sólo para la larga: dos tamaños de letra en la misma columna se leen
+   * como dos clases de botón.
+   */
+  font-size: 8px;
   letter-spacing: 0.02em;
+  /* Y si algún día no cabe, se parte antes que salirse del raíl. */
+  overflow-wrap: anywhere;
+  text-align: center;
+  line-height: 1.15;
 }
 #rail button:hover { color: var(--texto); background: #ffffff0c; }
 #rail button.puesta { color: var(--texto); background: #ffffff14; border-color: var(--accion); }
+
+/**
+ * **Los dispositivos se distinguen del resto, y por el color con el que se
+ * dibujan en el mundo** (vuelta 81). El azul eléctrico es lo que marca una
+ * superficie o un teletransporte sobre el mapa desde la vuelta 80: que el
+ * icono del raíl lleve el mismo color es lo que hace que «lo azul» sea una
+ * sola cosa en la cabeza de quien construye. No es un color de aviso —eso son
+ * el rojo y el ámbar—, es un color de material.
+ */
+#rail button.electrico { color: #6fb3ff; }
+#rail button.electrico:hover { color: #a9d2ff; background: #6fb3ff14; }
+#rail button.electrico.puesta { color: #cfe6ff; background: #6fb3ff1f; border-color: #6fb3ff; }
 #rail svg {
   width: 20px;
   height: 20px;
@@ -312,16 +344,19 @@ button:hover { border-color: var(--apagado); }
 button.accion { border-color: var(--accion); color: var(--accion); }
 .botonera { display: flex; gap: 6px; margin-bottom: 8px; }
 
-#lista { margin: 0; padding: 0; list-style: none; max-height: 118px; overflow-y: auto; }
-#lista li {
+#lista, #lista-disp { margin: 0; padding: 0; list-style: none; max-height: 118px; overflow-y: auto; }
+#lista li, #lista-disp li {
   padding: 3px 6px;
   border-left: 2px solid transparent;
   color: var(--apagado);
   cursor: pointer;
   white-space: nowrap;
 }
-#lista li:hover { background: #ffffff0a; }
+#lista li:hover, #lista-disp li:hover { background: #ffffff0a; }
 #lista li.puesta { border-left-color: var(--accion); background: #ffffff10; color: var(--texto); }
+#lista-disp li b { color: #a9d2ff; font-weight: 500; }
+#lista-disp li.vacia { color: var(--apagado); cursor: default; white-space: normal; }
+#lista-disp li.vacia:hover { background: none; }
 
 /* Un problema se cuenta, no se calla: si el saneado tira algo, sale aquí. */
 #problemas { margin: 8px 0 0; padding-left: 16px; color: var(--naranja); font-size: 11px; }
@@ -400,6 +435,14 @@ h3 {
 .formas button { padding: 5px 2px; font-size: 10px; }
 .formas button b { display: block; color: var(--texto); font-size: 11px; }
 .formas button span { color: var(--apagado); }
+/**
+ * **Lo que no es una caja se ve que no lo es.** El tubo y los dispositivos van
+ * marcados en el mismo azul del mundo: seis presets de la misma caja y una
+ * cosa que no lo es, en la misma rejilla, se leerían como siete iguales.
+ */
+.formas button.macro { border-color: #6fb3ff55; }
+.formas button.macro b { color: #a9d2ff; }
+.formas button.macro:hover { border-color: #6fb3ff; background: #6fb3ff14; }
 
 /** Los candados van justo bajo su dimensión, alineados con ella. */
 .candados label { font-size: 10px; color: var(--apagado); }

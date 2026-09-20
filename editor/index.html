@@ -59,6 +59,23 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/></svg>
           <span>Construir</span>
         </button>
+        <!--
+          **Los dispositivos tienen su propio icono** (vuelta 81). Estaban
+          repartidos por la hoja de Construir —el rebote y la velocidad dentro
+          de la ficha de una pieza, detrás de un desplegable, y los
+          teletransportes al final de todo— así que para poner una plataforma
+          había que saber antes que un dispositivo *es* una pieza con una
+          superficie. Eso es cierto por debajo y no tiene por qué serlo al
+          colocarla.
+
+          Va en azul eléctrico, que es el color con el que se dibujan en el
+          mundo (vuelta 80): el raíl y el mapa dicen lo mismo.
+        -->
+        <button type="button" data-pestana="dispositivos" class="electrico"
+          title="Dispositivos · rebote, velocidad y teletransportes">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></svg>
+          <span>Dispositivos</span>
+        </button>
         <button type="button" data-pestana="duelo" title="Duelo · salidas, zonas, simetría y física">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l7-7M20 4l-7 7"/><path d="M3 15l6 6M21 9l-6-6"/></svg>
           <span>Duelo</span>
@@ -122,7 +139,7 @@
           <!-- -------------------------------------------- CONSTRUIR -->
           <div class="hoja" data-hoja="construir" hidden>
             <section>
-              <h2>Formas</h2>
+              <h2>Formas <span id="cuenta-tubos" class="nota"></span></h2>
               <!-- Presets de la misma caja: lo que cambia es el tamaño y el
                    `kind`, porque la colisión sólo sabe de cajas alineadas a
                    los ejes. -->
@@ -183,27 +200,42 @@
                 title="Altura desde el suelo a la que arranca la pieza. 0 = en el suelo." /></label>
               <p id="aviso-aire" class="aviso" hidden></p>
 
-              <h3>Superficie</h3>
-              <!-- Lo que la pieza le hace a quien la pisa. La flecha del mapa
-                   se arrastra: el rumbo y la fuerza salen de ahí, y estos
-                   campos están para afinar a la décima. -->
-              <p class="nota">Lo que la pieza hace al pisarla. Se dibuja encima,
-                en azul: <b>arrástrale la punta de la flecha</b> para darle rumbo
-                y fuerza. Para entrar andando en una, ponle un alto por debajo de
-                un escalón (0.25).</p>
-              <label>Tipo
-                <select id="p-sup">
-                  <option value="">Ninguna (una caja normal)</option>
-                  <option value="rebote">Rebote · te lanza hacia arriba</option>
-                  <option value="velocidad">Velocidad · te lanza en un rumbo</option>
-                </select>
-              </label>
-              <div class="trio" id="p-sup-campos" hidden>
-                <label>Fuerza <input id="p-sup-fuerza" type="number" step="0.5" min="0.1" /></label>
-                <label>Rumbo <input id="p-sup-rumbo" type="number" step="5" /></label>
-                <label>Salto <input id="p-sup-salto" type="number" step="0.5" min="0.5" /></label>
+              <!-- **Lo que la pieza le hace a quien la pisa vive en
+                   Dispositivos** (vuelta 81). Aquí sólo se dice que lo es: la
+                   ficha de una pieza es su geometría, y un rebote es una
+                   mecánica — que por debajo sea lo mismo no obliga a que se
+                   coloque en el mismo sitio. -->
+              <p id="p-es-dispositivo" class="nota" hidden>Esta pieza es un
+                <b>dispositivo</b>. Sus números están en la pestaña
+                <b>Dispositivos</b>.</p>
+            </section>
+
+            <!-- **El tubo: un objeto en el fichero, cajas en el motor** (vuelta
+                 81). Se añade desde Formas; esta ficha son sus números. -->
+            <section id="tubo" hidden>
+              <h2>Tubo seleccionado</h2>
+              <p class="nota">Un pozo de cajas en anillo. <b>Arrástralo por el
+                cilindro</b> para moverlo, por el tirador del suelo para darle
+                radio y por el de arriba para darle alto. No se gira: un anillo
+                girado es el mismo anillo.</p>
+              <div class="trio">
+                <label>X <input id="t-x" type="number" /></label>
+                <label>Z <input id="t-z" type="number" /></label>
+                <label>Base <input id="t-base" type="number" step="0.5" min="0" /></label>
               </div>
-              <p id="p-sup-nota" class="nota" hidden></p>
+              <div class="trio">
+                <label>Radio libre <input id="t-radio" type="number" step="0.5" /></label>
+                <label>Pared <input id="t-grosor" type="number" step="0.1" /></label>
+                <label>Alto <input id="t-alto" type="number" step="0.5" /></label>
+              </div>
+              <label>Caras: lo redondo que sale <input id="t-caras" type="number" step="1" /></label>
+              <p class="nota"><b>El radio es el hueco libre</b>, no la pared: es
+                lo que el jugador tiene para bajar. Más caras es más redondo y
+                más piezas; el presupuesto de ahí abajo dice lo que cuesta.</p>
+              <p id="t-nota" class="nota"></p>
+              <div class="botonera">
+                <button id="t-borrar" type="button">Borrar el tubo</button>
+              </div>
             </section>
 
             <section>
@@ -233,6 +265,78 @@
               <p class="nota">El imán mueve por <b>un solo eje</b>, el de la cara más
                 cercana: encajar contra algo no te desvía de lado.</p>
               <p id="presupuesto-panel" class="nota"></p>
+            </section>
+
+          </div>
+
+          <!-- ------------------------------------------------ DISPOSITIVOS -->
+          <div class="hoja" data-hoja="dispositivos" hidden>
+            <section>
+              <h2>Colocar</h2>
+              <!-- **Un dispositivo se coloca, no se configura** (vuelta 81).
+                   Cada botón deja uno delante de la cámara, ya montado y ya
+                   elegido: es la misma puerta que «+ Teletransporte» abría
+                   desde la 80, abierta ahora para los otros dos. Lo que hay
+                   debajo —que un rebote es una pieza con `superficie`— sigue
+                   siendo verdad y deja de hacer falta saberlo. -->
+              <p class="nota">Cada uno cae <b>delante de la cámara</b> y queda
+                elegido, listo para arrastrar. Se dibujan en azul en el mapa.</p>
+              <div class="formas">
+                <button type="button" data-dispositivo="rebote" class="macro">
+                  <b>Rebote</b><span>te lanza arriba</span>
+                </button>
+                <button type="button" data-dispositivo="velocidad" class="macro">
+                  <b>Velocidad</b><span>te lanza a un rumbo</span>
+                </button>
+                <button type="button" data-dispositivo="teletransporte" class="macro">
+                  <b>Teletransporte</b><span>área y destino</span>
+                </button>
+              </div>
+              <p class="nota">Las dos plataformas nacen con un alto por debajo
+                de un escalón (0.25) para que <b>se pueda entrar andando</b>, no
+                sólo cayendo encima. Con un bordillo de 0.6 te chocas.</p>
+            </section>
+
+            <!-- **Convertir una pieza que ya existe.** Los botones de
+                 arriba ponen una nueva; esto es para un suelo que ya está
+                 puesto y que quieres que empuje. Es el mismo dato por la otra
+                 puerta, no un segundo sitio donde se guarda. -->
+            <section id="disp-pieza" hidden>
+              <h2>Convertir la pieza elegida</h2>
+              <!-- Lo que la pieza le hace a quien la pisa. La flecha del mapa
+                   se arrastra: el rumbo y la fuerza salen de ahí, y estos
+                   campos están para afinar a la décima. -->
+              <p class="nota">Lo que la pieza hace al pisarla. Se dibuja encima,
+                en azul: <b>arrástrale la punta de la flecha</b> para darle rumbo
+                y fuerza. Para entrar andando en una, ponle un alto por debajo de
+                un escalón (0.25).</p>
+              <label>Tipo
+                <select id="p-sup">
+                  <option value="">Ninguna (una caja normal)</option>
+                  <option value="rebote">Rebote · te lanza hacia arriba</option>
+                  <option value="velocidad">Velocidad · te lanza en un rumbo</option>
+                </select>
+              </label>
+              <div class="trio" id="p-sup-campos" hidden>
+                <label>Fuerza <input id="p-sup-fuerza" type="number" step="0.5" min="0.1" /></label>
+                <label>Rumbo <input id="p-sup-rumbo" type="number" step="5" /></label>
+                <label>Salto <input id="p-sup-salto" type="number" step="0.5" min="0.5" /></label>
+              </div>
+              <p id="p-sup-nota" class="nota" hidden></p>
+            </section>
+            <p id="disp-sin-pieza" class="nota" hidden>Elige una pieza en el mapa
+              para convertirla en dispositivo, o pon una nueva con los botones
+              de arriba.</p>
+
+            <section>
+              <h2>En el mapa <span id="cuenta-disp" class="nota"></span></h2>
+              <!-- **Y se encuentran.** El otro medio problema de la vuelta 81
+                   no era colocarlos, era volver a dar con ellos: un rebote en
+                   un mapa de cuarenta piezas no se distingue de una caja baja
+                   hasta que se pincha. Esta lista los nombra y los elige. -->
+              <p class="nota">Pincha uno para elegirlo y que la cámara sepa
+                cuál es.</p>
+              <ul id="lista-disp"></ul>
             </section>
 
             <section>

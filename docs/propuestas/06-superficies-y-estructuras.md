@@ -4,9 +4,21 @@
 —rebote, plataforma de velocidad y teletransportador de zona, más el cimiento
 de §2—. Lo que sigue en pie, y por decisión del encargo: el ventilador, el
 hielo, la tirolina y la colisión curva quedan **aparcados hasta después de
-completar el arsenal**. El tubo por composición (§5) no se construye: se monta
-con las piezas de hoy. Lo que cambió al construirlo está en `docs/decisions.md`
-§80.
+completar el arsenal**. Lo que cambió al construirlo está en
+`docs/decisions.md` §80.
+
+**Y el tubo por composición (§5) se construyó en la vuelta 81**, que **revierte**
+la decisión de la 80 de dejarlo a mano. El motivo es el dato de esa vuelta y vale
+para el resto de esta propuesta: una cosa es que algo *se pueda* montar con las
+piezas de hoy y otra que se pueda montar **cómodamente**. Componer veintidós
+cajas en anillo a mano resultó, textualmente, «demasiado complicado y poco
+intuitivo». Lo que se hizo es una **macro** —un objeto en el fichero,
+`src/maps/tubo.js`, y cajas AABB en el motor— así que la regla de §5 se cumple
+entera: el **sólido curvo** sigue en el cajón de la rotación libre, y lo que se
+construyó es el sitio por el que se baja. Y salió un dato que §5 no tenía: el
+anillo **por sectores** que esta propuesta describía muerde el hueco libre entre
+un 29% (8 sectores) y un 10% (32); el de la vuelta 81 va **por filas** y no
+muerde nada. Está en `docs/decisions.md` §81.3.
 
 **Estado original:** triaje, sin construir nada. El encargo (vuelta 79) fue **triar siete
 mecánicas nuevas** en los mismos tres cajones que el menú de formas de la
@@ -24,10 +36,10 @@ estructura de cilindro/tubo para descender.
 
 | Gratis hoy | Trabajo pequeño y acotado | Vuelta propia |
 |---|---|---|
-| **El tubo, por composición**: un pozo octogonal son ocho cajas finas en anillo, y por dentro se baja igual (§5) · el **aspecto** de todo lo demás: dibujar una placa de rebote o una flecha de velocidad no cuesta nada | **Plataforma de rebote** ✔ · **Plataforma de velocidad** ✔ · **Teletransportador de zona** ✔ · **Guardar punto y volver** por tecla (pendiente) · y el cimiento que las cuatro comparten: **que el suelo diga sobre qué estás** (§2) ✔ | **Ventilador** · **Hielo** · **Tirolina** · **Colisión curva de verdad** (§6) |
+| **El tubo, por composición** ✔ (81): un pozo son cajas finas en anillo, y por dentro se baja igual (§5) · el **aspecto** de todo lo demás: dibujar una placa de rebote o una flecha de velocidad no cuesta nada | **Plataforma de rebote** ✔ · **Plataforma de velocidad** ✔ · **Teletransportador de zona** ✔ · **Guardar punto y volver** por tecla (pendiente) · y el cimiento que las cuatro comparten: **que el suelo diga sobre qué estás** (§2) ✔ | **Ventilador** · **Hielo** · **Tirolina** · **Colisión curva de verdad** (§6) |
 
-Lo marcado con ✔ se construyó en la **vuelta 80**; el resto sigue como está
-escrito aquí.
+Lo marcado con ✔ se construyó en la **vuelta 80**, salvo el tubo, que es de la
+**81**; el resto sigue como está escrito aquí.
 
 **La hipótesis de la vuelta 79 era casi toda correcta, y falla en un sitio.**
 Se decía: *rebote, ventilador, velocidad, hielo y teletransportador podrían
@@ -247,7 +259,12 @@ perfectamente al dispararle y mentiría sólo al andar. Un mapa así no sale roj
 en ningún banco: se descubre cayéndose.
 
 **El premio:** lo que el encargo pide de verdad —«estructura de cilindro/tubo
-para descender»— **no necesita colisión curva**, y se puede construir hoy:
+para descender»— **no necesita colisión curva**, y se puede construir hoy.
+**Construido en la vuelta 81**, con una corrección a lo de abajo que conviene
+leer antes de reusar esta idea: el anillo **por sectores** que se describe aquí
+muerde el hueco libre en las diagonales (29% con ocho, 10% con treinta y dos),
+así que el tubo se rebana **por filas**. El razonamiento medido, en
+`docs/decisions.md` §81.3.
 
 - **Un pozo por el que se baja** son cuatro, seis u ocho cajas finas puestas en
   anillo. Con ocho, la sección es un octógono y desde dentro no se distingue de

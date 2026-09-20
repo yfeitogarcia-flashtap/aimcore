@@ -24,7 +24,7 @@
  */
 
 import * as THREE from 'three'
-import { COLORS, COVER, FONDOS, GIZMO, MOVEMENT, PRIMARY_WEAPONS, ROUNDS, SCENARIOS, SURFACES, TARGET, TEAMS, TELEPORTS, coverHeight, esFotoDeFondo, fisicaDeEscenario, giro180, scenarioRoom } from '../src/config.js'
+import { COLORS, COVER, FONDOS, GIZMO, MOVEMENT, PRIMARY_WEAPONS, ROUNDS, SCENARIOS, SURFACES, TARGET, TEAMS, TELEPORTS, TUBES, coverHeight, esFotoDeFondo, fisicaDeEscenario, giro180, scenarioRoom } from '../src/config.js'
 import { Avatar } from '../src/game/avatar.js'
 import { Engine } from '../src/game/engine.js'
 import { MovementController } from '../src/game/movement.js'
@@ -32,6 +32,7 @@ import { Scenario } from '../src/game/scenario.js'
 import { createScene } from '../src/game/scene.js'
 import { hasLineOfSight } from '../src/game/sight.js'
 import { INVULNERABILIDAD_MAX, SALA, mapaComoModulo, mapaNuevo, sanearMapa } from '../src/maps/formato.js'
+import { cajasDeTubo } from '../src/maps/tubo.js'
 import { montarCapaDeDuelo } from '../src/ui/duelo.jsx'
 import { LOGO } from '../src/ui/logoPaths.js'
 
@@ -696,6 +697,64 @@ function pintarMarcas() {
   }
 
   /**
+   * **Un tubo se agarra entero, aunque el motor vea veintidós cajas** (vuelta
+   * 81). Sus piezas no están en `mapa.boxes` —las despliega `Scenario` al
+   * montar— así que no tienen proxy y no se pueden pinchar una a una: eso es
+   * justo lo que se quiere. Lo que se pincha es **el tubo**, y lo que se
+   * arrastra son sus tres números.
+   *
+   * El cuerpo es un cilindro abierto y translúcido puesto sobre el anillo de
+   * verdad: se ve lo que hay dentro —que es donde se baja— y se sabe dónde hay
+   * que pinchar para moverlo.
+   */
+  for (const [i, tubo] of (mapa.tubos ?? []).entries()) {
+    const grupo = new THREE.Group()
+    const fuera = tubo.radio + tubo.grosor
+
+    const geo = new THREE.CylinderGeometry(fuera, fuera, tubo.alto, Math.max(8, tubo.caras * 2), 1, true)
+    const cuerpo = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({
+      color: COLOR_GIZMO, transparent: true, opacity: 0.07, depthWrite: false, side: THREE.DoubleSide,
+    }))
+    cuerpo.position.set(tubo.x, tubo.base + tubo.alto / 2, tubo.z)
+    cuerpo.userData.marca = { que: 'tubo', i, prioridad: PRIORIDAD.cuerpo }
+    // Como un área (vuelta 79): se aclara con tope y **no se escala**, o el
+    // realce dibujaría un tubo que no es el que el mapa declara.
+    cuerpo.userData.realce = (puesta) => {
+      cuerpo.material.opacity = puesta ? REALCE_AREA_MAX : 0.07
+    }
+    grupo.add(cuerpo)
+    pinchables.push(cuerpo)
+
+    // **El anillo del suelo es el hueco libre**, o sea el `radio` de verdad:
+    // lo que hay que ver al colocarlo es por dónde se cabe, no por dónde acaba
+    // la pared.
+    const aro = new THREE.Mesh(
+      new THREE.RingGeometry(tubo.radio - 0.04, tubo.radio, Math.max(12, tubo.caras * 2)),
+      new THREE.MeshBasicMaterial({ color: COLOR_GIZMO, transparent: true, opacity: 0.8, side: THREE.DoubleSide }),
+    )
+    aro.rotation.x = -Math.PI / 2
+    aro.position.set(tubo.x, tubo.base + 0.03, tubo.z)
+    grupo.add(aro)
+
+    // Radio: se tira de él por el suelo, como la esquina de una pieza.
+    const tRadio = tirador(COLOR_GIZMO)
+    tRadio.position.set(tubo.x + fuera, tubo.base + 0.25, tubo.z)
+    tRadio.userData.marca = { que: 'tubo-radio', i, prioridad: PRIORIDAD.tirador }
+    grupo.add(tRadio)
+    pinchables.push(tRadio)
+
+    // Alto: como el cubo de arriba de una pieza (vuelta 79), con el ratón en
+    // pantalla — el suelo no dice nada de una altura.
+    const tAlto = tirador(COLOR_GIZMO)
+    tAlto.position.set(tubo.x, tubo.base + tubo.alto, tubo.z)
+    tAlto.userData.marca = { que: 'tubo-alto', i, prioridad: PRIORIDAD.tirador }
+    grupo.add(tAlto)
+    pinchables.push(tAlto)
+
+    marcas.add(grupo)
+  }
+
+  /**
    * **Un teletransporte son dos sitios y una línea entre ellos.** La línea no
    * es decoración: con cuatro parejas en el mapa, saber cuál lleva a cuál
    * leyendo ocho números es exactamente la barrera que la 78 vino a quitar.
@@ -1142,6 +1201,13 @@ function comenzarArrastreDeMarca(marca, punto) {
   if (marca.que === 'tp-esquina' || marca.que === 'tp-rumbo') {
     return { que: marca.que, i: marca.i }
   }
+  if (marca.que === 'tubo') {
+    const t = tubosDe()[marca.i]
+    return { que: 'tubo', i: marca.i, dx: t.x - punto.x, dz: t.z - punto.z }
+  }
+  if (marca.que === 'tubo-radio' || marca.que === 'tubo-alto') {
+    return { que: marca.que, i: marca.i }
+  }
   return null
 }
 
@@ -1262,6 +1328,39 @@ function moverMarcaDeSuperficie(arrastre, punto, evento) {
   }
 }
 
+/**
+ * **Arrastrar un tubo.** Tres gestos y ninguno es un modo: el cuerpo lo mueve,
+ * el tirador del suelo le da radio y el de arriba le da alto. Girarlo no está
+ * porque **no significaría nada**: un anillo de revolución girado es el mismo
+ * anillo. Es la misma respuesta que el aro de la vuelta 79 da al revés —allí
+ * girar cambia la colisión, aquí no la cambiaría—, y el día que un tubo tenga
+ * puerta, girarlo pasará a significar por dónde se entra.
+ */
+function moverMarcaDeTubo(arrastre, punto, evento) {
+  const tubo = tubosDe()[arrastre.i]
+  if (!tubo) return
+  if (arrastre.que === 'tubo') {
+    tubo.x = aRejilla(punto.x + arrastre.dx)
+    tubo.z = aRejilla(punto.z + arrastre.dz)
+    return
+  }
+  if (arrastre.que === 'tubo-radio') {
+    // Se tira del borde **exterior**, así que lo que se escribe es el hueco:
+    // el radio libre es la distancia menos la pared.
+    const fuera = Math.hypot(punto.x - tubo.x, punto.z - tubo.z)
+    tubo.radio = Math.min(Math.max(aRejilla(fuera - tubo.grosor), TUBES.radioMin), TUBES.radioMax)
+    return
+  }
+  if (arrastre.que === 'tubo-alto') {
+    if (arrastre.y0 === undefined) { arrastre.y0 = evento.clientY; arrastre.a0 = tubo.alto }
+    const delta = (arrastre.y0 - evento.clientY) / GIZMO.pixelesPorEscalon
+    tubo.alto = Number(Math.min(Math.max(arrastre.a0 + delta, TUBES.altoMin), TUBES.altoMax).toFixed(2))
+  }
+}
+
+/** Lo que gobierna `moverMarcaDeTubo`. */
+const MARCAS_DE_TUBO = new Set(['tubo', 'tubo-radio', 'tubo-alto'])
+
 /** Lo que gobierna `moverMarcaDeSuperficie` y no `moverMarca`. */
 const MARCAS_DE_SUPERFICIE = new Set([
   'sup-fuerza', 'sup-flecha', 'tp', 'tp-esquina', 'tp-destino', 'tp-rumbo',
@@ -1299,7 +1398,8 @@ lienzo.addEventListener('pointermove', (evento) => {
     pintarPanel()
     return
   }
-  if (MARCAS_DE_SUPERFICIE.has(arrastrando.que)) moverMarcaDeSuperficie(arrastrando, punto, evento)
+  if (MARCAS_DE_TUBO.has(arrastrando.que)) moverMarcaDeTubo(arrastrando, punto, evento)
+  else if (MARCAS_DE_SUPERFICIE.has(arrastrando.que)) moverMarcaDeSuperficie(arrastrando, punto, evento)
   else moverMarca(arrastrando, punto)
   sucio = true
   refrescarPanel()
@@ -1350,7 +1450,8 @@ function elegirMarca(marca) {
   // Y se abre la hoja donde vive ese marcador: pinchar una salida y no ver sus
   // números en ninguna parte es media herramienta.
   if (marca.que === 'spawn') abrirPanel(true, 'mapa')
-  else if (marca.que.startsWith('tp')) abrirPanel(true, 'construir')
+  else if (marca.que.startsWith('tubo')) abrirPanel(true, 'construir')
+  else if (marca.que.startsWith('tp')) abrirPanel(true, 'dispositivos')
   else abrirPanel(true, 'duelo')
 }
 
@@ -1440,10 +1541,12 @@ function pintarPanel() {
     // que hace que la flecha arriba/abajo haga lo mismo que arrastrar.
     for (const id of ['p-x', 'p-z', 'p-w', 'p-d']) $(id).step = paso
     $('p-alto').step = 0.1
-    pintarSuperficieDePieza(pieza)
     avisarDeAire(pieza)
   }
+  pintarSuperficieDePieza(pieza)
+  pintarTubo()
   pintarTeletransportes()
+  pintarDispositivos()
   $('deshacer').disabled = pila.atras.length === 0
   $('rehacer').disabled = pila.adelante.length === 0
   pintarPorDefecto()
@@ -1455,6 +1558,12 @@ function pintarPanel() {
  * arrastra en el mapa, que es la convención de la 78.
  */
 function pintarSuperficieDePieza(pieza) {
+  // Sin pieza elegida no hay nada que convertir, y la sección lo dice en vez
+  // de enseñar un desplegable que no escribe en ninguna parte.
+  $('disp-pieza').hidden = !pieza
+  $('disp-sin-pieza').hidden = Boolean(pieza)
+  $('p-es-dispositivo').hidden = !pieza?.superficie
+  if (!pieza) return
   const sup = pieza.superficie
   $('p-sup').value = sup?.tipo ?? ''
   const campos = $('p-sup-campos')
@@ -1479,6 +1588,53 @@ function pintarSuperficieDePieza(pieza) {
       + `(el techo del aire de este mapa es ${fisicaDeEscenario(mapa).airStrafeMaxSpeed}).`
     : `Sube ${(sup.fuerza * sup.fuerza / (2 * g)).toFixed(2)} u sobre la pieza, `
       + `con la gravedad ${g} de este mapa.`
+}
+
+/** Los tubos del mapa. Se materializa la lista al pedirla, como los teletransportes. */
+function tubosDe() {
+  if (!Array.isArray(mapa.tubos)) mapa.tubos = []
+  return mapa.tubos
+}
+
+/** El tubo elegido, o `null`. La selección de un tubo es una marca, como un área. */
+function tuboElegido() {
+  if (!marcaElegida?.que?.startsWith('tubo')) return null
+  return tubosDe()[marcaElegida.i] ?? null
+}
+
+/**
+ * **La ficha del tubo** (vuelta 81). Los números están al lado de los gestos,
+ * como en todo lo demás desde la 78: lo que lo coloca es arrastrarlo, y esto
+ * es para afinar a la décima y para leer **lo que cuesta** — que en un tubo no
+ * es obvio, porque un objeto en el fichero son veintidós piezas en el motor.
+ */
+function pintarTubo() {
+  const tubo = tuboElegido()
+  $('tubo').hidden = !tubo
+  const cuantos = tubosDe().length
+  $('cuenta-tubos').textContent = cuantos ? `· ${cuantos} tubo${cuantos === 1 ? '' : 's'}` : ''
+  if (!tubo) return
+  $('t-x').value = tubo.x
+  $('t-z').value = tubo.z
+  $('t-radio').value = tubo.radio
+  $('t-grosor').value = tubo.grosor
+  $('t-caras').value = tubo.caras
+  $('t-alto').value = tubo.alto
+  $('t-base').value = tubo.base
+  for (const id of ['t-x', 't-z']) $(id).step = paso
+  $('t-radio').min = TUBES.radioMin
+  $('t-radio').max = TUBES.radioMax
+  $('t-grosor').min = TUBES.grosorMin
+  $('t-grosor').max = TUBES.grosorMax
+  $('t-caras').min = TUBES.carasMin
+  $('t-caras').max = TUBES.carasMax
+  $('t-alto').min = TUBES.altoMin
+  $('t-alto').max = TUBES.altoMax
+  const piezas = cajasDeTubo(tubo).length
+  $('t-nota').textContent =
+    `Hueco libre de ${(tubo.radio * 2).toFixed(1)} u de diámetro, ` +
+    `pared de ${tubo.grosor} y ${tubo.alto} u de alto. ` +
+    `El motor lo ve como ${piezas} pieza${piezas === 1 ? '' : 's'}.`
 }
 
 /** La lista de teletransportes, con sus números al lado del dibujo. */
@@ -1656,14 +1812,125 @@ campo('p-sup-salto', (v) => {
   }
 })
 
+/**
+ * Los campos del tubo. Se acotan **aquí y en el saneado**: el saneado es lo
+ * que garantiza el fichero, y esto es lo que hace que el panel no enseñe un
+ * número que al guardar va a cambiar solo.
+ */
+for (const [id, clave, min, max] of [
+  ['t-x', 'x', -Infinity, Infinity],
+  ['t-z', 'z', -Infinity, Infinity],
+  ['t-radio', 'radio', TUBES.radioMin, TUBES.radioMax],
+  ['t-grosor', 'grosor', TUBES.grosorMin, TUBES.grosorMax],
+  ['t-caras', 'caras', TUBES.carasMin, TUBES.carasMax],
+  ['t-alto', 'alto', TUBES.altoMin, TUBES.altoMax],
+  ['t-base', 'base', 0, TUBES.altoMax],
+]) {
+  campo(id, (v) => {
+    const tubo = tuboElegido()
+    if (!tubo) return
+    const n = Number(v)
+    if (!Number.isFinite(n)) return
+    tubo[clave] = clave === 'caras' ? Math.round(Math.min(Math.max(n, min), max)) : Math.min(Math.max(n, min), max)
+  })
+}
+
+$('t-borrar').addEventListener('click', () => {
+  if (!marcaElegida?.que?.startsWith('tubo')) return
+  anotarParaDeshacer()
+  tubosDe().splice(marcaElegida.i, 1)
+  marcaElegida = null
+  sucio = true
+  pintarPanel()
+})
+
+/**
+ * **Los dispositivos se colocan desde su hoja** (vuelta 81).
+ *
+ * Por debajo, un rebote y una plataforma de velocidad son **una pieza con
+ * `superficie`** —eso no cambia, y es lo que hace que el motor no sepa que
+ * existe un «dispositivo»—. Lo que cambia es la puerta: hasta aquí había que
+ * crear la pieza, elegirla, bajar hasta «Superficie» dentro de su ficha y
+ * abrir un desplegable, o sea saber la implementación para usar la mecánica.
+ *
+ * **El alto de fábrica no es decoración**: `COVER.stepHeight` es 0.25, así que
+ * una plataforma más alta que eso sólo funciona cayendo encima y no entrando
+ * andando (vuelta 80). Una que nazca siendo un bordillo es una que la mitad de
+ * las veces no hace nada y no se sabe por qué.
+ */
+const ALTO_DE_PLATAFORMA = 0.2
+const LADO_DE_PLATAFORMA = 4
+
+function ponerDispositivo(cual) {
+  anotarParaDeshacer()
+  if (cual === 'teletransporte') { anadirTeletransporte(); return }
+  const w = LADO_DE_PLATAFORMA
+  const d = LADO_DE_PLATAFORMA
+  // Se aparta de lo que ya haya ahí, como una forma nueva desde la vuelta 76:
+  // dos plataformas seguidas caían una dentro de otra y la segunda no se veía,
+  // así que el botón parecía no hacer nada la segunda vez.
+  const x = aRejilla(orbita.centro.x - w / 2)
+  let z = aRejilla(orbita.centro.z - d / 2)
+  while (mapa.boxes.some((pieza) => pieza.x === x && pieza.z === z)) z += d + paso
+  mapa.boxes.push({
+    x,
+    z,
+    w,
+    d,
+    kind: ALTO_DE_PLATAFORMA,
+    superficie: { ...SURFACES.porDefecto[cual] },
+  })
+  sucio = true
+  // **No se cambia de hoja.** Queda elegido y su flecha ya está dibujada en el
+  // mapa, que es con lo que se coloca (convención de la 78); y sus números
+  // salen justo debajo, en esta misma hoja. Mandar a quien acaba de pulsar un
+  // botón a otra pestaña es perderle el sitio.
+  elegir(mapa.boxes.length - 1)
+}
+
+document.querySelector('[data-hoja="dispositivos"] .formas').addEventListener('click', (evento) => {
+  const boton = evento.target.closest('button[data-dispositivo]')
+  if (!boton) return
+  ponerDispositivo(boton.dataset.dispositivo)
+})
+
+/**
+ * **Y se encuentran.** Un rebote en un mapa de cuarenta piezas no se distingue
+ * de una caja baja mirándolo desde arriba. La lista los nombra, dice dónde
+ * están y los elige — que es lo que faltaba para que colocarlos sirviera de
+ * algo.
+ */
+function pintarDispositivos() {
+  const filas = []
+  for (const [i, pieza] of mapa.boxes.entries()) {
+    if (!pieza.superficie) continue
+    const sup = pieza.superficie
+    const que = sup.tipo === 'rebote' ? 'Rebote' : 'Velocidad'
+    filas.push(`<li data-pieza="${i}"><b>${que}</b> · fuerza ${sup.fuerza} @ ${pieza.x},${pieza.z}</li>`)
+  }
+  for (const [i, tp] of teletransportesDe().entries()) {
+    filas.push(`<li data-tp="${i}"><b>Teletransporte</b> · ${tp.x},${tp.z} → ${tp.destino.x},${tp.destino.z}</li>`)
+  }
+  $('lista-disp').innerHTML = filas.join('') ||
+    '<li class="vacia">Ninguno todavía. Pon uno con los botones de arriba.</li>'
+  $('cuenta-disp').textContent = filas.length || ''
+}
+
+$('lista-disp').addEventListener('click', (evento) => {
+  const fila = evento.target.closest('li')
+  if (!fila) return
+  if (fila.dataset.pieza !== undefined) elegir(Number(fila.dataset.pieza))
+  else if (fila.dataset.tp !== undefined) elegirMarca({ que: 'tp', i: Number(fila.dataset.tp) })
+})
+
 /** Los teletransportes: añadir, quitar y afinar sus números. */
 function teletransportesDe() {
   if (!Array.isArray(mapa.teletransportes)) mapa.teletransportes = []
   return mapa.teletransportes
 }
 
-$('tp-anadir').addEventListener('click', () => {
-  anotarParaDeshacer()
+/** Poner uno delante de la cámara. Lo llaman su botón y la hoja de dispositivos. */
+function anadirTeletransporte() {
   const tps = teletransportesDe()
   const base = TELEPORTS.porDefecto
   // Se pone delante de la cámara, como una pieza nueva: un teletransporte que
@@ -1679,6 +1946,11 @@ $('tp-anadir').addEventListener('click', () => {
   elegirMarca({ que: 'tp', i: tps.length - 1 })
   sucio = true
   pintarPanel()
+}
+
+$('tp-anadir').addEventListener('click', () => {
+  anotarParaDeshacer()
+  anadirTeletransporte()
 })
 
 $('tp-fichas').addEventListener('click', (evento) => {
@@ -1792,11 +2064,20 @@ const FORMAS = [
   { id: 'bordillo', nombre: 'Bordillo', pista: '4×1.5 bajo', w: 4, d: 1.5, kind: 'bordillo' },
   { id: 'plataforma', nombre: 'Plataforma', pista: '8×8 pisable', w: 8, d: 8, kind: 'plataforma' },
   { id: 'parapeto', nombre: 'Parapeto', pista: '8×1 alto', w: 8, d: 1, kind: 'parapeto' },
+  /**
+   * **Y una que no es una caja: el tubo** (vuelta 81). Sigue sin haber más
+   * primitiva que la caja —`macro` dice que esto no va a `boxes` sino a
+   * `tubos`, y `Scenario` lo despliega en cajas al montar—, pero componer un
+   * pozo a mano con veintidós piezas es la barrera de entrada que la
+   * convención de la 78 vino a quitar. Lo que se ofrece aquí sigue siendo algo
+   * contra lo que el motor sabe chocar: por eso se puede ofrecer.
+   */
+  { id: 'tubo', nombre: 'Tubo', pista: 'pozo redondo', macro: 'tubo' },
 ]
 
 function pintarFormas() {
   $('formas').innerHTML = FORMAS
-    .map((f) => `<button type="button" data-forma="${f.id}"><b>${f.nombre}</b><span>${f.pista}</span></button>`)
+    .map((f) => `<button type="button" data-forma="${f.id}"${f.macro ? ' class="macro"' : ''}><b>${f.nombre}</b><span>${f.pista}</span></button>`)
     .join('')
 }
 
@@ -1806,6 +2087,19 @@ $('formas').addEventListener('click', (evento) => {
   const forma = FORMAS.find((f) => f.id === boton.dataset.forma)
   if (!forma) return
   anotarParaDeshacer()
+  if (forma.macro === 'tubo') {
+    const tubos = tubosDe()
+    // Delante de la cámara, como una pieza nueva: uno que nace en el origen es
+    // uno que hay que ir a buscar.
+    tubos.push({
+      ...TUBES.porDefecto,
+      x: aRejilla(orbita.centro.x),
+      z: aRejilla(orbita.centro.z),
+    })
+    sucio = true
+    elegirMarca({ que: 'tubo', i: tubos.length - 1 })
+    return
+  }
   // Se aparta de lo que ya haya en ese punto: dos piezas nuevas seguidas caían
   // una dentro de otra y la segunda no se veía, así que parecía que el botón
   // no hacía nada.
@@ -3258,6 +3552,7 @@ window.vektorEditor = {
   get pinchables() { return pinchables },
   get tiradoresDePieza() { return tiradoresDePieza },
   get marcaElegida() { return marcaElegida },
+  get seleccion() { return seleccion },
   get panelAbierto() { return panelAbierto() },
   get pestana() { return pestanaActual },
   coverHeight,

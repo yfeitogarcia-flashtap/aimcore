@@ -83,6 +83,7 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Fogonazo | `src/game/muzzleFlash.js` | El destello de cada disparo enemigo. Pool de estrellas aditivas; sólo dibuja. |
 | Recogibles | `src/game/pickups.js` | Cruces de vida, cargas de escudo y casco por el suelo. |
 | Config | `src/config.js` | Todo el tuning, sin excepción. |
+| Tubo | `src/maps/tubo.js` | Despliega un pozo declarado como **un** objeto en las cajas AABB que el motor sabe chocar. **Lo llaman `Scenario` y el editor**, que es lo que evita que el fichero y el mundo digan cosas distintas. |
 | Formato de mapa | `src/maps/formato.js` | Qué campos tiene un mapa, el saneado y el serializador. **Lo miran el editor y el cargador**, que es lo que evita que un mapa se guarde con su física y se abra sin ella. |
 | Mapas de fichero | `src/maps/index.js` | Registro **generado** de los mapas que escribe el editor, fundido en `SCENARIOS`. Importaciones estáticas para que lo lean igual Vite y Node. |
 | Fondo | `src/game/backdrop.js` | El panorama 360° de un mapa: una esfera vista por dentro con la textura **dibujada en un canvas**. Sin colisión, fuera de los oclusores y fuera del presupuesto. |
@@ -501,6 +502,69 @@ volver. Cuatro reglas:
   editor con teclas escondidas dentro de un panel que hay que abrir es un editor
   sin teclas: quien no las sabe no va a buscarlas ahí. La lista sale de una
   tabla, no escrita a mano en el HTML.
+
+**Una macro es un objeto en el fichero y cajas en el motor** (vuelta 81). El
+tubo es la primera: un pozo redondo es **un** `tubo` en `src/maps/*.js` y
+veintidós cajas alineadas a los ejes cuando `Scenario` lo monta
+(`src/maps/tubo.js`). Es lo que permite ofrecer en el editor una forma que no
+es una caja **sin tocar la regla de la 74** —no se puede poder construir algo
+contra lo que el motor no sepa chocar—, porque lo que el motor recibe sigue
+siendo cajas y nada más. Cinco cosas:
+
+- **Se despliega al montar, no al guardar.** Escribir las veintidós cajas en el
+  fichero sería un tubo que ya no se puede volver a estirar: el editor editaría
+  veintidós piezas y el gizmo de la 79 no tendría a qué agarrarse. La línea que
+  lo hace está **antes** de construir nada, así que de ahí hacia abajo la
+  colisión, los oclusores, los disparos y el presupuesto no saben que existe.
+- **Y es seguro en red por lo mismo que la física de la 72: no viaja ningún
+  número.** Los dos extremos montan el mismo mapa y despliegan el mismo anillo
+  con la misma función.
+- **Por filas y no por sectores, y se midió antes de elegir.** El anillo obvio
+  —N sectores, cada trozo de pared en su caja— **muerde hacia dentro**, porque
+  la caja de un arco diagonal es más gorda que el arco: medido, el hueco libre
+  baja a 0.707·R con 8 sectores (**29%**), 0.804·R con 16 y todavía 0.899·R con
+  32, que son ya 32 cajas. Por filas no hay mordisco: cada fila pone su cara
+  interior en el punto **más ancho** de su tramo, así que **el hueco nunca baja
+  del `radio` declarado** — medido, 3.005 contra 3, y el jugador se para entre
+  2.6 (en los ejes, cara plana) y 2.95 (en las diagonales, donde la escalera se
+  retira).
+- **El radio es el hueco libre, no la pared.** Es el número que significa algo
+  para quien construye: lo que el jugador tiene para bajar. Y **`x`/`z` es el
+  centro**, no la esquina mínima como en una pieza: la esquina de un círculo no
+  quiere decir nada.
+- **Y no se gira, que no es un recorte.** Un anillo de revolución girado es el
+  mismo anillo, así que un aro de giro prometería un gesto sin efecto. El día
+  que un tubo tenga puerta, girarlo pasará a significar por dónde se entra.
+
+**Los dispositivos tienen su propio icono, aunque por debajo sean una pieza**
+(vuelta 81). Un rebote **es** una pieza con `superficie` —eso no cambia, y es
+lo que hace que el motor no sepa que existe un «dispositivo»—, pero hasta aquí
+para poner uno había que crear la pieza, elegirla, bajar hasta «Superficie»
+dentro de su ficha y abrir un desplegable: o sea **saber la implementación para
+usar la mecánica**. Que dos cosas compartan dato no obliga a que compartan
+puerta. Tres reglas:
+
+- **Colocar y encontrar son dos problemas, y el segundo se olvida.** Un rebote
+  en un mapa de cuarenta piezas no se distingue de una caja baja mirándolo
+  desde arriba, así que la hoja lista los que hay y pinchar uno lo elige. Sin
+  eso, colocarlos bien no sirve de nada la segunda sesión.
+- **El alto de fábrica no es tuning: es lo que hace que funcione.**
+  `COVER.stepHeight` es 0.25, así que una plataforma más alta sólo empuja
+  cayendo encima y no entrando andando (vuelta 80). Naciendo como un bordillo
+  de 0.6 sería una mecánica que va la mitad de las veces y no se sabe por qué.
+- **Y colocar no cambia de hoja.** El dispositivo queda elegido con su flecha
+  ya dibujada —que es con lo que se coloca (vuelta 78)— y su ficha sale en esa
+  misma hoja. Mandar a otra pestaña a quien acaba de pulsar un botón es
+  perderle el sitio.
+
+**Y un raíl de iconos sólo vale si la palabra cabe entera** (vuelta 81). El
+raíl lleva la palabra debajo desde la 78 —un raíl de pictogramas es un examen—
+y «Dispositivos» no cabía: a 56 px se cortaba en «ispositivo» y a 68 se partía
+por la mitad. Se arregla ensanchando el raíl a 76 y bajando la letra a 8 px
+**para todos**, no sólo para la larga: dos tamaños de letra en la misma columna
+se leen como dos clases de botón. Y es barato justo por lo que el raíl vino a
+dar — las secciones crecen a lo largo de él y la columna de contenido no se
+entera.
 
 **Y una acción que se busca con el dedo tiene gesto, no sólo botón** (vuelta
 78): apilar es además **clic derecho sobre la pieza** —fuera de una pieza el
@@ -3751,6 +3815,18 @@ reloj y cable:
   eso se lleva la página igual que la partida. Ficheros: `Dockerfile` y
   `fly.toml`; guía en `docs/despliegue-fly.md`; evaluación en
   `docs/propuestas/03-servidor-con-ip-propia.md`.
+- **Y se despliega solo** (vuelta 81). `.github/workflows/desplegar.yml` publica
+  en cuanto llega un commit a la rama de trabajo: construye en los servidores de
+  Fly (`--remote-only`), despliega con **`--ha=false`**, comprueba que queda una
+  sola máquina —y la corrige si no— y pide `/salud` tres veces exigiendo que
+  conteste siempre la misma. Es la regla de la vuelta 59 convertida en
+  comprobación en vez de en una nota que hay que acordarse de leer. Lo único
+  manual es guardar `FLY_API_TOKEN` como secreto del repositorio, una vez, en la
+  web de GitHub. Y para lo que sigue necesitando el PC —el editor, que a
+  propósito no entra en el despliegue— están `Alchemist.bat` y
+  `Alchemist.command` en la raíz: doble clic, `git pull --rebase --autostash`
+  para no pisar los mapas locales, instalar sólo si el fichero de dependencias
+  ha cambiado de verdad, y abrir.
 - **En Cloudflare**, un **Durable Object por código de partida**
   (`worker/sala.js`), con el mismo Worker sirviendo el juego y las salas.
   **Desde la 58 es respaldo, no producción**, y se queda en pie unas semanas. Se
@@ -3903,6 +3979,22 @@ dibujada en el mundo. Más **teletransportes**: un área con su destino y su
 rumbo, unidos por una línea, los dos arrastrables. Es el bloque barato del
 triaje de la 79; el ventilador, el hielo, la tirolina y la colisión curva
 siguen aparcados en `docs/propuestas/06-superficies-y-estructuras.md`.
+
+**Y desde la vuelta 81 hay una forma que no es una caja: el tubo.** Un clic en
+la fila de formas deja un pozo redondo montado —radio, pared, alto y «lo redondo
+que sale»— que se arrastra entero, se estira por un tirador del suelo y sube por
+uno de arriba. En el fichero es **un** objeto (`tubos`); en el motor, las cajas
+alineadas a los ejes de siempre, que despliega `Scenario` al montar. Medido: 12
+caras son 22 piezas, el hueco libre nunca baja del radio declarado (3.005 contra
+3 en 720 direcciones) y nadie sale del pozo andando en ninguno de dieciséis
+rumbos.
+
+**Y los dispositivos tienen icono propio en el raíl**, en azul eléctrico:
+rebote, velocidad y teletransporte se ponen con un botón cada uno —delante de la
+cámara, montados y elegidos, con un alto de 0.2 para que se pueda entrar
+andando— y debajo salen listados los que hay en el mapa, para poder volver a dar
+con ellos. Antes estaban repartidos entre un desplegable dentro de la ficha de
+una pieza y el final de la hoja de Construir.
 
 **Y desde la vuelta 79 una pieza se estira arrastrándola**: la elegida saca
 cuatro tiradores de esquina —que la estiran dejando la opuesta clavada—, un cubo
@@ -4346,12 +4438,12 @@ abrirlo, porque decide el alcance de lo siguiente que se proponga:
 - **La tirolina es una vuelta propia, del tamaño del deslizamiento**: un estado
   de movimiento nuevo con sus campos que viajan, su forma cerrada y su regla de
   qué marcha conserva al soltarse.
-- **Y el tubo se construye hoy, por composición**: un pozo octogonal son ocho
-  cajas finas en anillo y desde dentro no se distingue de un cilindro. Lo que
-  cae en el cajón de la rotación libre es el **sólido curvo**, no el sitio por
-  el que se baja. Ojo a por qué ese fallo sería invisible: los disparos ya van
-  contra la malla dibujada (vuelta 64), así que una pieza curva **pararía las
-  balas bien** y mentiría sólo al andar.
+- **Y el tubo está construido desde la vuelta 81**, por la mitad que se podía:
+  el pozo por el que se baja es un anillo de cajas —lo monta un botón y lo
+  despliega `Scenario`— y lo que se queda en el cajón de la rotación libre es
+  el **sólido curvo**, que no es lo mismo. Ojo a por qué ese fallo sería
+  invisible: los disparos ya van contra la malla dibujada (vuelta 64), así que
+  una pieza curva **pararía las balas bien** y mentiría sólo al andar.
 - **Y la colisión curva, cuando toque, se hace entera.** No es una cosa sino
   tres —giro de 90° (ya está), OBB, y convexa de N lados, que es lo que de
   verdad hace falta—; un OBB suelto resuelve el 20% de los casos y paga el 90%

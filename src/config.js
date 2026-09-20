@@ -2184,6 +2184,38 @@ export const TELEPORTS = {
 }
 
 /**
+ * **El tubo prefabricado** (vuelta 81). Un pozo de cajas en anillo que el
+ * mapa declara como **un** objeto y `Scenario` despliega al montar
+ * (`src/maps/tubo.js`). Los topes son del formato, como los de `SALA`: un
+ * número fuera de rango no llega al juego venga del editor o de un fichero
+ * escrito a mano.
+ */
+export const TUBES = {
+  radioMin: 0.6,
+  radioMax: 24,
+  grosorMin: 0.2,
+  grosorMax: 6,
+  /**
+   * Cuántas filas tiene el anillo, o sea **lo redondo que sale**. El suelo son
+   * cuatro —un pozo cuadrado— y el techo veinticuatro, que a un radio normal ya
+   * da escalones por debajo de lo que un ojo separa. Cada fila cuesta dos cajas
+   * salvo las dos tapas, así que el de fábrica son 22 piezas: el panel de
+   * presupuesto lo dice, que es para lo que está.
+   */
+  carasMin: 4,
+  carasMax: 24,
+  altoMin: 0.5,
+  altoMax: 60,
+  /**
+   * **`x`/`z` de un tubo es su centro**, y no su esquina mínima como en una
+   * pieza. Es la única divergencia del formato y es la que tiene sentido: la
+   * esquina de un círculo no significa nada, y el radio se mide desde el
+   * centro.
+   */
+  porDefecto: { x: 0, z: 0, radio: 3, grosor: 0.6, caras: 12, alto: 8, base: 0 },
+}
+
+/**
  * **Los tiradores de la pieza elegida** (vuelta 79). Van aparte de `EDITOR`
  * porque son del gesto y no de la prueba: `EDITOR` es lo que se enciende para
  * medir jugando, y esto es cómo se agarra una caja.

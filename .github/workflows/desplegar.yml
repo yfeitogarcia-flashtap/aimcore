@@ -1,0 +1,141 @@
+# **Vektor se despliega solo** (vuelta 81).
+#
+# Cada empujón a la rama de trabajo publica el juego en Fly.io. No hay ningún
+# paso manual: ni `git pull`, ni `npm install`, ni `fly deploy`. La imagen se
+# construye en los servidores de Fly a partir del `Dockerfile` del repositorio,
+# que es exactamente lo que hacía el despliegue a mano.
+#
+# Lo único que hay que hacer **una vez**, y lo hace una persona en la web de
+# GitHub porque lleva una credencial: guardar el secreto `FLY_API_TOKEN`. El
+# paso a paso está en `docs/despliegue-fly.md` §11.
+
+name: Desplegar en Fly
+
+on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+  # Y a mano, desde la pestaña Actions, por si hace falta volver a publicar sin
+  # tocar el código — por ejemplo tras cambiar algo en el panel de Fly.
+  workflow_dispatch:
+
+# **Los despliegues hacen cola, no se pisan.** Dos empujones seguidos con
+# `cancel-in-progress` dejarían una imagen a medio subir; con la cola, el
+# segundo espera al primero y gana el último, que es lo que se quiere.
+concurrency:
+  group: fly-deploy
+  cancel-in-progress: false
+
+jobs:
+  desplegar:
+    name: Construir y publicar
+    runs-on: ubuntu-latest
+    # El despliegue entero cabe de sobra; si se pasa de aquí es que algo se ha
+    # quedado colgado, y un trabajo colgado bloquea la cola de los siguientes.
+    timeout-minutes: 20
+
+    env:
+      FLY_API_TOKEN: ${{ secrets.FLY_API_TOKEN }}
+      # El nombre de la aplicación lo declara `fly.toml`, que es la única fuente.
+      # Esta variable es la salida de emergencia por si la aplicación de Fly se
+      # llama de otra manera: se pone en Settings → Secrets and variables →
+      # Actions → Variables, y si no está, manda `fly.toml`.
+      FLY_APP: ${{ vars.FLY_APP }}
+
+    steps:
+      - name: Traer el repositorio
+        uses: actions/checkout@v4
+
+      - name: Comprobar que hay credencial
+        # Sin el secreto, `flyctl` falla con un error de autenticación que no
+        # dice qué hacer. Esto lo dice.
+        run: |
+          if [ -z "$FLY_API_TOKEN" ]; then
+            echo "::error::Falta el secreto FLY_API_TOKEN del repositorio."
+            echo "Se crea con 'fly tokens create deploy -x 999999h' y se pega en"
+            echo "Settings > Secrets and variables > Actions > New repository secret."
+            echo "El paso a paso está en docs/despliegue-fly.md, seccion 11."
+            exit 1
+          fi
+
+      - name: Instalar flyctl
+        uses: superfly/flyctl-actions/setup-flyctl@master
+
+      # **`--ha=false` no es opcional** (vuelta 59). Por defecto Fly crea dos
+      # máquinas por alta disponibilidad, y aquí eso son **dos mundos** para el
+      # mismo código de partida: las salas viven en la memoria del proceso, el
+      # reparto de carga manda a cada jugador a una, las dos crean su sala con
+      # ese código, los dos se creen el primer jugador y no se ven. Es el fallo
+      # que costó una prueba real, y no da ni un error en ninguna pantalla.
+      #
+      # `--remote-only` construye en los servidores de Fly y no en el corredor
+      # de GitHub: la imagen no tiene que viajar por la red dos veces.
+      - name: Desplegar
+        run: |
+          set -eu
+          APP="${FLY_APP:-}"
+          if [ -n "$APP" ]; then
+            echo "Desplegando la aplicación '$APP' (variable FLY_APP)."
+            flyctl deploy --remote-only --ha=false --app "$APP"
+          else
+            echo "Desplegando la aplicación que declara fly.toml."
+            flyctl deploy --remote-only --ha=false
+          fi
+
+      # La regla de la vuelta 59 escrita como comprobación en vez de como aviso
+      # en un fichero. Con `--ha=false` puesto esto no debería saltar nunca; si
+      # salta, lo arregla — porque el remedio es un comando y la alternativa es
+      # un duelo roto esperando a que alguien lea un registro.
+      - name: Comprobar que hay una sola máquina
+        run: |
+          set -eu
+          APP="${FLY_APP:-}"
+          args=""
+          [ -n "$APP" ] && args="--app $APP"
+
+          contar() {
+            flyctl machines list --json $args \
+              | jq '[.[] | select(.state != "destroyed")] | length'
+          }
+
+          n="$(contar)"
+          echo "Máquinas: $n"
+          if [ "$n" -gt 1 ]; then
+            echo "::warning::Hay $n máquinas y el juego necesita una (vuelta 59). Corrigiendo."
+            flyctl scale count 1 --yes $args
+            sleep 10
+            n="$(contar)"
+            echo "Máquinas tras corregir: $n"
+          fi
+          if [ "$n" -ne 1 ]; then
+            echo "::error::Quedan $n máquinas. Con más de una, dos jugadores con el mismo código caen en mundos distintos."
+            exit 1
+          fi
+
+      # Y que conteste de verdad, que es otra cosa. `/salud` dice qué build
+      # sirve y qué máquina contesta: pidiéndolo tres veces, si el campo
+      # `maquina` cambia es que hay más de una aunque la lista diga que no.
+      - name: Comprobar que contesta, y que contesta uno solo
+        run: |
+          set -eu
+          APP="${FLY_APP:-}"
+          if [ -z "$APP" ]; then
+            APP="$(grep -m1 '^app' fly.toml | sed "s/.*=[[:space:]]*['\"]\(.*\)['\"].*/\1/")"
+          fi
+          URL="https://${APP}.fly.dev/salud"
+          echo "Preguntando a $URL"
+
+          primera=""
+          for i in 1 2 3; do
+            cuerpo="$(curl -fsS --retry 6 --retry-delay 5 --retry-all-errors "$URL")"
+            maquina="$(echo "$cuerpo" | jq -r '.maquina')"
+            build="$(echo "$cuerpo" | jq -r '.build')"
+            echo "  [$i] maquina=$maquina build=$build"
+            [ -z "$primera" ] && primera="$maquina"
+            if [ "$maquina" != "$primera" ]; then
+              echo "::error::Contestan dos máquinas distintas ($primera y $maquina)."
+              exit 1
+            fi
+          done
+          echo "Publicado: https://${APP}.fly.dev/  ·  duelo: https://${APP}.fly.dev/duelo/"

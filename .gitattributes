@@ -1,0 +1,10 @@
+# **Los lanzadores de doble clic tienen final de línea propio** (vuelta 81).
+#
+# Un `.bat` con finales de línea de Unix rompe `cmd.exe` en cuanto usa
+# etiquetas `goto`, y el síntoma es una ventana que se cierra sin decir nada.
+# Un `.command` con finales de Windows rompe la primera línea (`#!/bin/sh\r`)
+# y macOS contesta «bad interpreter». Los dos fallan en el sistema del otro, y
+# git normaliza por su cuenta si no se le dice.
+*.bat text eol=crlf
+*.command text eol=lf
+*.sh text eol=lf

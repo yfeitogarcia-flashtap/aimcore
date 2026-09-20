@@ -10,7 +10,7 @@
  * Nada de geometría: eso es de `scenario.js`, que monta **estos mismos datos**.
  */
 
-import { COVER, FONDOS, PRIMARY_WEAPONS, ROOM, ROUNDS, SURFACES, coverHeight, esFotoDeFondo } from '../config.js'
+import { COVER, FONDOS, PRIMARY_WEAPONS, ROOM, ROUNDS, SURFACES, TUBES, coverHeight, esFotoDeFondo } from '../config.js'
 
 /**
  * **Todos los campos que puede tener un mapa, en el orden en que se escriben.**
@@ -22,7 +22,7 @@ import { COVER, FONDOS, PRIMARY_WEAPONS, ROOM, ROUNDS, SURFACES, coverHeight, es
  */
 export const CAMPOS = [
   'clave', 'label', 'card', 'soloDuelo', 'fondo', 'room', 'spawn', 'fisica', 'duelo',
-  'boxes', 'ramps', 'teletransportes', 'spawnZone', 'objectiveSites', 'pickups', 'routes',
+  'boxes', 'ramps', 'tubos', 'teletransportes', 'spawnZone', 'objectiveSites', 'pickups', 'routes',
   'anchors',
 ]
 
@@ -47,6 +47,7 @@ export function mapaNuevo(clave = 'mapa-nuevo') {
     spawn: { x: 0, z: 16 },
     boxes: [],
     ramps: [],
+    tubos: [],
     teletransportes: [],
     spawnZone: [],
     objectiveSites: [],
@@ -132,6 +133,35 @@ function sanearSuperficie(bruta, problemas, donde) {
     sup.salto = acotar(salto, SURFACES.saltoMin, SURFACES.fuerzaMax)
   }
   return sup
+}
+
+/**
+ * **Un tubo: un pozo de cajas en anillo, declarado como un objeto** (vuelta
+ * 81). `Scenario` lo despliega al montar (`src/maps/tubo.js`); aquí sólo se
+ * comprueba que los seis números caben donde el motor los va a poder usar.
+ *
+ * Los topes son del formato y no del presupuesto, como los de `SALA`: un radio
+ * de mil unidades no es caro, es un mapa roto.
+ */
+function sanearTubo(bruto, problemas, donde) {
+  for (const clave of ['x', 'z', 'radio', 'alto']) {
+    if (!finito(bruto?.[clave])) {
+      problemas.push(`${donde}: ${clave} no es un número`)
+      return null
+    }
+  }
+  const d = TUBES.porDefecto
+  if (!finito(bruto.grosor)) problemas.push(`${donde}: sin grosor de pared, se pone ${d.grosor}`)
+  if (!finito(bruto.caras)) problemas.push(`${donde}: sin número de caras, se ponen ${d.caras}`)
+  return {
+    x: bruto.x,
+    z: bruto.z,
+    radio: acotar(bruto.radio, TUBES.radioMin, TUBES.radioMax),
+    grosor: acotar(finito(bruto.grosor) ? bruto.grosor : d.grosor, TUBES.grosorMin, TUBES.grosorMax),
+    caras: Math.round(acotar(finito(bruto.caras) ? bruto.caras : d.caras, TUBES.carasMin, TUBES.carasMax)),
+    alto: acotar(bruto.alto, TUBES.altoMin, TUBES.altoMax),
+    base: acotar(finito(bruto.base) ? bruto.base : 0, 0, TUBES.altoMax),
+  }
 }
 
 /**
@@ -287,6 +317,7 @@ export function sanearMapa(bruto) {
   const listas = {
     boxes: (b, i) => sanearPieza(b, problemas, `pieza ${i}`),
     ramps: (b, i) => sanearRampa(b, problemas, `rampa ${i}`),
+    tubos: (b, i) => sanearTubo(b, problemas, `tubo ${i}`),
     spawnZone: (b, i) => sanearArea(b, problemas, `zona ${i}`),
     teletransportes: (b, i) => sanearTeletransporte(b, problemas, `teletransporte ${i}`),
   }

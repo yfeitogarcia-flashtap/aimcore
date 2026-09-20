@@ -18,6 +18,7 @@
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { COLORS, COVER, ROUNDS, SURFACES, TELEPORTS, claveDeEscenario, coverColor, coverEdgeColor, coverHeight, definicionDeEscenario, fisicaDeEscenario, fondoDeEscenario, scenarioRoom } from '../config.js'
+import { cajasDeTubos } from '../maps/tubo.js'
 import { crearFondo } from './backdrop.js'
 
 /**
@@ -275,7 +276,15 @@ export class Scenario {
      * de un fichero, uno a medio escribir dejaba `definition.boxes` sin
      * definir y el `for` se llevaba por delante el montaje entero.
      */
-    for (const box of definition.boxes ?? []) {
+    /**
+     * **Un tubo es un objeto en el fichero y cajas en el motor** (vuelta 81).
+     * Se despliega aquí, antes de construir nada, así que de esta línea hacia
+     * abajo no hay nada que sepa que existe: la colisión, los oclusores, el
+     * presupuesto y los disparos ven cajas alineadas a los ejes y ya está. El
+     * porqué de desplegar en vez de escribirlas en el fichero, en
+     * `src/maps/tubo.js`.
+     */
+    for (const box of [...(definition.boxes ?? []), ...cajasDeTubos(definition.tubos)]) {
       const height = coverHeight(box.kind)
       const bottom = box.base ? coverHeight(box.base) : 0
       const thickness = height - bottom

@@ -35,6 +35,9 @@ tema concreto, el índice de abajo apunta al apartado donde se decidió.
 - Práctica libre → §12.2
 - Marca y nomenclatura → §6.2
 - Bugs con enseñanza duradera → §13
+- Editor de mapas (Alchemist) → §74, §75, §76, §77, §78, §79, §81
+- Superficies, teletransportes y el tubo → §80, §81
+- Publicar: despliegue automático y lanzador de doble clic → §81.6, §81.7
 - **Principios permanentes** (infraestructura, transporte) → §0
 
 ---
@@ -10210,3 +10213,212 @@ fuera del presupuesto: ningún rayo le pregunta nada.
   contra el reloj de pared (vuelta 75).
 - Y **la batería entera verde** (46 suites) después, que es lo que dice que
   nada de esto se llevó por delante lo de antes.
+
+---
+
+## §81 — El tubo, los dispositivos y publicar sin terminal
+
+Tres cosas que salieron de la primera sesión larga construyendo con la fase 3
+puesta. Las dos primeras son del editor; la tercera es un encargo aparte y es la
+que más tiempo devuelve.
+
+### 81.1 El encargo, tal cual
+
+1. Componer un pozo a mano con ocho cajas en anillo —que en la vuelta 80 se dio
+   por «lo puedo montar yo»— resultó **demasiado complicado y poco intuitivo**.
+   Hace falta el botón.
+2. **No se encontraba dónde colocar** las plataformas de rebote y velocidad ni
+   el resto de dispositivos. Necesitan icono propio en la barra.
+3. Cada vuelta obliga a ejecutar `git pull`, `npm install` y demás a mano, y son
+   pasos de terminal que **acumulan dudas y errores**. La versión jugable tiene
+   que actualizarse sola, y lo que siga necesitando el PC tiene que caber en un
+   doble clic.
+
+La primera **revierte** una instrucción de la vuelta 80, y esa reversión es el
+dato más útil de esta vuelta: una cosa es que algo *se pueda* construir con las
+piezas que hay y otra que se pueda construir **cómodamente**. La regla de la 74
+—no ofrecer nada contra lo que el motor no sepa chocar— nunca dijo que la
+composición a mano fuera una respuesta aceptable de interfaz; sólo dijo qué no
+se puede ofrecer. El hueco entre las dos cosas es donde vive esta vuelta.
+
+### 81.2 El tubo es una macro, no una primitiva
+
+La colisión es AABB y eso no se toca: `resolveAxis` resuelve un eje cada vez
+contra `minX/maxX/minZ/maxZ/bottom/top` y no hay orientación en ningún sitio. Un
+cilindro sólido sigue en el mismo cajón que la rotación libre.
+
+Lo que sí se puede es lo que ya se podía a mano, y la decisión es **dónde vive
+esa composición**:
+
+- **En el fichero, desplegada** — escribir las veintidós cajas al guardar.
+  Descartado: sería un tubo que **ya no se puede volver a estirar**. El editor
+  volvería a editar veintidós piezas, el gizmo de la 79 no tendría a qué
+  agarrarse y cambiar el radio sería rehacerlo.
+- **En el mapa como objeto, desplegada al montar** — `tubos: [...]` en el
+  fichero y `cajasDeTubos()` en `Scenario`, **antes** de construir nada. Elegida.
+  De esa línea hacia abajo, la colisión, los oclusores, los disparos y el
+  presupuesto ven cajas y ya está; y el editor edita **una** cosa con **un**
+  gizmo.
+
+Y es seguro en red por lo mismo que la física de la vuelta 72: **no viaja ningún
+número**. Los dos extremos montan el mismo mapa y despliegan el mismo anillo con
+la misma función. Un tubo que viajara desplegado sería un tubo que se puede
+mentir.
+
+### 81.3 Por filas y no por sectores, y se midió antes de elegir
+
+El anillo que uno se imagina —«ocho cajas», como decía el encargo— es dividir el
+círculo en N sectores y meter cada trozo de pared en su caja. Está mal, y no un
+poco: **la caja de un arco diagonal muerde hacia dentro**, porque un AABB de un
+arco inclinado es bastante más gordo que el arco. Medido sobre el hueco libre
+que le queda al jugador:
+
+| Sectores | Hueco libre | Mordisco |
+|---|---|---|
+| 8 | 0.707·R | **29.3%** |
+| 16 | 0.804·R | 19.6% |
+| 32 | 0.899·R | 10.1% |
+
+O sea: un pozo que por dentro **no es redondo**, es un octógono con los lados
+hundidos, y no mejora pagando más piezas — a 32 sectores sigue comiendo el 10% y
+ya cuesta 32 cajas.
+
+Por **filas** no hay mordisco ninguno. Se rebana el anillo en franjas paralelas a
+un eje y cada franja pone su cara interior en el punto **más ancho** de su tramo,
+así que el hueco libre **nunca baja del `radio` declarado**. Lo que se paga es
+que el escalón de la escalera se ve; lo que se compra es que el número que pone
+el editor sea el número que el jugador tiene.
+
+Medido con el de fábrica —radio 3, 12 caras, 22 cajas—: el hueco más estrecho de
+720 direcciones sale **3.005**, y andando desde el centro el jugador se para
+entre **2.6** (en los ejes, donde la pared es una cara plana, que es 3 − 0.4 de
+radio de cuerpo) y **2.95** (en las diagonales, donde la escalera se retira).
+Ninguno de dieciséis rumbos sale del pozo.
+
+### 81.4 Tres decisiones de forma del tubo
+
+- **El radio es el hueco libre, no la pared.** Es el único número que significa
+  algo para quien construye: lo que el jugador tiene para bajar. La pared se
+  declara aparte (`grosor`) y crece hacia fuera.
+- **`x`/`z` es el centro**, y es la única divergencia del formato —una pieza
+  declara su esquina mínima—. La esquina de un círculo no quiere decir nada, y
+  el radio se mide desde el centro de todas formas.
+- **No se gira, y no es un recorte.** Un anillo de revolución girado es el mismo
+  anillo, así que un aro de giro prometería un gesto sin efecto — que es
+  exactamente el fallo de la vuelta 67 (un control que promete lo que el juego
+  va a ignorar). El día que un tubo tenga puerta, girarlo pasará a significar por
+  dónde se entra, y ese día el aro tiene sentido.
+
+### 81.5 Los dispositivos: compartir dato no es compartir puerta
+
+Un rebote **es** una pieza con `superficie`. Eso no cambia en esta vuelta, y es
+lo que hace que el motor no sepa que existe la palabra «dispositivo». Lo que
+cambia es por dónde se llega: hasta aquí había que crear la pieza, elegirla,
+bajar hasta «Superficie» dentro de su ficha y abrir un desplegable. O sea
+**saber la implementación para usar la mecánica**, que es justo la barrera de
+entrada que la convención de la vuelta 78 vino a quitar.
+
+Tres cosas de las que se hizo, y ninguna es decoración:
+
+- **Colocar y encontrar son dos problemas, y el segundo se olvida al
+  construirlo.** Un rebote en un mapa de cuarenta piezas no se distingue de una
+  caja baja mirándolo desde arriba; el encargo decía las dos cosas («no conseguí
+  localizar dónde colocar… no son fáciles de encontrar»). La hoja lista los que
+  hay con dónde están y pinchar uno lo elige.
+- **El alto de fábrica no es tuning: es lo que hace que funcione.**
+  `COVER.stepHeight` es 0.25, así que una plataforma más alta sólo empuja
+  cayendo encima y no entrando andando (vuelta 80). Naciendo como un bordillo de
+  0.6 sería una mecánica que va la mitad de las veces y sin que nada lo
+  explique. Nace a **0.2**, y el panel dice por qué.
+- **Y colocar no cambia de hoja.** El dispositivo queda elegido con su flecha ya
+  dibujada —que es con lo que se coloca— y su ficha sale en esa misma hoja.
+  Mandar a otra pestaña a quien acaba de pulsar un botón es perderle el sitio.
+
+Y una que se ve al medirla: **un raíl de iconos sólo vale si la palabra cabe
+entera**. El raíl lleva la palabra debajo desde la 78 —un raíl de pictogramas es
+un examen— y «Dispositivos» no cabía: a 56 px se cortaba en «ispositivo» y a 68
+se partía por la mitad. Se ensancha el raíl a 76 y baja la letra a 8 px **para
+todos**, no sólo para la larga: dos tamaños de letra en la misma columna se leen
+como dos clases de botón. Y es barato justo por lo que el raíl vino a dar — las
+secciones crecen a lo largo de él y la columna de contenido no se entera.
+
+### 81.6 Publicar sin terminal
+
+El despliegue era correcto y estaba documentado paso a paso, y aun así el coste
+real era otro: quien publica tiene que tener el portátil delante, acordarse del
+`--ha=false` y saber qué hacer si `fly status` devuelve dos filas.
+
+`.github/workflows/desplegar.yml` despliega al llegar un commit a la rama de
+trabajo. Cuatro decisiones:
+
+- **Construye en Fly (`--remote-only`)**, no en el corredor de GitHub: la imagen
+  no tiene que viajar por la red dos veces, y el `Dockerfile` ya hace `npm ci` y
+  `npm run build` dentro.
+- **`--ha=false`, y además comprobado.** La regla de la vuelta 59 —una sola
+  máquina, porque dos son dos mundos para el mismo código de sala— deja de ser
+  una nota que hay que acordarse de leer y pasa a ser un paso que falla en rojo.
+  Y si hubiera más de una, el propio despliegue la corrige con
+  `fly scale count 1`: el remedio es un comando y la alternativa es un duelo
+  roto esperando a que alguien mire un registro.
+- **`/salud` tres veces, exigiendo la misma máquina.** Es la comprobación que la
+  guía pedía hacer a mano, y no es redundante con la anterior: la lista puede
+  decir una y contestar dos.
+- **Los despliegues hacen cola** (`cancel-in-progress: false`). Cancelar uno a
+  medias deja una imagen a medio subir; con la cola, gana el último empujón, que
+  es lo que se quiere.
+
+**La credencial no pasa por aquí.** `FLY_API_TOKEN` lo crea y lo guarda su dueño
+en la web de GitHub (`fly tokens create deploy -x 8760h`, un token **sólo de
+despliegue** y con caducidad), y no se pega en un fichero del repositorio, ni en
+un chat, ni en un correo. El flujo de trabajo comprueba que existe **antes** de
+llamar a `flyctl` y, si no está, dice en una línea qué hacer — porque el error
+de autenticación de `flyctl` no lo dice.
+
+### 81.7 Y lo que sigue necesitando el PC, en un doble clic
+
+El editor no entra en el despliegue a propósito: es una herramienta de desarrollo
+y escribe ficheros en el repositorio. `Alchemist.bat` (Windows) y
+`Alchemist.command` (Mac y Linux) hacen los tres pasos y los explican por
+pantalla. Dos detalles que son el diseño:
+
+- **`git pull --rebase --autostash`, no `git pull`.** Quien usa el editor **edita
+  mapas**, o sea ficheros del mismo repositorio que nosotros tocamos. Un `pull`
+  a secas falla con trabajo local a medias, y falla en un idioma que no ayuda.
+  Con `--autostash` se guarda lo suyo, se trae lo nuestro y se vuelve a poner
+  encima; y si chocara —sólo puede pasar si los dos tocamos el mismo fichero— se
+  deshace solo y lo dice en castellano, **sin perder nada**.
+- **La instalación se decide por contenido, no por fecha.** `git pull` reescribe
+  `package-lock.json` aunque su contenido no cambie, así que una marca de tiempo
+  reinstalaría en cada arranque. Se compara con la copia que se guardó la última
+  vez que se instaló de verdad.
+
+### 81.8 Lo que queda medido
+
+- **`tubo81.mjs`** (sin navegador): un tubo en el fichero son 22 cajas en el
+  motor y **todas AABB con volumen**; el hueco libre nunca baja del radio en
+  cuatro combinaciones de radio y caras; **nadie sale del pozo andando** en
+  dieciséis rumbos —parándose entre 2.6 y 2.95 de un radio de 3—; los topes del
+  formato acotan y un tubo sin `z` no llega al mapa y **se dice**; y el tubo más
+  caro que se puede declarar son 44 piezas contra las 1500 que costaban 0.0004
+  ms por paso (vuelta 76).
+- **`ed81.mjs`** (con el ratón de verdad sobre el lienzo): el botón de forma deja
+  un tubo montado **sin meter veintidós cajas en el mapa**; se estira por sus
+  tiradores sin mover el centro; el saneado y el serializador lo conservan sin
+  desplegarlo; la pestaña de dispositivos está en el raíl, **con otro color** y
+  con su palabra; sus tres botones dejan el dispositivo puesto, a 0.2 de alto y
+  **sin cambiar de pestaña**; y la lista los enseña y los elige.
+- Y **la batería entera verde** (46 suites) después.
+
+Dos avisos que costaron una medida cada uno y valen para la próxima:
+
+- **`movement.update` toma el delta en segundos y el instante en
+  milisegundos.** Pasándole el delta en ms el jugador avanza 108 u en un paso y
+  acaba pegado a la pared de la sala, que desde fuera se lee exactamente como
+  «atraviesa el tubo». La aserción del techo pasó y la del **suelo** —que de
+  verdad estuviera andando— la cazó, que es la regla de la vuelta 57.
+- **`zonas-test` mide una proporción cerca de su umbral.** Salió roja una vez
+  con 67% contra un tope de 65%, y parecía una regresión. Muestreada cinco veces
+  con el código nuevo da **51-61%**, y con el viejo **54-60%**: es ruido, no un
+  cambio. Antes de creerse un rojo estadístico, hay que muestrearlo — y el
+  procedimiento de la vuelta 78 (`git stash`, reiniciar, volver a pasar) es lo
+  que separa las dos cosas.

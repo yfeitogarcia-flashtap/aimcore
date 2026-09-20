@@ -203,21 +203,60 @@ dice qué build tiene cargado.
 Y para desarrollar con recarga en caliente, `npm run dev` (Vite en el 5173) con
 `npm run net` aparte para las partidas.
 
-### Publicar en Fly.io
+### Publicar en Fly.io: se hace solo
 
-**El despliegue no se actualiza solo al hacer push.** No hay ninguna acción
-automática: subir a GitHub guarda el código y nada más. Publicar es, desde el
-repositorio ya actualizado (`git pull`):
+**Desde la vuelta 81 el despliegue se actualiza solo al empujar un commit.** No
+hay que ejecutar nada: `.github/workflows/desplegar.yml` construye la imagen en
+los servidores de Fly y la publica en cuanto llega código a la rama de trabajo.
 
-```bash
-fly deploy --ha=false
-```
+Lo único que hay que hacer **una vez**, y se hace en la web de GitHub, es
+guardar la credencial de Fly: `fly tokens create deploy -x 8760h` en tu
+ordenador, y la línea que suelta va en **Settings → Secrets and variables →
+Actions → New repository secret**, con el nombre `FLY_API_TOKEN`. Esa línea no
+se pega en ningún otro sitio: quien la tenga puede desplegar en tu cuenta.
 
-El `--ha=false` no es opcional: por defecto Fly crea **dos** máquinas, y como las
-salas viven en la memoria del proceso, dos máquinas son **dos mundos** para el
-mismo código de partida —los dos jugadores entran, cada uno en la suya, y no se
-ven, sin un solo error en pantalla—. El paso a paso completo está en
-`docs/despliegue-fly.md`.
+Cada despliegue hace además dos comprobaciones que antes había que acordarse de
+hacer a mano, y son la misma regla:
+
+- Despliega con **`--ha=false`** y luego **comprueba que queda una sola
+  máquina**, corrigiéndolo si no. Por defecto Fly crea **dos**, y como las salas
+  viven en la memoria del proceso, dos máquinas son **dos mundos** para el mismo
+  código de partida —los dos jugadores entran, cada uno en la suya, y no se ven,
+  sin un solo error en pantalla—.
+- Pide **`/salud` tres veces** y exige que conteste siempre la misma máquina: la
+  lista puede decir una y contestar dos.
+
+Para volver a publicar sin tocar el código: pestaña **Actions** → **Desplegar en
+Fly** → **Run workflow**. El paso a paso completo, incluido qué hacer si la
+aplicación de Fly se llama de otra manera, está en `docs/despliegue-fly.md` §12.
+
+Y sigue funcionando a mano, si hace falta: `fly deploy --ha=false`.
+
+### Y en tu ordenador: doble clic
+
+El **editor** no entra en el despliegue a propósito —es una herramienta de
+desarrollo y escribe ficheros en el repositorio—, así que para eso sí hace falta
+tu PC. No hacen falta comandos: en la raíz del proyecto hay dos lanzadores y se
+usa el del sistema que tengas.
+
+| Sistema | Fichero | Cómo |
+|---|---|---|
+| Windows | `Alchemist.bat` | doble clic |
+| Mac | `Alchemist.command` | doble clic (la primera vez, si el sistema no deja: `chmod +x Alchemist.command`) |
+| Linux | `Alchemist.command` | doble clic → «Ejecutar en terminal» |
+
+Hace tres cosas y las dice por pantalla:
+
+1. **Trae lo último sin pisar tus mapas.** Usa `git pull --rebase --autostash`,
+   que guarda lo que tengas a medias, trae lo nuevo y lo vuelve a poner encima.
+   Si chocara —sólo puede pasar si hemos tocado el mismo fichero que tú— se
+   deshace solo, te lo dice, y **no se pierde nada**.
+2. **Instala lo que haya cambiado**, y sólo si ha cambiado: compara el fichero
+   de dependencias con la copia de la última instalación de verdad.
+3. **Abre Alchemist** en el navegador. Con él levantado, el juego está en esa
+   misma dirección sin el `/editor/`.
+
+Para cerrarlo, `Ctrl+C` en la ventana negra, o cerrarla.
 
 ## El duelo 1v1: rondas y reconexión
 
@@ -604,8 +643,9 @@ herramienta de autor, no una pantalla del juego.
 ### El panel
 
 Pegada al borde izquierdo hay una **tira de iconos** —**Mapa**, **Construir**,
-**Duelo**, **Probar** y **Archivo**, cada uno con su palabra debajo— que está
-siempre puesta y ocupa 56 px. Pinchar uno abre su sección al lado; pinchar el
+**Dispositivos**, **Duelo**, **Probar** y **Archivo**, cada uno con su palabra
+debajo— que está siempre puesta y ocupa 76 px. El de **Dispositivos** va en
+azul eléctrico, que es el color con el que se dibujan en el mapa. Pinchar uno abre su sección al lado; pinchar el
 mismo otra vez la cierra, y **ESPACIO** hace lo mismo sin soltar el ratón.
 
 **El ancho del panel lo decides tú**, arrastrando su borde derecho, y se
@@ -671,6 +711,61 @@ tiene por qué costarte también la sala.
   `docs/propuestas/05-editor-de-mapas.md` §3.
 - **Deshacer y rehacer** con los botones o con **Ctrl+Z** / **Ctrl+Mayús+Z**.
 - **Abrir** carga cualquiera de los mapas de hoy para tocarlo.
+
+### El tubo: un pozo montado de fábrica
+
+En la fila de formas hay una que **no es una caja**: el **Tubo**. Un clic deja
+un pozo redondo puesto delante de la cámara, y a partir de ahí se toca como
+todo lo demás — se arrastra por el cilindro, se le da radio tirando del tirador
+del suelo y alto tirando del de arriba.
+
+Por debajo sigue sin haber más primitiva que la caja, porque no hay más colisión
+que ésa: **un tubo son cajas en anillo**, y lo que hace el editor es que las
+escribas como **un** objeto en vez de como veintidós piezas a mano. El
+despliegue lo hace el motor al montar el mapa, así que lo que juega el jugador
+son cajas alineadas a los ejes de toda la vida.
+
+Cuatro cosas que conviene saber al usarlo:
+
+- **El radio es el hueco libre, no la pared.** Es lo que el jugador tiene para
+  bajar. Medido: con radio 3 el hueco más estrecho de 720 direcciones sale
+  3.005, y con 12 caras el jugador se para entre 2.6 y 2.95 del centro —2.6 en
+  los ejes, donde la pared es una cara plana, y hasta 2.95 en las diagonales,
+  donde la escalera se retira—.
+- **Las caras son lo redondo que sale**, de 4 (un pozo cuadrado) a 24. Cada
+  fila son dos cajas salvo las dos tapas: 12 caras son 22 piezas y 24 son 44.
+  El presupuesto del panel lo dice, que es para lo que está.
+- **No se gira**, y no es un recorte: un anillo de revolución girado es el mismo
+  anillo. El día que un tubo tenga puerta, girarlo pasará a significar por dónde
+  se entra.
+- **Se ve la escalera.** Es el precio de que la colisión sea AABB, y la
+  alternativa —un anillo de sectores— sale **peor**: se come entre el 10% y el
+  29% del hueco justo en las diagonales, o sea un pozo que por dentro no es
+  redondo.
+
+### Dispositivos: rebote, velocidad y teletransportes
+
+Tienen **su propio icono** en la tira, en azul. Dentro hay tres botones y cada
+uno deja el suyo delante de la cámara, ya montado y ya elegido:
+
+- **Rebote** — te lanza hacia arriba al pisarla.
+- **Velocidad** — te lanza en el rumbo que le des.
+- **Teletransporte** — un área que te deja en otro sitio, con su destino y su
+  rumbo, unidos por una línea.
+
+Las dos plataformas nacen con **0.2 de alto**, por debajo de un escalón (0.25),
+que es lo que hace que **se pueda entrar andando** en ellas y no sólo cayendo
+encima. Con un bordillo de 0.6 te chocas, así que una plataforma más alta
+funciona la mitad de las veces y no se sabe por qué.
+
+Debajo, **«En el mapa»** los lista todos con dónde están, y pinchar uno lo
+elige: encontrar un rebote en un mapa de cuarenta piezas mirándolo desde arriba
+no se puede, porque parece una caja baja. Y **«Convertir la pieza elegida»**
+hace lo contrario — coger un suelo que ya está puesto y darle empuje.
+
+Sus números finos están ahí mismo, pero lo que los coloca es **la flecha azul
+del mapa**: se arrastra por la punta, y con una sola punta se ponen el rumbo y
+la fuerza a la vez.
 
 ### Cuánto mide y cuánto cuesta
 
@@ -837,10 +932,15 @@ De las siete mecánicas triadas en
 velocidad y el teletransportador están construidos** (vuelta 80). Siguen
 esperando, y por escrito: el **ventilador** y el **hielo**, que son una vuelta
 del movimiento —a pie en Vektor no hay velocidad que resbale, ni la vertical
-admite un empuje sostenido sin re-anclar su parábola—; la **tirolina**, que es
-un estado de movimiento nuevo del tamaño del deslizamiento; y el **tubo**, que
-en su forma sólida es la misma vuelta del motor que la rotación libre — aunque
-por el que se baja **ya se construye hoy**, con ocho cajas finas en anillo.
+admite un empuje sostenido sin re-anclar su parábola—; y la **tirolina**, que es
+un estado de movimiento nuevo del tamaño del deslizamiento.
+
+El **tubo** dejó esa lista en la vuelta 81 y está construido, por la mitad que
+sí se podía: el pozo por el que se baja es un anillo de cajas, y ahora lo monta
+un botón. Lo que sigue en el cajón de la rotación libre es el **sólido curvo**,
+que no es lo mismo — y ojo a por qué ese fallo sería invisible: los disparos van
+contra la malla dibujada desde la vuelta 64, así que una pieza curva **pararía
+las balas bien** y mentiría sólo al andar.
 
 ## Escenarios
 
