@@ -10,7 +10,7 @@
  * Nada de geometría: eso es de `scenario.js`, que monta **estos mismos datos**.
  */
 
-import { COVER, FONDOS, PRIMARY_WEAPONS, ROOM, ROUNDS, coverHeight, esFotoDeFondo } from '../config.js'
+import { COVER, FONDOS, PRIMARY_WEAPONS, ROOM, ROUNDS, SURFACES, coverHeight, esFotoDeFondo } from '../config.js'
 
 /**
  * **Todos los campos que puede tener un mapa, en el orden en que se escriben.**
@@ -22,7 +22,8 @@ import { COVER, FONDOS, PRIMARY_WEAPONS, ROOM, ROUNDS, coverHeight, esFotoDeFond
  */
 export const CAMPOS = [
   'clave', 'label', 'card', 'soloDuelo', 'fondo', 'room', 'spawn', 'fisica', 'duelo',
-  'boxes', 'ramps', 'spawnZone', 'objectiveSites', 'pickups', 'routes', 'anchors',
+  'boxes', 'ramps', 'teletransportes', 'spawnZone', 'objectiveSites', 'pickups', 'routes',
+  'anchors',
 ]
 
 /** Lo que puede ser la altura de una pieza: una clave del vocabulario o un número. */
@@ -46,6 +47,7 @@ export function mapaNuevo(clave = 'mapa-nuevo') {
     spawn: { x: 0, z: 16 },
     boxes: [],
     ramps: [],
+    teletransportes: [],
     spawnZone: [],
     objectiveSites: [],
     pickups: [],
@@ -86,7 +88,77 @@ export function sanearPieza(bruta, problemas = [], donde = 'pieza') {
     }
     p.base = bruta.base
   }
+  if (bruta.superficie !== undefined) {
+    const sup = sanearSuperficie(bruta.superficie, problemas, donde)
+    if (sup) p.superficie = sup
+  }
   return p
+}
+
+/**
+ * **Una superficie es lo que la pieza te hace al pisarla** (vuelta 80).
+ *
+ * Se sanea aparte de la pieza a propósito: una superficie mal escrita **no
+ * tira la pieza**. Una caja sin su rebote sigue siendo una caja y el mapa se
+ * puede seguir abriendo para arreglarla; tirarla entera dejaría un agujero en
+ * el suelo por un número mal puesto.
+ *
+ * Y los topes son del formato, no del gusto: un empuje de mil unidades no es
+ * un mapa difícil, es un mapa que no se puede jugar.
+ */
+function sanearSuperficie(bruta, problemas, donde) {
+  if (!bruta || typeof bruta !== 'object') {
+    problemas.push(`${donde}: la superficie no es un objeto`)
+    return null
+  }
+  if (!SURFACES.tipos.includes(bruta.tipo)) {
+    problemas.push(`${donde}: superficie desconocida (${JSON.stringify(bruta.tipo)})`)
+    return null
+  }
+  if (!finito(bruta.fuerza) || bruta.fuerza <= 0) {
+    problemas.push(`${donde}: la fuerza de la superficie no es un número positivo`)
+    return null
+  }
+  const sup = { tipo: bruta.tipo, fuerza: acotar(bruta.fuerza, 0.1, SURFACES.fuerzaMax) }
+  if (sup.tipo === 'velocidad') {
+    if (!finito(bruta.rumbo)) {
+      problemas.push(`${donde}: la superficie de velocidad no declara rumbo`)
+      return null
+    }
+    sup.rumbo = bruta.rumbo
+    // **El salto tiene suelo, y no es tuning.** Sin despegar, un empuje
+    // horizontal se evapora en el paso siguiente: a pie no hay velocidad.
+    const salto = finito(bruta.salto) ? bruta.salto : SURFACES.porDefecto.velocidad.salto
+    sup.salto = acotar(salto, SURFACES.saltoMin, SURFACES.fuerzaMax)
+  }
+  return sup
+}
+
+/**
+ * **Un teletransporte es un área con destino** (vuelta 80). El área se lee como
+ * una caja en planta —la misma convención que `boxes` y `spawnZone`— y el
+ * destino lleva **rumbo**, por lo mismo que las salidas de duelo desde la
+ * vuelta 66: una cámara mira a −Z con yaw 0, así que sin rumbo se sale mirando
+ * a donde el mapa no había decidido.
+ */
+function sanearTeletransporte(bruta, problemas, donde) {
+  const area = sanearArea(bruta, problemas, donde)
+  if (!area) return null
+  if (!(area.w > 0 && area.d > 0)) {
+    problemas.push(`${donde}: el área no tiene tamaño`)
+    return null
+  }
+  const destino = bruta?.destino
+  for (const eje of ['x', 'z']) {
+    if (!finito(destino?.[eje])) {
+      problemas.push(`${donde}: el destino no declara ${eje}`)
+      return null
+    }
+  }
+  return {
+    ...area,
+    destino: { x: destino.x, z: destino.z, yaw: finito(destino.yaw) ? destino.yaw : 0 },
+  }
 }
 
 /**
@@ -216,6 +288,7 @@ export function sanearMapa(bruto) {
     boxes: (b, i) => sanearPieza(b, problemas, `pieza ${i}`),
     ramps: (b, i) => sanearRampa(b, problemas, `rampa ${i}`),
     spawnZone: (b, i) => sanearArea(b, problemas, `zona ${i}`),
+    teletransportes: (b, i) => sanearTeletransporte(b, problemas, `teletransporte ${i}`),
   }
   for (const [campo, sanea] of Object.entries(listas)) {
     const bruta = enLista(bruto[campo])

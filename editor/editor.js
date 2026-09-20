@@ -24,7 +24,7 @@
  */
 
 import * as THREE from 'three'
-import { COVER, FONDOS, GIZMO, MOVEMENT, PRIMARY_WEAPONS, ROUNDS, SCENARIOS, TARGET, TEAMS, coverHeight, esFotoDeFondo, fisicaDeEscenario, giro180, scenarioRoom } from '../src/config.js'
+import { COLORS, COVER, FONDOS, GIZMO, MOVEMENT, PRIMARY_WEAPONS, ROUNDS, SCENARIOS, SURFACES, TARGET, TEAMS, TELEPORTS, coverHeight, esFotoDeFondo, fisicaDeEscenario, giro180, scenarioRoom } from '../src/config.js'
 import { Avatar } from '../src/game/avatar.js'
 import { Engine } from '../src/game/engine.js'
 import { MovementController } from '../src/game/movement.js'
@@ -643,8 +643,123 @@ function pintarMarcas() {
     marcas.add(grupo)
   }
 
+  /**
+   * **La flecha de una superficie se arrastra** (vuelta 80, convención de la
+   * 78). «Rumbo 90 · Fuerza 12» no dice hacia dónde ni cuánto hasta que se
+   * prueba el mapa; una flecha que se agarra por la punta, sí — y con **una
+   * sola punta se ponen las dos cosas**, porque el ángulo es el rumbo y el
+   * largo es la fuerza. Es la punta de la flecha de una salida (vuelta 78) con
+   * un grado de libertad más.
+   */
+  for (const [i, pieza] of mapa.boxes.entries()) {
+    const sup = pieza.superficie
+    if (!sup) continue
+    const cx = pieza.x + pieza.w / 2
+    const cz = pieza.z + pieza.d / 2
+    const alto = coverHeight(pieza.kind)
+    const grupo = new THREE.Group()
+
+    if (sup.tipo === 'rebote') {
+      // Vertical: la punta sube y baja, y lo que se lee en el largo es cuánto
+      // te lanza. Girarla no significaría nada, así que no gira.
+      const alta = alto + sup.fuerza * LARGO_POR_FUERZA
+      grupo.add(new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(cx, alto, cz), new THREE.Vector3(cx, alta, cz),
+        ]),
+        new THREE.LineBasicMaterial({ color: COLORS.electric }),
+      ))
+      const punta = tirador(COLORS.electric)
+      punta.position.set(cx, alta, cz)
+      punta.userData.marca = { que: 'sup-fuerza', i, prioridad: PRIORIDAD.tirador }
+      grupo.add(punta)
+      pinchables.push(punta)
+    } else {
+      const largo = sup.fuerza * LARGO_POR_FUERZA
+      const dx = -Math.sin(sup.rumbo)
+      const dz = -Math.cos(sup.rumbo)
+      const px = cx + dx * largo
+      const pz = cz + dz * largo
+      grupo.add(new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(cx, alto + 0.05, cz), new THREE.Vector3(px, alto + 0.05, pz),
+        ]),
+        new THREE.LineBasicMaterial({ color: COLORS.electric }),
+      ))
+      const punta = tirador(COLORS.electric)
+      punta.position.set(px, alto + 0.05, pz)
+      punta.userData.marca = { que: 'sup-flecha', i, prioridad: PRIORIDAD.tirador }
+      grupo.add(punta)
+      pinchables.push(punta)
+    }
+    marcas.add(grupo)
+  }
+
+  /**
+   * **Un teletransporte son dos sitios y una línea entre ellos.** La línea no
+   * es decoración: con cuatro parejas en el mapa, saber cuál lleva a cuál
+   * leyendo ocho números es exactamente la barrera que la 78 vino a quitar.
+   */
+  for (const [i, tp] of (mapa.teletransportes ?? []).entries()) {
+    const grupo = new THREE.Group()
+    const { grupo: cajaGrupo } = cajaDeArea(tp.w, tp.d, TELEPORTS.alto, COLORS.electric, 0.09)
+    cajaGrupo.position.set(tp.x + tp.w / 2, TELEPORTS.alto / 2, tp.z + tp.d / 2)
+    cajaGrupo.children[0].userData.marca = { que: 'tp', i, prioridad: PRIORIDAD.area }
+    pinchables.push(cajaGrupo.children[0])
+    grupo.add(cajaGrupo)
+
+    const esquina = tirador(COLORS.electric)
+    esquina.position.set(tp.x + tp.w, 0.25, tp.z + tp.d)
+    esquina.userData.marca = { que: 'tp-esquina', i, prioridad: PRIORIDAD.tirador }
+    grupo.add(esquina)
+    pinchables.push(esquina)
+
+    // El destino: un cono como el de una salida —es donde aparece alguien— con
+    // su flecha de rumbo, por lo mismo que las salidas desde la vuelta 66.
+    const cono = new THREE.Mesh(
+      new THREE.ConeGeometry(0.45, 1.8, 6),
+      new THREE.MeshBasicMaterial({ color: COLORS.electric, wireframe: true }),
+    )
+    cono.position.set(tp.destino.x, 0.9, tp.destino.z)
+    cono.userData.marca = { que: 'tp-destino', i, prioridad: PRIORIDAD.cuerpo }
+    realceQueCrece(cono)
+    grupo.add(cono)
+    pinchables.push(cono)
+
+    const yaw = tp.destino.yaw ?? 0
+    const fx = -Math.sin(yaw)
+    const fz = -Math.cos(yaw)
+    grupo.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(tp.destino.x, 0.2, tp.destino.z),
+        new THREE.Vector3(tp.destino.x + fx * 4, 0.2, tp.destino.z + fz * 4),
+      ]),
+      new THREE.LineBasicMaterial({ color: COLORS.electric }),
+    ))
+    const punta = tirador(COLORS.electric)
+    punta.position.set(tp.destino.x + fx * 4, 0.2, tp.destino.z + fz * 4)
+    punta.userData.marca = { que: 'tp-rumbo', i, prioridad: PRIORIDAD.tirador }
+    grupo.add(punta)
+    pinchables.push(punta)
+
+    // La línea que las une, a media altura y punteada por tramos para que no
+    // se confunda con una arista del mapa.
+    grupo.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(tp.x + tp.w / 2, TELEPORTS.alto * 0.5, tp.z + tp.d / 2),
+        new THREE.Vector3(tp.destino.x, 0.9, tp.destino.z),
+      ]),
+      new THREE.LineBasicMaterial({ color: COLORS.electric, transparent: true, opacity: 0.45 }),
+    ))
+
+    marcas.add(grupo)
+  }
+
   pintarResaltado()
 }
+
+/** Cuánto mide en el mapa una unidad de fuerza, dibujada. */
+const LARGO_POR_FUERZA = 0.14
 
 /** El marcador elegido se enciende: sin esto no se sabe cuál escriben los campos. */
 function pintarResaltado() {
@@ -872,6 +987,21 @@ lienzo.addEventListener('pointerdown', (evento) => {
     return
   }
 
+  /**
+   * **La flecha de una superficie es de su pieza** (vuelta 80), así que
+   * agarrarla **elige la pieza** en vez de apagar la selección: los números
+   * que se están moviendo viven en su ficha. Es la misma rama que la de los
+   * tiradores de la 79, y por el mismo motivo.
+   */
+  if (marca?.que?.startsWith('sup-')) {
+    elegir(marca.i)
+    if (punto) {
+      anotarParaDeshacer()
+      arrastrando = comenzarArrastreDeMarca(marca, punto)
+    }
+    return
+  }
+
   if (marca) {
     elegirMarca(marca)
     if (punto) {
@@ -998,6 +1128,20 @@ function comenzarArrastreDeMarca(marca, punto) {
     return { que: 'zona', i: marca.i, dx: z.x - punto.x, dz: z.z - punto.z }
   }
   if (marca.que === 'zona-esquina') return { que: 'zona-esquina', i: marca.i }
+  if (marca.que === 'sup-fuerza' || marca.que === 'sup-flecha') {
+    return { que: marca.que, i: marca.i }
+  }
+  if (marca.que === 'tp') {
+    const tp = teletransportesDe()[marca.i]
+    return { que: 'tp', i: marca.i, dx: tp.x - punto.x, dz: tp.z - punto.z }
+  }
+  if (marca.que === 'tp-destino') {
+    const tp = teletransportesDe()[marca.i]
+    return { que: 'tp-destino', i: marca.i, dx: tp.destino.x - punto.x, dz: tp.destino.z - punto.z }
+  }
+  if (marca.que === 'tp-esquina' || marca.que === 'tp-rumbo') {
+    return { que: marca.que, i: marca.i }
+  }
   return null
 }
 
@@ -1057,6 +1201,72 @@ function moverMarca(arrastre, punto) {
   }
 }
 
+/**
+ * **Arrastrar una superficie o un teletransporte.** Vive al lado de
+ * `moverMarca` y por lo mismo: la rejilla se aplica aquí, en un sitio.
+ */
+function moverMarcaDeSuperficie(arrastre, punto, evento) {
+  if (arrastre.que === 'sup-fuerza') {
+    /**
+     * **La flecha vertical de un rebote se estira con el ratón en pantalla.**
+     * El suelo no sirve para esto: un rayo contra el plano y=0 no dice nada de
+     * una altura. Lo que se usa es cuánto ha subido el puntero, que es el
+     * mismo gesto que el tirador del alto de una pieza (vuelta 79).
+     */
+    const sup = mapa.boxes[arrastre.i]?.superficie
+    if (!sup) return
+    if (arrastre.y0 === undefined) { arrastre.y0 = evento.clientY; arrastre.f0 = sup.fuerza }
+    const delta = (arrastre.y0 - evento.clientY) / GIZMO.pixelesPorEscalon
+    sup.fuerza = Number(Math.min(Math.max(arrastre.f0 + delta, 0.1), SURFACES.fuerzaMax).toFixed(2))
+    return
+  }
+  if (arrastre.que === 'sup-flecha') {
+    // **Un solo tirador pone las dos cosas**: el ángulo es el rumbo y la
+    // distancia al centro de la pieza es la fuerza.
+    const pieza = mapa.boxes[arrastre.i]
+    const sup = pieza?.superficie
+    if (!sup) return
+    const cx = pieza.x + pieza.w / 2
+    const cz = pieza.z + pieza.d / 2
+    const dx = punto.x - cx
+    const dz = punto.z - cz
+    const largo = Math.hypot(dx, dz)
+    if (largo < 0.2) return
+    sup.rumbo = aRadianes(Math.round((Math.atan2(-dx, -dz) * 180) / Math.PI))
+    sup.fuerza = Number(Math.min(Math.max(largo / LARGO_POR_FUERZA, 0.1), SURFACES.fuerzaMax).toFixed(2))
+    return
+  }
+
+  const tp = teletransportesDe()[arrastre.i]
+  if (!tp) return
+  if (arrastre.que === 'tp') {
+    tp.x = aRejilla(punto.x + arrastre.dx)
+    tp.z = aRejilla(punto.z + arrastre.dz)
+    return
+  }
+  if (arrastre.que === 'tp-esquina') {
+    tp.w = Math.max(aRejilla(punto.x - tp.x), paso)
+    tp.d = Math.max(aRejilla(punto.z - tp.z), paso)
+    return
+  }
+  if (arrastre.que === 'tp-destino') {
+    tp.destino.x = aRejilla(punto.x + arrastre.dx)
+    tp.destino.z = aRejilla(punto.z + arrastre.dz)
+    return
+  }
+  if (arrastre.que === 'tp-rumbo') {
+    const dx = punto.x - tp.destino.x
+    const dz = punto.z - tp.destino.z
+    if (Math.hypot(dx, dz) < 0.2) return
+    tp.destino.yaw = aRadianes(Math.round((Math.atan2(-dx, -dz) * 180) / Math.PI))
+  }
+}
+
+/** Lo que gobierna `moverMarcaDeSuperficie` y no `moverMarca`. */
+const MARCAS_DE_SUPERFICIE = new Set([
+  'sup-fuerza', 'sup-flecha', 'tp', 'tp-esquina', 'tp-destino', 'tp-rumbo',
+])
+
 lienzo.addEventListener('pointermove', (evento) => {
   if (orbitando) {
     const dx = evento.clientX - orbitando.x
@@ -1089,7 +1299,8 @@ lienzo.addEventListener('pointermove', (evento) => {
     pintarPanel()
     return
   }
-  moverMarca(arrastrando, punto)
+  if (MARCAS_DE_SUPERFICIE.has(arrastrando.que)) moverMarcaDeSuperficie(arrastrando, punto, evento)
+  else moverMarca(arrastrando, punto)
   sucio = true
   refrescarPanel()
 })
@@ -1139,6 +1350,7 @@ function elegirMarca(marca) {
   // Y se abre la hoja donde vive ese marcador: pinchar una salida y no ver sus
   // números en ninguna parte es media herramienta.
   if (marca.que === 'spawn') abrirPanel(true, 'mapa')
+  else if (marca.que.startsWith('tp')) abrirPanel(true, 'construir')
   else abrirPanel(true, 'duelo')
 }
 
@@ -1228,11 +1440,71 @@ function pintarPanel() {
     // que hace que la flecha arriba/abajo haga lo mismo que arrastrar.
     for (const id of ['p-x', 'p-z', 'p-w', 'p-d']) $(id).step = paso
     $('p-alto').step = 0.1
+    pintarSuperficieDePieza(pieza)
     avisarDeAire(pieza)
   }
+  pintarTeletransportes()
   $('deshacer').disabled = pila.atras.length === 0
   $('rehacer').disabled = pila.adelante.length === 0
   pintarPorDefecto()
+}
+
+/**
+ * **La superficie de la pieza elegida** (vuelta 80). El desplegable dice qué
+ * es y los tres campos afinan; lo que la coloca de verdad es la flecha que se
+ * arrastra en el mapa, que es la convención de la 78.
+ */
+function pintarSuperficieDePieza(pieza) {
+  const sup = pieza.superficie
+  $('p-sup').value = sup?.tipo ?? ''
+  const campos = $('p-sup-campos')
+  campos.hidden = !sup
+  $('p-sup-nota').hidden = !sup
+  if (!sup) return
+  $('p-sup-fuerza').value = sup.fuerza
+  $('p-sup-fuerza').max = SURFACES.fuerzaMax
+  const esVelocidad = sup.tipo === 'velocidad'
+  $('p-sup-rumbo').closest('label').hidden = !esVelocidad
+  $('p-sup-salto').closest('label').hidden = !esVelocidad
+  if (esVelocidad) {
+    $('p-sup-rumbo').value = Math.round((sup.rumbo * 180) / Math.PI)
+    $('p-sup-salto').value = sup.salto
+  }
+  // Lo que se dice es **lo que se va a notar jugando**, no el número otra vez:
+  // un rebote se lee en unidades de altura y un lanzamiento contra el techo
+  // del aire del mapa, que es lo que lo acota.
+  const g = fisicaDeEscenario(mapa).gravity
+  $('p-sup-nota').textContent = esVelocidad
+    ? `Lanza a ${Math.min(sup.fuerza, fisicaDeEscenario(mapa).airStrafeMaxSpeed).toFixed(1)} u/s `
+      + `(el techo del aire de este mapa es ${fisicaDeEscenario(mapa).airStrafeMaxSpeed}).`
+    : `Sube ${(sup.fuerza * sup.fuerza / (2 * g)).toFixed(2)} u sobre la pieza, `
+      + `con la gravedad ${g} de este mapa.`
+}
+
+/** La lista de teletransportes, con sus números al lado del dibujo. */
+function pintarTeletransportes() {
+  const tps = mapa.teletransportes ?? []
+  $('cuenta-tps').textContent = tps.length === 0 ? '' : `· ${tps.length}`
+  $('tp-fichas').innerHTML = tps
+    .map((tp, i) => `
+      <div class="ficha-salida${marcaElegida?.que?.startsWith('tp') && marcaElegida.i === i ? ' puesta' : ''}">
+        <h3>Teletransporte ${i + 1}</h3>
+        <div class="trio">
+          <label>X <input data-tp="${i}" data-campo="x" type="number" step="${paso}" value="${tp.x}" /></label>
+          <label>Z <input data-tp="${i}" data-campo="z" type="number" step="${paso}" value="${tp.z}" /></label>
+        </div>
+        <div class="trio">
+          <label>Ancho <input data-tp="${i}" data-campo="w" type="number" step="${paso}" min="${paso}" value="${tp.w}" /></label>
+          <label>Fondo <input data-tp="${i}" data-campo="d" type="number" step="${paso}" min="${paso}" value="${tp.d}" /></label>
+        </div>
+        <div class="trio">
+          <label>Sale en X <input data-tp="${i}" data-campo="dx" type="number" step="${paso}" value="${tp.destino.x}" /></label>
+          <label>Sale en Z <input data-tp="${i}" data-campo="dz" type="number" step="${paso}" value="${tp.destino.z}" /></label>
+          <label>Rumbo <input data-tp="${i}" data-campo="dyaw" type="number" step="5" value="${Math.round((tp.destino.yaw * 180) / Math.PI)}" /></label>
+        </div>
+        <button data-tp-quitar="${i}" type="button">Quitar éste</button>
+      </div>`)
+    .join('')
 }
 
 /**
@@ -1354,6 +1626,86 @@ campo('p-base', (v) => {
   if (base <= 0) delete pieza.base
   else pieza.base = Number(base.toFixed(4))
   pieza.kind = Number((base + grosor).toFixed(4))
+})
+
+/**
+ * **La superficie de una pieza, por el panel** (vuelta 80). Lo que se escribe
+ * aquí es lo mismo que mueve la flecha del mapa: un solo dato, dos puertas.
+ */
+campo('p-sup', (v) => {
+  const pieza = mapa.boxes[seleccion]
+  if (!pieza) return
+  if (!v) { delete pieza.superficie; return }
+  // Se parte de la receta, no de un objeto vacío: elegir «velocidad» y que la
+  // pieza no haga nada hasta rellenar tres campos es el fallo de la vuelta 67
+  // en pequeño — un control que promete lo que el juego todavía ignora.
+  pieza.superficie = { ...SURFACES.porDefecto[v] }
+})
+campo('p-sup-fuerza', (v) => {
+  const sup = mapa.boxes[seleccion]?.superficie
+  if (sup) sup.fuerza = Math.min(Math.max(Number(v) || 0.1, 0.1), SURFACES.fuerzaMax)
+})
+campo('p-sup-rumbo', (v) => {
+  const sup = mapa.boxes[seleccion]?.superficie
+  if (sup?.tipo === 'velocidad') sup.rumbo = aRadianes(v)
+})
+campo('p-sup-salto', (v) => {
+  const sup = mapa.boxes[seleccion]?.superficie
+  if (sup?.tipo === 'velocidad') {
+    sup.salto = Math.min(Math.max(Number(v) || SURFACES.saltoMin, SURFACES.saltoMin), SURFACES.fuerzaMax)
+  }
+})
+
+/** Los teletransportes: añadir, quitar y afinar sus números. */
+function teletransportesDe() {
+  if (!Array.isArray(mapa.teletransportes)) mapa.teletransportes = []
+  return mapa.teletransportes
+}
+
+$('tp-anadir').addEventListener('click', () => {
+  anotarParaDeshacer()
+  const tps = teletransportesDe()
+  const base = TELEPORTS.porDefecto
+  // Se pone delante de la cámara, como una pieza nueva: un teletransporte que
+  // nace en el origen es uno que hay que ir a buscar.
+  const centro = orbita.centro
+  tps.push({
+    x: aRejilla(centro.x + base.x),
+    z: aRejilla(centro.z + base.z),
+    w: base.w,
+    d: base.d,
+    destino: { x: aRejilla(centro.x + base.destino.x + 6), z: aRejilla(centro.z + base.destino.z + 6), yaw: 0 },
+  })
+  elegirMarca({ que: 'tp', i: tps.length - 1 })
+  sucio = true
+  pintarPanel()
+})
+
+$('tp-fichas').addEventListener('click', (evento) => {
+  const quitar = evento.target.dataset?.tpQuitar
+  if (quitar === undefined) return
+  anotarParaDeshacer()
+  teletransportesDe().splice(Number(quitar), 1)
+  marcaElegida = null
+  sucio = true
+  pintarPanel()
+})
+
+$('tp-fichas').addEventListener('change', (evento) => {
+  const campoTp = evento.target.dataset?.campo
+  const i = evento.target.dataset?.tp
+  if (campoTp === undefined || i === undefined) return
+  const tp = teletransportesDe()[Number(i)]
+  if (!tp) return
+  anotarParaDeshacer()
+  const v = Number(evento.target.value) || 0
+  if (campoTp === 'dx') tp.destino.x = v
+  else if (campoTp === 'dz') tp.destino.z = v
+  else if (campoTp === 'dyaw') tp.destino.yaw = aRadianes(v)
+  else if (campoTp === 'w' || campoTp === 'd') tp[campoTp] = Math.max(v, paso)
+  else tp[campoTp] = v
+  sucio = true
+  pintarPanel()
 })
 
 /**
@@ -2840,6 +3192,7 @@ const ATAJOS = [
   ['ESPACIO', 'abre y cierra el panel'],
   ['Clic izq.', 'elige y arrastra una pieza, una salida o una zona'],
   ['Esquinas', 'estira la pieza elegida · el cubo de arriba cambia su alto'],
+  ['Flecha azul', 'rumbo y fuerza de una superficie · vertical, cuánto lanza'],
   ['Aro verde', 'gira la pieza 90° (ancho y fondo cambiados)'],
   ['Clic der.', 'orbita la cámara · sobre una pieza, la apila'],
   ['Rueda', 'acerca y aleja'],

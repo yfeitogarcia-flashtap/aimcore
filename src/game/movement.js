@@ -272,6 +272,18 @@ export class MovementController {
      * como un barrido por medio mapa.
      */
     this.poseEpoch = 0
+    /**
+     * **Dentro de un área de teletransporte** (vuelta 80). Es el flanco: entrar
+     * dispara, quedarse dentro no. Viaja en `snapshot()` porque sobrevive a un
+     * paso, igual que la máscara de agachado del deslizamiento.
+     */
+    this._enTeletransporte = false
+    /**
+     * El rumbo que pide el último teletransporte, o `null`. No es estado del
+     * mundo —se consume en el mismo frame y no viaja—: es un recado para quien
+     * tiene los controles de la cámara, que es su dueño (vuelta 66).
+     */
+    this.rumboPedido = null
 
     this._onKeyDown = this._onKeyDown.bind(this)
     this._onKeyUp = this._onKeyUp.bind(this)
@@ -459,7 +471,17 @@ export class MovementController {
    * de aparición.
    */
   setScenario(scenario) {
-    this.scenario = scenario && scenario.hasGeometry ? scenario : null
+    /**
+     * **«Tiene geometría» no era la pregunta** (vuelta 80). Lo que el
+     * movimiento necesita de un escenario dejó de ser sólo contra qué chocar:
+     * desde que un mapa puede declarar teletransportes, uno **sin una sola
+     * caja** sigue teniendo algo que resolver aquí. Con la condición de antes,
+     * un mapa de sólo puertas se montaba con `scenario = null` y no
+     * teletransportaba a nadie — sin un error en ninguna pantalla, que es como
+     * se pierden estas cosas.
+     */
+    const util = scenario && (scenario.hasGeometry || scenario.teletransportes?.length > 0)
+    this.scenario = util ? scenario : null
     // La sala la trae el escenario aunque no tenga geometría: el límite de
     // movimiento tiene que ser el mismo que el de las paredes que se dibujan.
     this.room = scenario ? scenario.room : ROOM
@@ -537,6 +559,7 @@ export class MovementController {
      * posiciones en las que nunca estuvo.
      */
     out.poseEpoch = this.poseEpoch
+    out.enTeletransporte = this._enTeletransporte
     // **Deslizamiento** (vuelta 69): los seis campos que sobreviven a un paso,
     // más la máscara de agachado del paso anterior, que es de donde sale el
     // flanco. Sin esto, la reconciliación reejecuta entradas con un
@@ -586,6 +609,7 @@ export class MovementController {
     // teletransporte. Un estado antiguo sin el campo deja la de aquí como
     // estaba, que es lo que valía antes de que viajara.
     if (Number.isFinite(state.poseEpoch)) this.poseEpoch = state.poseEpoch
+    this._enTeletransporte = Boolean(state.enTeletransporte)
     this.sliding = Boolean(state.sliding)
     this._slideTime = Number.isFinite(state.slideTime) ? state.slideTime : 0
     this._slideDirX = Number.isFinite(state.slideDirX) ? state.slideDirX : 0
@@ -627,6 +651,10 @@ export class MovementController {
     this.chainedJump = false
     this._stillJumps = 0
     this._flightMaxSpeed = 0
+    // Reaparecer dentro de un área de teletransporte no puede mandarte a su
+    // destino: el flanco se reinicia y se vuelve a pedir al entrar de verdad.
+    this._enTeletransporte = false
+    this.rumboPedido = null
     this._pararDeslizamiento()
     this._airSpeed = this.topSpeed
     this._airVelX = 0
@@ -699,6 +727,10 @@ export class MovementController {
       if (speed > this._flightMaxSpeed) this._flightMaxSpeed = speed
     }
     this._updateVertical(dt, now)
+    // Al final del paso, con la posición ya definitiva: un teletransporte que
+    // se comprobara a medio paso mandaría al jugador desde un sitio en el que
+    // todavía no estaba.
+    this._comprobarTeletransporte()
     this._updateLandingDip(dt)
     this.camera.position.y = this.feetY + this.eyeHeight - this.landingDip
     this._guardState()
@@ -1234,6 +1266,9 @@ export class MovementController {
     const ground = this.scenario
       ? this.scenario.groundHeightAt(position.x, position.z, this.feetY)
       : 0
+    // **Y sobre qué** (vuelta 80). Se lee en la línea de al lado de la consulta
+    // y con la misma posición, que es la única regla que tiene ese captador.
+    const superficie = this.scenario ? this.scenario.superficieDelSuelo : null
 
     // **Salta una pulsación, no una tecla apretada** (vuelta 68), y sólo desde
     // el suelo o dentro de la gracia de borde, así que sigue sin haber doble
@@ -1260,6 +1295,12 @@ export class MovementController {
       // pegarse a ella, y salirse de una plataforma es empezar a caer.
       if (ground >= this.feetY - 1e-6) {
         this.feetY = ground
+        // **Y pisarla cuenta, no sólo caer sobre ella** (vuelta 80). Entrar
+        // andando en una plataforma de rebote no produce ningún aterrizaje
+        // —nunca se estuvo en el aire—, así que colgar el impulso sólo de
+        // `_land` dejaba una plataforma que funciona saltando encima y no
+        // pisándola, que es una diferencia que nadie decidiría.
+        this._impulsarPorSuperficie(superficie, dt, false)
         return
       }
       // Se ha salido de un borde andando: cae desde parado.
@@ -1282,7 +1323,130 @@ export class MovementController {
 
     // Sólo se aterriza bajando. Subiendo, el suelo sólo puede estar por encima
     // si el jugador acaba de pasar sobre un bordillo, y eso no es un impacto.
-    if (this.feetY <= ground && this.verticalVelocity <= 0) this._land(ground, now)
+    if (this.feetY <= ground && this.verticalVelocity <= 0) {
+      this._land(ground, now)
+      // El impulso va **después** de aterrizar y no en su lugar: `_land` es
+      // quien resuelve el instante exacto del contacto, la fuerza del golpe y
+      // la marcha que se traía, y un rebote necesita las tres.
+      this._impulsarPorSuperficie(superficie, dt, true)
+    }
+  }
+
+  /**
+   * **Lo que una superficie del mapa te hace al pisarla** (vuelta 80).
+   *
+   * Todo pasa por `_takeOff`, que es lo que lo hace barato y seguro: no hay un
+   * camino nuevo por el modelo vertical, la parábola sigue resuelta en forma
+   * cerrada —o sea idéntica a cualquier refresco— y no hay un solo campo nuevo
+   * en `snapshot()`. Los dos extremos de una partida montan el mismo mapa y
+   * derivan el mismo empuje **sin que viaje ningún número**, que es el patrón
+   * de la física de la vuelta 72.
+   *
+   * @param {boolean} aterrizando si venimos de `_land` (y por tanto hay una
+   *   marcha de aterrizaje que conservar) o de pisar la pieza andando.
+   * @returns {boolean} si ha despegado.
+   */
+  _impulsarPorSuperficie(sup, dt, aterrizando) {
+    if (!sup) return false
+
+    if (sup.tipo === 'rebote') {
+      // **Conserva, no multiplica**, que es la regla del salto encadenado
+      // (vuelta 68): el rebote pone la vertical y la horizontal es la que
+      // traías. Llegando por el aire eso es el vector del aterrizaje
+      // (`chained`); llegando andando es tu marcha de suelo, que es lo que
+      // siembra `_takeOff` por su cuenta.
+      this._reiniciarFatiga()
+      this._takeOff(sup.fuerza, aterrizando, dt)
+      return true
+    }
+
+    if (sup.tipo === 'velocidad') {
+      this._reiniciarFatiga()
+      // Despega **sin encadenar**: lo que manda es el rumbo de la plataforma,
+      // no hacia dónde venías, así que sembrar con el vector del aterrizaje
+      // sólo serviría para que lo pisase encima.
+      this._takeOff(sup.salto, false, dt)
+      // **Y respeta el techo del aire.** Saltárselo abriría un camino para
+      // pasar de `airStrafeMaxSpeed` sin air-strafe; un mapa que quiera lanzar
+      // más fuerte sube su techo, que ya puede desde la vuelta 72.
+      const v = Math.min(sup.fuerza, this.fisica.airStrafeMaxSpeed)
+      // Rumbo de cámara: mira a −Z con yaw 0, así que la dirección es
+      // (−sin, −cos). Es la misma conversión que dibuja su flecha.
+      this._airVelX = -Math.sin(sup.rumbo) * v
+      this._airVelZ = -Math.cos(sup.rumbo) * v
+      this._airSpeed = v
+      return true
+    }
+
+    return false
+  }
+
+  /**
+   * Un empuje del mapa no es un salto tuyo, así que no gasta fatiga. Sin esto,
+   * rebotar tres veces seguidas en la misma plataforma la iría apagando —la
+   * fatiga cuenta vuelos parados— y el mapa dejaría de funcionar a la cuarta.
+   */
+  _reiniciarFatiga() {
+    this._stillJumps = 0
+  }
+
+  /**
+   * **Un teletransporte cambia dónde estás, no cómo vas** (vuelta 80).
+   *
+   * Se comprueba al final del paso, cuando la posición ya es la definitiva, y
+   * **entra por flanco**: mientras sigas dentro de un área no vuelve a
+   * disparar, o aparecer encima de la salida de al lado sería un bucle. El
+   * flanco es un booleano y viaja en `snapshot()` por la razón de siempre —es
+   * estado que sobrevive a un paso— igual que la máscara de agachado del
+   * deslizamiento.
+   *
+   * Tres cosas que son el diseño:
+   *
+   * - **Sube `poseEpoch`.** Es lo que hace que el rival lo vea como un salto en
+   *   su instante exacto y no como un barrido por medio mapa (vueltas 44 y 50).
+   *   Sin esto se dibujaría recorriendo posiciones en las que nadie estuvo.
+   * - **La parábola se re-ancla.** Quien llega por el aire sigue volando, así
+   *   que `_launchY` y el reloj del vuelo pasan a ser los del sitio nuevo: la
+   *   forma cerrada se evalúa desde el despegue, y dejarlo como estaba sería
+   *   evaluar una caída que empezó en otro sitio.
+   * - **Y el rumbo lo pide, no lo escribe.** El dueño del rumbo es
+   *   `LookControls` (vuelta 66): escribir `camera.rotation.y` desde aquí lo
+   *   reescribiría el ratón en el paso siguiente. Se publica y lo aplica quien
+   *   tiene los controles; el servidor no tiene ninguno y no lo necesita,
+   *   porque el rumbo le llega en la entrada del cliente.
+   */
+  _comprobarTeletransporte() {
+    if (!this.scenario?.teletransportes?.length) return
+    const position = this.camera.position
+    const tp = this.scenario.teletransporteEn(position.x, position.z, this.feetY)
+    if (!tp) {
+      this._enTeletransporte = false
+      return
+    }
+    if (this._enTeletransporte) return
+    this._enTeletransporte = true
+
+    position.x = tp.destino.x
+    position.z = tp.destino.z
+    const suelo = this.scenario.groundHeightAt(position.x, position.z, 0)
+    this.feetY = this.airborne ? Math.max(this.feetY, suelo) : suelo
+    if (this.airborne) {
+      this._launchY = this.feetY
+      this._launchVelocity = this.verticalVelocity
+      this._airTime = 0
+    }
+    this.poseEpoch += 1
+    this.rumboPedido = tp.destino.yaw
+  }
+
+  /**
+   * El rumbo que pidió el último teletransporte, **una sola vez**. Lo consume
+   * quien tiene los controles de la cámara.
+   */
+  consumirRumboPedido() {
+    const yaw = this.rumboPedido
+    this.rumboPedido = null
+    return yaw
   }
 
   /**

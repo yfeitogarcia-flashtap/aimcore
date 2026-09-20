@@ -10021,3 +10021,192 @@ gravedad, y la vertical está resuelta **en forma cerrada** desde siempre.
   deshace el arrastre entero, no un píxel.
 - **`tc79.mjs`**: los cinco números de la tabla de §79.2, medidos contra una
   pieza del Plano A y no leídos del código.
+
+---
+
+## Ronda 80 — Una pieza puede hacerte algo, y un área puede llevarte
+
+El encargo tras el triaje de la 79 fue explícito: **adelante con el bloque
+barato** —rebote, plataforma de velocidad y teletransportador de zona— y el
+bloque grande aparcado hasta después del arsenal. El tubo por composición se lo
+monta el autor con las piezas de hoy, así que no se construye nada para él.
+
+### 80.1 El cimiento: el suelo tenía que decir sobre qué estás
+
+`Scenario.groundHeightAt(x, z, feetY)` devolvía **un número**. El jugador sabía
+a qué altura estaba el suelo y no qué pieza era, así que ninguna de las tres
+mecánicas tenía dónde engancharse. Ahora el **mismo barrido** se queda con la
+caja ganadora y publica su `superficie`.
+
+Sale por un captador (`scenario.superficieDelSuelo`) y no como segundo valor de
+retorno, y eso es una decisión y no una comodidad: el suelo se pregunta **dos
+veces por paso y por jugador** —`_feetYAfter`, la vertical, y el servidor por
+cada uno—, así que devolver un objeto sería basura para el recolector justo en
+el bucle que el proyecto presupuesta. Lo que cuesta a cambio es una regla, y es
+la única: **vale para la llamada inmediatamente anterior**. Quien lo lee lo hace
+en la línea de al lado de su propio `groundHeightAt`, con la misma posición. Es
+la disciplina de la pose interpolada de la vuelta 44 —vive lo que dura el
+dibujado— aplicada a una consulta.
+
+Y una rampa no tiene superficie: lo que se pisa en ella es la cuña, así que gana
+el suelo pero borra la marca. Sin esa línea, cruzar una rampa por encima de una
+plataforma de rebote habría heredado el rebote de la caja de debajo.
+
+### 80.2 Todo el impulso pasa por `_takeOff`
+
+Un rebote **es** despegar con otra velocidad vertical. Escrito así no hay una
+rama nueva por el modelo vertical, ni un campo más en `snapshot()`, ni nada que
+pueda discrepar entre los dos extremos de una partida — y, lo que más importa,
+la parábola se sigue resolviendo en forma cerrada.
+
+Medido (`superficies80` [2]) con fuerza 14 y la gravedad 30 de fábrica:
+
+| refresco | ápice | rebotes en 3 s |
+|---|---|---|
+| 60 Hz | 3.8667 u | 3 |
+| 144 Hz | 3.8666 u | 3 |
+| 240 Hz | 3.8667 u | 3 |
+
+Dispersión **0.0026%**, y el número no es de gusto: `0.6 + 14²/(2·30)` =
+3.8667, o sea la pieza más lo que dice la parábola. Si saliera otro, sería que
+el impulso no pasa por donde dice pasar.
+
+Y una nota del banco que es la lección de siempre: la primera versión medía
+**el máximo de todo el tramo** soltando al jugador desde 4 u, así que medía la
+altura desde la que yo lo soltaba y no el rebote. Con la caída a 1.5 y el ápice
+tomado **después del primer contacto**, el número pasó a decir algo. Es el
+denominador de la vuelta 46 por la otra punta.
+
+### 80.3 Cuatro reglas que salieron de jugarlo, no de diseñarlo
+
+- **Pisarla cuenta, no sólo caer sobre ella.** La primera versión colgaba el
+  impulso de `_land`, y entrar **andando** en una plataforma de rebote no
+  produce ningún aterrizaje: nunca se estuvo en el aire. Quedaba una plataforma
+  que funciona saltando encima y no pisándola, que es una diferencia que nadie
+  decidiría. Con ello viene una consecuencia que hay que saber al construir: a
+  un bordillo de 0.6 **se choca**, porque `COVER.stepHeight` es 0.25. Una
+  plataforma en la que se entra andando mide menos que eso, y el editor lo dice
+  en su ficha en vez de dejar que se descubra probando.
+- **Un empuje del mapa no es un salto tuyo.** La fatiga cuenta vuelos parados, y
+  un rebote lo es: sin reiniciarla, la plataforma se iba apagando y dejaba de
+  funcionar a la cuarta. Medido: trece rebotes seguidos, **todos al mismo
+  ápice**.
+- **Una plataforma de velocidad despega, y no por gusto.** A pie no hay
+  velocidad —un paso es `posición + dirección × marcha × dt`— así que un empuje
+  horizontal sin despegue se evapora en el paso siguiente. Es la misma
+  propiedad del motor que hace que el hielo sea una vuelta propia y no un
+  número (triaje de la 79, §0).
+- **Y respeta el techo del aire.** Saltárselo abriría un camino para pasar de
+  `airStrafeMaxSpeed` **sin air-strafe**, que es la técnica del juego. Medido:
+  con fuerza 30 sobre un techo de 9.5, sale a **9.5 clavado**. Un mapa que
+  quiera lanzar más fuerte sube su techo, que ya puede desde la vuelta 72 —y
+  ahí es una decisión del mapa entero, no de una caja.
+
+### 80.4 El teletransporte: lo caro ya estaba hecho
+
+De las tres es la más barata, y por una razón que conviene ver: **el motor ya
+sabía teletransportar bien**. `poseEpoch` sube, viaja en la foto y el que dibuja
+al rival **no interpola por encima de ella** (vueltas 44 y 50), así que el salto
+cae en su instante exacto y en un frame en vez de dibujarse como un barrido por
+posiciones donde nadie estuvo. Lo único que faltaba era el volumen de entrada y
+el destino.
+
+Tres cosas que sí hubo que decidir:
+
+- **Cambia dónde estás, no cómo vas.** Quien llega por el aire sigue volando, y
+  eso obliga a **re-anclar la parábola** en el sitio nuevo: la forma cerrada se
+  evalúa desde el despegue, y dejar `_launchY` como estaba sería evaluar una
+  caída que empezó en otro mapa.
+- **Entra por flanco.** Un booleano más en `snapshot()` (32 → 33), como la
+  máscara de agachado del deslizamiento y por lo mismo: es estado que sobrevive
+  a un paso. Sin él, un destino que caiga dentro de otra área es un bucle.
+  Medido: 300 pasos quieto entre dos áreas encaradas, **una sola época**.
+- **Y el rumbo lo pide, no lo escribe.** El dueño del rumbo es `LookControls`
+  (vuelta 66): escribirlo desde el movimiento lo reescribiría el ratón en el
+  paso siguiente. Va por `consumirRumboPedido()` y lo aplica `_simStep`. El
+  servidor no tiene controles y no los necesita, porque el rumbo le llega en la
+  entrada del cliente — o sea que esto no toca el protocolo.
+
+**Y hay una mitad que no se ve**: reejecutar una entrada pasa por el mismo
+`movement.update`, así que un área de teletransporte dentro de la cola sin
+confirmar volvía a pedir su rumbo **en cada reconciliación** —varias veces por
+segundo, arrancándole la mira al jugador—. El rumbo es un recado de un paso
+**vivo**; una repetición del pasado no lo es. La posición y la época sí se
+reejecutan, que es lo que tiene que pasar.
+
+### 80.5 «Tiene geometría» no era la pregunta
+
+`setScenario` guardaba el escenario sólo si tenía cajas o rampas. Con eso, un
+mapa de **sólo puertas** —cero piezas y dos teletransportes— se montaba con
+`scenario = null` y no teletransportaba a nadie: sin un error en ninguna
+pantalla, que es como se pierden estas cosas. Lo que el movimiento necesita de
+un escenario dejó de ser sólo contra qué chocar el día que un mapa pudo declarar
+algo más.
+
+Lo cazó el banco a la primera, y no por suerte: el caso de prueba del
+teletransporte es justo un mapa sin geometría.
+
+### 80.6 Una superficie que no se ve es una trampa
+
+Vektor no tiene texturas ni luces, así que lo único que puede decir que una caja
+no es una caja normal es una marca dibujada encima. Se pinta con líneas —una
+geometría y un material para todas las del mapa—, **fuera de `occluders`** y
+fuera del presupuesto: ningún rayo le pregunta nada.
+
+- **Lo que distingue las tres es la forma** (vuelta 67): flecha **vertical** el
+  rebote —plana en el suelo no diría «arriba»—, **horizontal** la velocidad, y
+  **anillo** el teletransporte, en sus dos extremos. Y el largo de las flechas
+  sale de la fuerza, así que mirando el mapa se ve cuánto empuja cada una.
+- **El color es el azul eléctrico**, y es la **segunda** vez que un color de la
+  paleta significa dos cosas. La paleta está llena desde la vuelta 55, donde ya
+  se midió que no queda hueco: naranja las dianas, rojo la amenaza, verde la
+  acción, ámbar el explosivo, amarillo la detección, azul y magenta los equipos,
+  pizarra el declinar. Se admite por lo mismo que la primera excepción (el verde
+  de la brújula): **no coinciden nunca**. Y hay un argumento más, que es lo que
+  lo hace distinto de reutilizar un color de aviso: `electric` no señala nada,
+  **nombra un material** —«esto es energía»— y lo lleva el escudo, que es un
+  icono del HUD y un objeto a la altura de la cintura; esto está pintado en el
+  suelo, bajo los pies.
+
+### 80.7 Y se colocan viendo el efecto, que es la convención de la 78
+
+- **La flecha de una plataforma de velocidad pone las dos cosas con un solo
+  tirador**: el ángulo es el rumbo y la distancia al centro de la pieza es la
+  fuerza. Es la punta de la flecha de una salida (vuelta 78) con un grado de
+  libertad más.
+- **La de un rebote es vertical y sólo se estira.** Girarla no significaría
+  nada, así que no gira — y se estira **en pantalla** y no contra el suelo,
+  porque un rayo contra el plano y=0 no dice nada de una altura. Es el tirador
+  del alto de una pieza (vuelta 79) otra vez.
+- **Agarrar una flecha elige su pieza**, en vez de apagar la selección: los
+  números que se están moviendo viven en su ficha. Misma rama y mismo motivo
+  que los tiradores de la 79.
+- **Y un teletransporte son dos sitios unidos por una línea.** La línea no es
+  decoración: con cuatro parejas en un mapa, saber cuál lleva a cuál leyendo
+  ocho números es exactamente la barrera que la 78 vino a quitar.
+- **El panel dice lo que se va a notar, no el número otra vez**: «Sube 5.49 u
+  sobre la pieza, con la gravedad 30 de este mapa» y «Lanza a 9.5 u/s (el techo
+  del aire de este mapa es 9.5)». Los dos salen de las mismas cuentas que el
+  motor, no de una copia.
+
+### 80.8 Lo que queda medido
+
+- **`superficies80.mjs`** (sin navegador): la consulta de suelo publica la
+  superficie que gana y la borra cuando no hay; el rebote sale a 3.8667 u en los
+  tres refrescos y clavado en la parábola; pisarla andando también lanza; trece
+  rebotes seguidos al mismo ápice; la velocidad respeta el techo (9.5 con fuerza
+  30) y va al rumbo del mapa y no a donde mira el jugador; el teletransporte
+  sube **una** época, pide su rumbo una sola vez y no rebota entre dos áreas
+  encaradas; el saneado conserva lo bueno, **cuenta** lo que tira y **nunca se
+  lleva la pieza por delante**; y un mapa sin nada de esto no suma ni una época.
+- **`ed80.mjs`** (con el ratón de verdad sobre el lienzo): el desplegable pone
+  la receta entera y no un objeto vacío; arrastrar la punta cambia rumbo y
+  fuerza a la vez y el panel enseña los dos; hacerlo no deselecciona la pieza;
+  el rebote sube de fuerza sin mover la pieza ni un decimal; el destino de un
+  teletransporte se arrastra y su flecha lo gira; y lo que el editor escribe lo
+  lee el saneado sin un problema y lo monta el escenario en su caja de colisión.
+- **`ed80b.mjs`** (contra el producto, con el motor de «probar»): el rebote
+  lanza a **4.47 u** andando hacia él, medido contra `engine.gameTime` y no
+  contra el reloj de pared (vuelta 75).
+- Y **la batería entera verde** (46 suites) después, que es lo que dice que
+  nada de esto se llevó por delante lo de antes.

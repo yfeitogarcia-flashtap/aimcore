@@ -864,6 +864,16 @@ export class ClienteRed {
     // a aplicar con **su** yaw y **su** paso, no con los de ahora.
     for (const entrada of this.pendientes) this._aplicar(entrada)
     this.camara.rotation.y = yawActual
+    /**
+     * **Y un teletransporte reejecutado no vuelve a girar la cámara**
+     * (vuelta 80). Reejecutar pasa por el mismo `movement.update`, así que un
+     * área de teletransporte que quede dentro de la cola sin confirmar vuelve
+     * a pedir su rumbo en cada reconciliación — o sea varias veces por
+     * segundo, arrancándole la mira al jugador. El rumbo es un recado de un
+     * paso **vivo**; una repetición del pasado no lo es. La posición y la
+     * época sí se reejecutan, que es lo que tiene que pasar.
+     */
+    this.movimiento.rumboPedido = null
 
     const error = Math.hypot(
       this.camara.position.x - predichoX,

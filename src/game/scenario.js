@@ -17,7 +17,7 @@
 
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { COVER, ROUNDS, claveDeEscenario, coverColor, coverEdgeColor, coverHeight, definicionDeEscenario, fisicaDeEscenario, fondoDeEscenario, scenarioRoom } from '../config.js'
+import { COLORS, COVER, ROUNDS, SURFACES, TELEPORTS, claveDeEscenario, coverColor, coverEdgeColor, coverHeight, definicionDeEscenario, fisicaDeEscenario, fondoDeEscenario, scenarioRoom } from '../config.js'
 import { crearFondo } from './backdrop.js'
 
 /**
@@ -105,6 +105,8 @@ export class Scenario {
     this.ramps = []
     /** Mallas contra las que se comprueba la visibilidad de un punto. */
     this.occluders = []
+    /** La superficie de la última consulta de suelo. Ver `superficieDelSuelo`. */
+    this._superficieDelSuelo = null
     /**
      * Rutas ya resueltas. Cada una es un conjunto de puntos mutuamente
      * alcanzables en línea recta, y lleva la cuenta de cuántos muñecos patrullan
@@ -287,6 +289,11 @@ export class Scenario {
         bottom,
         top: height,
         kind: box.kind,
+        // **Lo que la pieza te hace al pisarla** (vuelta 80), o `null`. Va en
+        // la caja de colisión y no en una lista aparte porque la pregunta que
+        // contesta es «¿sobre qué estoy?», y eso lo decide el mismo barrido
+        // que decide a qué altura está el suelo.
+        superficie: box.superficie ?? null,
       })
 
       const geometry = new THREE.BoxGeometry(box.w, thickness, box.d)
@@ -340,6 +347,15 @@ export class Scenario {
       this.materials.push(edgeMaterial)
       this.geometries.push(edgeGeometry)
     }
+
+    /**
+     * **Los teletransportes del mapa** (vuelta 80): un área en planta con su
+     * destino. No son geometría —ni colisionan, ni entran en `occluders`, ni
+     * cuentan en el presupuesto—: lo único que hacen es que quien entre
+     * aparezca en otro sitio.
+     */
+    this.teletransportes = definition.teletransportes ?? []
+    this._pintarSuperficies()
 
     /**
      * **La zona de aparición del jugador queda fuera del grafo.** Cualquier
@@ -424,6 +440,128 @@ export class Scenario {
   }
 
   /**
+   * **Una superficie que no se ve es una trampa** (vuelta 80).
+   *
+   * Vektor no tiene ni texturas ni luces, así que lo único que puede decir que
+   * una caja no es una caja normal es **una marca dibujada encima**. Se pinta
+   * con líneas —una geometría y un material para todas las del mapa—, va
+   * **fuera de `occluders`** y no toca la colisión: ningún rayo le pregunta
+   * nada y no cuesta un paso de mundo.
+   *
+   * Dos reglas de forma, que son las de siempre:
+   *
+   * - **Lo que distingue las tres es la forma, no el color** (vuelta 67): una
+   *   flecha vertical lanza hacia arriba, una horizontal lanza hacia donde
+   *   apunta, y un anillo es una puerta. Y el largo de las dos flechas **sale
+   *   de la fuerza**, así que mirando el mapa se ve cuánto empuja cada una.
+   * - **El color es el azul eléctrico** (`COLORS.electric`), que ya significa
+   *   «energía» —el escudo, sus cargas, el visor—. Es la segunda vez que un
+   *   color de la paleta significa dos cosas, y se admite por lo mismo que la
+   *   primera: no coinciden nunca. Un escudo es un icono del HUD y un objeto a
+   *   la altura de la cintura; esto está pintado en el suelo, bajo los pies. Lo
+   *   que **no** podía ser es ámbar (hay una bomba), rojo (te disparan),
+   *   amarillo (te han visto) ni naranja (eso es una diana).
+   */
+  _pintarSuperficies() {
+    const puntos = []
+    const linea = (x1, y1, z1, x2, y2, z2) => puntos.push(x1, y1, z1, x2, y2, z2)
+
+    for (const box of this.boxes) {
+      const sup = box.superficie
+      if (!sup) continue
+      const cx = (box.minX + box.maxX) / 2
+      const cz = (box.minZ + box.maxZ) / 2
+      const y = box.top + SURFACES.marcaY
+      // El largo sale de la fuerza, acotado al tamaño de la pieza para que la
+      // marca no se salga de la cara que la lleva.
+      const cabe = Math.min(box.maxX - box.minX, box.maxZ - box.minZ) * 0.45
+
+      if (sup.tipo === 'rebote') {
+        // **Una flecha vertical**, que es lo que se puede leer desde cualquier
+        // ángulo — una marca plana en el suelo no dice «hacia arriba».
+        const alto = Math.min(sup.fuerza * 0.12, 2.2)
+        linea(cx, y, cz, cx, y + alto, cz)
+        for (const d of [-1, 1]) {
+          linea(cx, y + alto, cz, cx + d * 0.22, y + alto - 0.35, cz)
+          linea(cx, y + alto, cz, cx, y + alto - 0.35, cz + d * 0.22)
+        }
+        // Y un cuadrado al ras marcando la huella, para verla desde arriba.
+        const r = cabe
+        linea(cx - r, y, cz - r, cx + r, y, cz - r)
+        linea(cx + r, y, cz - r, cx + r, y, cz + r)
+        linea(cx + r, y, cz + r, cx - r, y, cz + r)
+        linea(cx - r, y, cz + r, cx - r, y, cz - r)
+        continue
+      }
+
+      if (sup.tipo === 'velocidad') {
+        // **Una flecha en el suelo, hacia donde lanza.** El rumbo es el de una
+        // cámara —mira a −Z con yaw 0—, así que la dirección es (−sin, −cos):
+        // escribirlo al revés es el error de 180° de la vuelta 60.
+        const dx = -Math.sin(sup.rumbo)
+        const dz = -Math.cos(sup.rumbo)
+        const largo = Math.min(sup.fuerza * 0.14, cabe * 1.8)
+        const px = cx - dx * largo * 0.5
+        const pz = cz - dz * largo * 0.5
+        const qx = cx + dx * largo * 0.5
+        const qz = cz + dz * largo * 0.5
+        linea(px, y, pz, qx, y, qz)
+        // Punta: dos barbos a 30° del eje, hacia atrás.
+        const barbo = Math.min(largo * 0.35, 0.8)
+        for (const giro of [2.6, -2.6]) {
+          const bx = dx * Math.cos(giro) - dz * Math.sin(giro)
+          const bz = dx * Math.sin(giro) + dz * Math.cos(giro)
+          linea(qx, y, qz, qx + bx * barbo, y, qz + bz * barbo)
+        }
+      }
+    }
+
+    // **Un anillo es una puerta.** Se pinta en el área de entrada y otro en el
+    // destino: los dos se ven, porque llegar sin saber dónde has llegado es lo
+    // mismo que no verlo salir.
+    for (const tp of this.teletransportes) {
+      this._pintarAnillo(puntos, tp.x + tp.w / 2, tp.z + tp.d / 2, Math.min(tp.w, tp.d) * 0.4)
+      this._pintarAnillo(puntos, tp.destino.x, tp.destino.z, 0.9)
+    }
+
+    if (puntos.length === 0) return
+    const geometry = new THREE.BufferGeometry()
+    geometry.setAttribute('position', new THREE.Float32BufferAttribute(puntos, 3))
+    const material = new THREE.LineBasicMaterial({ color: COLORS.electric })
+    this.group.add(new THREE.LineSegments(geometry, material))
+    this.geometries.push(geometry)
+    this.materials.push(material)
+  }
+
+  /** Un anillo al ras del suelo, en segmentos. Sin malla: son líneas. */
+  _pintarAnillo(puntos, cx, cz, radio, lados = 16) {
+    const y = SURFACES.marcaY
+    for (let i = 0; i < lados; i++) {
+      const a = (i / lados) * Math.PI * 2
+      const b = ((i + 1) / lados) * Math.PI * 2
+      puntos.push(
+        cx + Math.cos(a) * radio, y, cz + Math.sin(a) * radio,
+        cx + Math.cos(b) * radio, y, cz + Math.sin(b) * radio,
+      )
+    }
+  }
+
+  /**
+   * **A dónde lleva el área en la que estás, o `null`.** Es una comprobación de
+   * caja en planta más la altura: un teletransporte es una puerta, no un techo,
+   * así que sólo cuenta si los pies están dentro de su volumen.
+   */
+  teletransporteEn(x, z, feetY) {
+    for (let i = 0; i < this.teletransportes.length; i++) {
+      const tp = this.teletransportes[i]
+      if (x < tp.x || x > tp.x + tp.w || z < tp.z || z > tp.z + tp.d) continue
+      if (feetY < -TELEPORTS.alto || feetY > TELEPORTS.alto) continue
+      return tp
+    }
+    return null
+  }
+
+  /**
    * Altura del suelo bajo un punto.
    *
    * Para las **cajas** no hay nada que decidir: si el punto cae dentro de la
@@ -444,21 +582,47 @@ export class Scenario {
   groundHeightAt(x, z, feetY) {
     let ground = 0
     const reach = feetY + COVER.stepHeight
+    // **Y de paso se queda con la pieza que gana** (vuelta 80). Es una
+    // asignación dentro del barrido que ya existe, así que el suelo sigue
+    // costando lo mismo y el bucle caliente sigue sin asignar memoria: lo que
+    // se guarda es la referencia a la superficie que ya está en la caja.
+    let superficie = null
 
     for (let i = 0; i < this.boxes.length; i++) {
       const box = this.boxes[i]
       if (x < box.minX || x > box.maxX || z < box.minZ || z > box.maxZ) continue
       if (box.top <= ground) continue
       ground = box.top
+      superficie = box.superficie
     }
 
     for (let i = 0; i < this.ramps.length; i++) {
       const height = this._rampHeightAt(this.ramps[i], x, z)
       if (height === null || height > reach || height <= ground) continue
       ground = height
+      // Una rampa no tiene superficie: lo que se pisa en ella es la cuña.
+      superficie = null
     }
 
+    this._superficieDelSuelo = superficie
     return ground
+  }
+
+  /**
+   * **La superficie de la última consulta de suelo** (vuelta 80), o `null`.
+   *
+   * Sale por aquí y no como segundo valor de retorno porque el suelo se
+   * pregunta dos veces por paso **y por jugador**, y devolver un objeto sería
+   * basura para el recolector justo en el bucle caliente.
+   *
+   * A cambio hay una regla que respetar y es la única: **vale para la llamada
+   * inmediatamente anterior**, la tuya. Quien lo lee lo hace en la línea de al
+   * lado de su propio `groundHeightAt`, con la misma posición. Es la misma
+   * disciplina que la pose interpolada de la vuelta 44 —vive lo que dura el
+   * dibujado— aplicada a una consulta.
+   */
+  get superficieDelSuelo() {
+    return this._superficieDelSuelo ?? null
   }
 
   /** Altura de una rampa en un punto, o null si el punto queda fuera de ella. */

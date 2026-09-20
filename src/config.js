@@ -2121,6 +2121,69 @@ export const EDITOR = {
 }
 
 /**
+ * **Las superficies de un mapa** (vuelta 80).
+ *
+ * Una pieza puede declarar `superficie` y con eso dejar de ser sólo un sitio
+ * donde apoyarse: `rebote` te lanza hacia arriba al pisarla y `velocidad` te
+ * lanza en la dirección que declare. Y un mapa puede declarar
+ * `teletransportes`, que son áreas con destino.
+ *
+ * Tres cosas que **son** el diseño, y ninguna es tuning:
+ *
+ * - **No viaja ningún número por la red.** Es el patrón de la física de la
+ *   vuelta 72: los dos extremos montan el mismo mapa —lo dice la sala— y
+ *   derivan lo mismo. Un campo de empuje en el protocolo sería un empuje que
+ *   se puede mentir.
+ * - **El impulso se resuelve con `_takeOff`, no con una rama nueva.** Lo que
+ *   hace un rebote es despegar con otra velocidad vertical, así que la
+ *   parábola sigue resuelta **en forma cerrada** y un rebote se comporta igual
+ *   a 60 que a 240 Hz sin hacer nada — que es la propiedad que no se puede
+ *   romper (vuelta 44).
+ * - **Y una plataforma de velocidad respeta el techo del aire.** Saltárselo
+ *   abriría un camino para pasar de `airStrafeMaxSpeed` sin air-strafe, que es
+ *   la técnica del juego. Un mapa que quiera lanzar de verdad **sube su
+ *   techo**, que es la palanca que la vuelta 72 ya dejó abierta.
+ */
+export const SURFACES = {
+  /** Los tipos que el motor sabe resolver. Un `tipo` fuera de aquí se tira y se dice. */
+  tipos: ['rebote', 'velocidad'],
+  /**
+   * Topes del formato, no del gusto. Son del saneado, así que un número fuera
+   * de rango no llega al juego venga del editor o de un fichero a mano — la
+   * misma idea que `SALA`.
+   */
+  fuerzaMax: 40,
+  /**
+   * Lo que sube una plataforma de velocidad además de empujar. No es
+   * decoración: **a pie no hay velocidad** —un paso es posición más dirección
+   * por marcha— así que un empuje horizontal sin despegue se evaporaría en el
+   * paso siguiente. Despegar es lo que lo convierte en un lanzamiento.
+   */
+  saltoMin: 0.5,
+  /** Valores de partida al ponerle una superficie a una pieza en el editor. */
+  porDefecto: {
+    rebote: { tipo: 'rebote', fuerza: 14 },
+    velocidad: { tipo: 'velocidad', fuerza: 12, rumbo: 0, salto: 4 },
+  },
+  /**
+   * **El alto de la marca que se pinta encima**, sobre la cara de la pieza. No
+   * es geometría: son líneas, fuera de `occluders` y fuera del presupuesto.
+   * Un dedo por encima para que no pelee en z con la cara de la caja.
+   */
+  marcaY: 0.03,
+}
+
+/**
+ * **Los teletransportes de un mapa** (vuelta 80). Un área con destino y rumbo.
+ */
+export const TELEPORTS = {
+  /** Alto del volumen de entrada. Un jugador mide 1.8: con esto no se salta. */
+  alto: 3,
+  /** Valores de partida al añadir uno en el editor. */
+  porDefecto: { x: -2, z: -2, w: 4, d: 4, destino: { x: 2, z: 2, yaw: 0 } },
+}
+
+/**
  * **Los tiradores de la pieza elegida** (vuelta 79). Van aparte de `EDITOR`
  * porque son del gesto y no de la prueba: `EDITOR` es lo que se enciende para
  * medir jugando, y esto es cómo se agarra una caja.

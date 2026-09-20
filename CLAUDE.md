@@ -59,7 +59,7 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Capa | Dónde | Qué hace |
 |---|---|---|
 | Motor | `src/game/` | Bucle rAF, input, raycast, dianas, armas, panel de acciones. **Vive fuera de React.** El mundo avanza en **pasos fijos de 60 Hz** (`_advanceSimulation` / `_simStep`); el frame sólo dibuja. Con `usarRed(cliente)` la verdad del movimiento, el disparo, la vida y la reaparición pasa al servidor (vuelta 56). |
-| Escenario | `src/game/scenario.js` | Convierte los datos de `SCENARIOS` en mallas, colisionadores, oclusores y **rutas**. Y publica su sala (`scenario.room`), su zona de aparición (`isInSpawnZone`), su **física** (`scenario.fisica`) y lo que reparte si en él no se compra (`dotacionDeDuelo`). |
+| Escenario | `src/game/scenario.js` | Convierte los datos de `SCENARIOS` en mallas, colisionadores, oclusores y **rutas**. Y publica su sala (`scenario.room`), su zona de aparición (`isInSpawnZone`), su **física** (`scenario.fisica`), lo que reparte si en él no se compra (`dotacionDeDuelo`), **sobre qué pieza estás** (`superficieDelSuelo`) y a dónde te lleva un área (`teletransporteEn`). |
 | Línea de visión | `src/game/sight.js` | `hasLineOfSight`: el **único** raycast de «¿se ve eso desde aquí?». Lo usan la aparición y los marcadores. |
 | Sala | `src/game/scene.js` | Rejilla y paredes, reconstruibles con `setRoom`: cada escenario tiene su tamaño. |
 | Audio espacial | `src/audio/spatial.js` | Listener en la cámara y emisores posicionados. **Genérico:** no sabe del explosivo. |
@@ -351,6 +351,96 @@ suelo por los pelos, contando el escalón— y la `atalaya` **6.0** —ahí sól
 llega desde una torre—. Si algún día cambia esa gravedad, esas dos alturas se
 recalculan con ella.
 
+**Una pieza puede hacerte algo al pisarla, y un área puede llevarte a otro
+sitio** (vuelta 80). `superficie` en una pieza —`rebote` o `velocidad`— y
+`teletransportes` en el mapa. Es el primer bloque del triaje de la 79
+(`docs/propuestas/06-superficies-y-estructuras.md`); el ventilador, el hielo, la
+tirolina y la colisión curva siguen aparcados ahí y por escrito.
+
+**Y es seguro en red por lo mismo que la física de la 72: no viaja ningún
+número.** Los dos extremos montan el mismo mapa —lo dice la sala— y derivan el
+mismo empuje. Un campo de fuerza en el protocolo sería una fuerza que se puede
+mentir. Seis reglas, y ninguna es tuning:
+
+- **El cimiento es que el suelo diga sobre qué estás.** `groundHeightAt`
+  devolvía **un número**, así que el jugador sabía a qué altura estaba el suelo
+  y no qué pieza era. Ahora el mismo barrido se queda con la ganadora y la
+  publica en `scenario.superficieDelSuelo`. Sale por un captador y no como
+  segundo valor de retorno porque el suelo se pregunta **dos veces por paso y
+  por jugador**: devolver un objeto sería basura para el recolector en el bucle
+  caliente. A cambio hay una regla, y es la única: **vale para la llamada
+  inmediatamente anterior**, y quien lo lee lo hace en la línea de al lado de su
+  propio `groundHeightAt`, con la misma posición. Es la disciplina de la pose
+  interpolada de la 44 aplicada a una consulta.
+- **Todo el impulso pasa por `_takeOff`.** Un rebote es despegar con otra
+  velocidad vertical, así que la parábola sigue resuelta **en forma cerrada** y
+  un rebote se comporta igual a 60 que a 240 Hz sin hacer nada. Medido: ápice
+  **3.8667 u en los tres refrescos**, dispersión 0.0026%, y clavado en lo que
+  dice la parábola (`v²/2g` sobre la pieza). Una rama nueva en la vertical
+  habría sido un camino por el modelo que los dos extremos pueden discrepar.
+- **Pisarla cuenta, no sólo caer sobre ella.** Entrar andando en una plataforma
+  de rebote no produce ningún aterrizaje —nunca se estuvo en el aire—, así que
+  colgar el impulso sólo de `_land` dejaba una plataforma que funciona saltando
+  encima y no pisándola: una diferencia que nadie decidiría. Consecuencia que
+  hay que saber al construir: para entrar en una andando tiene que medir
+  **menos que `COVER.stepHeight` (0.25)**, porque a un bordillo de 0.6 se
+  choca. El editor lo dice en la ficha.
+- **Un empuje del mapa no es un salto tuyo**, así que no gasta fatiga. Sin eso,
+  rebotar seguido en la misma plataforma la iría apagando —la fatiga cuenta
+  vuelos parados— y el mapa dejaría de funcionar a la cuarta. Medido: trece
+  rebotes seguidos, **todos al mismo ápice**.
+- **Y una plataforma de velocidad respeta el techo del aire.** Saltárselo
+  abriría un camino para pasar de `airStrafeMaxSpeed` **sin air-strafe**, que es
+  la técnica del juego; un mapa que quiera lanzar más fuerte **sube su techo**,
+  que ya puede desde la 72. También **despega**, y eso no es decoración: a pie
+  no hay velocidad —un paso es posición más dirección por marcha— así que un
+  empuje horizontal sin despegue se evaporaría en el paso siguiente.
+- **Y un teletransporte cambia dónde estás, no cómo vas.** Sube `poseEpoch`,
+  que es lo que hace que el rival lo vea como un salto en su instante exacto y
+  no como un barrido (vueltas 44 y 50); **re-ancla la parábola** en el sitio
+  nuevo, porque la forma cerrada se evalúa desde el despegue; y **entra por
+  flanco** —un booleano en `snapshot()`, como la máscara de agachado del
+  deslizamiento—, o aparecer dentro de otra área sería un bucle. Medido: 300
+  pasos entre dos áreas encaradas, **una sola época**.
+
+Y dos cosas que salieron construyéndolo y valen fuera de aquí:
+
+- **«Tiene geometría» no era la pregunta.** `setScenario` guardaba el escenario
+  sólo si tenía cajas o rampas, y un mapa de **sólo puertas** se montaba con
+  `scenario = null`: no teletransportaba a nadie y sin un error en ninguna
+  pantalla. Lo que el movimiento necesita de un escenario dejó de ser sólo
+  contra qué chocar.
+- **El rumbo de un teletransporte lo pide el movimiento y lo aplica quien tiene
+  los controles.** Escribir `camera.rotation.y` desde el movimiento no vale: su
+  dueño es `LookControls` y lo reescribe en el siguiente movimiento de ratón
+  (vuelta 66). Va por `consumirRumboPedido()`, lo aplica `_simStep` y **el
+  servidor no lo necesita**, porque el rumbo le llega en la entrada del cliente.
+  Ojo con la mitad que no se ve: **reejecutar una entrada no vuelve a girar la
+  cámara** — la reconciliación pasa por el mismo `movement.update`, así que un
+  área dentro de la cola sin confirmar pedía su rumbo varias veces por segundo,
+  arrancándole la mira al jugador. El rumbo es un recado de un paso **vivo**.
+
+**Y una superficie que no se ve es una trampa.** Vektor no tiene texturas ni
+luces, así que lo único que puede decir que una caja no es una caja normal es
+una marca dibujada encima (`Scenario._pintarSuperficies`): líneas, una geometría
+y un material para todas las del mapa, **fuera de `occluders`** y fuera del
+presupuesto. Dos reglas de forma:
+
+- **Lo que distingue las tres es la forma, no el color** (vuelta 67): una flecha
+  **vertical** lanza hacia arriba —plana en el suelo no diría «arriba»—, una
+  **horizontal** lanza hacia donde apunta, y un **anillo** es una puerta. Y el
+  largo de las dos flechas sale de la fuerza, así que mirando el mapa se ve
+  cuánto empuja cada una. El anillo se pinta en los **dos** extremos: llegar sin
+  saber dónde has llegado es lo mismo que no verlo salir.
+- **El color es el azul eléctrico** (`COLORS.electric`), y es la **segunda** vez
+  que un color de la paleta significa dos cosas. Se admite por lo mismo que la
+  primera (el verde de la brújula): no coinciden nunca. `electric` no es un
+  color de aviso como el rojo o el amarillo, es un color de material —«esto es
+  energía»— y lo lleva el escudo, que es un icono del HUD y un objeto a la
+  altura de la cintura; esto está pintado en el suelo, bajo los pies. Lo que
+  **no** podía ser es ámbar (hay una bomba), rojo (te disparan), amarillo (te
+  han visto) ni naranja (eso es una diana).
+
 **En Alchemist, todo lo configurable se coloca viendo el efecto** (vuelta 78).
 **Ésta es la convención permanente del editor**, no un arreglo de una fase:
 cualquier cosa que un mapa pueda declarar necesita **una forma 100% visual de
@@ -464,6 +554,18 @@ Cuatro reglas:
   por lo mismo, la rama de estos tiradores va **por delante** de `elegirMarca`,
   que apaga la selección para editar una cosa a la vez: aquí la cosa que se
   edita **es** la pieza elegida.
+
+**Y una superficie se coloca por su flecha** (vuelta 80). La de una plataforma
+de velocidad se arrastra por la punta y **con un solo tirador pone las dos
+cosas**: el ángulo es el rumbo y la distancia al centro de la pieza es la
+fuerza. La de un rebote es vertical y sólo se estira —girarla no significaría
+nada—. Es la punta de la flecha de una salida (vuelta 78) con un grado de
+libertad más, y su rama de `pointerdown` va por delante de `elegirMarca` por lo
+mismo que la de los tiradores de la pieza: lo que se está editando **es** la
+pieza elegida, y sus números viven en su ficha. Un teletransporte son **dos
+sitios unidos por una línea**, los dos arrastrables: con cuatro parejas en un
+mapa, saber cuál lleva a cuál leyendo ocho números es justo la barrera que la 78
+vino a quitar.
 
 **Y cómo se realza lo elegido lo declara quien lo crea, no lo decide quien
 pinta** (vuelta 79). Había un solo realce —opacidad 1 y escala 1.35— y eso vale
@@ -1181,7 +1283,8 @@ o dejando el suelo. Seis reglas, y ninguna es decoración:
   jugando.
 - **Y los siete campos viajan.** `sliding`, el reloj, la dirección congelada, el
   empujón congelado, el enfriamiento y la máscara de agachado están en
-  `snapshot()` (25 → 32). Medido en `red45` con un deslizamiento cada 2.3 s:
+  `snapshot()` (25 → 32; 33 desde la vuelta 80, con el flanco del
+  teletransporte). Medido en `red45` con un deslizamiento cada 2.3 s:
   **cero correcciones y error de reconciliación cero**.
 
 **`MOVEMENT.slide.enabled` es la ventana hacia atrás, y no es un ajuste del
@@ -3793,6 +3896,14 @@ cara de al lado moviendo **por un solo eje**, giro de 90°, **deshacer/rehacer**
 WASD** con el puntero sobre el mapa, y un **presupuesto medido** que enseña lo
 que cuesta la colisión de tu mapa con su denominador al lado.
 
+**Y desde la vuelta 80 una pieza puede hacerte algo al pisarla**: `rebote` te
+lanza hacia arriba y `velocidad` te lanza en el rumbo que declare, las dos con
+su flecha azul arrastrable —la punta pone rumbo y fuerza a la vez— y su marca
+dibujada en el mundo. Más **teletransportes**: un área con su destino y su
+rumbo, unidos por una línea, los dos arrastrables. Es el bloque barato del
+triaje de la 79; el ventilador, el hielo, la tirolina y la colisión curva
+siguen aparcados en `docs/propuestas/06-superficies-y-estructuras.md`.
+
 **Y desde la vuelta 79 una pieza se estira arrastrándola**: la elegida saca
 cuatro tiradores de esquina —que la estiran dejando la opuesta clavada—, un cubo
 arriba que recorre la escalera de alturas de `COVER` y un aro que la gira 90°
@@ -4218,14 +4329,12 @@ Plano A esté validado jugando.
 `docs/propuestas/06-superficies-y-estructuras.md`. Lo que hay que saber sin
 abrirlo, porque decide el alcance de lo siguiente que se proponga:
 
-- **Rebote, velocidad, teletransportador de zona y «guardar punto y volver»**
-  son trabajo pequeño, y comparten **un solo cimiento**: hoy
-  `Scenario.groundHeightAt` devuelve **un número**, así que el jugador sabe a
-  qué altura está el suelo y **no sabe sobre qué pieza está**. Con eso resuelto
-  —sin asignar por llamada, que se llama dos veces por paso y por jugador— las
-  cuatro son cortas, y ninguna necesita un campo en el protocolo: es el patrón
-  de la vuelta 72, los dos extremos montan el mismo mapa y derivan lo mismo sin
-  que viaje ningún número.
+- **Rebote, velocidad y teletransportador de zona están construidos** (vuelta
+  80) — ver §3 y §5. Lo que se queda de ese renglón es **«guardar punto y
+  volver»**, que no se pidió: son dos acciones más en `KEYBINDS`, un
+  teletransporte de los que ya existen, y **una bandera del mapa que comprueba
+  el servidor**, porque en un duelo guardar un punto y volver a él es
+  teletransportarse a voluntad.
 - **El hielo no está en ese grupo, y la razón no se ve en el editor.** A pie
   **no hay velocidad**: un paso es `posición + dirección × marcha × dt` y soltar
   W para al jugador en ese mismo paso. «Resbaladizo» no es bajar un rozamiento

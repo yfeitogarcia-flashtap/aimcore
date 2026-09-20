@@ -182,6 +182,28 @@
               <label>Base: empieza a <input id="p-base" type="number" step="0.1" min="0"
                 title="Altura desde el suelo a la que arranca la pieza. 0 = en el suelo." /></label>
               <p id="aviso-aire" class="aviso" hidden></p>
+
+              <h3>Superficie</h3>
+              <!-- Lo que la pieza le hace a quien la pisa. La flecha del mapa
+                   se arrastra: el rumbo y la fuerza salen de ahí, y estos
+                   campos están para afinar a la décima. -->
+              <p class="nota">Lo que la pieza hace al pisarla. Se dibuja encima,
+                en azul: <b>arrástrale la punta de la flecha</b> para darle rumbo
+                y fuerza. Para entrar andando en una, ponle un alto por debajo de
+                un escalón (0.25).</p>
+              <label>Tipo
+                <select id="p-sup">
+                  <option value="">Ninguna (una caja normal)</option>
+                  <option value="rebote">Rebote · te lanza hacia arriba</option>
+                  <option value="velocidad">Velocidad · te lanza en un rumbo</option>
+                </select>
+              </label>
+              <div class="trio" id="p-sup-campos" hidden>
+                <label>Fuerza <input id="p-sup-fuerza" type="number" step="0.5" min="0.1" /></label>
+                <label>Rumbo <input id="p-sup-rumbo" type="number" step="5" /></label>
+                <label>Salto <input id="p-sup-salto" type="number" step="0.5" min="0.5" /></label>
+              </div>
+              <p id="p-sup-nota" class="nota" hidden></p>
             </section>
 
             <section>
@@ -211,6 +233,22 @@
               <p class="nota">El imán mueve por <b>un solo eje</b>, el de la cara más
                 cercana: encajar contra algo no te desvía de lado.</p>
               <p id="presupuesto-panel" class="nota"></p>
+            </section>
+
+            <section>
+              <h2>Teletransportes <span id="cuenta-tps" class="nota"></span></h2>
+              <!-- **Un área con destino, y las dos se arrastran** (convención
+                   de la 78). La línea que las une es lo que hace legible cuál
+                   lleva a cuál sin leer cuatro números. -->
+              <p class="nota">Un área que te deja en otro sitio. Se dibujan las
+                dos —la entrada en azul y el destino con su flecha— unidas por
+                una línea. Arrastra cualquiera de las dos, tira de la esquina
+                para estirar la entrada y de la punta de la flecha para girar la
+                salida.</p>
+              <div class="botonera">
+                <button id="tp-anadir" type="button">+ Teletransporte</button>
+              </div>
+              <div id="tp-fichas"></div>
             </section>
           </div>
 

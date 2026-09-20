@@ -1,6 +1,14 @@
 # Propuesta 06 — Superficies, estructuras y la colisión curva
 
-**Estado:** triaje, sin construir nada. El encargo (vuelta 79) fue **triar siete
+**Estado:** triaje hecho; **el bloque barato está construido en la vuelta 80**
+—rebote, plataforma de velocidad y teletransportador de zona, más el cimiento
+de §2—. Lo que sigue en pie, y por decisión del encargo: el ventilador, el
+hielo, la tirolina y la colisión curva quedan **aparcados hasta después de
+completar el arsenal**. El tubo por composición (§5) no se construye: se monta
+con las piezas de hoy. Lo que cambió al construirlo está en `docs/decisions.md`
+§80.
+
+**Estado original:** triaje, sin construir nada. El encargo (vuelta 79) fue **triar siete
 mecánicas nuevas** en los mismos tres cajones que el menú de formas de la
 propuesta 05 §3 —gratis hoy / trabajo pequeño / vuelta propia—, confirmar o
 corregir una hipótesis concreta, y contestar **qué implicaría resolver la falta
@@ -16,7 +24,10 @@ estructura de cilindro/tubo para descender.
 
 | Gratis hoy | Trabajo pequeño y acotado | Vuelta propia |
 |---|---|---|
-| **El tubo, por composición**: un pozo octogonal son ocho cajas finas en anillo, y por dentro se baja igual (§5) · el **aspecto** de todo lo demás: dibujar una placa de rebote o una flecha de velocidad no cuesta nada | **Plataforma de rebote** · **Plataforma de velocidad** · **Teletransportador de zona** · **Guardar punto y volver** por tecla · y el cimiento que las cuatro comparten: **que el suelo diga sobre qué estás** (§2) | **Ventilador** · **Hielo** · **Tirolina** · **Colisión curva de verdad** (§6) |
+| **El tubo, por composición**: un pozo octogonal son ocho cajas finas en anillo, y por dentro se baja igual (§5) · el **aspecto** de todo lo demás: dibujar una placa de rebote o una flecha de velocidad no cuesta nada | **Plataforma de rebote** ✔ · **Plataforma de velocidad** ✔ · **Teletransportador de zona** ✔ · **Guardar punto y volver** por tecla (pendiente) · y el cimiento que las cuatro comparten: **que el suelo diga sobre qué estás** (§2) ✔ | **Ventilador** · **Hielo** · **Tirolina** · **Colisión curva de verdad** (§6) |
+
+Lo marcado con ✔ se construyó en la **vuelta 80**; el resto sigue como está
+escrito aquí.
 
 **La hipótesis de la vuelta 79 era casi toda correcta, y falla en un sitio.**
 Se decía: *rebote, ventilador, velocidad, hielo y teletransportador podrían

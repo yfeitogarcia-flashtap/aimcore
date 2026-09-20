@@ -3193,6 +3193,16 @@ export class Engine {
     if (this.enRed) this.net.dar(this.net.paso + 1, inicioDePaso)
     else this.movement.update(stepMs / 1000, this._simTime)
 
+    /**
+     * **El rumbo que pide un teletransporte lo aplica el dueño del rumbo**
+     * (vuelta 80). El movimiento no puede escribir `camera.rotation.y`: su
+     * dueño es `LookControls` y lo reescribiría en el siguiente movimiento de
+     * ratón, así que el jugador saldría mirando bien hasta que tocara el ratón
+     * —o sea nunca— (vuelta 66). El movimiento lo **pide** y aquí se aplica.
+     */
+    const rumbo = this.movement.consumirRumboPedido()
+    if (rumbo !== null && rumbo !== undefined) this.controls?.lookAt(rumbo)
+
     // Y aquí queda dónde acaba. Si el movimiento ha teletransportado (`reset`),
     // la época cambia y este paso no se interpola: se dibuja donde toca en vez
     // de barrer medio mapa.

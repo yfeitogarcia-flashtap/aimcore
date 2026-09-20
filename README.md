@@ -635,6 +635,16 @@ tiene por qué costarte también la sala.
 - **Clic izquierdo** selecciona y arrastra, **botón derecho** orbita, **rueda**
   acerca, **botón central o Mayús+derecho** desplaza la vista. Y con el ratón
   sobre el mapa, **WASD vuela** —Q/E baja y sube, Mayús corre—.
+- **Una pieza puede hacer algo al pisarla**: elige **Rebote** (te lanza hacia
+  arriba) o **Velocidad** (te lanza en un rumbo) en su ficha y sale dibujada en
+  azul sobre la caja. La **flecha se arrastra**: en una de velocidad, la punta
+  pone el rumbo y la fuerza a la vez —el ángulo y el largo—; en un rebote sube y
+  baja, y lo que se lee en el largo es cuánto te lanza. Para entrar en una
+  **andando** tiene que medir menos de 0.25 (lo que sube un escalón); por encima
+  de eso hay que caer o saltar encima.
+- **Y un mapa puede tener teletransportes**: un área que te deja en otro sitio,
+  con su destino y su rumbo. Se dibujan los dos extremos unidos por una línea y
+  se arrastran los dos. Jugando se ven como dos anillos azules en el suelo.
 - **La pieza elegida saca seis tiradores**: las **cuatro esquinas** la estiran
   —la esquina de enfrente se queda clavada, así que estiras hacia donde
   arrastras—, el **cubo de arriba** sube y baja su altura por el vocabulario de
@@ -822,17 +832,15 @@ salen de un barrido medido, no de ponerlos a ojo.
 Y lo que no va a hacer hasta que el motor sepa chocar con ello: **rotación
 libre, tejados y triángulos sólidos**.
 
-Hay además siete mecánicas pedidas y **triadas sin construir** en
-`docs/propuestas/06-superficies-y-estructuras.md`: plataforma de rebote,
-ventilador, plataforma de velocidad, hielo, teletransportador, tirolina y tubo
-por el que bajar. En corto: rebote, velocidad y teletransportador son trabajo
-pequeño y comparten un solo cimiento —que el suelo diga **sobre qué pieza
-estás**, que hoy no lo dice—; el hielo y el ventilador son una vuelta del
-movimiento, porque a pie en Vektor no hay velocidad que resbale ni la vertical
-admite un empuje sostenido sin re-anclar su parábola; la tirolina es un estado
-de movimiento nuevo, del tamaño del deslizamiento; y el tubo **ya se puede
-construir hoy**, con ocho cajas finas en anillo — lo que falta es el sólido
-curvo, que es la misma vuelta del motor que la rotación libre.
+De las siete mecánicas triadas en
+`docs/propuestas/06-superficies-y-estructuras.md`, **el rebote, la plataforma de
+velocidad y el teletransportador están construidos** (vuelta 80). Siguen
+esperando, y por escrito: el **ventilador** y el **hielo**, que son una vuelta
+del movimiento —a pie en Vektor no hay velocidad que resbale, ni la vertical
+admite un empuje sostenido sin re-anclar su parábola—; la **tirolina**, que es
+un estado de movimiento nuevo del tamaño del deslizamiento; y el **tubo**, que
+en su forma sólida es la misma vuelta del motor que la rotación libre — aunque
+por el que se baja **ya se construye hoy**, con ocho cajas finas en anillo.
 
 ## Escenarios
 
