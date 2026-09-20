@@ -45,7 +45,7 @@ jobs:
 
     steps:
       - name: Traer el repositorio
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Comprobar que hay credencial
         # Sin el secreto, `flyctl` falla con un error de autenticación que no
@@ -53,9 +53,9 @@ jobs:
         run: |
           if [ -z "$FLY_API_TOKEN" ]; then
             echo "::error::Falta el secreto FLY_API_TOKEN del repositorio."
-            echo "Se crea con 'fly tokens create deploy -x 999999h' y se pega en"
+            echo "Se crea con 'fly tokens create deploy -x 8760h' y se pega en"
             echo "Settings > Secrets and variables > Actions > New repository secret."
-            echo "El paso a paso está en docs/despliegue-fly.md, seccion 11."
+            echo "El paso a paso está en docs/despliegue-fly.md, seccion 12."
             exit 1
           fi
 
