@@ -418,6 +418,66 @@ clic derecho sigue orbitando— y **R/F** suben y bajan la elegida del paso de l
 rejilla, enteras. Colocar en altura pedía abrir el panel, encontrar «Base» y
 escribir un número, o sea salir de la vista para mover algo que se está mirando.
 
+**Una pieza se estira por sus esquinas, y no hay modos** (vuelta 79). La caja
+elegida saca seis tiradores: **cuatro esquinas** que la estiran dejando la
+opuesta clavada, **un cubo arriba** que sube y baja su alto y **un aro** que la
+gira 90°. Hasta aquí redimensionar era escribir dos números en el panel, que es
+la barrera de entrada que la convención de la 78 viene a quitar: «Ancho 4.5» no
+dice *hasta dónde llega* hasta que se prueba el mapa.
+
+**No es `TransformControls`, y se midió antes de decirlo** (`tc79`). Es la
+herramienta nativa del motor para esto y por eso se montó sobre una pieza de
+verdad antes de escribir nada. No encaja en cuatro sitios, y los cuatro son el
+modelo de datos —esquina mínima más tamaño, sin rotación—: mueve **el origen**
+del objeto (el proxy de la pieza 0 del Plano A está en −7.4 y la pieza empieza
+en −8); su `translationSnap` cuadra ese origen, así que con ancho 1.2 la esquina
+acaba en **−7.6**, fuera de la rejilla; su `scaleSnap` cuadra el **factor** y no
+el tamaño (1.4 sobre 1.2, 4.5 y 3.5 da 1.68, 6.3 y 4.9); escalar es
+**simétrico**, o sea que mueve las dos caras cuando tirar de una esquina tiene
+que clavar la otra; y sus manijas van en el origen y a tamaño de pantalla, el
+mismo gizmo sobre una pieza de 1.2 u que sobre una de 38. Adaptarlo es
+reescribir lo que hace con el objeto y quedarse sólo con su captura de ratón
+—que además se engancha al **mismo lienzo** que el editor—. Lo que sí se le
+copia es lo bueno: **los tiradores escalan con la distancia de cámara**
+(`GIZMO.distanciaDeReferencia`), porque un cubo de 0.45 u a setenta unidades son
+tres píxeles. Es `MARKERS.referenceDistance` en el editor.
+
+Cuatro reglas:
+
+- **Sin modos, y no es un recorte.** El conmutador de UEFN existe porque su
+  gizmo vive en el origen: ahí los tres gestos caen en el mismo sitio de la
+  pantalla y hay que desambiguarlos con un estado. Con manijas en la caja no hay
+  ambigüedad — el cuerpo mueve, la esquina estira, el cubo de arriba sube y el
+  aro gira—, así que un modo sería un estado que recordar para no ganar nada.
+- **El alto no se estira: se elige.** No es un número libre, es una palabra de
+  `COVER.heights` —de ahí salen el vocabulario de cobertura y la rampa de
+  grises—, así que el tirador recorre la escalera y cae en el escalón más
+  cercano. `GIZMO.pixelesPorEscalon` es lo que cuesta cada uno.
+- **El giro tiene cuatro posiciones y aun así es un gesto.** El aro se arrastra
+  en redondo y **cuadra a 90°**, de modo que lo que se ve girar es exactamente
+  lo que el motor va a saber chocar. Medido: 2×8 → 8×2 con el centro clavado.
+- **Y lo que se pincha del aro no es el aro.** Un toro tiene el centro hueco y
+  apuntarle al centro —que es donde apunta cualquiera— era un clic que se colaba
+  por el agujero, llegaba al lienzo y **deseleccionaba la pieza**: el gizmo
+  desaparecía debajo del dedo. Debajo va una bola invisible, que es la idea de
+  los `picker` de `TransformControls`: se dibuja una forma y se pincha otra. Y
+  por lo mismo, la rama de estos tiradores va **por delante** de `elegirMarca`,
+  que apaga la selección para editar una cosa a la vez: aquí la cosa que se
+  edita **es** la pieza elegida.
+
+**Y cómo se realza lo elegido lo declara quien lo crea, no lo decide quien
+pinta** (vuelta 79). Había un solo realce —opacidad 1 y escala 1.35— y eso vale
+para un tirador y está mal dos veces para el **relleno de un área**: opaca, una
+banda de aparición **tapa el spawner que contiene**, que es justo lo que se está
+colocando; y escalada 1.35 dibuja una banda que **no es la que el mapa
+declara**, o sea la convención de la 78 al revés. Ahora cada marcador pone su
+`userData.realce` donde se crea —un área se aclara con tope
+(`REALCE_AREA_MAX`) y enciende sus aristas, un tirador crece— y `pintarResaltado`
+se queda con lo único que sabe: **qué está elegido**. Ojo a la pista que lo
+delató, porque vale para cualquier cosa parecida: lo elegido **sobrevive a los
+repintados** y **guardar recarga la página**, así que «cambia solo» y «guardar
+lo arregla» son el mismo síntoma de un estado de vista, no de los datos.
+
 **Las teclas de herramienta son suyas y no se sobrecargan** (vuelta 78). El
 plantado de muñecos sólo se podía apagar desde el panel, y el panel se abre con
 ESPACIO — **que volando es subir**: con el God mode puesto no había forma de
@@ -520,6 +580,15 @@ verdad**. Lo que hay que respetar al seguir construyéndolo:
   `{ mapa, problemas }` y el panel los enseña: un campo que desaparece en
   silencio al guardar es cómo un mapa pierde su física sin que nadie se entere.
   Por eso `CAMPOS` es exhaustivo y un campo desconocido **se dice**.
+  **Y pasó, con `spawnZone`** (vuelta 79): se lee como una caja (vuelta 43) y
+  como una **lista** de cajas desde que hay mapas con dos salidas, `Scenario`
+  admite las dos formas y el saneado sólo la lista —`Array.isArray(x) ? x : []`—,
+  así que abrir el Plano A en el editor y guardarlo **le borraba su banda de
+  aparición** sin anotar ni un problema. O sea la regla de la 43 apagada, sin un
+  error en ninguna pantalla. Lo lee `enLista()`, que admite las dos y deja
+  `null` en lista vacía: «no declara» y «declara mal» son cosas distintas y sólo
+  la segunda es un problema. Si el formato gana una forma, **la gana el saneado
+  a la vez que el que monta**.
 
 **Un mapa tiene historial, y no es git** (vuelta 75). Cada guardado pregunta
 **qué cambia** y anota una versión con su comentario y su fecha en
@@ -3724,6 +3793,13 @@ cara de al lado moviendo **por un solo eje**, giro de 90°, **deshacer/rehacer**
 WASD** con el puntero sobre el mapa, y un **presupuesto medido** que enseña lo
 que cuesta la colisión de tu mapa con su denominador al lado.
 
+**Y desde la vuelta 79 una pieza se estira arrastrándola**: la elegida saca
+cuatro tiradores de esquina —que la estiran dejando la opuesta clavada—, un cubo
+arriba que recorre la escalera de alturas de `COVER` y un aro que la gira 90°
+intercambiando ancho y fondo. No hay modos: el cuerpo mueve, la esquina estira,
+el aro gira. Los tiradores crecen con la distancia de cámara para que se puedan
+agarrar con el mapa entero a la vista.
+
 **Y desde la vuelta 78 el panel es lateral, con raíl de iconos** —Mapa,
 Construir, Duelo, Probar, Archivo, cada uno con su palabra debajo—, **de ancho
 arrastrable y recordado**, con ESPACIO para abrirlo y cerrarlo y una barra
@@ -4137,6 +4213,42 @@ compra en la tienda del 1v1, y en el mapa que reparte (vuelta 72) tampoco.
 **En diseño, aún no construido:** los Planos B (*El Patio*) y C (*La Ejecución*)
 de `docs/propuestas/01-escenario-cobertura.md`. No los construyas hasta que el
 Plano A esté validado jugando.
+
+**Y las siete mecánicas de la vuelta 79, triadas y sin construir**, en
+`docs/propuestas/06-superficies-y-estructuras.md`. Lo que hay que saber sin
+abrirlo, porque decide el alcance de lo siguiente que se proponga:
+
+- **Rebote, velocidad, teletransportador de zona y «guardar punto y volver»**
+  son trabajo pequeño, y comparten **un solo cimiento**: hoy
+  `Scenario.groundHeightAt` devuelve **un número**, así que el jugador sabe a
+  qué altura está el suelo y **no sabe sobre qué pieza está**. Con eso resuelto
+  —sin asignar por llamada, que se llama dos veces por paso y por jugador— las
+  cuatro son cortas, y ninguna necesita un campo en el protocolo: es el patrón
+  de la vuelta 72, los dos extremos montan el mismo mapa y derivan lo mismo sin
+  que viaje ningún número.
+- **El hielo no está en ese grupo, y la razón no se ve en el editor.** A pie
+  **no hay velocidad**: un paso es `posición + dirección × marcha × dt` y soltar
+  W para al jugador en ese mismo paso. «Resbaladizo» no es bajar un rozamiento
+  que no existe: es estrenar un modelo de velocidad en el suelo, con sus campos
+  en `snapshot()`. Y el **ventilador** se cae por lo mismo en el otro eje: un
+  empuje sostenido es una segunda gravedad, y la vertical está resuelta **en
+  forma cerrada** — se puede hacer, pero re-anclando la parábola en cada cruce
+  de frontera y con su tabla a 60/144/240 Hz.
+- **La tirolina es una vuelta propia, del tamaño del deslizamiento**: un estado
+  de movimiento nuevo con sus campos que viajan, su forma cerrada y su regla de
+  qué marcha conserva al soltarse.
+- **Y el tubo se construye hoy, por composición**: un pozo octogonal son ocho
+  cajas finas en anillo y desde dentro no se distingue de un cilindro. Lo que
+  cae en el cajón de la rotación libre es el **sólido curvo**, no el sitio por
+  el que se baja. Ojo a por qué ese fallo sería invisible: los disparos ya van
+  contra la malla dibujada (vuelta 64), así que una pieza curva **pararía las
+  balas bien** y mentiría sólo al andar.
+- **Y la colisión curva, cuando toque, se hace entera.** No es una cosa sino
+  tres —giro de 90° (ya está), OBB, y convexa de N lados, que es lo que de
+  verdad hace falta—; un OBB suelto resuelve el 20% de los casos y paga el 90%
+  del precio, que es reescribir `resolveAxis`. Y tiene una dependencia anterior:
+  la comprobación de levantarse debajo de algo (nota de la vuelta 69), porque un
+  tejado sólido es precisamente una pieza con aire debajo.
 
 **El editor visual de mapas está a medias, y a propósito** (vueltas 74-78). Las
 **fases 1, 2 y 3 están construidas** —ver §3 y §5—; las fases 4 y 5 están

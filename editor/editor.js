@@ -24,7 +24,7 @@
  */
 
 import * as THREE from 'three'
-import { COVER, FONDOS, MOVEMENT, PRIMARY_WEAPONS, ROUNDS, SCENARIOS, TARGET, TEAMS, coverHeight, esFotoDeFondo, fisicaDeEscenario, giro180, scenarioRoom } from '../src/config.js'
+import { COVER, FONDOS, GIZMO, MOVEMENT, PRIMARY_WEAPONS, ROUNDS, SCENARIOS, TARGET, TEAMS, coverHeight, esFotoDeFondo, fisicaDeEscenario, giro180, scenarioRoom } from '../src/config.js'
 import { Avatar } from '../src/game/avatar.js'
 import { Engine } from '../src/game/engine.js'
 import { MovementController } from '../src/game/movement.js'
@@ -327,6 +327,139 @@ const TIRADOR = 0.45
  */
 const PRIORIDAD = { tirador: 3, cuerpo: 2, pieza: 1, area: 0 }
 
+/**
+ * **Los tiradores de la pieza elegida** (vuelta 79).
+ *
+ * Hasta aquí una caja se movía arrastrándola y se redimensionaba **escribiendo
+ * dos números en el panel**, que es exactamente la barrera de entrada que la
+ * convención de la 78 viene a quitar: «Ancho 4.5» no dice *hasta dónde llega*
+ * hasta que se prueba el mapa.
+ *
+ * **Y no es `TransformControls`**, que es lo primero que se miró porque es la
+ * herramienta del motor para esto. Medido contra una pieza de verdad
+ * (`tc79`), no encaja en cuatro sitios y los cuatro son el modelo de datos:
+ *
+ * - **Mueve el origen de un objeto; el dato es la esquina mínima.** El proxy de
+ *   la pieza 0 del Plano A está en x −7.4 y la pieza empieza en −8. Su
+ *   `translationSnap` cuadra el **centro**: con ancho 1.2, cuadrar el centro a
+ *   1 u deja la esquina en −7.6, o sea fuera de la rejilla. La rejilla del
+ *   editor cuadra lo que el fichero declara, que es la esquina.
+ * - **Su `scaleSnap` cuadra el factor, no el tamaño.** Un factor de 1.4 sobre
+ *   anchos de 1.2, 4.5 y 3.5 da 1.68, 6.3 y 4.9: tres tamaños y ninguno en la
+ *   rejilla. Lo que hay que cuadrar es el resultado.
+ * - **Escalar es simétrico.** Tirando de un lado se mueven **las dos caras**
+ *   (medido: la cara mínima pasa de −8 a −8.3), y tirar de una esquina es
+ *   justo lo contrario: la opuesta se queda clavada.
+ * - **Y sus manijas no están en la caja.** Van en el origen y a tamaño de
+ *   pantalla: el mismo gizmo sobre una pieza de 1.2 u y sobre una de 38. Lo que
+ *   se pidió —«arrastrar desde una esquina»— no es lo que dibuja.
+ *
+ * Con manijas en las esquinas, además, **no hacen falta modos**: mover es
+ * arrastrar el cuerpo y estirar es arrastrar una esquina. El conmutador de
+ * UEFN existe porque su gizmo vive en el origen y ahí los tres gestos son el
+ * mismo; aquí serían un estado más que recordar para no ganar nada.
+ */
+const gizmoPieza = new THREE.Group()
+scene.add(gizmoPieza)
+
+/** Lo que se puede pinchar de la pieza elegida. Plano, como `pinchables`. */
+const tiradoresDePieza = []
+
+/** Las cuatro esquinas en planta, en el orden (x,z), (x+w,z), (x+w,z+d), (x,z+d). */
+const ESQUINAS = [[0, 0], [1, 0], [1, 1], [0, 1]]
+
+const COLOR_GIZMO = 0x2fcb82
+
+function nuevoTirador(marca, malla) {
+  malla.userData.marca = { ...marca, prioridad: PRIORIDAD.tirador }
+  gizmoPieza.add(malla)
+  tiradoresDePieza.push(malla)
+  return malla
+}
+
+for (const [i] of ESQUINAS.entries()) {
+  nuevoTirador(
+    { que: 'pieza-esquina', esquina: i },
+    new THREE.Mesh(
+      new THREE.BoxGeometry(TIRADOR, TIRADOR, TIRADOR),
+      new THREE.MeshBasicMaterial({ color: COLOR_GIZMO }),
+    ),
+  )
+}
+
+/**
+ * **El alto se arrastra, y cae en el escalón más cercano.** El alto de una
+ * pieza no es un número libre: es una palabra de `COVER.heights`, porque la
+ * rampa de grises y el vocabulario de cobertura salen de ahí. Así que el
+ * tirador no estira, **elige**: sube y baja y se queda en el escalón que le
+ * pille más cerca, que es lo único que el dato admite.
+ */
+const tiradorAlto = nuevoTirador(
+  { que: 'pieza-alto' },
+  new THREE.Mesh(
+    new THREE.BoxGeometry(TIRADOR * 1.6, TIRADOR * 0.5, TIRADOR * 1.6),
+    new THREE.MeshBasicMaterial({ color: COLOR_GIZMO }),
+  ),
+)
+
+/**
+ * **Y el giro es un gesto, aunque sólo tenga cuatro posiciones.** La colisión
+ * es AABB, así que lo único que un giro puede significar aquí es intercambiar
+ * ancho y fondo; el aro se arrastra en redondo y **cuadra a 90°**, de modo que
+ * lo que se ve girar es exactamente lo que el motor va a saber chocar. Un aro
+ * libre dibujaría una caja girada que pararía las balas bien y se chocaría sin
+ * girar, que es lo que la vuelta 74 dejó escrito que no se hace.
+ */
+const tiradorGiro = nuevoTirador(
+  { que: 'pieza-giro' },
+  // **Lo que se pincha no es el aro: es una bola invisible detrás.** Un toro
+  // tiene el centro hueco, así que apuntarle a su centro —que es donde
+  // cualquiera apunta— era un clic que se colaba por el agujero y
+  // deseleccionaba la pieza. Es la misma idea que los `picker` de
+  // `TransformControls`: se dibuja una forma y se pincha otra.
+  new THREE.Mesh(
+    new THREE.SphereGeometry(TIRADOR * 0.95, 8, 6),
+    new THREE.MeshBasicMaterial({ transparent: true, opacity: 0, depthWrite: false }),
+  ),
+)
+const aroDeGiro = new THREE.Mesh(
+  new THREE.TorusGeometry(TIRADOR * 0.8, TIRADOR * 0.22, 6, 12),
+  new THREE.MeshBasicMaterial({ color: COLOR_GIZMO }),
+)
+aroDeGiro.rotation.x = Math.PI / 2
+tiradorGiro.add(aroDeGiro)
+
+/**
+ * **Los tiradores se ven igual de lejos que de cerca**, que es lo único que
+ * merecía la pena copiarle a `TransformControls`: un cubo de 0.45 u a ochenta
+ * unidades son tres píxeles, o sea una manija que no se puede agarrar justo
+ * cuando hace falta mirar el mapa entero. Va por frame y no en el repintado
+ * porque la rueda mueve la cámara sin tocar el mapa.
+ */
+function escalarGizmoDePieza() {
+  if (!gizmoPieza.visible) return
+  const k = Math.min(Math.max(orbita.radio / GIZMO.distanciaDeReferencia, 1), GIZMO.escalaMax)
+  for (const t of tiradoresDePieza) t.scale.setScalar(k)
+}
+
+/** Coloca los tiradores sobre la pieza elegida. Sale de `pintarContorno`. */
+function pintarGizmoDePieza(pieza) {
+  gizmoPieza.visible = Boolean(pieza)
+  if (!pieza) return
+  const alto = coverHeight(pieza.kind)
+  const base = pieza.base ? coverHeight(pieza.base) : 0
+  for (const [i, [ex, ez]] of ESQUINAS.entries()) {
+    gizmoPieza.children[i].position.set(pieza.x + ex * pieza.w, base + 0.1, pieza.z + ez * pieza.d)
+  }
+  tiradorAlto.position.set(pieza.x + pieza.w / 2, alto, pieza.z + pieza.d / 2)
+  // El aro va fuera de la caja, a media altura: dentro se confundiría con ella.
+  tiradorGiro.position.set(
+    pieza.x + pieza.w / 2,
+    base + (alto - base) / 2,
+    pieza.z + pieza.d + TIRADOR * 2,
+  )
+}
+
 /** Lo que se tira al repintar los marcadores. Materiales incluidos: son por marca. */
 function limpiarMarcas() {
   for (const hijo of [...marcas.children]) {
@@ -337,6 +470,35 @@ function limpiarMarcas() {
     })
     marcas.remove(hijo)
   }
+}
+
+/**
+ * **Cómo se realza lo elegido, y por qué no hay una sola forma** (vuelta 79).
+ *
+ * Había una: subir la opacidad a 1 y escalar 1.35. Eso vale para un tirador
+ * —un cubo de medio metro que además se agarra mejor cuando crece— y es un
+ * fallo en un área, por dos motivos a la vez:
+ *
+ * - **Un área opaca tapa lo que contiene.** La banda de aparición envuelve a su
+ *   spawner, así que elegirla lo hacía desaparecer; y como la elección
+ *   sobrevive a los repintados, el efecto parecía aleatorio —«a veces está
+ *   opaca»— y se curaba guardando, que es lo único que recarga la página y
+ *   limpia la elección.
+ * - **Y un área que crece deja de ser el dato.** Escalar el relleno un 35%
+ *   dibuja una banda que no es la que el mapa declara, que es justo lo que la
+ *   convención de la 78 prohíbe: el dibujo sale del dato, no al revés.
+ *
+ * Así que cada marcador **declara su realce donde se crea**. Un tirador crece;
+ * un área **se aclara sin dejar de ser translúcida** y enciende sus aristas,
+ * que es lo que se puede hacer con una caja hueca sin esconder su contenido.
+ */
+const REALCE_AREA_MAX = 0.22
+const ARISTA_NORMAL = 0.55
+
+/** Realce de lo que se agarra: crece, que además lo hace más fácil de pillar. */
+function realceQueCrece(objeto) {
+  objeto.userData.realce = (puesta) => objeto.scale.setScalar(puesta ? 1.35 : 1)
+  return objeto
 }
 
 /** Una caja translúcida con su arista marcada: lo que se lee como «área». */
@@ -356,18 +518,25 @@ function cajaDeArea(w, d, alto, color, opacidad) {
   grupo.add(relleno)
   const aristas = new THREE.LineSegments(
     new THREE.EdgesGeometry(geo),
-    new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.9 }),
+    new THREE.LineBasicMaterial({ color, transparent: true, opacity: ARISTA_NORMAL }),
   )
   grupo.add(aristas)
-  return { grupo, relleno }
+
+  // **Se aclara, con tope, y nunca se escala.** El tope es lo que garantiza que
+  // por mucho que se realce se siga viendo lo que hay dentro.
+  relleno.userData.realce = (puesta) => {
+    relleno.material.opacity = puesta ? Math.min(opacidad * 2.2, REALCE_AREA_MAX) : opacidad
+    aristas.material.opacity = puesta ? 1 : ARISTA_NORMAL
+  }
+  return { grupo, relleno, aristas }
 }
 
 /** Un tirador de esquina: se pincha y se estira. */
 function tirador(color) {
-  return new THREE.Mesh(
+  return realceQueCrece(new THREE.Mesh(
     new THREE.BoxGeometry(TIRADOR, TIRADOR, TIRADOR),
     new THREE.MeshBasicMaterial({ color }),
-  )
+  ))
 }
 
 /** Lo que se puede pinchar de los marcadores, en plano y sin buscar en el árbol. */
@@ -398,6 +567,7 @@ function pintarMarcas() {
     )
     cono.position.y = 0.9
     cono.userData.marca = { que: 'salida', i, prioridad: PRIORIDAD.cuerpo }
+    realceQueCrece(cono)
 
     grupo.add(cono)
     pinchables.push(cono)
@@ -482,8 +652,10 @@ function pintarResaltado() {
     const marca = objeto.userData.marca
     const puesta = Boolean(marcaElegida) &&
       marca.que === marcaElegida.que && (marca.i ?? -1) === (marcaElegida.i ?? -1)
-    if (objeto.material?.isMaterial) objeto.material.opacity = puesta ? 1 : (objeto.material.transparent ? objeto.material.opacity : 1)
-    objeto.scale.setScalar(puesta ? 1.35 : 1)
+    // **Cada uno se realza como puede** (vuelta 79): el realce lo declara quien
+    // crea el marcador, no lo decide aquí un `if` sobre su material. Aquí sólo
+    // se sabe qué está elegido.
+    objeto.userData.realce?.(puesta)
   }
 }
 
@@ -530,6 +702,7 @@ function pintarContorno() {
   pintarLaseres()
   const pieza = mapa.boxes[seleccion]
   contorno.visible = Boolean(pieza)
+  pintarGizmoDePieza(pieza)
   if (!pieza) return
   const alto = coverHeight(pieza.kind)
   const base = pieza.base ? coverHeight(pieza.base) : 0
@@ -671,8 +844,9 @@ lienzo.addEventListener('pointerdown', (evento) => {
    * dos pasadas —marcadores primero, piezas después— un área que envuelve medio
    * mapa deja todas esas piezas inalcanzables, que es lo que pasaba.
    */
+  const tiradores = gizmoPieza.visible ? tiradoresDePieza : []
   const tocadas = rayo
-    .intersectObjects([...pinchables, ...proxies.children], false)
+    .intersectObjects([...tiradores, ...pinchables, ...proxies.children], false)
     .map((h) => ({ hit: h, prioridad: h.object.userData.marca?.prioridad ?? PRIORIDAD.pieza }))
     .sort((a, b) => b.prioridad - a.prioridad || a.hit.distance - b.hit.distance)
 
@@ -681,6 +855,23 @@ lienzo.addEventListener('pointerdown', (evento) => {
   const punto = enSuelo(evento)
 
   const marca = elegido.userData.marca
+
+  /**
+   * **Un tirador de la pieza no cambia lo elegido.** Va por delante de
+   * `elegirMarca` a propósito: ése apaga la selección (`seleccion = -1`) para
+   * editar una cosa a la vez, y aquí la cosa que se edita **es** la pieza
+   * elegida. Sin esta rama, pinchar su propia esquina la deseleccionaba y el
+   * gizmo desaparecía debajo del dedo.
+   */
+  if (marca?.que?.startsWith('pieza-')) {
+    const pieza = mapa.boxes[seleccion]
+    if (punto && pieza) {
+      anotarParaDeshacer()
+      arrastrando = comenzarArrastreDePieza(marca, pieza, punto, evento)
+    }
+    return
+  }
+
   if (marca) {
     elegirMarca(marca)
     if (punto) {
@@ -699,6 +890,97 @@ lienzo.addEventListener('pointerdown', (evento) => {
     arrastrando = { que: 'pieza', dx: pieza.x - punto.x, dz: pieza.z - punto.z }
   }
 })
+
+/**
+ * **Estirar y girar la pieza elegida, con la esquina opuesta clavada.**
+ *
+ * Lo que se guarda al empezar es el **ancla**: la esquina de enfrente de la que
+ * se agarra. Estirar es entonces una resta contra ese punto fijo, y es lo que
+ * distingue un tirador de esquina de un escalado —que mueve las dos caras—.
+ */
+function comenzarArrastreDePieza(marca, pieza, punto, evento) {
+  if (marca.que === 'pieza-esquina') {
+    const [ex, ez] = ESQUINAS[marca.esquina]
+    return {
+      que: 'pieza-esquina',
+      // El ancla es la esquina diagonalmente opuesta, en coordenadas del mundo.
+      anclaX: pieza.x + (1 - ex) * pieza.w,
+      anclaZ: pieza.z + (1 - ez) * pieza.d,
+    }
+  }
+  if (marca.que === 'pieza-alto') {
+    return { que: 'pieza-alto', y0: evento.clientY, kind0: pieza.kind }
+  }
+  if (marca.que === 'pieza-giro') {
+    const cx = pieza.x + pieza.w / 2
+    const cz = pieza.z + pieza.d / 2
+    return {
+      que: 'pieza-giro',
+      cx,
+      cz,
+      angulo0: Math.atan2(punto.z - cz, punto.x - cx),
+      w0: pieza.w,
+      d0: pieza.d,
+    }
+  }
+  return null
+}
+
+/**
+ * Un arrastre de tirador de pieza, resuelto contra el mapa. Vive al lado de
+ * `moverMarca` y por la misma razón: la rejilla se aplica aquí, en un sitio.
+ */
+function moverTiradorDePieza(arrastre, punto, evento) {
+  const pieza = mapa.boxes[seleccion]
+  if (!pieza) return
+
+  if (arrastre.que === 'pieza-esquina') {
+    // De las dos esquinas —la clavada y la del puntero— salen los cuatro
+    // números: la mínima es el origen y la diferencia es el tamaño. Escrito
+    // así, arrastrar **más allá** del ancla no da un ancho negativo: da una
+    // caja del otro lado, que es lo que hace cualquier editor.
+    const x = aRejilla(punto.x)
+    const z = aRejilla(punto.z)
+    const w = Math.max(Math.abs(x - arrastre.anclaX), paso)
+    const d = Math.max(Math.abs(z - arrastre.anclaZ), paso)
+    pieza.w = Number(w.toFixed(4))
+    pieza.d = Number(d.toFixed(4))
+    pieza.x = Number((x < arrastre.anclaX ? arrastre.anclaX - w : arrastre.anclaX).toFixed(4))
+    pieza.z = Number((z < arrastre.anclaZ ? arrastre.anclaZ - d : arrastre.anclaZ).toFixed(4))
+    return
+  }
+
+  if (arrastre.que === 'pieza-alto') {
+    /**
+     * **Se elige escalón, no se estira.** El gesto es vertical y la pantalla
+     * cuenta hacia abajo, así que subir el ratón sube la pieza. Cuánto cuesta
+     * un escalón sale de la propia escalera —del alto de fábrica al siguiente—
+     * y no de un número suelto: con `COVER` afinado, el gesto se afina con él.
+     */
+    const escalones = Object.entries(COVER.heights).sort((a, b) => a[1] - b[1])
+    const base = pieza.base ? coverHeight(pieza.base) : 0
+    const i0 = Math.max(escalones.findIndex(([k]) => k === arrastre.kind0), 0)
+    const salto = Math.round((arrastre.y0 - evento.clientY) / GIZMO.pixelesPorEscalon)
+    const i = Math.min(Math.max(i0 + salto, 0), escalones.length - 1)
+    const [clave, alto] = escalones[i]
+    // Un alto por debajo de su propia base sería una caja invertida.
+    if (alto > base) pieza.kind = clave
+    return
+  }
+
+  if (arrastre.que === 'pieza-giro') {
+    const angulo = Math.atan2(punto.z - arrastre.cz, punto.x - arrastre.cx)
+    const cuartos = Math.round((angulo - arrastre.angulo0) / (Math.PI / 2))
+    const gira = Math.abs(cuartos % 2) === 1
+    const w = gira ? arrastre.d0 : arrastre.w0
+    const d = gira ? arrastre.w0 : arrastre.d0
+    // El centro se queda donde estaba: girar una pieza no la muda de sitio.
+    pieza.w = w
+    pieza.d = d
+    pieza.x = aRejilla(arrastre.cx - w / 2)
+    pieza.z = aRejilla(arrastre.cz - d / 2)
+  }
+}
 
 /** Qué guarda cada tipo de arrastre para que el movimiento sea relativo. */
 function comenzarArrastreDeMarca(marca, punto) {
@@ -799,6 +1081,12 @@ lienzo.addEventListener('pointermove', (evento) => {
   if (!punto) return
   if (arrastrando.que === 'pieza') {
     colocar(seleccion, punto.x + arrastrando.dx, punto.z + arrastrando.dz)
+    return
+  }
+  if (arrastrando.que?.startsWith('pieza-')) {
+    moverTiradorDePieza(arrastrando, punto, evento)
+    sucio = true
+    pintarPanel()
     return
   }
   moverMarca(arrastrando, punto)
@@ -1576,6 +1864,7 @@ function frame(ahora = performance.now()) {
   if (sucio) { sucio = false; remontar(); anotarBorrador() }
   volar(dt)
   colocarCamara()
+  escalarGizmoDePieza()
   escenario?.seguirConFondo(camara)
   renderer.render(scene, camara)
 }
@@ -2550,6 +2839,8 @@ function pintarMarca() {
 const ATAJOS = [
   ['ESPACIO', 'abre y cierra el panel'],
   ['Clic izq.', 'elige y arrastra una pieza, una salida o una zona'],
+  ['Esquinas', 'estira la pieza elegida · el cubo de arriba cambia su alto'],
+  ['Aro verde', 'gira la pieza 90° (ancho y fondo cambiados)'],
   ['Clic der.', 'orbita la cámara · sobre una pieza, la apila'],
   ['Rueda', 'acerca y aleja'],
   ['WASD', 'vuela la cámara (el ratón sobre el mapa)'],
@@ -2612,6 +2903,7 @@ window.vektorEditor = {
   get plantados() { return plantados },
   get marcas() { return marcas },
   get pinchables() { return pinchables },
+  get tiradoresDePieza() { return tiradoresDePieza },
   get marcaElegida() { return marcaElegida },
   get panelAbierto() { return panelAbierto() },
   get pestana() { return pestanaActual },

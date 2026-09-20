@@ -9856,3 +9856,168 @@ objetivo era medir tiempos y rendimiento de verdad.
 Lo que **no** está verificado automáticamente: la sensación de juego, el balance
 entre armas y la legibilidad del HUD en pantallas pequeñas. Eso sigue siendo
 juicio humano.
+
+---
+
+## Ronda 79 — Un realce que tapaba, un saneado que borraba y un gizmo que no era `TransformControls`
+
+Tres cosas, y las dos primeras son el mismo informe: «la banda de zona de
+aparición cambia de opaca a translúcida sola en el Plano A, y a veces tapa
+por completo el spawner que hay dentro; guardar la corrige».
+
+### 79.1 Dos defectos con el mismo síntoma
+
+**El primero: el realce era uno solo para cosas distintas.** `pintarResaltado`
+hacía esto con **todo** lo pinchable:
+
+```js
+objeto.material.opacity = puesta ? 1 : …
+objeto.scale.setScalar(puesta ? 1.35 : 1)
+```
+
+Para un tirador —un cubo de medio metro que se agarra— las dos líneas están
+bien: opaco se ve mejor y más gordo se pilla mejor. Para el **relleno de un
+área** las dos están mal, y cada una por su lado:
+
+- **Opacidad 1 sobre una caja translúcida la convierte en una pared.** Un área
+  es un volumen que **contiene** cosas —el punto de aparición cae dentro de su
+  propia banda, que es de lo que va la regla de la vuelta 43— así que taparla es
+  esconder justo lo que se está colocando.
+- **Y escalarla 1.35 dibuja una banda que no es la que el mapa declara.** Eso
+  contradice la convención de la 78 de frente: *el dibujo sale del dato, no al
+  revés*. Una banda de 4.8 u de fondo se dibujaba de 6.48 y el autor colocaba
+  contra una línea que no existe.
+
+Lo de «aleatorio» y lo de «guardar la corrige» son la misma pista y apuntan al
+mismo sitio: lo elegido sobrevive a los repintados, y **guardar recarga la
+página** (vuelta 75), que es lo que limpia la selección. No había nada aleatorio
+ni nada en los datos.
+
+El arreglo no es un `if` sobre el tipo de marcador: **cada marcador declara su
+realce donde se crea** (`userData.realce`), y `pintarResaltado` se queda sólo
+con lo que sabe, que es **qué está elegido**. Un área se aclara con tope
+(`REALCE_AREA_MAX`, 0.22) y enciende sus aristas; un tirador crece. Medido
+(`ed79`): elegida, la banda pasa de 0.09 a 0.198 de opacidad, **escala 1**, y
+sus 40×4.8 dibujados siguen siendo los 40×4.8 declarados.
+
+**El segundo, y es el grande: el saneado borraba la banda al guardar.**
+`spawnZone` se lee **como una caja** desde la vuelta 43 y **como una lista de
+cajas** desde que hay mapas con dos salidas: El Espejo y Los Pilares declaran
+dos, y el Plano A declara **una sola, suelta**. `Scenario` admite las dos formas
+—envuelve el objeto en una lista al montar— y `sanearMapa` no:
+
+```js
+const bruta = Array.isArray(bruto[campo]) ? bruto[campo] : []
+```
+
+O sea que abrir el Plano A en el editor y guardarlo lo dejaba con
+`spawnZone: []`, **sin anotar un solo problema** — que es exactamente lo que la
+vuelta 74 dejó escrito que no puede pasar: *un campo que desaparece en silencio
+al guardar es cómo un mapa pierde su física sin que nadie se entere*. Y ya
+había pasado: el `src/maps/largoYPuerta.js` del repositorio llevaba la banda
+vacía, así que **la regla de la vuelta 43 estaba apagada en el Plano A** —de la
+línea del muro hacia atrás sí podía aparecer alguien— sin un error en ninguna
+pantalla. Es el mismo fallo que la vuelta 78 encontró en `spawner.mjs` y que
+entonces se anotó como «el mapa editado no declara zona»: no es que no la
+declarara, es que se la habíamos borrado.
+
+Dos arreglos: `enLista()` en `formato.js`, que admite las dos formas y deja
+`null` en lista vacía —«no declara» y «declara mal» son cosas distintas y sólo
+la segunda es un problema—, y **la banda del Plano A restaurada** a su valor de
+siempre, `{x: −20, z: 15.2, w: 40, d: 4.8}`, que sigue cuadrando dígito a
+dígito con el muro de aparición del mapa editado (z 15.2, fondo de sala en 20).
+
+### 79.2 `TransformControls` no sirve de base, y se midió antes de decirlo
+
+El encargo pedía comprobarlo antes de construir nada, que es lo correcto: es la
+herramienta nativa del motor para esto. Se montó sobre una pieza de verdad del
+editor y se midió qué le hace **al dato** (`tc79`). No encaja en cuatro sitios, y
+los cuatro son el modelo de datos —esquina mínima más tamaño, sin rotación—:
+
+| Lo que hace | Lo que hace falta |
+|---|---|
+| Mueve **el origen** del objeto. El proxy de la pieza 0 del Plano A está en x −7.4; la pieza empieza en −8 | El dato es la **esquina mínima** |
+| `translationSnap` cuadra ese origen: con ancho 1.2, cuadrar el centro a 1 u deja la esquina en **−7.6** | La rejilla cuadra lo que el fichero declara |
+| `scaleSnap` cuadra el **factor**: 1.4 sobre anchos de 1.2, 4.5 y 3.5 da 1.68, 6.3 y 4.9 — tres tamaños y ninguno en la rejilla | Lo que hay que cuadrar es el **resultado** |
+| Escalar es **simétrico**: tirando de un lado la cara mínima pasa de −8 a −8.3 | Tirar de una esquina **clava la opuesta** |
+| Sus manijas van en el origen y a tamaño de pantalla: el mismo gizmo sobre una pieza de 1.2 u y sobre una de 38 | «Arrastrar desde una esquina» es una manija **en la esquina** |
+
+Todo eso es adaptable con post-proceso en `objectChange`, pero entonces lo único
+que se estaría usando de `TransformControls` es su captura de ratón —que además
+se engancha al **mismo lienzo** que el editor, así que habría que arbitrar entre
+las dos— mientras se reescribe lo que hace con el objeto. La tubería de picking
+del editor ya tiene lo demás: rayo único con prioridad (vuelta 78), rejilla
+sobre la esquina, imán y `colocar()`.
+
+**Lo único que se le copia es lo bueno de verdad:** los tiradores **escalan con
+la distancia de cámara** (`GIZMO.distanciaDeReferencia`), porque un cubo de 0.45
+u a setenta unidades son tres píxeles, y es la misma idea que
+`MARKERS.referenceDistance` en el mundo del juego.
+
+### 79.3 Y con manijas en las esquinas no hacen falta modos
+
+El encargo pedía modos intercambiables tipo UEFN —mover / escalar / girar—. El
+conmutador de UEFN existe **porque su gizmo vive en el origen**: ahí los tres
+gestos caen en el mismo sitio de la pantalla y hay que desambiguarlos con un
+estado. Con manijas en la caja no hay ambigüedad que resolver:
+
+- **el cuerpo** se arrastra y mueve, como desde la vuelta 74;
+- **una esquina** se arrastra y estira, con la opuesta clavada;
+- **el cubo de arriba** sube y baja el alto;
+- **el aro** gira.
+
+Un modo más sería un estado que recordar para no ganar nada, y la 78 ya dejó
+escrito que lo que se busca con el dedo tiene gesto, no un interruptor.
+
+Tres detalles que **son** el diseño:
+
+- **El alto no se estira: se elige.** El alto de una pieza no es un número
+  libre, es una palabra de `COVER.heights` —de ahí salen el vocabulario de
+  cobertura y la rampa de grises—, así que el tirador de arriba recorre la
+  **escalera** (bordillo < baja < media < plataforma < torre < alta < parapeto <
+  bloque < atalaya) y se queda en el escalón más cercano. Medido: 60 px de
+  arrastre llevan de `bordillo` a `media`.
+- **El giro tiene cuatro posiciones y aun así es un gesto.** La colisión es
+  AABB, así que lo único que un giro puede significar aquí es intercambiar ancho
+  y fondo; el aro se arrastra en redondo y **cuadra a 90°**, de modo que lo que
+  se ve girar es exactamente lo que el motor va a saber chocar. Medido: 2×8 →
+  8×2 con el centro clavado en (0, 0).
+- **Y lo que se pincha del aro no es el aro.** Un toro tiene el centro hueco, y
+  apuntarle al centro —que es donde apunta cualquiera— era un clic que se colaba
+  por el agujero, llegaba al lienzo y **deseleccionaba la pieza**: el gizmo
+  desaparecía debajo del dedo. Debajo va una bola invisible, que es la misma
+  idea que los `picker` de `TransformControls`: se dibuja una forma y se pincha
+  otra.
+
+Y una cuarta que no se ve y era el fallo fácil: **un tirador de la pieza no
+cambia lo elegido.** Su rama va **por delante** de `elegirMarca`, que apaga la
+selección (`seleccion = -1`) para editar una cosa a la vez — aquí la cosa que se
+edita **es** la pieza elegida.
+
+### 79.4 El triaje de las siete mecánicas
+
+Va entero en `docs/propuestas/06-superficies-y-estructuras.md`, con el precio de
+cada cajón. Lo que hay que saber sin abrirlo: la hipótesis del encargo era casi
+toda correcta y falla en un sitio —**el hielo no está en el grupo de las
+superficies**, porque a pie en Vektor **no hay velocidad**: un paso es
+`posición + dirección × marcha × dt` y soltar W para al jugador en ese mismo
+paso, así que «resbaladizo» no es bajar un rozamiento que no existe, es estrenar
+un modelo de velocidad en el suelo—. Y el **ventilador** se cae del grupo por el
+mismo tipo de motivo en el otro eje: un empuje sostenido es una segunda
+gravedad, y la vertical está resuelta **en forma cerrada** desde siempre.
+
+### 79.5 Lo que queda medido
+
+- **`ed79.mjs`**: el Plano A conserva su banda; el saneado no la tira ni en
+  lista ni en objeto —y la premisa, que el de la 78 **sí** la tiraba, se afirma
+  al lado, porque «se conserva» lo cumpliría igual un saneado que no mirase el
+  campo—; elegida, la banda se aclara de 0.09 a 0.198 con tope en 0.22, **escala
+  1**, y lo dibujado sigue cuadrando con lo declarado.
+- **`giz79.mjs`**, con el ratón de verdad sobre el lienzo: seis tiradores con la
+  pieza elegida y ninguno sin ella; estirar por una esquina deja la opuesta
+  clavada (4×4 → 7×7 sin mover (−2, −2), y por la contraria la máxima se queda
+  en (5, 5)); el alto sube un escalón del catálogo; el aro cambia 2×8 por 8×2
+  sin mudar el centro; agarrar un tirador **no** deselecciona; y un Ctrl+Z
+  deshace el arrastre entero, no un píxel.
+- **`tc79.mjs`**: los cinco números de la tabla de §79.2, medidos contra una
+  pieza del Plano A y no leídos del código.

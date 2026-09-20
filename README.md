@@ -635,6 +635,12 @@ tiene por qué costarte también la sala.
 - **Clic izquierdo** selecciona y arrastra, **botón derecho** orbita, **rueda**
   acerca, **botón central o Mayús+derecho** desplaza la vista. Y con el ratón
   sobre el mapa, **WASD vuela** —Q/E baja y sube, Mayús corre—.
+- **La pieza elegida saca seis tiradores**: las **cuatro esquinas** la estiran
+  —la esquina de enfrente se queda clavada, así que estiras hacia donde
+  arrastras—, el **cubo de arriba** sube y baja su altura por el vocabulario de
+  siempre, y el **aro verde** la gira 90°. No hay que cambiar de modo para
+  nada: el cuerpo mueve, la esquina estira, el aro gira. Los tiradores crecen
+  con la distancia para que puedas agarrarlos con el mapa entero a la vista.
 - Cada pieza tiene ancho, fondo y **altura del vocabulario de siempre**
   (`bordillo`, `baja`, `media`, `alta`, `bloque`, `plataforma`, `parapeto`,
   `torre`, `atalaya`), con su gris — que en Vektor no es decoración: **el tono
@@ -648,7 +654,8 @@ tiene por qué costarte también la sala.
 - **Tres láseres de alineación**, uno por eje, que se encienden por separado.
   Salen de la **base** de la pieza, que es la superficie contra la que se
   alinea.
-- **90°** intercambia ancho y fondo. No hay rotación libre, y no es un olvido:
+- **90°** —el aro, o el botón del panel— intercambia ancho y fondo. No hay
+  rotación libre, y no es un olvido:
   la colisión del juego es de cajas alineadas a los ejes, así que una caja
   girada se dibujaría girada y **se chocaría sin girar**. Está explicado en
   `docs/propuestas/05-editor-de-mapas.md` §3.
@@ -814,6 +821,18 @@ salen de un barrido medido, no de ponerlos a ojo.
 
 Y lo que no va a hacer hasta que el motor sepa chocar con ello: **rotación
 libre, tejados y triángulos sólidos**.
+
+Hay además siete mecánicas pedidas y **triadas sin construir** en
+`docs/propuestas/06-superficies-y-estructuras.md`: plataforma de rebote,
+ventilador, plataforma de velocidad, hielo, teletransportador, tirolina y tubo
+por el que bajar. En corto: rebote, velocidad y teletransportador son trabajo
+pequeño y comparten un solo cimiento —que el suelo diga **sobre qué pieza
+estás**, que hoy no lo dice—; el hielo y el ventilador son una vuelta del
+movimiento, porque a pie en Vektor no hay velocidad que resbale ni la vertical
+admite un empuje sostenido sin re-anclar su parábola; la tirolina es un estado
+de movimiento nuevo, del tamaño del deslizamiento; y el tubo **ya se puede
+construir hoy**, con ocho cajas finas en anillo — lo que falta es el sólido
+curvo, que es la misma vuelta del motor que la rotación libre.
 
 ## Escenarios
 

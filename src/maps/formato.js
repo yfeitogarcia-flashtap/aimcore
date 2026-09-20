@@ -89,6 +89,27 @@ export function sanearPieza(bruta, problemas = [], donde = 'pieza') {
   return p
 }
 
+/**
+ * **Una lista, venga como venga** (vuelta 79).
+ *
+ * `spawnZone` se lee **como una caja** (vuelta 43) y desde que hay mapas con
+ * dos salidas se lee **como una lista de cajas** (vuelta 78): El Espejo y Los
+ * Pilares declaran dos bandas y el Plano A declara una sola, suelta. `Scenario`
+ * ya admitía las dos formas —envuelve el objeto en una lista al montar— y el
+ * saneado no: hacía `Array.isArray(...) ? ... : []`, así que abrir el Plano A
+ * en el editor y guardarlo **le borraba su banda de aparición**, sin un solo
+ * problema anotado. El síntoma no es un error: es que los muñecos vuelven a
+ * poder nacer detrás del muro del spawn, que es la regla entera de la 43.
+ *
+ * Un `null` sigue siendo una lista vacía: «no declara» y «declara mal» son
+ * cosas distintas y sólo la segunda es un problema.
+ */
+function enLista(bruta) {
+  if (Array.isArray(bruta)) return bruta
+  if (bruta && typeof bruta === 'object') return [bruta]
+  return []
+}
+
 /** Un área en planta: `spawnZone` y las cajas de compra usan esta misma forma. */
 function sanearArea(bruta, problemas, donde) {
   const a = {}
@@ -197,7 +218,7 @@ export function sanearMapa(bruto) {
     spawnZone: (b, i) => sanearArea(b, problemas, `zona ${i}`),
   }
   for (const [campo, sanea] of Object.entries(listas)) {
-    const bruta = Array.isArray(bruto[campo]) ? bruto[campo] : []
+    const bruta = enLista(bruto[campo])
     mapa[campo] = bruta.map(sanea).filter(Boolean)
   }
 

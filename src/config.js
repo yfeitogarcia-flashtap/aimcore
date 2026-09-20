@@ -2121,6 +2121,30 @@ export const EDITOR = {
 }
 
 /**
+ * **Los tiradores de la pieza elegida** (vuelta 79). Van aparte de `EDITOR`
+ * porque son del gesto y no de la prueba: `EDITOR` es lo que se enciende para
+ * medir jugando, y esto es cómo se agarra una caja.
+ */
+export const GIZMO = {
+  /**
+   * Cuánto hay que subir el ratón para pasar al escalón de arriba del alto.
+   * El alto de una pieza no es un número libre —es una palabra de
+   * `COVER.heights`— así que este tirador elige escalón en vez de estirar, y
+   * esto es lo que cuesta cada uno.
+   */
+  pixelesPorEscalon: 26,
+  /**
+   * A partir de esta distancia de cámara los tiradores crecen con ella, para
+   * que conserven su tamaño en pantalla. Es la misma idea que
+   * `MARKERS.referenceDistance` en el mundo del juego: lo que no se ve no se
+   * puede usar.
+   */
+  distanciaDeReferencia: 25,
+  /** Y no crecen sin fin: de cerca son un cubo, no un edificio. */
+  escalaMax: 4,
+}
+
+/**
  * **Los fondos panorámicos, y se dibujan en vez de descargarse** (vuelta 77).
  *
  * Lo que un mapa ve más allá de sus paredes. Tres cosas que son el diseño:
