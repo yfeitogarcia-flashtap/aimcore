@@ -81,6 +81,7 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Fuego enemigo | `src/game/enemyFire.js` | Los muñecos disparando: visión, reacción, cadencia y cono. Y **publica en qué fase está cada uno**. |
 | Marcadores | `src/game/markers.js` | Brújula, iconos `?` / `!` y ficha arma+nick sobre cada muñeco. Sólo dibuja, y la brújula **sólo a quien se ve de verdad**. |
 | Fogonazo | `src/game/muzzleFlash.js` | El destello de cada disparo enemigo. Pool de estrellas aditivas; sólo dibuja. |
+| Destello de dispositivo | `src/game/dispositivos.js` | El anillo de usar un rebote, una plataforma de velocidad o una puerta. **Del motor**, así que sale en los dos modos; pool de anillos aditivos, sólo dibuja. |
 | Recogibles | `src/game/pickups.js` | Cruces de vida, cargas de escudo y casco por el suelo. |
 | Config | `src/config.js` | Todo el tuning, sin excepción. |
 | Tubo | `src/maps/tubo.js` | Despliega un pozo declarado como **un** objeto en las cajas AABB que el motor sabe chocar. **Lo llaman `Scenario` y el editor**, que es lo que evita que el fichero y el mundo digan cosas distintas. |
@@ -390,12 +391,11 @@ mentir. Seis reglas, y ninguna es tuning:
   rebotar seguido en la misma plataforma la iría apagando —la fatiga cuenta
   vuelos parados— y el mapa dejaría de funcionar a la cuarta. Medido: trece
   rebotes seguidos, **todos al mismo ápice**.
-- **Y una plataforma de velocidad respeta el techo del aire.** Saltárselo
-  abriría un camino para pasar de `airStrafeMaxSpeed` **sin air-strafe**, que es
-  la técnica del juego; un mapa que quiera lanzar más fuerte **sube su techo**,
-  que ya puede desde la 72. También **despega**, y eso no es decoración: a pie
-  no hay velocidad —un paso es posición más dirección por marcha— así que un
+- **Y una plataforma de velocidad despega**, y eso no es decoración: a pie no
+  hay velocidad —un paso es posición más dirección por marcha— así que un
   empuje horizontal sin despegue se evaporaría en el paso siguiente.
+  (Aquí decía además que respetaba el techo del aire. **Eso se revirtió en la
+  vuelta 82**: ver «El lanzamiento no tiene techo» más abajo.)
 - **Y un teletransporte cambia dónde estás, no cómo vas.** Sube `poseEpoch`,
   que es lo que hace que el rival lo vea como un salto en su instante exacto y
   no como un barrido (vueltas 44 y 50); **re-ancla la parábola** en el sitio
@@ -441,6 +441,106 @@ presupuesto. Dos reglas de forma:
   altura de la cintura; esto está pintado en el suelo, bajo los pies. Lo que
   **no** podía ser es ámbar (hay una bomba), rojo (te disparan), amarillo (te
   han visto) ni naranja (eso es una diana).
+
+**El lanzamiento no tiene techo, y un dispositivo nace con voz y con
+destello** (vuelta 82). Son cuatro reglas y la última es permanente.
+
+**Primera: lo que lanza una plataforma de velocidad lo decide el mapa.** La
+vuelta 80 lo acotaba a `airStrafeMaxSpeed` para que nadie se saltara el techo
+del aire sin air-strafe, y jugándolo se vio que eso era acotarlo a **9.5 u/s,
+o sea la marcha de correr**: la plataforma apenas sacaba al jugador de su
+propia losa. Tres cosas hacen que revertirlo sea correcto y no una rendición:
+el air-strafe es una **técnica del jugador** y esto es una **decisión del
+mapa** —hay que ir a pisar la losa, no se repite a voluntad—; la salida que
+ofrecía la 80 (subir el techo del mapa) cambia de paso **cómo vuela todo el
+mapa**, que es justo lo que no se quería; y sigue sin viajar ningún número, así
+que en red vale lo mismo que la física de la 72.
+
+Lo que queda es un tope **del formato**, como los de `SALA`, y está diez veces
+por encima de lo que se usa: `SURFACES.fuerzaMax` (300) existe para que un
+fichero corrupto no meta un número absurdo en el mundo. El número no es de
+gusto — sale de que `resolveAxis` es un barrido que acota contra la cara más
+cercana, así que a 300 u/s un paso de 60 Hz avanza 5 u y **se sigue parando en
+la pared**. El impulso vertical va con su propio tope y más bajo
+(`saltoMax`, 60): son dos cosas distintas.
+
+**Y hubo que arreglar una que no se veía**: el clamp del air-strafe
+(`_updateAirAccel`) escalaba el vector entero cuando pasaba del techo, así que
+con un lanzamiento a 60 **mirar de lado frenaba el vuelo a 9.5 en un paso** —un
+lanzamiento que se apaga por girar la cabeza—. El tope pasa a ser
+`max(techo, lo que ya traías)`: lo que ese clamp tiene que impedir es que el
+air-strafe **gane** por encima del techo, no que **quite** marcha que no ha
+puesto él. Medido: el caso de siempre sale idéntico (pico clavado en 9.5000
+girando 25 s) y un lanzamiento acaba en la misma coordenada mire el jugador a
+donde mire.
+
+**Segunda: la marca se repite por toda la losa.** Era **una** flecha en el
+centro de la pieza y eso falla por los dos extremos —regular en una losa de
+4×4, un garabato en medio de un descampado en una del tamaño del suelo de un
+mapa, que es lo que la 82 abre—. Ahora es un galón (una uve gruesa hacia donde
+lanza) o un muelle, repetidos en rejilla por toda la cara, con
+`SURFACES.marca.maxRepeticiones` de tope para que una losa de 200×200 no sean
+seis mil dibujos. Y van en **triángulos y no en líneas**: en WebGL el grosor de
+una línea no se toca —`linewidth` se ignora, medido ya con el contorno de la
+brújula en la vuelta 41—, así que «franja gruesa» sólo se puede dibujar
+rellena. Sigue fuera de `occluders` y fuera del presupuesto.
+
+**Tercera: un dispositivo puede no tener losa.** `superficie.invisible` le
+quita la malla y le deja **todo lo demás**: se sigue pisando, se sigue chocando
+y su marca se sigue dibujando. Es para un mapa donde el dispositivo *es* el
+suelo. Lo que se paga va escrito en la ficha del editor porque no se adivina:
+**las balas la atraviesan**, porque los disparos van contra la malla dibujada
+desde la vuelta 64 y sin malla no hay contra qué cortar. Con la losa de 0.2 con
+la que nacen son 20 cm en dónde cae la marca de impacto; con una pieza alta
+sería una pared invisible que no para balas, y por eso se avisa.
+
+**Y cuarta, que es permanente: cada dispositivo nace con su sonido y su efecto
+visual de uso, decididos al construirlo.** No es algo que se añada después. El
+motivo es el de la marca de la vuelta 80 llevado un paso más allá — la marca
+dice *qué es* esto y el destello dice *que acaba de pasar*; sin lo segundo,
+pisar una plataforma de rebote y saltar por tu cuenta se ven igual. Y el
+sonido, porque **el oído no hay que apuntarlo a ninguna parte** (vuelta 73): es
+el único canal que dice que algo ha pasado a tu espalda. Cinco piezas:
+
+- **Lo que distingue los cuatro gestos es la forma, no el color** (la regla de
+  la 67, y el azul eléctrico de la 80). Rebote: un anillo tumbado que **se abre
+  y sube**. Velocidad: un anillo **de pie**, encarado al rumbo, que sale
+  disparado hacia donde lanza. Puerta: el mismo anillo **cerrándose** en la
+  entrada y **abriéndose** en la salida — los dos extremos son el mismo gesto
+  invertido a propósito, que es lo que hace que llegar se lea como la otra
+  mitad de haber entrado.
+- **Un `InstancedMesh` y nada más** (`src/game/dispositivos.js`), que es el
+  patrón de `impacts.js`: una geometría, un material y una malla para todo el
+  pool, y apagarse es bajar a negro, que con mezcla aditiva **es** invisible.
+  Cero alocaciones por uso y por frame, y con el **reloj del mundo**, así que
+  en pausa un destello se queda quieto.
+- **Tres voces, y ninguna es otra con el volumen cambiado** (`playDevice`).
+  Rebote: el tono **sube**, al revés que el aterrizaje. Velocidad: ruido por un
+  pasa-banda que **sube** de 420 a 2600 Hz, o sea justo al revés que el silbido
+  de una bala. Puerta: dos parciales **inarmónicos** en relación 2.37 cayendo,
+  porque una relación armónica suena a nota musical y una puerta no es una nota.
+- **El movimiento deja un recado y el motor lo gasta.** `usoDeDispositivo` es un
+  **recado de un paso vivo**, exactamente como `rumboPedido`: no va en
+  `snapshot()` porque no es estado, y **el servidor no lo necesita** —
+  `partida.js` no tiene ni escena ni altavoces—. Y con la misma trampa: la
+  reconciliación pasa por el mismo `update`, así que `cliente.js` lo limpia tras
+  reejecutar o una plataforma dentro de la cola sin confirmar sonaría varias
+  veces por segundo.
+- **Y la puerta de un rival se oye desde cerca sin un campo nuevo.** Lo que
+  viaja es que su `poseEpoch` ha cambiado, y eso también lo hace una
+  reaparición; distinguirlos es **preguntarle al mapa**, que los dos extremos
+  montan igual — si de donde saltó había un área de teletransporte, fue una
+  puerta. Suena en **el sitio del que se fue**, que es quien tiene derecho a
+  enterarse. Emisor **propio** con su curva (`SURFACES.audio`, 30 u): colgarlo
+  del emisor del rival le pondría el radio de 16 u de las pisadas, que es el
+  aviso escrito aquí desde la vuelta 63.
+
+**Y de paso se arregló una deducción que dejó de valer**: `_pisadasDelRival`
+daba por teletransporte «ir a más del doble del techo del aire», y en cuanto
+una plataforma pudo lanzar a 60 u/s **un lanzamiento se leía como un
+teletransporte**. Ahora lo dice la época, que es el dato que de verdad significa
+«no hubo camino» y exactamente la razón por la que existe desde la vuelta 50 en
+vez de mirar cuánto se ha movido alguien.
 
 **En Alchemist, todo lo configurable se coloca viendo el efecto** (vuelta 78).
 **Ésta es la convención permanente del editor**, no un arreglo de una fase:
@@ -3976,9 +4076,18 @@ que cuesta la colisión de tu mapa con su denominador al lado.
 lanza hacia arriba y `velocidad` te lanza en el rumbo que declare, las dos con
 su flecha azul arrastrable —la punta pone rumbo y fuerza a la vez— y su marca
 dibujada en el mundo. Más **teletransportes**: un área con su destino y su
-rumbo, unidos por una línea, los dos arrastrables. Es el bloque barato del
-triaje de la 79; el ventilador, el hielo, la tirolina y la colisión curva
-siguen aparcados en `docs/propuestas/06-superficies-y-estructuras.md`.
+rumbo, unidos por una línea, los dos arrastrables.
+
+**Y desde la vuelta 82 lanzan de verdad, se reconocen y se oyen.** El
+lanzamiento ya no se acota al techo del aire —era acotarlo a la marcha de
+correr— así que la fuerza la decide quien construye, con un tope que es del
+formato y no del diseño (300). La losa lleva **galones gruesos repetidos por
+toda su cara** hacia donde lanza, o **muelles** si es de rebote, así que un
+mapa entero de velocidad se ve como lo que es; puede ser **invisible** —sin
+malla, con su colisión y su marca— y tiene **presets de tamaño** de 0.25 a la
+sala entera, sin tope por arriba. Y cada uno **nace con su destello y su voz**,
+que desde esta vuelta es norma permanente: la puerta de un rival se oye a
+treinta unidades sin un campo nuevo en el protocolo.
 
 **Y desde la vuelta 81 hay una forma que no es una caja: el tubo.** Un clic en
 la fila de formas deja un pozo redondo montado —radio, pared, alto y «lo redondo
@@ -3994,7 +4103,9 @@ rebote, velocidad y teletransporte se ponen con un botón cada uno —delante de
 cámara, montados y elegidos, con un alto de 0.2 para que se pueda entrar
 andando— y debajo salen listados los que hay en el mapa, para poder volver a dar
 con ellos. Antes estaban repartidos entre un desplegable dentro de la ficha de
-una pieza y el final de la hoja de Construir.
+una pieza y el final de la hoja de Construir. Desde la **82** esa hoja lleva
+además los **presets de tamaño** —0.25, 0.5, 0.75, 1, 4 y la sala entera— y la
+casilla de **plataforma invisible**, con su aviso de lo que cuesta.
 
 **Y desde la vuelta 79 una pieza se estira arrastrándola**: la elegida saca
 cuatro tiradores de esquina —que la estiran dejando la opuesta clavada—, un cubo

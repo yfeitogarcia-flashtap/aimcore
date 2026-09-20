@@ -1563,6 +1563,8 @@ function pintarSuperficieDePieza(pieza) {
   $('disp-pieza').hidden = !pieza
   $('disp-sin-pieza').hidden = Boolean(pieza)
   $('p-es-dispositivo').hidden = !pieza?.superficie
+  $('p-sup-invisible-linea').hidden = true
+  $('p-sup-aviso-invisible').hidden = true
   if (!pieza) return
   const sup = pieza.superficie
   $('p-sup').value = sup?.tipo ?? ''
@@ -1572,6 +1574,9 @@ function pintarSuperficieDePieza(pieza) {
   if (!sup) return
   $('p-sup-fuerza').value = sup.fuerza
   $('p-sup-fuerza').max = SURFACES.fuerzaMax
+  $('p-sup-invisible-linea').hidden = false
+  $('p-sup-invisible').checked = Boolean(sup.invisible)
+  $('p-sup-aviso-invisible').hidden = !sup.invisible
   const esVelocidad = sup.tipo === 'velocidad'
   $('p-sup-rumbo').closest('label').hidden = !esVelocidad
   $('p-sup-salto').closest('label').hidden = !esVelocidad
@@ -1805,10 +1810,22 @@ campo('p-sup-rumbo', (v) => {
   const sup = mapa.boxes[seleccion]?.superficie
   if (sup?.tipo === 'velocidad') sup.rumbo = aRadianes(v)
 })
+$('p-sup-invisible').addEventListener('change', () => {
+  const sup = mapa.boxes[seleccion]?.superficie
+  if (!sup) return
+  anotarParaDeshacer()
+  // Se declara sólo cuando está puesta: un `false` en cada dispositivo de cada
+  // mapa es ruido en el fichero (la regla del saneado).
+  if ($('p-sup-invisible').checked) sup.invisible = true
+  else delete sup.invisible
+  sucio = true
+  pintarPanel()
+})
+
 campo('p-sup-salto', (v) => {
   const sup = mapa.boxes[seleccion]?.superficie
   if (sup?.tipo === 'velocidad') {
-    sup.salto = Math.min(Math.max(Number(v) || SURFACES.saltoMin, SURFACES.saltoMin), SURFACES.fuerzaMax)
+    sup.salto = Math.min(Math.max(Number(v) || SURFACES.saltoMin, SURFACES.saltoMin), SURFACES.saltoMax)
   }
 })
 
@@ -1859,13 +1876,21 @@ $('t-borrar').addEventListener('click', () => {
  * las veces no hace nada y no se sabe por qué.
  */
 const ALTO_DE_PLATAFORMA = 0.2
-const LADO_DE_PLATAFORMA = 4
+/**
+ * **El lado del próximo dispositivo** (vuelta 82). Era una constante de 4 y
+ * «se sienten demasiado grandes y sin ninguna opción de ajuste» fue el
+ * feedback literal. Ahora es estado: los presets lo escriben y el siguiente
+ * que se ponga lo usa. No hay tope por arriba — estirar la pieza por su
+ * esquina hace un dispositivo del tamaño del suelo de un mapa, que es lo que
+ * pide un mapa «4fun» de sólo velocidad.
+ */
+let ladoDeDispositivo = 4
 
 function ponerDispositivo(cual) {
   anotarParaDeshacer()
   if (cual === 'teletransporte') { anadirTeletransporte(); return }
-  const w = LADO_DE_PLATAFORMA
-  const d = LADO_DE_PLATAFORMA
+  const w = ladoDeDispositivo
+  const d = ladoDeDispositivo
   // Se aparta de lo que ya haya ahí, como una forma nueva desde la vuelta 76:
   // dos plataformas seguidas caían una dentro de otra y la segunda no se veía,
   // así que el botón parecía no hacer nada la segunda vez.
@@ -1887,6 +1912,52 @@ function ponerDispositivo(cual) {
   // botón a otra pestaña es perderle el sitio.
   elegir(mapa.boxes.length - 1)
 }
+
+/**
+ * **Los presets de tamaño** (vuelta 82). Cambian el dispositivo elegido **sin
+ * moverle el centro** —redimensionar desde una esquina lo desplazaría, y lo
+ * que se está pidiendo es «esto mismo, más pequeño»— y dejan el lado puesto
+ * para el siguiente.
+ *
+ * `suelo` no es un número más: es la sala entera, que es lo que hace falta
+ * para un mapa de sólo velocidad o sólo rebote. Sale de `scenarioRoom`, o sea
+ * del mismo sitio del que el juego saca sus paredes, y no de una constante.
+ */
+function ponerTamanoDeDispositivo(lado) {
+  const pieza = mapa.boxes[seleccion]
+  anotarParaDeshacer()
+  if (lado === 'suelo') {
+    const sala = scenarioRoom(mapa)
+    if (pieza) {
+      pieza.x = -sala.width / 2
+      pieza.z = -sala.depth / 2
+      pieza.w = sala.width
+      pieza.d = sala.depth
+    }
+    ladoDeDispositivo = Math.min(sala.width, sala.depth)
+  } else {
+    const n = Number(lado)
+    if (!Number.isFinite(n) || n <= 0) return
+    if (pieza) {
+      // El centro se queda donde estaba: lo que cambia es el tamaño.
+      const cx = pieza.x + pieza.w / 2
+      const cz = pieza.z + pieza.d / 2
+      pieza.w = n
+      pieza.d = n
+      pieza.x = cx - n / 2
+      pieza.z = cz - n / 2
+    }
+    ladoDeDispositivo = n
+  }
+  sucio = true
+  pintarPanel()
+}
+
+$('disp-tamanos').addEventListener('click', (evento) => {
+  const boton = evento.target.closest('button[data-lado]')
+  if (!boton) return
+  ponerTamanoDeDispositivo(boton.dataset.lado)
+})
 
 document.querySelector('[data-hoja="dispositivos"] .formas').addEventListener('click', (evento) => {
   const boton = evento.target.closest('button[data-dispositivo]')

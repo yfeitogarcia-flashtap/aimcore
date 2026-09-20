@@ -1361,3 +1361,144 @@ export function playShieldCharge(durationS) {
   gain.gain.exponentialRampToValueAtTime(0.0001, end + 0.04)
   return { stop }
 }
+
+/**
+ * **La voz de un dispositivo** (vuelta 82).
+ *
+ * Desde esta vuelta es norma permanente: un dispositivo nace con su sonido y
+ * su destello, decididos al construirlo. El porqué es el de siempre en este
+ * juego — el oído no hay que apuntarlo a ninguna parte (vuelta 73), así que es
+ * el único canal que dice que algo ha pasado **a tu espalda**, o a doce
+ * unidades, o mientras miras otra cosa.
+ *
+ * Tres voces, y ninguna es otra con el volumen cambiado, que es la regla del
+ * silbido de la vuelta 40:
+ *
+ * - **rebote**: un muelle. Lo que lo define es que el tono **sube**, al revés
+ *   que el aterrizaje —que cae y ataca en 12 ms—, y que lleva una cola que se
+ *   bambolea. Un golpe que sube se lee como impulso.
+ * - **velocidad**: un soplo. Ruido por un pasa-banda que **sube** de 420 a
+ *   2600 Hz en 190 ms, o sea justo al revés que el silbido de una bala (que
+ *   cae de 4.2 kHz a 1.25), más un golpe grave que le da el empujón.
+ * - **puerta**: dos parciales **inarmónicos** cayendo. La relación es 2.37 —ni
+ *   octava ni quinta, como el metal del disparo va en 1.48— porque una
+ *   relación armónica suena a nota musical, y una puerta no es una nota.
+ *
+ * @param {'rebote'|'velocidad'|'puerta'} tipo
+ * @param {{input: AudioNode|null}} [emitter] emisor posicionado, si lo hay.
+ *   Sin él suena en el máster, que es lo que vale en el entrenamiento.
+ */
+export function playDevice(tipo, emitter = null) {
+  initAudio()
+  if (!ctx || !master || !noiseBuffer) return
+  const out = emitter?.input ?? master
+  if (!out) return
+  const t = ctx.currentTime
+  const g = AUDIO.deviceVolume
+
+  /** Cierra un nodo cuando acaba, que es lo que evita fugas por uso. */
+  const soltar = (fuente, ...nodos) => {
+    fuente.onended = () => {
+      fuente.disconnect()
+      for (const n of nodos) n.disconnect()
+    }
+  }
+
+  if (tipo === 'rebote') {
+    // El muelle: el tono **sube**, que es lo que lo separa del aterrizaje.
+    const body = ctx.createOscillator()
+    body.type = 'triangle'
+    body.frequency.setValueAtTime(170, t)
+    body.frequency.exponentialRampToValueAtTime(560, t + 0.09)
+    body.frequency.exponentialRampToValueAtTime(380, t + 0.22)
+    const bodyGain = ctx.createGain()
+    bodyGain.gain.setValueAtTime(0.0001, t)
+    bodyGain.gain.exponentialRampToValueAtTime(g * 0.9, t + 0.008)
+    bodyGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.26)
+    body.connect(bodyGain).connect(out)
+    body.start(t)
+    body.stop(t + 0.28)
+    soltar(body, bodyGain)
+
+    // Y el bamboleo de la cola: un segundo parcial desafinado a propósito.
+    const wob = ctx.createOscillator()
+    wob.type = 'sine'
+    wob.frequency.setValueAtTime(840, t)
+    wob.frequency.exponentialRampToValueAtTime(520, t + 0.2)
+    const wobGain = ctx.createGain()
+    wobGain.gain.setValueAtTime(0.0001, t)
+    wobGain.gain.exponentialRampToValueAtTime(g * 0.3, t + 0.012)
+    wobGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.2)
+    wob.connect(wobGain).connect(out)
+    wob.start(t)
+    wob.stop(t + 0.22)
+    soltar(wob, wobGain)
+    return
+  }
+
+  if (tipo === 'velocidad') {
+    // El soplo: ruido por un pasa-banda que **sube**, al revés que el silbido.
+    const noise = ctx.createBufferSource()
+    noise.buffer = noiseBuffer
+    const band = ctx.createBiquadFilter()
+    band.type = 'bandpass'
+    band.frequency.setValueAtTime(420, t)
+    band.frequency.exponentialRampToValueAtTime(2600, t + 0.19)
+    band.Q.value = 1.4
+    const noiseGain = ctx.createGain()
+    noiseGain.gain.setValueAtTime(0.0001, t)
+    noiseGain.gain.exponentialRampToValueAtTime(g * 0.85, t + 0.03)
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.24)
+    noise.connect(band).connect(noiseGain).connect(out)
+    noise.start(t)
+    noise.stop(t + 0.26)
+    soltar(noise, band, noiseGain)
+
+    // El empujón: un grave corto, que es lo que se siente en el pecho.
+    const thump = ctx.createOscillator()
+    thump.type = 'sine'
+    thump.frequency.setValueAtTime(120, t)
+    thump.frequency.exponentialRampToValueAtTime(58, t + 0.12)
+    const thumpGain = ctx.createGain()
+    thumpGain.gain.setValueAtTime(0.0001, t)
+    thumpGain.gain.exponentialRampToValueAtTime(g * 0.7, t + 0.006)
+    thumpGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.14)
+    thump.connect(thumpGain).connect(out)
+    thump.start(t)
+    thump.stop(t + 0.16)
+    soltar(thump, thumpGain)
+    return
+  }
+
+  if (tipo === 'puerta') {
+    // Dos parciales inarmónicos que caen: energía, no nota.
+    for (const [ratio, nivel] of [[1, 0.6], [2.37, 0.34]]) {
+      const osc = ctx.createOscillator()
+      osc.type = 'sine'
+      osc.frequency.setValueAtTime(1180 * ratio, t)
+      osc.frequency.exponentialRampToValueAtTime(300 * ratio, t + 0.3)
+      const oscGain = ctx.createGain()
+      oscGain.gain.setValueAtTime(0.0001, t)
+      oscGain.gain.exponentialRampToValueAtTime(g * nivel, t + 0.01)
+      oscGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.32)
+      osc.connect(oscGain).connect(out)
+      osc.start(t)
+      osc.stop(t + 0.34)
+      soltar(osc, oscGain)
+    }
+    // Y el chispazo de la entrada, corto y arriba.
+    const noise = ctx.createBufferSource()
+    noise.buffer = noiseBuffer
+    const hp = ctx.createBiquadFilter()
+    hp.type = 'highpass'
+    hp.frequency.value = 2200
+    const noiseGain = ctx.createGain()
+    noiseGain.gain.setValueAtTime(0.0001, t)
+    noiseGain.gain.exponentialRampToValueAtTime(g * 0.4, t + 0.005)
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.1)
+    noise.connect(hp).connect(noiseGain).connect(out)
+    noise.start(t)
+    noise.stop(t + 0.12)
+    soltar(noise, hp, noiseGain)
+  }
+}

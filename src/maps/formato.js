@@ -121,6 +121,9 @@ function sanearSuperficie(bruta, problemas, donde) {
     return null
   }
   const sup = { tipo: bruta.tipo, fuerza: acotar(bruta.fuerza, 0.1, SURFACES.fuerzaMax) }
+  // **Sin malla, pero con todo lo demás** (vuelta 82). Se declara sólo cuando
+  // está puesta: un campo `false` en cada dispositivo de cada mapa es ruido.
+  if (bruta.invisible === true) sup.invisible = true
   if (sup.tipo === 'velocidad') {
     if (!finito(bruta.rumbo)) {
       problemas.push(`${donde}: la superficie de velocidad no declara rumbo`)
@@ -130,7 +133,8 @@ function sanearSuperficie(bruta, problemas, donde) {
     // **El salto tiene suelo, y no es tuning.** Sin despegar, un empuje
     // horizontal se evapora en el paso siguiente: a pie no hay velocidad.
     const salto = finito(bruta.salto) ? bruta.salto : SURFACES.porDefecto.velocidad.salto
-    sup.salto = acotar(salto, SURFACES.saltoMin, SURFACES.fuerzaMax)
+    // El impulso vertical va con su tope, no con el horizontal: son dos cosas.
+    sup.salto = acotar(salto, SURFACES.saltoMin, SURFACES.saltoMax)
   }
   return sup
 }

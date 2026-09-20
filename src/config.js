@@ -2148,11 +2148,21 @@ export const SURFACES = {
   /** Los tipos que el motor sabe resolver. Un `tipo` fuera de aquí se tira y se dice. */
   tipos: ['rebote', 'velocidad'],
   /**
-   * Topes del formato, no del gusto. Son del saneado, así que un número fuera
-   * de rango no llega al juego venga del editor o de un fichero a mano — la
-   * misma idea que `SALA`.
+   * **El tope de fuerza no es un límite de diseño** (vuelta 82). Era 40 y, peor
+   * todavía, el lanzamiento se acotaba además al techo del aire —9.5 u/s de
+   * fábrica, o sea **la marcha de correr**—, así que una plataforma de
+   * velocidad apenas sacaba al jugador de su propia losa. Eso se quitó: quien
+   * construye decide cuánto lanza, y pasarse y bajarlo es más barato que no
+   * poder llegar.
+   *
+   * Lo que queda aquí es un tope **del formato**, como los de `SALA`: existe
+   * para que un fichero corrupto no meta un número absurdo en el mundo, no para
+   * decidir a qué se juega. El número sale de lo que la colisión sigue sabiendo
+   * resolver — `resolveAxis` es un barrido que acota contra la cara más
+   * cercana, así que a 300 u/s un paso de 60 Hz avanza 5 u y **se sigue
+   * parando en la pared**, no la atraviesa.
    */
-  fuerzaMax: 40,
+  fuerzaMax: 300,
   /**
    * Lo que sube una plataforma de velocidad además de empujar. No es
    * decoración: **a pie no hay velocidad** —un paso es posición más dirección
@@ -2160,6 +2170,12 @@ export const SURFACES = {
    * paso siguiente. Despegar es lo que lo convierte en un lanzamiento.
    */
   saltoMin: 0.5,
+  /**
+   * Y el impulso vertical va con su propio tope, más bajo que el horizontal:
+   * son dos cosas distintas. 60 u/s con la gravedad de fábrica son 60 u de
+   * ápice, que ya es el triple del alto de la sala más alta.
+   */
+  saltoMax: 60,
   /** Valores de partida al ponerle una superficie a una pieza en el editor. */
   porDefecto: {
     rebote: { tipo: 'rebote', fuerza: 14 },
@@ -2167,10 +2183,74 @@ export const SURFACES = {
   },
   /**
    * **El alto de la marca que se pinta encima**, sobre la cara de la pieza. No
-   * es geometría: son líneas, fuera de `occluders` y fuera del presupuesto.
-   * Un dedo por encima para que no pelee en z con la cara de la caja.
+   * es geometría: fuera de `occluders` y fuera del presupuesto. Un dedo por
+   * encima para que no pelee en z con la cara de la caja.
    */
   marcaY: 0.03,
+
+  /**
+   * **Cómo se dibuja cada dispositivo sobre su losa** (vuelta 82).
+   *
+   * Hasta aquí era **una** flecha de líneas en el centro de la pieza, y eso
+   * falla por los dos extremos: en una losa de 4×4 se lee regular, y en una
+   * losa del tamaño del suelo de un mapa —que es justo lo que la 82 abre— es
+   * un garabato diminuto en medio de un descampado. Ahora la marca **se
+   * repite por toda la cara**, así que un mapa entero de velocidad se ve como
+   * un mapa entero de velocidad.
+   *
+   * Y va en **triángulos y no en líneas**: en WebGL el grosor de una línea no
+   * se toca —`linewidth` se ignora, como ya se midió con el contorno de la
+   * brújula en la vuelta 41—, así que «franja gruesa» sólo se puede dibujar
+   * rellena. Sigue sin ser geometría del mapa: ningún rayo le pregunta nada.
+   */
+  marca: {
+    /** Cada cuánto se repite el dibujo sobre la cara, en unidades. */
+    paso: 2.6,
+    /** Margen contra el borde de la losa: una franja a medio salir se lee mal. */
+    margen: 0.35,
+    /** Techo de repeticiones por pieza. Un mapa de 200×200 son 5.900 sin esto. */
+    maxRepeticiones: 700,
+    /** El galón de una plataforma de velocidad: largo, ancho y grosor de trazo. */
+    galon: { largo: 0.62, ancho: 0.78, grosor: 0.3 },
+    /** El muelle de un rebote: una hélice de líneas con su base rellena. */
+    /**
+     * El muelle. **Bajo a propósito**: a 1.5 u de alto —lo que se probó
+     * primero— un muelle mide casi lo que un jugador y la losa se lee como un
+     * bosque de alambres. Esto es un dibujo en el suelo que dice qué pisas, no
+     * una pieza del mapa.
+     */
+    muelle: { vueltas: 2.5, lados: 9, radio: 0.4, altoMin: 0.3, altoMax: 0.85 },
+  },
+
+  /**
+   * **Hasta dónde se oye un dispositivo** (vuelta 82). Su propia curva, no la
+   * de `SPATIAL` —que está calibrada para que un sonido cruce un mapa de 55 u—
+   * y no la de una pisada, que se apaga a 16. Un rebote o una puerta es un
+   * suceso del mundo que cuenta **dónde está pasando algo**: treinta unidades
+   * es media sala grande, o sea lo bastante lejos para que te avise de que
+   * alguien acaba de cruzar por la otra punta y lo bastante cerca para que un
+   * mapa de sólo rebotes no sea un zumbido continuo.
+   *
+   * Y va en emisor **propio**: colgarlo del emisor del rival le pondría el
+   * radio de 16 u de las pisadas, que es el aviso escrito en `CLAUDE.md` desde
+   * la vuelta 63.
+   */
+  audio: { fullDistanceU: 4, maxDistanceU: 30 },
+
+  /**
+   * **El destello de usar un dispositivo** (vuelta 82). Lo dibuja
+   * `src/game/dispositivos.js`; esto es lo que dura y lo que mide.
+   */
+  destello: {
+    /** Cuántos anillos caben a la vez. Cada uno es una instancia, no una malla. */
+    pool: 16,
+    duracionMs: 380,
+    /** Radios de salida y de llegada de cada uno de los cuatro gestos. */
+    rebote: { r0: 0.5, r1: 2.6, sube: 1.7 },
+    velocidad: { r0: 1.5, r1: 0.9, avanza: 5.5 },
+    tpEntrada: { r0: 2.2, r1: 0.15, sube: 1.2 },
+    tpSalida: { r0: 0.2, r1: 2.4, sube: 1.2 },
+  },
 }
 
 /**
@@ -3980,6 +4060,13 @@ export const AUDIO = {
    */
   roundTickVolume: 0.3,
   footstepVolume: 0.26,
+  /**
+   * **La voz de un dispositivo** (vuelta 82). Por encima de una pisada y por
+   * debajo de un disparo: un rebote o una puerta es un suceso del mundo que
+   * hay que oír aunque no lo estés mirando —y que un rival cercano tiene
+   * derecho a oír—, pero no puede tapar la ráfaga que te está entrando.
+   */
+  deviceVolume: 0.5,
   healVolume: 0.5,
   shieldVolume: 0.42,
 }

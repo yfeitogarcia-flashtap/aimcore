@@ -10422,3 +10422,219 @@ Dos avisos que costaron una medida cada uno y valen para la próxima:
   cambio. Antes de creerse un rojo estadístico, hay que muestrearlo — y el
   procedimiento de la vuelta 78 (`git stash`, reiniciar, volver a pasar) es lo
   que separa las dos cosas.
+
+---
+
+## §82 — Los dispositivos, después de jugarlos
+
+Feedback de la primera sesión larga usando rebote, velocidad y teletransportes
+en un mapa de verdad. Cinco puntos, y el primero **revierte una decisión de la
+vuelta 80**.
+
+### 82.1 El lanzamiento no tiene techo
+
+El encargo, literal: «demasiado débil, apenas saca al jugador de la propia
+plataforma… mejor poder pasarse de potencia y bajarla después que estar
+limitado a la baja como ahora».
+
+La causa no era el tope del formato (40). Era esta línea de la vuelta 80:
+
+```js
+const v = Math.min(sup.fuerza, this.fisica.airStrafeMaxSpeed)
+```
+
+`airStrafeMaxSpeed` de fábrica son **9.5 u/s**, que es la marcha de correr. O
+sea que la plataforma más potente que un mapa podía declarar te lanzaba a la
+velocidad a la que ya ibas andando.
+
+El argumento de la 80 era correcto y sigue siéndolo: saltarse el techo abre un
+camino para pasar de `airStrafeMaxSpeed` **sin air-strafe**, que es la técnica
+del juego. Lo que estaba mal era la conclusión, por tres razones que sólo se
+ven jugando:
+
+- **El air-strafe es del jugador y esto es del mapa.** Un lanzamiento no
+  compite con una técnica: hay que ir a pisar una losa concreta, no se repite a
+  voluntad y quien construye el mapa decidió ponerla ahí. Son dos economías
+  distintas.
+- **La salida que ofrecía la 80 tiene un efecto colateral enorme.** Decía: «un
+  mapa que quiera lanzar más fuerte sube su techo, que ya puede desde la 72».
+  Subir `airStrafeMaxSpeed` cambia **cómo vuela todo el mapa** —cada salto, cada
+  encadenado, cada caída— para poder poner una plataforma potente. Es pagar el
+  mapa entero por un dispositivo.
+- **Y no cuesta nada en red.** Sigue sin viajar ningún número: los dos extremos
+  montan el mismo mapa y derivan el mismo empuje, que es el patrón de la física
+  de la 72.
+
+Lo que queda es un tope **del formato**, como los de `SALA`: `fuerzaMax` pasa de
+40 a **300** y existe para que un fichero corrupto no meta un número absurdo en
+el mundo. El número no es de gusto — sale de que `resolveAxis` es un barrido que
+acota contra la cara más cercana, así que a 300 u/s un paso de 60 Hz avanza 5 u
+y **se sigue parando en la pared** en vez de atravesarla. Y el impulso vertical
+se separa en su propio tope (`saltoMax`, 60), porque son dos cosas distintas y
+compartir número era una casualidad.
+
+### 82.2 Y un clamp que le robaba el lanzamiento, que no se veía
+
+Levantar el techo destapó otra cosa. `_updateAirAccel` acaba así:
+
+```js
+const max = this.fisica.airStrafeMaxSpeed
+const speed = Math.hypot(this._airVelX, this._airVelZ)
+if (speed > max) { /* escalar el vector entero a `max` */ }
+```
+
+Con un lanzamiento a 60 u/s eso es una trampa: mirar hacia un lado deja la
+proyección de la velocidad sobre la dirección pedida por debajo de `wishSpeed`,
+así que entra por la rama de la ganancia, y el escalado de abajo **frena el
+vuelo entero de 60 a 9.5 en un solo paso**. Un lanzamiento que se apaga por
+girar la cabeza.
+
+El arreglo es una línea y es la regla, no un parche: el techo pasa a ser
+`max(techo, lo que ya traías)`. Lo que este tope tiene que impedir es que el
+air-strafe **gane** por encima del techo; lo que no puede hacer es **quitar**
+marcha que no ha puesto él. Medido: el caso de siempre sale idéntico —girando
+25 s seguidos sin plataforma, el pico queda clavado en **9.5000**— y un
+lanzamiento acaba en la misma coordenada mire el jugador a donde mire (−23.042
+en los cuatro rumbos probados).
+
+### 82.3 La marca se repite, y va rellena
+
+Era **una** flecha de líneas en el centro de la pieza. Eso falla por los dos
+extremos: regular en una losa de 4×4, y un garabato en medio de un descampado
+en una del tamaño del suelo de un mapa — que es justo lo que esta vuelta abre.
+
+Ahora es un **galón** (una uve gruesa apuntando a donde lanza) o un **muelle**,
+repetidos en rejilla por toda la cara de la pieza, con un tope de repeticiones
+para que una losa de 200×200 no sean seis mil dibujos. Un mapa entero de
+velocidad se ve como un mapa entero de velocidad.
+
+Y van en **triángulos, no en líneas**. No es una preferencia: en WebGL el
+grosor de una línea no se toca —`linewidth` se ignora, que es exactamente lo
+que se midió con el contorno de la brújula en la vuelta 41— así que «franja
+gruesa» sólo se puede dibujar rellena. Sigue fuera de `occluders` y fuera del
+presupuesto: ningún rayo le pregunta nada.
+
+El muelle se calibró mirándolo: a 1.5 u de alto —lo primero que se probó— mide
+casi lo que un jugador y la losa se lee como un bosque de alambres. Baja a
+0.85. Es un dibujo en el suelo que dice qué pisas, no una pieza del mapa.
+
+### 82.4 Un dispositivo puede no tener losa
+
+`superficie.invisible` le quita la malla y le deja **todo lo demás**: se sigue
+pisando, se sigue chocando y su marca se sigue dibujando. Es para un mapa donde
+el dispositivo *es* el suelo y una caja gris encima sobra.
+
+Lo que se paga hay que decirlo porque no se adivina: **las balas la
+atraviesan**. Los disparos van contra la malla dibujada desde la vuelta 64, así
+que sin malla no hay contra qué cortar y el tiro sigue hasta el suelo de
+debajo. Con la losa de 0.2 con la que nacen los dispositivos son 20 cm en dónde
+cae la marca de impacto; con una pieza alta sería una pared invisible que no
+para balas, y por eso el editor lo avisa en su ficha en vez de prohibirlo.
+
+Se consideró lo contrario —dejar la malla con el material transparente— y es
+peor: un `MeshBasicMaterial` transparente **sigue recibiendo el rayo**, así que
+sería una pared invisible que sí para balas. De los dos errores posibles, el
+que se elige es el que se nota menos y se puede explicar en una línea.
+
+### 82.5 Norma permanente: un dispositivo nace con voz y con destello
+
+Esto no es un punto más del feedback: es una regla para todo lo que venga.
+**Cada dispositivo se construye con su sonido y su efecto visual de uso,
+decididos al construirlo, no añadidos después.**
+
+El porqué es la regla de la marca de la vuelta 80 llevada un paso más allá. En
+un juego sin texturas ni luces, lo que no se dibuja no existe; la marca dice
+*qué es* esto y el destello dice *que acaba de pasar*. Sin lo segundo, pisar
+una plataforma de rebote y saltar por tu cuenta **se ven exactamente igual**. Y
+el sonido, porque el oído no hay que apuntarlo a ninguna parte (vuelta 73): es
+el único canal que avisa de algo que pasa a tu espalda.
+
+Cinco decisiones dentro de eso:
+
+- **Lo que distingue los gestos es la forma, no el color** (regla de la 67, y
+  el azul eléctrico de la 80). Rebote: un anillo tumbado que se abre y sube.
+  Velocidad: un anillo **de pie**, encarado al rumbo, que sale disparado hacia
+  donde lanza. Puerta: el mismo anillo **cerrándose** en la entrada y
+  **abriéndose** en la salida — los dos extremos son el mismo gesto invertido a
+  propósito, que es lo que hace que llegar se lea como la otra mitad de haber
+  entrado.
+- **Un `InstancedMesh` y nada más** (`src/game/dispositivos.js`), que es el
+  patrón de `impacts.js`: una geometría, un material y una malla para el pool,
+  y apagarse es bajar a negro, que con mezcla aditiva **es** invisible. Con el
+  reloj del mundo, así que en pausa un destello se queda quieto.
+- **Tres voces, y ninguna es otra con el volumen cambiado**, que es la regla
+  del silbido de la vuelta 40. Rebote: el tono **sube**, al revés que el
+  aterrizaje (que cae y ataca en 12 ms). Velocidad: ruido por un pasa-banda que
+  **sube** de 420 a 2600 Hz, justo al revés que el silbido de una bala. Puerta:
+  dos parciales **inarmónicos** en relación 2.37 cayendo — ni octava ni quinta,
+  porque una relación armónica suena a nota musical y una puerta no es una nota.
+- **El movimiento deja un recado y el motor lo gasta.** `usoDeDispositivo` es un
+  **recado de un paso vivo**, exactamente como `rumboPedido` de la vuelta 80: no
+  va en `snapshot()` porque no es estado, y **el servidor no lo necesita** —
+  `partida.js` no tiene ni escena ni altavoces—. Y con la misma trampa: la
+  reconciliación pasa por el mismo `update`, así que `cliente.js` lo limpia tras
+  reejecutar, o una plataforma dentro de la cola sin confirmar sonaría varias
+  veces por segundo.
+- **Y la puerta de un rival se oye sin un campo nuevo en el protocolo.** Lo que
+  viaja es que su `poseEpoch` ha cambiado, y eso también lo hace una
+  reaparición; distinguirlos no pide un campo, pide **preguntarle al mapa**, que
+  los dos extremos montan igual: si de donde saltó había un área de
+  teletransporte, fue una puerta. Suena en **el sitio del que se fue**, que es
+  quien tiene derecho a enterarse. Con emisor **propio** y su curva
+  (`SURFACES.audio`, 30 u): colgarlo del emisor del rival le pondría el radio de
+  16 u de las pisadas, que es el aviso escrito en `CLAUDE.md` desde la 63.
+
+### 82.6 Y una deducción que dejó de valer
+
+`_pisadasDelRival` daba por teletransporte «ir a más del doble del techo del
+aire». En cuanto una plataforma pudo lanzar a 60 u/s, **un lanzamiento se leía
+como un teletransporte** y le borraba al rival la referencia de zancada.
+
+Ahora lo dice la época de pose, que es el dato que de verdad significa «no hubo
+camino» — y exactamente la razón por la que existe desde la vuelta 50 en vez de
+mirar cuánto se ha movido alguien. Es la misma frase de aquella vuelta,
+cobrándose sola dos vueltas después: *una comprobación de distancia confunde un
+teletransporte con un jugador rápido*.
+
+### 82.7 Lo que queda medido
+
+- **`disp82.mjs`** (sin navegador): la fuerza declarada es la que se aplica
+  dígito a dígito y el recorrido escala con ella (×3.4 de 12 a 120); girar la
+  cabeza tras un lanzamiento deja la misma coordenada en los cuatro rumbos; el
+  air-strafe sigue clavado en **9.5000** sin plataforma; trece rebotes seguidos
+  al **mismo ápice** (un empuje del mapa no gasta fatiga); una puerta avisa una
+  sola vez y con sus dos extremos; la marca crece con la losa y se para en su
+  tope; e invisible quita el oclusor, conserva la caja de colisión y sigue
+  lanzando.
+- **`ed82.mjs`** (con el ratón de verdad, y con el motor de verdad para el
+  destello y la voz): los cuatro presets se aplican **sin mover el centro**;
+  «Suelo» cubre la sala de lado a lado; una losa de 180×150 se escribe y llega
+  al motor sin acotarse; la casilla de invisible escribe el campo, saca su aviso
+  y al quitarla **no deja un `false`** en el fichero; y probando, un rebote
+  enciende su destello y **crea sus dos osciladores**, que es cómo se comprueba
+  que una voz se ha disparado de verdad sin montar la sonda del máster.
+- Y **la batería entera verde** (46 suites) después.
+
+### 82.8 Tres rojos que no eran de esta vuelta
+
+Conviene anotarlo porque es el procedimiento de la vuelta 78 funcionando. La
+batería salió con tres suites en rojo; `git stash`, reiniciar y volver a
+pasarlas contra el código de antes las dejó **rojas igual**. Ninguna era una
+regresión:
+
+- **`audio39`**: `src/audio/weaponSamples.js` es un fichero **generado** y
+  estaba con diez muestras declaradas mientras `public/audio/` no existía —el
+  manifiesto listaba ficheros que no están—. Con `samplesEnabled: false` nadie
+  los pide, así que no se notaba; el día que alguien encienda el booleano serían
+  diez 404. Se arregla como cualquier generado: volviendo a pasar
+  `npm run audio:weapons`, que con el interruptor apagado lo deja vacío.
+- **`spawn43`**: el muro de aparición del Plano A se movió de z 15.2 a 15.5 y la
+  banda se quedó en 15.2, así que dejaron de coincidir. Se mueve **la banda al
+  muro**, no al revés: el muro es donde lo puso quien edita el mapa, y la regla
+  de la vuelta 43 es que la banda empieza en su cara.
+- **`spawner`**: contaba como ciegas las casillas **de dentro de la banda**, que
+  es justamente lo que la vuelta 43 exige que estén. Salían cero antes de mover
+  el muro y cinco después, y el agregado se puso rojo sin que nada se hubiera
+  roto. El banco medía un número en vez de la propiedad (vuelta 78): ahora el
+  agregado se mide **fuera de la banda**, y lo de dentro lo afirma la línea que
+  ya existía.

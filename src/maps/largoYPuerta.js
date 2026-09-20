@@ -32,7 +32,7 @@ export default {
     {"x":-19,"z":-12,"w":3,"d":6,"fromZ":-6,"toZ":-12,"top":"plataforma"},
   ],
   spawnZone: [
-    {"x":-20,"z":15.2,"w":40,"d":4.8},
+    {"x":-20,"z":15.5,"w":40,"d":4.5},
   ],
   objectiveSites: [
     {"id":"largo-fondo","x":-13,"y":0,"z":-11,"zone":"El Largo"},

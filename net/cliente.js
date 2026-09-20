@@ -874,6 +874,10 @@ export class ClienteRed {
      * época sí se reejecutan, que es lo que tiene que pasar.
      */
     this.movimiento.rumboPedido = null
+    // Y por lo mismo, el destello y el sonido de un dispositivo: un uso
+    // reejecutado sonaría varias veces por segundo mientras la plataforma
+    // siguiera dentro de la cola sin confirmar.
+    this.movimiento.usoDeDispositivo = null
 
     const error = Math.hypot(
       this.camara.position.x - predichoX,
@@ -1072,6 +1076,17 @@ export class ClienteRed {
       yaw: a.yaw + normalizar(b.yaw - a.yaw) * alfa,
       /** ¿Está vivo? Del lado viejo, como todo lo demás cuando hay salto. */
       vivo: a.vivo !== false,
+      /**
+       * **La época de pose del lado que se está dibujando** (vuelta 82). Ya se
+       * usaba aquí dentro para no interpolar por encima de un salto; publicarla
+       * es lo que deja al motor enterarse de que el rival **ha saltado sin
+       * recorrer el camino**, que es la definición de teletransporte y no una
+       * medida de velocidad. Antes se deducía de que fuese rápido —«más del
+       * doble del techo del aire»— y eso dejó de valer en cuanto una plataforma
+       * de velocidad pudo lanzar a 60 u/s: un lanzamiento se leía como un
+       * teletransporte.
+       */
+      epoca: a.s.poseEpoch,
       /** Cuánto pasado se está viendo, contra el paso que el servidor va por. */
       retraso: this.medidas.pasoServidor - objetivo,
       /**

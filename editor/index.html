@@ -295,6 +295,24 @@
               <p class="nota">Las dos plataformas nacen con un alto por debajo
                 de un escalón (0.25) para que <b>se pueda entrar andando</b>, no
                 sólo cayendo encima. Con un bordillo de 0.6 te chocas.</p>
+
+              <h3>Tamaño</h3>
+              <!-- **Los presets son atajos, no el catálogo** (vuelta 82). Lo
+                   que decide de verdad el tamaño sigue siendo estirar la pieza
+                   por su esquina, que es la convención de la 79; esto es para
+                   no tener que hacerlo cuando lo que quieres es una losa de
+                   media unidad o el suelo entero. -->
+              <p class="nota">Aplica al dispositivo elegido, y queda como el
+                tamaño del siguiente que pongas. Después se estira por su
+                esquina como cualquier pieza: <b>no hay tope</b>.</p>
+              <div class="formas" id="disp-tamanos">
+                <button type="button" data-lado="0.25"><b>0.25</b><span>un cuarto</span></button>
+                <button type="button" data-lado="0.5"><b>0.5</b><span>medio</span></button>
+                <button type="button" data-lado="0.75"><b>0.75</b><span>tres cuartos</span></button>
+                <button type="button" data-lado="1"><b>1</b><span>una unidad</span></button>
+                <button type="button" data-lado="4"><b>4</b><span>losa</span></button>
+                <button type="button" data-lado="suelo" class="macro"><b>Suelo</b><span>toda la sala</span></button>
+              </div>
             </section>
 
             <!-- **Convertir una pieza que ya existe.** Los botones de
@@ -323,6 +341,18 @@
                 <label>Salto <input id="p-sup-salto" type="number" step="0.5" min="0.5" /></label>
               </div>
               <p id="p-sup-nota" class="nota" hidden></p>
+              <!-- **Sin losa, pero con todo lo demás** (vuelta 82). Se pide
+                   para mapas donde el dispositivo *es* el suelo y una caja gris
+                   encima sobra. Lo que se paga va escrito debajo porque no se
+                   adivina. -->
+              <label class="checkline" id="p-sup-invisible-linea" hidden>
+                <input id="p-sup-invisible" type="checkbox" /> Plataforma invisible
+              </label>
+              <p id="p-sup-aviso-invisible" class="aviso" hidden>Invisible quita
+                la caja y <b>deja la colisión y esta marca</b>: se sigue pisando.
+                Lo que se paga es que <b>las balas la atraviesan</b> —van contra
+                la malla dibujada— así que sirve para una losa al ras del suelo
+                y no para una pieza alta.</p>
             </section>
             <p id="disp-sin-pieza" class="nota" hidden>Elige una pieza en el mapa
               para convertirla en dispositivo, o pon una nueva con los botones

@@ -305,6 +305,22 @@ export class Scenario {
         superficie: box.superficie ?? null,
       })
 
+      /**
+       * **Un dispositivo puede no tener malla** (vuelta 82). `invisible` le
+       * quita la caja gris y le deja **todo lo demás**: se sigue pisando, se
+       * sigue chocando y su marca se sigue dibujando encima, que es lo que
+       * pedía un mapa de sólo velocidad donde la losa no tiene por qué verse.
+       *
+       * Lo que se paga, y va escrito en la ficha del editor porque no se
+       * adivina: **las balas la atraviesan**. Los disparos van contra la malla
+       * dibujada desde la vuelta 64, así que sin malla no hay contra qué
+       * cortar y el tiro sigue hasta el suelo de debajo. Con la losa de 0.2
+       * con la que nacen los dispositivos eso son 20 cm de diferencia en dónde
+       * cae la marca de impacto; con una pieza alta sería una pared invisible
+       * que no para balas, y por eso el editor lo avisa.
+       */
+      if (box.superficie?.invisible) continue
+
       const geometry = new THREE.BoxGeometry(box.w, thickness, box.d)
       geometry.translate(box.x + box.w / 2, bottom + thickness / 2, box.z + box.d / 2)
       if (!byKind.has(box.kind)) byKind.set(box.kind, [])
@@ -472,56 +488,146 @@ export class Scenario {
    *   amarillo (te han visto) ni naranja (eso es una diana).
    */
   _pintarSuperficies() {
-    const puntos = []
-    const linea = (x1, y1, z1, x2, y2, z2) => puntos.push(x1, y1, z1, x2, y2, z2)
+    /** Líneas: la hélice del muelle y los anillos de las puertas. */
+    const lineas = []
+    /** Triángulos: las franjas gruesas, que una línea no puede serlo en WebGL. */
+    const caras = []
+
+    const linea = (x1, y1, z1, x2, y2, z2) => lineas.push(x1, y1, z1, x2, y2, z2)
+
+    /**
+     * Un trazo **grueso** en horizontal, como dos triángulos. Es el ladrillo de
+     * todas las franjas: un galón son dos de éstos y la base de un muelle son
+     * los lados de su polígono.
+     */
+    const trazo = (x1, z1, x2, z2, y, grosor) => {
+      const dx = x2 - x1
+      const dz = z2 - z1
+      const largo = Math.hypot(dx, dz)
+      if (largo < 1e-6) return
+      // Normal en planta, escalada a medio grosor.
+      const nx = (-dz / largo) * grosor * 0.5
+      const nz = (dx / largo) * grosor * 0.5
+      const ax = x1 + nx, az = z1 + nz
+      const bx = x1 - nx, bz = z1 - nz
+      const cx2 = x2 - nx, cz2 = z2 - nz
+      const dx2 = x2 + nx, dz2 = z2 + nz
+      caras.push(ax, y, az, bx, y, bz, cx2, y, cz2)
+      caras.push(ax, y, az, cx2, y, cz2, dx2, y, dz2)
+    }
+
+    /**
+     * **Repite un dibujo por toda la cara de la pieza** (vuelta 82).
+     *
+     * Antes había una marca en el centro y ya. Con una losa del tamaño del
+     * suelo de un mapa —que es lo que la 82 abre— eso es un garabato en medio
+     * de un descampado; con la repetición, un mapa entero de velocidad **se ve
+     * como un mapa entero de velocidad**. El tope de repeticiones es para que
+     * una losa de 200×200 no se convierta en seis mil dibujos: pasado el tope
+     * se separa más, que degrada bien.
+     */
+    const porLaCara = (box, dibujar) => {
+      const { paso, margen, maxRepeticiones } = SURFACES.marca
+      const w = box.maxX - box.minX - margen * 2
+      const d = box.maxZ - box.minZ - margen * 2
+      if (w <= 0 || d <= 0) {
+        // Una losa más pequeña que el margen se lleva un dibujo y en su centro.
+        dibujar((box.minX + box.maxX) / 2, (box.minZ + box.maxZ) / 2, Math.min(
+          box.maxX - box.minX, box.maxZ - box.minZ,
+        ))
+        return
+      }
+      let sep = paso
+      let nx = Math.max(1, Math.round(w / sep))
+      let nz = Math.max(1, Math.round(d / sep))
+      if (nx * nz > maxRepeticiones) {
+        // Se reparte el tope entre los dos ejes conservando la proporción.
+        const escala = Math.sqrt((nx * nz) / maxRepeticiones)
+        nx = Math.max(1, Math.round(nx / escala))
+        nz = Math.max(1, Math.round(nz / escala))
+        sep = Math.min(w / nx, d / nz)
+      }
+      const pasoX = w / nx
+      const pasoZ = d / nz
+      const escala = Math.min(1, Math.min(pasoX, pasoZ) / paso)
+      for (let i = 0; i < nx; i++) {
+        for (let j = 0; j < nz; j++) {
+          dibujar(
+            box.minX + margen + pasoX * (i + 0.5),
+            box.minZ + margen + pasoZ * (j + 0.5),
+            escala,
+          )
+        }
+      }
+    }
 
     for (const box of this.boxes) {
       const sup = box.superficie
       if (!sup) continue
-      const cx = (box.minX + box.maxX) / 2
-      const cz = (box.minZ + box.maxZ) / 2
       const y = box.top + SURFACES.marcaY
-      // El largo sale de la fuerza, acotado al tamaño de la pieza para que la
-      // marca no se salga de la cara que la lleva.
-      const cabe = Math.min(box.maxX - box.minX, box.maxZ - box.minZ) * 0.45
 
       if (sup.tipo === 'rebote') {
-        // **Una flecha vertical**, que es lo que se puede leer desde cualquier
-        // ángulo — una marca plana en el suelo no dice «hacia arriba».
-        const alto = Math.min(sup.fuerza * 0.12, 2.2)
-        linea(cx, y, cz, cx, y + alto, cz)
-        for (const d of [-1, 1]) {
-          linea(cx, y + alto, cz, cx + d * 0.22, y + alto - 0.35, cz)
-          linea(cx, y + alto, cz, cx, y + alto - 0.35, cz + d * 0.22)
-        }
-        // Y un cuadrado al ras marcando la huella, para verla desde arriba.
-        const r = cabe
-        linea(cx - r, y, cz - r, cx + r, y, cz - r)
-        linea(cx + r, y, cz - r, cx + r, y, cz + r)
-        linea(cx + r, y, cz + r, cx - r, y, cz + r)
-        linea(cx - r, y, cz + r, cx - r, y, cz - r)
+        /**
+         * **Un muelle**, que es lo que dice «esto te lanza» sin tener que
+         * conocer el juego. La hélice va en líneas porque su gracia es la
+         * forma, y la base va rellena para que se lea desde arriba — que es
+         * desde donde se mira un suelo.
+         */
+        const m = SURFACES.marca.muelle
+        const alto = Math.min(Math.max(sup.fuerza * 0.1, m.altoMin), m.altoMax)
+        porLaCara(box, (cx, cz, escala) => {
+          const radio = m.radio * escala
+          const pasos = Math.max(6, Math.round(m.lados * m.vueltas))
+          let px = cx + radio
+          let pz = cz
+          let py = y
+          for (let k = 1; k <= pasos; k++) {
+            const t = k / pasos
+            const a = t * m.vueltas * Math.PI * 2
+            const qx = cx + Math.cos(a) * radio
+            const qz = cz + Math.sin(a) * radio
+            const qy = y + alto * escala * t
+            linea(px, py, pz, qx, qy, qz)
+            px = qx; py = qy; pz = qz
+          }
+          // La tapa de arriba, que es lo que cierra la silueta del muelle.
+          linea(px, py, pz, cx, py, cz)
+          // Y el anillo de la base, grueso: la huella vista desde arriba.
+          const lados = 8
+          for (let k = 0; k < lados; k++) {
+            const a = (k / lados) * Math.PI * 2
+            const b = ((k + 1) / lados) * Math.PI * 2
+            trazo(
+              cx + Math.cos(a) * radio, cz + Math.sin(a) * radio,
+              cx + Math.cos(b) * radio, cz + Math.sin(b) * radio,
+              y, SURFACES.marca.galon.grosor * escala * 0.8,
+            )
+          }
+        })
         continue
       }
 
       if (sup.tipo === 'velocidad') {
-        // **Una flecha en el suelo, hacia donde lanza.** El rumbo es el de una
-        // cámara —mira a −Z con yaw 0—, así que la dirección es (−sin, −cos):
-        // escribirlo al revés es el error de 180° de la vuelta 60.
+        /**
+         * **Galones gruesos hacia donde lanza.** El rumbo es el de una cámara
+         * —mira a −Z con yaw 0—, así que la dirección es (−sin, −cos):
+         * escribirlo al revés es el error de 180° de la vuelta 60.
+         */
         const dx = -Math.sin(sup.rumbo)
         const dz = -Math.cos(sup.rumbo)
-        const largo = Math.min(sup.fuerza * 0.14, cabe * 1.8)
-        const px = cx - dx * largo * 0.5
-        const pz = cz - dz * largo * 0.5
-        const qx = cx + dx * largo * 0.5
-        const qz = cz + dz * largo * 0.5
-        linea(px, y, pz, qx, y, qz)
-        // Punta: dos barbos a 30° del eje, hacia atrás.
-        const barbo = Math.min(largo * 0.35, 0.8)
-        for (const giro of [2.6, -2.6]) {
-          const bx = dx * Math.cos(giro) - dz * Math.sin(giro)
-          const bz = dx * Math.sin(giro) + dz * Math.cos(giro)
-          linea(qx, y, qz, qx + bx * barbo, y, qz + bz * barbo)
-        }
+        // Perpendicular en planta.
+        const px = -dz
+        const pz = dx
+        const g = SURFACES.marca.galon
+        porLaCara(box, (cx, cz, escala) => {
+          const l = g.largo * escala
+          const a = g.ancho * escala * 0.5
+          const tipX = cx + dx * l
+          const tipZ = cz + dz * l
+          // Las dos alas de la uve, cada una un trazo grueso.
+          trazo(tipX, tipZ, cx - dx * l + px * a, cz - dz * l + pz * a, y, g.grosor * escala)
+          trazo(tipX, tipZ, cx - dx * l - px * a, cz - dz * l - pz * a, y, g.grosor * escala)
+        })
       }
     }
 
@@ -529,17 +635,36 @@ export class Scenario {
     // destino: los dos se ven, porque llegar sin saber dónde has llegado es lo
     // mismo que no verlo salir.
     for (const tp of this.teletransportes) {
-      this._pintarAnillo(puntos, tp.x + tp.w / 2, tp.z + tp.d / 2, Math.min(tp.w, tp.d) * 0.4)
-      this._pintarAnillo(puntos, tp.destino.x, tp.destino.z, 0.9)
+      this._pintarAnillo(lineas, tp.x + tp.w / 2, tp.z + tp.d / 2, Math.min(tp.w, tp.d) * 0.4)
+      this._pintarAnillo(lineas, tp.destino.x, tp.destino.z, 0.9)
     }
 
-    if (puntos.length === 0) return
-    const geometry = new THREE.BufferGeometry()
-    geometry.setAttribute('position', new THREE.Float32BufferAttribute(puntos, 3))
-    const material = new THREE.LineBasicMaterial({ color: COLORS.electric })
-    this.group.add(new THREE.LineSegments(geometry, material))
-    this.geometries.push(geometry)
-    this.materials.push(material)
+    if (lineas.length > 0) {
+      const geometry = new THREE.BufferGeometry()
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(lineas, 3))
+      const material = new THREE.LineBasicMaterial({ color: COLORS.electric })
+      this.group.add(new THREE.LineSegments(geometry, material))
+      this.geometries.push(geometry)
+      this.materials.push(material)
+    }
+
+    if (caras.length > 0) {
+      const geometry = new THREE.BufferGeometry()
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(caras, 3))
+      const material = new THREE.MeshBasicMaterial({
+        color: COLORS.electric,
+        side: THREE.DoubleSide,
+        transparent: true,
+        opacity: 0.92,
+        depthWrite: false,
+      })
+      const malla = new THREE.Mesh(geometry, material)
+      // **Fuera de los oclusores, como todo lo de esta función.** Si entrara,
+      // sería una lámina que para balas a tres centímetros del suelo.
+      this.group.add(malla)
+      this.geometries.push(geometry)
+      this.materials.push(material)
+    }
   }
 
   /** Un anillo al ras del suelo, en segmentos. Sin malla: son líneas. */

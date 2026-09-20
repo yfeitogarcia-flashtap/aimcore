@@ -20,6 +20,14 @@ anillo **por sectores** que esta propuesta describía muerde el hueco libre entr
 un 29% (8 sectores) y un 10% (32); el de la vuelta 81 va **por filas** y no
 muerde nada. Está en `docs/decisions.md` §81.3.
 
+**Y en la vuelta 82 los tres construidos se calibraron jugándolos**: el
+lanzamiento de la plataforma de velocidad dejó de acotarse al techo del aire
+—que era acotarlo a la marcha de correr—, las marcas pasaron a repetirse por
+toda la losa, y quedó puesta la **norma permanente** de que cada dispositivo
+nace con su sonido y su efecto visual de uso. Lo que eso añade a esta propuesta
+para lo que queda por construir: **el ventilador, el hielo y la tirolina no se
+dan por hechos sin voz ni destello**. Está en `docs/decisions.md` §82.
+
 **Estado original:** triaje, sin construir nada. El encargo (vuelta 79) fue **triar siete
 mecánicas nuevas** en los mismos tres cajones que el menú de formas de la
 propuesta 05 §3 —gratis hoy / trabajo pequeño / vuelta propia—, confirmar o

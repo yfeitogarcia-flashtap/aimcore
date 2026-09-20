@@ -284,6 +284,23 @@ export class MovementController {
      * tiene los controles de la cámara, que es su dueño (vuelta 66).
      */
     this.rumboPedido = null
+    /**
+     * **Lo que un dispositivo acaba de hacerte**, o `null` (vuelta 82).
+     *
+     * Es un **recado de un paso vivo**, exactamente como `rumboPedido`: lo
+     * escribe el paso que lo produce y lo consume quien dibuja y suena, una
+     * sola vez. Va por aquí y no en `snapshot()` porque no es estado —no
+     * sobrevive a un paso, no hay nada que reconciliar— y sobre todo porque
+     * **el servidor no lo necesita**: los efectos y los sonidos son del
+     * cliente, y `partida.js` no tiene ni escena ni altavoces.
+     *
+     * Ojo con la mitad que no se ve, que es la misma trampa que el rumbo:
+     * **reejecutar una entrada no puede volver a sonar**. La reconciliación
+     * pasa por este mismo `update`, así que una plataforma dentro de la cola
+     * sin confirmar dispararía su destello varias veces por segundo. Lo
+     * limpia `cliente.js` tras reejecutar.
+     */
+    this.usoDeDispositivo = null
 
     this._onKeyDown = this._onKeyDown.bind(this)
     this._onKeyUp = this._onKeyUp.bind(this)
@@ -655,6 +672,7 @@ export class MovementController {
     // destino: el flanco se reinicia y se vuelve a pedir al entrar de verdad.
     this._enTeletransporte = false
     this.rumboPedido = null
+    this.usoDeDispositivo = null
     this._pararDeslizamiento()
     this._airSpeed = this.topSpeed
     this._airVelX = 0
@@ -1004,13 +1022,29 @@ export class MovementController {
 
     let gain = MOVEMENT.airAccel * wishSpeed * step
     if (gain > missing) gain = missing
+    const velXAntes = this._airVelX
+    const velZAntes = this._airVelZ
     this._airVelX += this._wishX * gain
     this._airVelZ += this._wishZ * gain
     this.airStrafing = true
 
-    // El techo, igual de duro que en el modelo escalar: aquí se acota el módulo
-    // del vector, que es el **único** sitio donde puede crecer.
-    const max = this.fisica.airStrafeMaxSpeed
+    /**
+     * El techo, igual de duro que en el modelo escalar: aquí se acota el módulo
+     * del vector, que es el **único** sitio donde puede crecer.
+     *
+     * **Y desde la vuelta 82 el techo no puede bajar de lo que ya traías.** Lo
+     * que este tope tiene que impedir es que el air-strafe *gane* por encima
+     * de `airStrafeMaxSpeed`; lo que no puede hacer es **quitar** marcha que no
+     * ha puesto él. Con una plataforma de velocidad lanzando a 60, mirar de
+     * lado dejaba `current` por debajo de `wishSpeed`, entraba por la ganancia
+     * y el escalado de abajo frenaba el vuelo entero de 60 a 9.5 **en un
+     * paso**: un lanzamiento que se apagaba por girar la cabeza. Con el techo
+     * en `max(techo, lo que ya había)` el caso de siempre sale idéntico —si ya
+     * ibas por debajo del techo, el máximo es el techo— y un lanzamiento se
+     * conserva.
+     */
+    const speedAntes = Math.hypot(velXAntes, velZAntes)
+    const max = Math.max(this.fisica.airStrafeMaxSpeed, speedAntes)
     const speed = Math.hypot(this._airVelX, this._airVelZ)
     if (speed > max) {
       const scale = max / speed
@@ -1357,6 +1391,7 @@ export class MovementController {
       // siembra `_takeOff` por su cuenta.
       this._reiniciarFatiga()
       this._takeOff(sup.fuerza, aterrizando, dt)
+      this._avisarDeUso('rebote', sup.fuerza, 0)
       return true
     }
 
@@ -1366,15 +1401,30 @@ export class MovementController {
       // no hacia dónde venías, así que sembrar con el vector del aterrizaje
       // sólo serviría para que lo pisase encima.
       this._takeOff(sup.salto, false, dt)
-      // **Y respeta el techo del aire.** Saltárselo abriría un camino para
-      // pasar de `airStrafeMaxSpeed` sin air-strafe; un mapa que quiera lanzar
-      // más fuerte sube su techo, que ya puede desde la vuelta 72.
-      const v = Math.min(sup.fuerza, this.fisica.airStrafeMaxSpeed)
+      /**
+       * **Y lanza lo que diga el mapa, sin acotarlo al techo del aire** (vuelta
+       * 82, que revierte la regla de la 80).
+       *
+       * Aquello decía que saltarse `airStrafeMaxSpeed` abriría un camino para
+       * pasar del techo sin air-strafe. Es verdad y ya no importa, por tres
+       * razones que se ven jugando: el techo de fábrica son **9.5 u/s, que es
+       * la marcha de correr**, así que la plataforma apenas sacaba al jugador
+       * de su propia losa; el air-strafe es una **técnica del jugador** y esto
+       * es una **decisión del mapa**, que no es lo mismo y no compite con ella
+       * —hay que ir a pisar la losa—; y subir el techo del mapa para poder
+       * lanzar fuerte (que era la salida que ofrecía la 80) cambia de paso
+       * cómo vuela **todo** el mapa, que es justo lo que no se quería.
+       *
+       * Sigue sin viajar ningún número: los dos extremos montan el mismo mapa
+       * y derivan el mismo empuje.
+       */
+      const v = sup.fuerza
       // Rumbo de cámara: mira a −Z con yaw 0, así que la dirección es
       // (−sin, −cos). Es la misma conversión que dibuja su flecha.
       this._airVelX = -Math.sin(sup.rumbo) * v
       this._airVelZ = -Math.cos(sup.rumbo) * v
       this._airSpeed = v
+      this._avisarDeUso('velocidad', v, sup.rumbo)
       return true
     }
 
@@ -1388,6 +1438,22 @@ export class MovementController {
    */
   _reiniciarFatiga() {
     this._stillJumps = 0
+  }
+
+  /**
+   * Deja el recado de que un dispositivo acaba de actuar, en el sitio donde ha
+   * pasado. Un objeto por uso y no por paso: un uso es un suceso raro —pisar
+   * una losa—, no algo del bucle caliente.
+   */
+  _avisarDeUso(tipo, fuerza, rumbo, x = this.camera.position.x, y = this.feetY, z = this.camera.position.z) {
+    this.usoDeDispositivo = { tipo, fuerza, rumbo, x, y, z }
+  }
+
+  /** El uso que dejó el último paso, **una sola vez**. Lo consume el motor. */
+  consumirUsoDeDispositivo() {
+    const uso = this.usoDeDispositivo
+    this.usoDeDispositivo = null
+    return uso
   }
 
   /**
@@ -1426,6 +1492,11 @@ export class MovementController {
     if (this._enTeletransporte) return
     this._enTeletransporte = true
 
+    // De dónde salía, que es la mitad del efecto: el anillo que se cierra.
+    const desdeX = position.x
+    const desdeY = this.feetY
+    const desdeZ = position.z
+
     position.x = tp.destino.x
     position.z = tp.destino.z
     const suelo = this.scenario.groundHeightAt(position.x, position.z, 0)
@@ -1437,6 +1508,13 @@ export class MovementController {
     }
     this.poseEpoch += 1
     this.rumboPedido = tp.destino.yaw
+    // Los dos extremos: el gesto de entrar y el de salir son el mismo al
+    // revés, y por eso se dibujan los dos (la regla del anillo de la 80 —
+    // llegar sin saber dónde has llegado es lo mismo que no verlo salir).
+    this._avisarDeUso('puerta', 0, tp.destino.yaw)
+    this.usoDeDispositivo.desdeX = desdeX
+    this.usoDeDispositivo.desdeY = desdeY
+    this.usoDeDispositivo.desdeZ = desdeZ
   }
 
   /**

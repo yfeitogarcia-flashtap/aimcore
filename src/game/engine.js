@@ -13,37 +13,7 @@
 
 import * as THREE from 'three'
 import { CSS3DRenderer } from 'three/examples/jsm/renderers/CSS3DRenderer.js'
-import {
-  ACCURACY,
-  ACTION_PANEL,
-  AVATAR,
-  CAMERA,
-  COVER,
-  SESSION_DURATIONS,
-  EDITOR,
-  FOOTSTEPS,
-  FRAME_LIMITS,
-  HELP,
-  IMPACTS,
-  LOOK,
-  MELEE_WEAPON,
-  MOVEMENT,
-  NET,
-  OBJECTIVE,
-  PLAYER,
-  RECOIL_RESET_MS,
-  RENDER,
-  SCOPE,
-  SECONDARY_WEAPON,
-  SESSION_DURATION_S,
-  SESSION_MODES,
-  SIM,
-  SIM_STEP_MS,
-  TARGET,
-  TEAMS,
-  WEAPONS,
-  weaponSpeedFactor,
-} from '../config.js'
+import { ACCURACY, ACTION_PANEL, AVATAR, CAMERA, COVER, EDITOR, FOOTSTEPS, FRAME_LIMITS, HELP, IMPACTS, LOOK, MELEE_WEAPON, MOVEMENT, NET, OBJECTIVE, PLAYER, RECOIL_RESET_MS, RENDER, SCOPE, SECONDARY_WEAPON, SESSION_DURATION_S, SESSION_DURATIONS, SESSION_MODES, SIM, SIM_STEP_MS, SURFACES, TARGET, TEAMS, WEAPONS, weaponSpeedFactor } from '../config.js'
 import { createScene } from './scene.js'
 import { Scenario } from './scenario.js'
 import { Scope } from './scope.js'
@@ -54,21 +24,7 @@ import { createSceneTransition } from './transition.js'
 import { LookControls } from './lookControls.js'
 import { MovementController } from './movement.js'
 import { TargetManager } from './targets.js'
-import {
-  initAudio,
-  playDamage,
-  playFootstep,
-  playHeal,
-  playHelmetCrack,
-  playHit,
-  playKill,
-  playLanding,
-  playMelee,
-  playObjectiveDefused,
-  playObjectiveExplosion,
-  playShieldCharge,
-  playUiConfirm,
-} from '../audio/sfx.js'
+import { initAudio, playDamage, playDevice, playFootstep, playHeal, playHelmetCrack, playHit, playKill, playLanding, playMelee, playObjectiveDefused, playObjectiveExplosion, playShieldCharge, playUiConfirm } from '../audio/sfx.js'
 import { loadWeaponSamples, playDrySound, playWeaponReload, playWeaponShot } from '../audio/samples.js'
 import { attachListener, createEmitter, detachListener, setSpatialEnabled } from '../audio/spatial.js'
 import { ActionPanel } from './actionPanel.js'
@@ -76,6 +32,7 @@ import { Avatar } from './avatar.js'
 import { EnemyFire } from './enemyFire.js'
 import { DummyMarkers, facingDesdeCamara } from './markers.js'
 import { MuzzleFlash } from './muzzleFlash.js'
+import { Dispositivos } from './dispositivos.js'
 import { Impacts } from './impacts.js'
 import { SpawnCone } from './spawnCone.js'
 import { PickupField } from './pickups.js'
@@ -318,6 +275,21 @@ export class Engine {
      */
     this.impacts = new Impacts(this.scene)
     /**
+     * **El destello de usar un dispositivo** (vuelta 82). Vive en el motor, así
+     * que sale igual entrenando y en el duelo — la convención de la 63.
+     */
+    this.dispositivos = new Dispositivos(this.scene)
+    /**
+     * Emisor para la voz de un dispositivo, **con su propia curva**. Se coloca
+     * por uso, así que sirve para el tuyo y para el que use un rival a doce
+     * unidades: lo que decide de dónde suena es dónde se pone, no de quién es.
+     */
+    this._emisorDispositivo = createEmitter(this.scene, {
+      refDistance: SURFACES.audio.fullDistanceU,
+      maxDistance: SURFACES.audio.maxDistanceU,
+      rolloffFactor: 1,
+    })
+    /**
      * **El abanico de aparición, dibujado** (vuelta 78). Vive en el motor —y no
      * en React— por lo de siempre: es geometría del mundo, y la pinta el mismo
      * bucle que dibuja todo lo demás. Lo enciende el panel de opciones.
@@ -325,6 +297,7 @@ export class Engine {
     this.spawnCone = new SpawnCone(this.scene)
     this._verCono = false
     this.impacts.build()
+    this.dispositivos.build()
     this.enemyFire = new EnemyFire(
       this.scene,
       (hit) => this._onPlayerHit(hit),
@@ -819,6 +792,7 @@ export class Engine {
     this.markers.disposeMaterials()
     this.muzzleFlash.dispose()
     this.impacts.dispose()
+    this.dispositivos.dispose()
     this.spawnCone.dispose()
     this.pickups.dispose()
     this.actionPanel.dispose()
@@ -927,6 +901,7 @@ export class Engine {
     this.pickups.clear()
     this.muzzleFlash.clear()
     this.impacts.clear()
+    this.dispositivos.clear()
     this._stopShieldSound()
     if (this.isLocked) document.exitPointerLock()
     this._setPhase(PHASE.IDLE)
@@ -1299,6 +1274,7 @@ export class Engine {
     this._stopShieldSound()
     this.muzzleFlash.clear()
     this.impacts.clear()
+    this.dispositivos.clear()
     this.camera.updateMatrixWorld()
 
     // **Una sesión de red no siembra nada** (vuelta 56). Ni dianas, ni
@@ -1708,6 +1684,8 @@ export class Engine {
       // ráfaga de pisadas en el punto de aparición.
       this._rivalPrevX = null
       this._rivalPrevZ = null
+      /** La época de pose del rival en el frame anterior. Ver `_pisadasDelRival`. */
+      this._rivalEpoca = null
       this._rivalPasoX = null
       this._rivalPasoZ = null
       this._rivalPasoT = 0
@@ -1756,6 +1734,32 @@ export class Engine {
    *   el panner del emisor sube con la cercanía hasta el techo de
    *   `AUDIO.footstepVolume` y no pasa de ahí.
    */
+  /**
+   * **La puerta de un rival se oye desde cerca** (vuelta 82).
+   *
+   * Un teletransporte del rival no viaja como tal: lo que viaja es que su
+   * época ha cambiado, y eso también lo hace una reaparición. Distinguirlos no
+   * pide un campo nuevo — pide **preguntarle al mapa**, que los dos extremos
+   * montan igual: si de donde saltó había un área de teletransporte, fue una
+   * puerta. Es el mismo patrón que la física de la vuelta 72 y las superficies
+   * de la 80: no viaja ningún número.
+   *
+   * Suena en **el sitio del que se fue** y no donde apareció: quien está cerca
+   * de la entrada es quien tiene derecho a enterarse de que alguien acaba de
+   * cruzar por ahí.
+   */
+  _puertaDelRival(desdeX, desdeZ, pose) {
+    if (!this.scenario?.teletransportes?.length) return
+    const tp = this.scenario.teletransporteEn(desdeX, desdeZ, pose.feetY)
+    if (!tp) return
+    const lejos = Math.hypot(desdeX - this.camera.position.x, desdeZ - this.camera.position.z)
+    if (lejos > SURFACES.audio.maxDistanceU) return
+    this.dispositivos.emitir('tp-entrada', desdeX, pose.feetY, desdeZ, 0, this.gameTime)
+    this.dispositivos.emitir('tp-salida', pose.x, pose.feetY, pose.z, pose.yaw ?? 0, this.gameTime)
+    this._emisorDispositivo.setPosition(desdeX, pose.feetY + 1, desdeZ)
+    playDevice('puerta', this._emisorDispositivo)
+  }
+
   _pisadasDelRival(pose) {
     const emisor = this._rivalEmisor
     if (!emisor) return
@@ -1788,9 +1792,23 @@ export class Engine {
     if (dt <= 0) return
     const velocidad = (avance / dt) * 1000
 
-    // Un salto de pose no es suelo andado: por encima del techo del aire es que
-    // ha habido teletransporte.
-    if (velocidad > MOVEMENT.airStrafeMaxSpeed * 2) {
+    /**
+     * **Un salto de pose no es suelo andado, y lo dice la época** (vuelta 82).
+     *
+     * Hasta aquí se deducía de la velocidad —«más del doble del techo del
+     * aire»— y eso dejó de valer en esta misma vuelta: una plataforma de
+     * velocidad puede lanzar a 60 u/s, así que **un lanzamiento se leía como un
+     * teletransporte**. La época es el dato que de verdad dice que no hubo
+     * camino (vuelta 50), y es exactamente la razón por la que existe en vez de
+     * mirar cuánto se ha movido alguien.
+     */
+    if (pose.epoca !== undefined && pose.epoca !== this._rivalEpoca) {
+      const antes = this._rivalEpoca
+      this._rivalEpoca = pose.epoca
+      // Y si el salto salió de una puerta del mapa, se oye desde donde se fue.
+      // No hace falta un campo en el protocolo: los dos extremos montan el
+      // mismo mapa, así que preguntarle dónde estaba es preguntárselo al mapa.
+      if (antes !== null && previaX !== null) this._puertaDelRival(previaX, previaZ, pose)
       this._rivalPasoX = null
       this._rivalPasoZ = null
       this._rivalPasoT = 0
@@ -3203,6 +3221,16 @@ export class Engine {
     const rumbo = this.movement.consumirRumboPedido()
     if (rumbo !== null && rumbo !== undefined) this.controls?.lookAt(rumbo)
 
+    /**
+     * **Y un dispositivo que actúa se ve y se oye** (vuelta 82, norma
+     * permanente). El movimiento deja el recado y aquí se gasta: es el mismo
+     * reparto que el rumbo —él decide lo que pasa en el mundo, el motor decide
+     * lo que se pinta y lo que suena— y por eso `partida.js`, que no tiene ni
+     * escena ni altavoces, no se entera de que esto existe.
+     */
+    const uso = this.movement.consumirUsoDeDispositivo()
+    if (uso) this._dispositivoUsado(uso)
+
     // Y aquí queda dónde acaba. Si el movimiento ha teletransportado (`reset`),
     // la época cambia y este paso no se interpola: se dibuja donde toca en vez
     // de barrer medio mapa.
@@ -3234,6 +3262,7 @@ export class Engine {
     // modos, así que van aquí y no dentro del combate —que en red vuelve antes—.
     // En pausa una marca se queda quieta en vez de apagarse a tus espaldas.
     this.impacts.update(this.gameTime)
+    this.dispositivos.update(this.gameTime)
 
     // Dianas y explosivo son del entrenamiento: en red no hay ni una cosa ni
     // otra, y el combate lo sustituye el estado que llega del servidor.
@@ -3242,6 +3271,35 @@ export class Engine {
     // han quedado este paso, no desde donde estaban en el anterior.
     this._updateCombat(this.gameTime, stepMs)
     if (!this.enRed) this._updateObjective(this.gameTime, stepMs / 1000)
+  }
+
+
+  /**
+   * **Lo que se ve y se oye cuando un dispositivo actúa** (vuelta 82).
+   *
+   * Norma permanente desde esta vuelta: un dispositivo nace con su destello y
+   * su voz. Aquí se reparten los dos, y nada más — la decisión de qué ha
+   * pasado ya la tomó el movimiento, que es quien sabe de física.
+   *
+   * **El emisor se coloca donde ha pasado**, no donde está el jugador: una
+   * puerta suena desde su anillo, así que quien la use de espaldas la oye
+   * detrás. Sin audio espacial, `input` da null y la voz cae sola al máster.
+   */
+  _dispositivoUsado(uso) {
+    const ahora = this.gameTime
+    if (uso.tipo === 'puerta') {
+      // Los dos extremos, y el sonido en **los dos**: quien entra oye cerrarse
+      // la puerta detrás y abrirse delante, que es lo que hace que un salto
+      // instantáneo se lea como un viaje y no como un fallo de dibujado.
+      this.dispositivos.emitir('tp-entrada', uso.desdeX, uso.desdeY, uso.desdeZ, uso.rumbo, ahora)
+      this.dispositivos.emitir('tp-salida', uso.x, uso.y, uso.z, uso.rumbo, ahora)
+      this._emisorDispositivo.setPosition(uso.x, uso.y + 1, uso.z)
+      playDevice('puerta', this._emisorDispositivo)
+      return
+    }
+    this.dispositivos.emitir(uso.tipo, uso.x, uso.y, uso.z, uso.rumbo, ahora)
+    this._emisorDispositivo.setPosition(uso.x, uso.y + 0.5, uso.z)
+    playDevice(uso.tipo, this._emisorDispositivo)
   }
 
   /**

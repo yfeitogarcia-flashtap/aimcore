@@ -767,6 +767,35 @@ Sus números finos están ahí mismo, pero lo que los coloca es **la flecha azul
 del mapa**: se arrastra por la punta, y con una sola punta se ponen el rumbo y
 la fuerza a la vez.
 
+#### Lo que cambió al jugarlos (vuelta 82)
+
+- **La fuerza ya no tiene techo de diseño.** El lanzamiento se acotaba al techo
+  del aire, que de fábrica son 9.5 u/s —**la marcha de correr**—, así que una
+  plataforma de velocidad apenas te sacaba de su propia losa. Ahora lanza lo
+  que le pongas: tira de su flecha todo lo que quieras y bájalo después. El
+  único tope que queda (300) es del formato, para que un fichero roto no meta
+  un número absurdo, y está diez veces por encima de lo que se usa.
+- **Se reconocen de un vistazo.** Una plataforma de velocidad lleva **galones
+  gruesos** repetidos por toda su cara, apuntando a donde lanza; una de rebote,
+  **muelles**. Se repiten con el tamaño, así que un mapa entero de velocidad se
+  ve como un mapa entero de velocidad y no como un garabato en medio.
+- **Se ven y se oyen al usarse.** Un rebote suelta un anillo que se abre y
+  sube; una de velocidad, un anillo de pie que sale disparado hacia donde
+  lanza; una puerta, un anillo que **se cierra** donde entras y **se abre**
+  donde sales. Cada uno con su voz. Y la puerta de un rival se oye a **treinta
+  unidades**, así que cruzar por una delante de alguien ya no es gratis.
+- **Tamaño, de 0.25 a la sala entera.** En «Tamaño» hay presets de 0.25, 0.5,
+  0.75, 1 y 4, más **Suelo** (toda la sala). Cambian el dispositivo elegido
+  **sin moverle el centro**. Por encima de eso, se estira por su esquina como
+  cualquier pieza: no hay tope.
+- **Y puede ser invisible.** La casilla «Plataforma invisible» le quita la caja
+  gris y le deja la colisión y la marca: se sigue pisando y se sigue viendo lo
+  que es. Sirve para un mapa donde el dispositivo *es* el suelo. Lo que se
+  paga: **las balas la atraviesan**, porque los disparos van contra lo que está
+  dibujado. Con una losa al ras son 20 cm de diferencia en dónde cae la marca;
+  con una pieza alta sería una pared invisible que no para balas, y por eso el
+  editor lo avisa.
+
 ### Cuánto mide y cuánto cuesta
 
 La sala va de **10 a 200 u de lado** y de **4 a 60 de alto**. No es un consejo:
