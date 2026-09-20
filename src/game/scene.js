@@ -35,7 +35,8 @@ function createGridPlane(width, height, materials, room) {
  * escalar el grupo: escalando, el paso de la grilla dejaría de ser una unidad y
  * el suelo ya no serviría de sistema de coordenadas.
  *
- * @returns {{ scene: THREE.Scene, setRoom: (room: object) => void, dispose: () => void }}
+ * @returns {{ scene: THREE.Scene, setRoom: (room: object) => void,
+ *   setMuros: (visible: boolean) => void, dispose: () => void }}
  */
 export function createScene() {
   const scene = new THREE.Scene()
@@ -53,6 +54,18 @@ export function createScene() {
 
   /** @type {THREE.Group | null} */
   let group = null
+  /**
+   * Los cuatro planos de pared, aparte del suelo.
+   *
+   * **Un mapa con fondo no dibuja la rejilla de sus muros** (vuelta 78). La
+   * rejilla vertical dice «aquí se acaba la sala», y eso es información útil
+   * mientras el mundo termina en una caja; en cuanto hay un decorado detrás, lo
+   * que se ve es el interior de la caja **por delante del paisaje**, que es
+   * exactamente lo contrario de vestir la pared. El suelo se queda: es el
+   * sistema de coordenadas con el que se construye, y no tapa nada.
+   */
+  let muros = []
+  let verMuros = true
   /** Medidas montadas ahora mismo, para no rehacer la sala sin motivo. */
   let current = null
 
@@ -73,6 +86,7 @@ export function createScene() {
     }
     disposeGroup()
     current = room
+    muros = []
 
     const { width, depth, height } = room
     const halfW = width / 2
@@ -104,7 +118,30 @@ export function createScene() {
     right.position.set(halfW, height / 2, 0)
     group.add(right)
 
+    muros = [front, back, left, right]
+    // Marcadas, para que se puedan contar desde fuera sin adivinar por su
+    // rotación: la rotación vive en el grupo y las líneas de dentro no la
+    // llevan, así que mirarla desde un banco daba cero paredes.
+    for (const muro of muros) muro.userData.muro = true
+    aplicarMuros()
+
     scene.add(group)
+  }
+
+  const aplicarMuros = () => {
+    for (const muro of muros) muro.visible = verMuros
+  }
+
+  /**
+   * Enseña o esconde la rejilla de las cuatro paredes, dejando el suelo.
+   *
+   * Se guarda la decisión además de aplicarla: `setRoom` puede rehacer la sala
+   * después —al cambiar de escenario— y sin recordarlo los muros volverían a
+   * salir por debajo del fondo sin que nadie los hubiera pedido.
+   */
+  const setMuros = (visible) => {
+    verMuros = Boolean(visible)
+    aplicarMuros()
   }
 
   setRoom(ROOM)
@@ -117,5 +154,5 @@ export function createScene() {
     floorMaterials.accent.dispose()
   }
 
-  return { scene, setRoom, dispose }
+  return { scene, setRoom, setMuros, dispose }
 }

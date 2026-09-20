@@ -19,7 +19,7 @@ import {
   AVATAR,
   CAMERA,
   COVER,
-  DEATHMATCH_DURATIONS,
+  SESSION_DURATIONS,
   EDITOR,
   FOOTSTEPS,
   FRAME_LIMITS,
@@ -77,6 +77,7 @@ import { EnemyFire } from './enemyFire.js'
 import { DummyMarkers, facingDesdeCamara } from './markers.js'
 import { MuzzleFlash } from './muzzleFlash.js'
 import { Impacts } from './impacts.js'
+import { SpawnCone } from './spawnCone.js'
 import { PickupField } from './pickups.js'
 import { PlayerStatus, esPorLaEspalda, hitPlayer, playerBody } from './player.js'
 import { getSettings, subscribeSettings, updateSettings } from '../settings.js'
@@ -96,6 +97,8 @@ const DEG_TO_RAD = Math.PI / 180
 
 // Vectores de módulo para desviar el rayo: el disparo no aloca nada.
 const _spreadU = new THREE.Vector3()
+/** Eje del cono de aparición. De módulo: el bucle caliente no asigna. */
+const _ejeCono = new THREE.Vector3()
 const _spreadV = new THREE.Vector3()
 const _spreadUp = new THREE.Vector3(0, 1, 0)
 const _spreadFallback = new THREE.Vector3(1, 0, 0)
@@ -226,9 +229,10 @@ export class Engine {
     })
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, RENDER.maxPixelRatio))
 
-    const { scene, setRoom, dispose: disposeScene } = createScene()
+    const { scene, setRoom, setMuros, dispose: disposeScene } = createScene()
     this.scene = scene
     this._setRoom = setRoom
+    this._setMuros = setMuros
     this._disposeScene = disposeScene
 
     this.camera = new THREE.PerspectiveCamera(CAMERA.fov, 1, CAMERA.near, CAMERA.far)
@@ -264,6 +268,10 @@ export class Engine {
     // La sala la manda el escenario: la grilla y las paredes se montan a su
     // medida, y con ellas el límite real de movimiento.
     this._setRoom(this.scenario.room)
+    // **Con fondo, la rejilla de los muros no se dibuja** (vuelta 78): el
+    // decorado viste la pared, y una rejilla por delante sería el interior de
+    // la caja encima del paisaje.
+    this._setMuros(!this.scenario.tieneFondo)
 
     this.movement = new MovementController(this.camera)
     this.movement.setScenario(this.scenario)
@@ -309,6 +317,13 @@ export class Engine {
      * dispara.
      */
     this.impacts = new Impacts(this.scene)
+    /**
+     * **El abanico de aparición, dibujado** (vuelta 78). Vive en el motor —y no
+     * en React— por lo de siempre: es geometría del mundo, y la pinta el mismo
+     * bucle que dibuja todo lo demás. Lo enciende el panel de opciones.
+     */
+    this.spawnCone = new SpawnCone(this.scene)
+    this._verCono = false
     this.impacts.build()
     this.enemyFire = new EnemyFire(
       this.scene,
@@ -804,6 +819,7 @@ export class Engine {
     this.markers.disposeMaterials()
     this.muzzleFlash.dispose()
     this.impacts.dispose()
+    this.spawnCone.dispose()
     this.pickups.dispose()
     this.actionPanel.dispose()
     this.cssRenderer.domElement.remove()
@@ -1019,6 +1035,10 @@ export class Engine {
     this.scenario.dispose()
     this.scenario = new Scenario(this.scene, key)
     this._setRoom(this.scenario.room)
+    // **Con fondo, la rejilla de los muros no se dibuja** (vuelta 78): el
+    // decorado viste la pared, y una rejilla por delante sería el interior de
+    // la caja encima del paisaje.
+    this._setMuros(!this.scenario.tieneFondo)
     this.movement.setScenario(this.scenario)
     this.movement.reset()
     this.camera.updateMatrixWorld()
@@ -1241,14 +1261,21 @@ export class Engine {
     // un modo aparte: un Deathmatch de cinco minutos y uno sin límite son el
     // mismo modo con dos relojes. `endless` queda como lo que siempre fue —esta
     // sesión no acaba sola— para el HUD y el resumen.
-    const deathmatchSeconds = DEATHMATCH_DURATIONS[getSettings().deathmatchDuration].seconds
+    //
+    // **Y desde la vuelta 78 la elige el jugador en cualquier modo.** Hasta
+    // aquí la duración del panel sólo la leía el Deathmatch, así que ponerla en
+    // «sin límite» con dianas clásicas dejaba el cronómetro contando los 30 s
+    // de siempre: un control puesto que el juego ignoraba. `mode` —el valor de
+    // fábrica— es «la del modo» y devuelve exactamente lo de antes, así que
+    // quien no lo toque no nota nada.
+    const elegida = SESSION_DURATIONS[getSettings().sessionDuration]
+    const segundos =
+      elegida.seconds ?? (this.mode === 'deathmatch' ? 0 : SESSION_DURATION_S)
     // **En red la sesión no acaba sola** (vuelta 56): la partida dura lo que
     // dure la sala, que es lo único que hoy existe al otro lado. Un cronómetro
     // local cerraría la sesión de uno y dejaría al otro jugando.
-    this.endless = this.enRed || (this.mode === 'deathmatch' && deathmatchSeconds === 0)
-    this.durationMs = this.enRed
-      ? Infinity
-      : (this.mode === 'deathmatch' ? deathmatchSeconds : SESSION_DURATION_S) * 1000
+    this.endless = this.enRed || segundos === 0
+    this.durationMs = this.enRed ? Infinity : segundos * 1000
     this.stats.endless = this.endless
     this.elapsedMs = 0
     this.shots = 0
@@ -2041,6 +2068,30 @@ export class Engine {
    * cada frame: son cuatro divisiones y una media, muy por debajo de lo que
    * costaría guardarla y mantenerla sincronizada.
    */
+  /**
+   * **Enseña o esconde el cono de aparición** (vuelta 78). Lo llama el panel de
+   * opciones al abrirse y al cerrarse.
+   *
+   * No se enciende donde no significa nada: con un escenario montado las dianas
+   * salen en puntos de ruta y el cono no decide nada, así que dibujarlo sería
+   * prometer un sitio de aparición que no existe — la misma razón por la que el
+   * panel ya avisa de que ahí la distancia tampoco se aplica.
+   */
+  mostrarConoDeAparicion(visible) {
+    this._verCono = Boolean(visible)
+    if (!this._verCono) this.spawnCone.setVisible(false)
+  }
+
+  _actualizarCono() {
+    const ver = this._verCono && this.targets.muestreaPorCono && !this.enRed
+    this.spawnCone.setVisible(ver)
+    if (!ver) return
+    const [cerca, lejos] = this.targets.rangoDeDistancia()
+    this.spawnCone.configurar(this.targets.coneHalfAngle, cerca, lejos)
+    this.targets.ejeDeAparicion(this.camera, _ejeCono)
+    this.spawnCone.colocar(this.camera.position, _ejeCono)
+  }
+
   _currentScore() {
     return computeScore({
       shots: this.shots,
@@ -2999,6 +3050,7 @@ export class Engine {
     // El fondo panorámico va con la cámara en posición (vuelta 77): se coloca
     // con la pose ya interpolada y antes de dibujar, como todo lo demás.
     this.scenario.seguirConFondo(this.camera)
+    this._actualizarCono()
     this._publishStats()
     this.renderer.render(this.scene, this.camera)
     this.cssRenderer.render(this.cssScene, this.camera)
@@ -3306,8 +3358,11 @@ export class Engine {
       stats.alive = this.net.vida > 0
       stats.respawnLeftMs = this.net.restaReaparicionMs()
       stats.respawnMs = NET.respawnMs
-      stats.invulnerableLeftMs = 0
-      stats.invulnerableMs = 0
+      // **Y la gracia de salida sale del servidor** (vuelta 78). El marco azul y
+      // su cuenta existen en el HUD desde el entrenamiento; lo único que
+      // faltaba en el duelo era el número, que hasta aquí iba en cero fijo.
+      stats.invulnerableLeftMs = this.net.invulnerableMs ?? 0
+      stats.invulnerableMs = this.scenario.invulnerabilidadDeDuelo
       stats.lowHealth = this.net.vida > 0 && this.net.vida < PLAYER.lowHealth
       stats.deaths = this.net.muertes ?? 0
       stats.kills = this.net.bajas ?? this.kills

@@ -654,3 +654,99 @@ Escribirlos en el fichero sería colar a mano justo el dato que §6 dejó fuera.
 - **A y D estaban cambiadas.** El vector derecho llevaba el signo al revés. Se
   arregla escribiendo frente y derecho una vez y sumándolos, en vez de meter los
   senos a mano en cada componente — que es cómo se cuela un error de signo.
+
+## 12. La convención permanente: lo que se configura, se ve (vuelta 78)
+
+La primera sesión larga de pruebas con el editor de la 77 dejó once puntos, y
+casi todos son la misma frase dicha de maneras distintas. Se recoge como
+**convención permanente de Alchemist**, no como arreglo de una fase:
+
+> Cualquier cosa que un mapa pueda declarar necesita **una forma 100% visual de
+> ponerla y ajustarla** —arrastrándola por la rejilla, con su imán y su cuadrado
+> de rejilla, viendo lo que cambia—, y no sólo un campo numérico.
+
+El porqué está en el encargo y conviene escribirlo tal cual: **la mayoría de
+quien vaya a usar esto no ha construido nunca en 3D**. «Salida 2 · Z: −16» no
+dice *dónde* cae eso hasta que se prueba el mapa; un campo sin representación no
+es una interfaz austera, es una barrera de entrada. Los números se quedan, al
+lado, para afinar a la décima — lo que no se queda es que sean la única puerta.
+
+### 12.1 Qué se hizo visual
+
+- **Las salidas son Player Spawners**: un cono del color de su equipo por
+  jugador, que se arrastra como una pieza, con una flecha cuya **punta se
+  agarra para girar el rumbo**. El rumbo era justo lo peor de teclear, y lo más
+  importante de acertar (vuelta 66). Se pueden añadir y quitar; más de dos es
+  para los modos que vendrán, y el saneado sigue diciendo que un 1v1 necesita
+  exactamente dos.
+- **La zona de aparición y las cajas de compra son cajas translúcidas**: se
+  arrastran enteras y se estiran tirando de una esquina. Y se dibujan **todas**
+  las bandas: el panel de la 77 sólo editaba `spawnZone[0]` y El Espejo tiene
+  dos, así que se veía media regla.
+- **La física trae recetas**, no un campo en blanco: la de siempre, la de Los
+  Pilares y dos más, cada una con **cuánto se sube de un salto** calculado al
+  lado, que es el número con el que de verdad se construye.
+- **Y el juego se aplica la misma regla**: el ancho del cono de aparición se
+  toca en opciones **con el cono dibujado delante**.
+
+### 12.2 Las tres reglas que lo sostienen
+
+1. **El dibujo sale del dato.** Se pinta `duelo.salidas` y `spawnZone` tal cual;
+   arrastrar escribe en el mapa y repintar lo lee de ahí. Un estado intermedio
+   «la posición del gizmo» sería una segunda verdad que se despega del fichero.
+2. **El mismo gesto que una pieza.** Mismo arrastre, misma rejilla, mismo clic:
+   aprender a colocar una caja tiene que servir para colocar una salida.
+3. **Lo que se pincha se decide por prioridad, no por distancia.** Salió
+   construyéndolo: un área es un volumen que **contiene** los conos y las piezas
+   de dentro, así que desde arriba su cara superior está siempre delante. Con la
+   distancia sola, la banda de El Espejo se comía el clic de sus dos salidas y
+   de media docena de piezas. El orden es el del tamaño del gesto —tirador,
+   cuerpo, pieza, área— y, a igualdad, el más cercano.
+
+### 12.3 El panel vuelve al lateral, y por qué no es volver atrás
+
+La 77 lo puso flotante y centrado con un argumento correcto —una barra fija de
+300 px no escala a once secciones, y `menu62` ya había enseñado a dónde lleva
+dejar crecer una columna—, pero resolvió el escalado rompiendo lo que la
+herramienta hace: **construir es mirar el mapa**. Un panel centrado tapa justo
+la parte que se está tocando.
+
+El **raíl de iconos** resuelve las dos cosas: las secciones crecen por el raíl
+—un icono más en una lista vertical de 56 px— y la columna de contenido no se
+entera, así que el problema de escala no puede volver. El ancho lo decide quien
+construye, arrastrando el borde, y se recuerda.
+
+Y de ahí sale la explicación del punto 4 del encargo, «el botón Apilar ha
+desaparecido»: **estaba**. El panel de la 77 iba a dos columnas por encima de
+720 px, y con `columns` el orden de lectura deja de ser el del documento, así
+que una acción que vivía al final de una sección caía donde nadie la busca. Dos
+decisiones: **una columna siempre**, y **una acción que se busca con el dedo va
+la primera y sola**. Además ahora tiene gesto —clic derecho sobre la pieza— y
+**R/F** suben y bajan la elegida sin abrir nada.
+
+### 12.4 Y tres cosas que sólo se ven usándolo
+
+- **El vuelo no volaba.** `_volar` delegaba en `_updateHorizontal`, que con
+  `airborne` puesto lee la velocidad del aire y **no las teclas**: con ella a
+  cero —que es como se entra a volar— se salía en la primera línea. Lo poco que
+  se movía era inercia de un salto anterior, que es lo que hacía parecer que
+  fallaba sólo un eje.
+- **Una tecla con dos significados según el estado.** El plantado de muñecos
+  sólo se apagaba desde el panel, y el panel se abre con ESPACIO — que volando
+  es subir. Cada herramienta tiene ahora la suya: F1, F2 (y la G de siempre) y
+  F3.
+- **Y dos campos que el servidor ignoraba**: `duelo.cajaCompra`, que
+  `Partida._cajaDe` no leía, y la invulnerabilidad de inicio de ronda, que no
+  existía en el duelo. El detalle, en `docs/decisions.md` §78.11.
+
+### 12.5 Lo que sigue fuera
+
+Las fases 4 y 5 no se han tocado: rampas, vanos y las métricas de mapa más allá
+de la de salidas; y rotación libre, tejados y triángulos sólidos, que siguen
+esperando a que el motor sepa chocar con ellos (§3).
+
+Y una cosa nueva que **no** se hizo a propósito: **el arma sigue siendo del mapa
+y no de cada salida**. En un mapa simétrico por giro, dos dotaciones distintas
+serían dos juegos distintos según por dónde te toque salir. La ficha del spawner
+enseña con qué se sale, que es lo que hacía falta; declararlo por salida es una
+asimetría que hay que querer, no una casilla más.

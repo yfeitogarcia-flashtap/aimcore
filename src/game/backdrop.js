@@ -156,29 +156,93 @@ function nave(ctx, fondo) {
 const DIBUJANTES = { estrellas, horizonte, nave }
 
 /**
+ * **La foto panorámica, si el mapa declara una** (vuelta 78).
+ *
+ * Es la única puerta del proyecto a un asset externo, y está abierta **para
+ * valorarla**, no porque se haya decidido cruzarla: el argumento en contra es
+ * el que revirtió el audio grabado en la vuelta 63 —que Vektor corra en
+ * cualquier PC sin descargar nada, y que verse así sea lo que es—. Tres cosas
+ * que la hacen segura mientras se decide:
+ *
+ * - **Se carga en diferido y el mundo no la espera.** La esfera se monta con el
+ *   negro de la sala y la textura se pone cuando llega. Si no llega, el mapa se
+ *   juega igual con el fondo apagado; lo que no puede pasar es que montar un
+ *   escenario dependa de una petición.
+ * - **Ni colisión ni oclusor ni presupuesto**, como los cuatro dibujados: es la
+ *   misma esfera con otra textura.
+ * - **Y la ruta viene saneada** de `esFotoDeFondo`: dentro de `public/fondos/`
+ *   y con extensión de imagen. Un mapa no puede hacer que el juego pida una URL
+ *   cualquiera por el hecho de abrirlo.
+ */
+function cargarFoto(material, url) {
+  const cargador = new THREE.TextureLoader()
+  cargador.load(
+    url,
+    (textura) => {
+      // El material puede haberse tirado mientras la imagen viajaba: cambiar de
+      // mapa es `dispose()`, y escribirle a un material muerto es un aviso de
+      // WebGL por frame.
+      if (!material.__vivo) {
+        textura.dispose()
+        return
+      }
+      textura.colorSpace = THREE.SRGBColorSpace
+      // Equirectangular: la esfera da la vuelta entera una vez, así que no se
+      // repite en horizontal ni se estira en vertical.
+      textura.wrapS = THREE.ClampToEdgeWrapping
+      textura.wrapT = THREE.ClampToEdgeWrapping
+      material.map = textura
+      material.color.set(0xffffff)
+      material.needsUpdate = true
+    },
+    undefined,
+    () => {
+      // Una foto que no está no rompe nada: queda el fondo apagado, que es lo
+      // mismo que un mapa sin fondo. Se dice en consola y se sigue.
+      console.warn(`[fondo] no se pudo cargar ${url}; el mapa se juega sin panorama`)
+    },
+  )
+}
+
+/**
  * Monta el fondo de un escenario en su escena. Devuelve un objeto con `dispose`
  * y `seguir(camara)`, o `null` si el mapa no declara ninguno — que es el caso
  * de todos los mapas de hoy y por tanto el que no cambia nada.
  */
 export function crearFondo(scene, fondo, room) {
-  if (!fondo || !DIBUJANTES[fondo.tipo]) return null
+  const foto = fondo?.tipo === 'imagen'
+  if (!fondo || (!foto && !DIBUJANTES[fondo.tipo])) return null
 
-  const lienzo = document.createElement('canvas')
-  lienzo.width = ANCHO
-  lienzo.height = ALTO
-  const ctx = lienzo.getContext('2d')
-  degradado(ctx, fondo)
-  DIBUJANTES[fondo.tipo](ctx, fondo)
+  let textura = null
+  if (!foto) {
+    const lienzo = document.createElement('canvas')
+    lienzo.width = ANCHO
+    lienzo.height = ALTO
+    const ctx = lienzo.getContext('2d')
+    degradado(ctx, fondo)
+    DIBUJANTES[fondo.tipo](ctx, fondo)
+    textura = new THREE.CanvasTexture(lienzo)
+    textura.colorSpace = THREE.SRGBColorSpace
+  }
 
-  const textura = new THREE.CanvasTexture(lienzo)
-  textura.colorSpace = THREE.SRGBColorSpace
   // Sin `wrapS` repetido no hace falta: la esfera da la vuelta entera una vez.
   const radio = Math.max(room?.width ?? 40, room?.depth ?? 40) * FACTOR_RADIO
+  const material = new THREE.MeshBasicMaterial({
+    map: textura,
+    // Mientras la foto viaja, negro: el color se pone a blanco al llegar la
+    // textura, que es lo que la deja verse sin teñir.
+    color: textura ? 0xffffff : 0x0a0a0a,
+    side: THREE.BackSide,
+    depthWrite: false,
+  })
+  material.__vivo = true
+  if (foto) cargarFoto(material, fondo.url)
+
   const malla = new THREE.Mesh(
     new THREE.SphereGeometry(radio, 48, 24),
     // `BackSide` porque se ve **por dentro**, y sin niebla ni profundidad: un
     // fondo no puede ocultar nada del mundo ni escribir en el z-buffer.
-    new THREE.MeshBasicMaterial({ map: textura, side: THREE.BackSide, depthWrite: false }),
+    material,
   )
   malla.renderOrder = -1
   // **No es un oclusor y no debe parecerlo**: si algún día alguien barre la
@@ -199,6 +263,9 @@ export function crearFondo(scene, fondo, room) {
       malla.position.set(camara.position.x, 0, camara.position.z)
     },
     dispose() {
+      // La marca se baja **antes** de tirar nada: una foto que llegue después
+      // de esto se descarta sola en vez de escribirle a un material muerto.
+      malla.material.__vivo = false
       scene.remove(malla)
       malla.geometry.dispose()
       malla.material.map?.dispose()

@@ -95,6 +95,26 @@ const NO_SON_MAPAS = new Set(['index.js', 'formato.js'])
  */
 const CARPETA_HISTORIAL = resolve(CARPETA_MAPAS, 'historial')
 
+/**
+ * **Las fotos panorámicas que haya dejadas** (vuelta 78).
+ *
+ * El editor las ofrece en el desplegable de fondo junto a los cuatro dibujados,
+ * así que dejar un `.jpg` en `public/fondos/` y abrir el editor es todo lo que
+ * hay que hacer para verlo puesto. Es de desarrollo y sólo de desarrollo: lo
+ * que se despliega lleva las fotos que alguien haya decidido commitear, y
+ * **listar un directorio no es algo que un servidor de producción deba hacer**.
+ */
+const CARPETA_FONDOS = resolve(import.meta.dirname, 'public/fondos')
+const EXTENSIONES_FONDO = ['.jpg', '.jpeg', '.png', '.webp', '.avif']
+
+function fondosDisponibles() {
+  if (!existsSync(CARPETA_FONDOS)) return []
+  return readdirSync(CARPETA_FONDOS)
+    .filter((nombre) => EXTENSIONES_FONDO.some((ext) => nombre.toLowerCase().endsWith(ext)))
+    .sort()
+    .map((nombre) => ({ nombre, url: `/fondos/${nombre}` }))
+}
+
 /** Por encima de esto el panel avisa. **No se trunca**: ver `anotarEnHistorial`. */
 const HISTORIAL_AVISO = 100
 
@@ -258,6 +278,12 @@ const editor = {
       if (!url.startsWith('/editor') && !url.startsWith('/__editor/')) return siguiente()
 
       const { pathname, searchParams } = new URL(url, 'http://editor')
+
+      // Las fotos que haya en `public/fondos/`, para el desplegable del editor.
+      if (pathname === '/__editor/fondos' && peticion.method === 'GET') {
+        respuesta.setHeader('content-type', 'application/json')
+        return respuesta.end(JSON.stringify({ fotos: fondosDisponibles() }))
+      }
 
       if (pathname === '/editor' || pathname === '/editor/') {
         peticion.url = '/editor/index.html'

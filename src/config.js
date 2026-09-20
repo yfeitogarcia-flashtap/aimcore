@@ -316,12 +316,6 @@ export const TARGET = {
  */
 export const HITBOX = {
   /**
-   * Semiángulo del abanico frontal, en grados. 55° hace un frente de 110°:
-   * bastante más que los 36° de Clásica y Cono, pero sigue siendo frontal.
-   * Se llama "half" por coherencia con `SPAWN.coneHalfAngleDeg`.
-   */
-  spawnConeHalfAngleDeg: 55,
-  /**
    * Cada dummy sortea su propia distancia entre estas fracciones del valor
    * que marca el slider. Con el slider en 20: entre 12 y 28 unidades.
    */
@@ -357,6 +351,14 @@ export const TARGET_TYPES = {
     label: 'Clásica',
     /** Distancia base al elegir este tipo. */
     defaultDistance: 15.5,
+    /**
+     * **Apertura del abanico de aparición al elegir este tipo**, en grados
+     * totales (vuelta 78). Es el valor de fábrica de `SETTINGS.spawnConeDeg`, y
+     * cambiar de tipo lo arrastra como ya arrastraba la distancia: un frente de
+     * 36° y uno de 110° son dos ejercicios distintos, no el mismo con otro
+     * número.
+     */
+    spawnConeDeg: 36,
     anchor: 'center',
     /** Semialtura de la figura, en múltiplos del radio. Evita que atraviese el suelo. */
     halfHeight: 1,
@@ -367,6 +369,7 @@ export const TARGET_TYPES = {
   cone: {
     label: 'Cono',
     defaultDistance: 15.5,
+    spawnConeDeg: 36,
     anchor: 'center',
     halfHeight: 1.3,
     parts: [
@@ -385,6 +388,12 @@ export const TARGET_TYPES = {
     label: 'Hitbox completo',
     /** Aparece más lejos que los otros dos: acertar la cabeza tiene que costar. */
     defaultDistance: 20,
+    /**
+     * Frente de 110°: bastante más que los 36 de Clásica y Cono, y por encima
+     * del encuadre horizontal a propósito — en el modo de muñecos alguno puede
+     * nacer justo fuera del cuadro, que es parte de lo que se entrena aquí.
+     */
+    spawnConeDeg: 110,
     /** De pie en el suelo, nunca flotando: es una figura humana. */
     anchor: 'feet',
     /** Abanico ancho y profundidad variable, en lugar de las reglas generales. */
@@ -1490,8 +1499,13 @@ export const SPAWN = {
    */
   zoneShare: 0.5,
 
-  /** Semiángulo del cono frente a la cámara (cono total ≈ 36°). */
-  coneHalfAngleDeg: 18,
+  /**
+   * Semiángulo del cono frente a la cámara. **Deriva del tipo de diana y no al
+   * revés** (vuelta 78): la apertura que se ve y se toca es la total, y vive en
+   * `TARGET_TYPES[x].spawnConeDeg` porque cada tipo tiene la suya. Esto se
+   * queda como el valor con el que nace el pool antes de que lleguen ajustes.
+   */
+  coneHalfAngleDeg: TARGET_TYPES.classic.spawnConeDeg / 2,
   /**
    * El eje del cono es la dirección de la cámara con el cabeceo acotado a este
    * rango. Sin esto, mirar al suelo mandaría todas las dianas bajo el suelo.
@@ -1758,13 +1772,50 @@ export const SETTINGS = {
     default: true,
   },
   /**
-   * **Cuánto dura un Deathmatch.** Sólo se aplica a ese modo: la ronda con
-   * explosivo la sigue midiendo el temporizador de la bomba, y el gridshot de
-   * la sala vacía, `SESSION_DURATION_S`. El catálogo es `DEATHMATCH_DURATIONS`.
+   * **Cuánto dura la sesión**, en el modo que sea (vuelta 78). El catálogo es
+   * `SESSION_DURATIONS` y el valor de fábrica, `mode`, es «la que trae el
+   * modo»: los 30 s de `SESSION_DURATION_S` jugando ahora y sin límite en
+   * Deathmatch. La ronda con explosivo la sigue midiendo la bomba.
    */
-  deathmatchDuration: {
-    label: 'Duración de Deathmatch',
-    default: 'none',
+  sessionDuration: {
+    label: 'Duración de la sesión',
+    default: 'mode',
+  },
+  /**
+   * **La apertura del abanico de aparición, en grados totales** (vuelta 78).
+   *
+   * Sale al panel porque es lo que decide cuánto hay que girar entre diana y
+   * diana en la sala vacía, o sea la diferencia entre entrenar el micro-ajuste
+   * y entrenar el barrido — y hasta aquí era una constante. Tres cosas:
+   *
+   * - **Es la apertura total, no el semiángulo.** Lo que se lee en pantalla es
+   *   el ancho del abanico; partirlo por dos es una cuenta que el jugador no
+   *   tiene por qué hacer. `SPAWN.coneHalfAngleDeg` sigue siendo la mitad del
+   *   valor de fábrica y de ahí sale.
+   * - **El valor de fábrica es de cada tipo de diana**
+   *   (`TARGET_TYPES[x].spawnConeDeg`) y cambiar de tipo lo arrastra, igual que
+   *   la distancia desde siempre: el hitbox nació con un frente de 110° y la
+   *   Clásica con 36, y son dos ejercicios distintos.
+   * - **Y no se puede cerrar del todo.** Con 0 las dianas saldrían todas en la
+   *   misma recta, que no es un aim trainer: es un metrónomo. El mínimo deja un
+   *   abanico estrecho pero abanico.
+   *
+   * Con escenario no se aplica, como la distancia: ahí las dianas salen en
+   * puntos de ruta.
+   */
+  spawnConeDeg: {
+    label: 'Ancho del cono de aparición',
+    default: TARGET_TYPES.classic.spawnConeDeg,
+    min: 6,
+    /**
+     * El tope es el abanico más ancho que el juego ya produce, que es el del
+     * hitbox. Queda por encima del encuadre horizontal (~103° a 16:9 con
+     * `CAMERA.fov`), y eso es deliberado desde que existe ese perfil: en el modo
+     * de muñecos alguno puede nacer justo fuera del cuadro. El panel lo dice.
+     */
+    max: TARGET_TYPES.hitbox.spawnConeDeg,
+    step: 1,
+    decimals: 0,
   },
   enemyDifficulty: {
     label: 'Dificultad de los muñecos',
@@ -2137,11 +2188,51 @@ export const FONDOS = {
   },
 }
 
-/** Qué fondo se dibuja, saneado contra el catálogo. Sin clave, ninguno. */
+/**
+ * **La carpeta de las fotos panorámicas**, servida tal cual desde `public/`.
+ *
+ * Es la puerta que la vuelta 77 dejó cerrada y la 78 abre **para valorarla**:
+ * un panorama fotográfico es el primer asset externo del proyecto, y el
+ * argumento en contra sigue siendo el que revirtió el audio grabado en la 63.
+ * Lo que cambia es que ahora se puede mirar antes de decidir: se deja un
+ * `.jpg` aquí, el editor lo ofrece y se juega con él puesto.
+ *
+ * Que un mapa lo use **se ve en su fichero**: `fondo` deja de ser una clave y
+ * pasa a ser un objeto con su ruta, así que «este mapa depende de un archivo»
+ * no hay que deducirlo de nada.
+ */
+export const FONDOS_CARPETA = '/fondos/'
+
+/** Extensiones que se admiten como panorama. Nada que haya que decodificar en dos pasos. */
+export const FONDOS_EXTENSIONES = ['.jpg', '.jpeg', '.png', '.webp', '.avif']
+
+/**
+ * ¿Es esto una foto panorámica declarada por un mapa?
+ *
+ * El saneado es deliberadamente estrecho: **una ruta dentro de la carpeta y con
+ * extensión de imagen**, nada más. Un `fondo` con una URL arbitraria sería un
+ * mapa capaz de hacer que el juego se conecte a donde sea con sólo abrirlo.
+ */
+export function esFotoDeFondo(valor) {
+  if (!valor || typeof valor !== 'object' || valor.tipo !== 'imagen') return false
+  const url = valor.url
+  if (typeof url !== 'string' || !url.startsWith(FONDOS_CARPETA)) return false
+  if (url.includes('..')) return false
+  return FONDOS_EXTENSIONES.some((ext) => url.toLowerCase().endsWith(ext))
+}
+
+/**
+ * Qué fondo se dibuja, saneado. Sin nada, ninguno.
+ *
+ * Dos formas y una sola función que las resuelve: **una clave del catálogo**
+ * —los cuatro dibujados en un canvas— o **un objeto con la ruta de una foto**.
+ * Quien dibuja no distingue: recibe un objeto con su `tipo` y ya.
+ */
 export function fondoDeEscenario(escenario) {
   const definition = definicionDeEscenario(escenario)
-  const clave = definition?.fondo
-  return clave && FONDOS[clave] ? { clave, ...FONDOS[clave] } : null
+  const fondo = definition?.fondo
+  if (esFotoDeFondo(fondo)) return { clave: fondo.url, tipo: 'imagen', url: fondo.url }
+  return fondo && FONDOS[fondo] ? { clave: fondo, ...FONDOS[fondo] } : null
 }
 
 const ESCENARIOS_INTEGRADOS = {
@@ -2913,12 +3004,32 @@ export const SESSION_MODES = {
 }
 
 /**
- * Duraciones de Deathmatch. `seconds: 0` es «sin límite», que es el modo con el
- * que nació y por eso sigue siendo el valor de fábrica: quien ya lo usaba no se
- * encuentra con un cronómetro que no pidió.
+ * **Cuánto dura una sesión, la elija el jugador en el modo que sea** (vuelta
+ * 78). Hasta aquí esto era `DEATHMATCH_DURATIONS` y sólo lo leía el Deathmatch:
+ * el gridshot cronometrado duraba `SESSION_DURATION_S` pasara lo que pasara, así
+ * que poner «sin límite» con dianas clásicas dejaba el ajuste puesto y el
+ * cronómetro contando igual. Un control que promete lo que el juego va a
+ * ignorar es el fallo de la vuelta 67 por la puerta del panel.
+ *
+ * Dos cosas que son el diseño:
+ *
+ * - **`mode` es el valor de fábrica y significa «la del modo»**: 30 s
+ *   cronometrados, Deathmatch sin límite. Es exactamente lo que hacía el juego
+ *   hasta la 77, así que quien no toque el ajuste no nota nada — y es la única
+ *   forma honesta de abrir el control a los dos modos sin decidir por nadie que
+ *   «Jugar ahora» pasa a durar diez minutos.
+ * - **La ronda con explosivo sigue siendo suya.** Su cuenta atrás *es* el reloj
+ *   de esa sesión (`OBJECTIVE.timerMs`), así que la duración elegida no la
+ *   corta: los 30 s de siempre habrían cerrado la partida antes de los 45 de la
+ *   bomba, y eso ya estaba resuelto.
+ *
+ * `seconds: null` es «la del modo»; `seconds: 0`, sin límite.
  */
-export const DEATHMATCH_DURATIONS = {
+export const SESSION_DURATIONS = {
+  mode: { label: 'La del modo', seconds: null },
   none: { label: 'Sin límite', seconds: 0 },
+  s30: { label: '30 segundos', seconds: 30 },
+  m1: { label: '1 minuto', seconds: 60 },
   m3: { label: '3 minutos', seconds: 180 },
   m5: { label: '5 minutos', seconds: 300 },
   m10: { label: '10 minutos', seconds: 600 },
@@ -3500,18 +3611,49 @@ export const SCORING = {
   },
 
   /**
-   * Referencias con las que se normalizan el daño y las muertes: encajar tanto
-   * daño como vida tiene un jugador, o morir tres veces, deja ese componente
-   * a cero. Estaban escritas desde que las variables eran un hueco reservado.
+   * **El tiempo se mide contra un par, no contra el cero** (vuelta 78).
+   *
+   * Hasta aquí el componente era `1 − transcurrido / 45 s`, o sea que la nota
+   * máxima pedía desactivar **al instante**. Sólo la pulsación de desactivar
+   * dura 3 s y cruzar el Plano A en diagonal cuesta 8.1, así que una partida
+   * impecable —precisión al objetivo del arma, sin recibir un tiro y sin
+   * morir— que tardara 30 s se quedaba en **0.72 de nota, tres estrellas**. El
+   * techo no estaba calibrado alto: estaba fuera de alcance, y de ahí venía la
+   * sensación de que cinco estrellas no existen.
+   *
+   * `timeParMs` es lo que tarda una partida buena: por debajo, el componente
+   * vale 1; de ahí a que reviente la bomba, cae en línea recta. Los 20 s salen
+   * de sumar lo que cuesta llegar (~8 s en diagonal), la desactivación (3 s) y
+   * un margen para el combate del camino.
    */
-  damageReference: 100,
+  timeParMs: 20000,
+
+  /**
+   * Referencias con las que se normalizan el daño y las muertes.
+   *
+   * **El daño dejó de ser un acantilado** (vuelta 78): con la referencia en
+   * 100, una sola ráfaga de dos balas al torso ponía el componente a cero y no
+   * había forma de distinguir «me han rozado» de «me han barrido». Ahora son
+   * **tres barras de vida**, que es lo que encaja quien juega mal de verdad, y
+   * el componente baja en proporción a lo que te han dado. Una bala al torso
+   * cuesta ~0.17 de ese componente y 0.014 de la nota: no es lo que decide una
+   * estrella, y ésa era la queja.
+   */
+  damageReference: 300,
   deathsReference: 3,
 
   /**
    * Cortes de estrella, de 5 a 2. Por debajo del último, 1 estrella. Que el
    * explosivo detone **no es una estrella**: es un resultado de fallo aparte.
+   *
+   * **Cinco estrellas es impecable y se nota en el corte** (vuelta 78): 0.95
+   * deja fuera una muerte —que hunde dos componentes a la vez— y deja dentro un
+   * par de balas encajadas. Los otros tres cortes bajan porque con el par de
+   * tiempo la escalera entera se ha movido, y lo que se quería es que cuatro
+   * estrellas fuera «he jugado bien», no «he jugado perfecto y he tardado un
+   * poco». La escalera está medida, y la tabla, en `docs/decisions.md` §78.
    */
-  starThresholds: [0.9, 0.75, 0.55, 0.35],
+  starThresholds: [0.95, 0.78, 0.56, 0.34],
 }
 
 /**

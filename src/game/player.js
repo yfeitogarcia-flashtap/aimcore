@@ -26,12 +26,29 @@
  */
 
 import * as THREE from 'three'
-import { AVATAR, PLAYER, TARGET_TYPES, WEAPONS } from '../config.js'
+import { AVATAR, PLAYER, TARGET, TARGET_TYPES, WEAPONS } from '../config.js'
 import { BODY_HEIGHT, MAX_RADIUS, ZONE_BANDS, bodyHeightFor, hitRadiusAt } from './body.js'
 
-/** Las tres zonas del hitbox, indexadas por nombre. */
+/**
+ * **Las zonas de disparo del juego, indexadas por nombre — de todos los tipos
+ * de diana y no de uno** (vuelta 78).
+ *
+ * Esta tabla salía sólo de `TARGET_TYPES.hitbox`, que tiene `head`, `torso` y
+ * `legs`. La Clásica y el Cono declaran **una sola zona**, `single`, así que
+ * desde la vuelta 70 —cuando `applyHit` dejó de leer `part.damage` y pasó a
+ * preguntar aquí— un disparo a una diana clásica devolvía `0` y la diana
+ * **no moría nunca**: parpadeaba de blanco, que es lo que hace una zona que
+ * encaja un impacto y sobrevive, y se quedaba ahí.
+ *
+ * No dio ningún error, y ésa es la lección: **una zona desconocida valía cero
+ * en silencio**. Ahora la tabla se deriva del catálogo entero, que es donde
+ * están escritas las zonas que el juego puede producir, y `dianas78` comprueba
+ * que ninguna de ellas hace cero.
+ */
 const ZONES = {}
-for (const part of TARGET_TYPES.hitbox.parts) ZONES[part.zone] = part
+for (const type of Object.values(TARGET_TYPES)) {
+  for (const part of type.parts) ZONES[part.zone] = part
+}
 
 /** El perfil de la figura, que es de donde sale el ancho del hitbox. */
 const PROFILE = AVATAR.body.profile
@@ -538,16 +555,19 @@ export function aimPoint(body, factor, out = _toPlayer) {
  * de daño por arma entonces habría sido inventarse un dato; con un fusil de
  * francotirador que mata de un tiro al cuerpo, el dato existe.
  *
- * **La cabeza no se escala nunca**, por la misma razón que `ENEMY.bodyDamageScale`
- * tampoco la toca: vale 100 de 100 y de ahí cuelga la regla del casco —el
- * primero a la cabeza lo rompe y el siguiente mata—. Escalarla dejaría el casco
- * en papel con unas armas y en muro con otras.
+ * **Lo que ya vale una vida entera no se escala**, por la misma razón que
+ * `ENEMY.bodyDamageScale` tampoco toca la cabeza: la cabeza vale 100 de 100 y
+ * de ahí cuelga la regla del casco —el primero a la cabeza lo rompe y el
+ * siguiente mata—. Escalarla dejaría el casco en papel con unas armas y en muro
+ * con otras. Desde la vuelta 78 la condición **sale del número y no del
+ * nombre**, y así cubre también la zona única de la Clásica y el Cono, que
+ * valen lo mismo por el mismo motivo: son el blanco entero.
  *
  * Sin `weaponKey`, o con un arma que no declara el campo, vale 1: las tres de
  * siempre no cambian ni un punto.
  */
 export function zoneDamage(zone, weaponKey = null) {
   const base = ZONES[zone]?.damage ?? 0
-  if (zone === 'head') return base
+  if (base >= TARGET.maxHealth) return base
   return base * (WEAPONS[weaponKey]?.damageScale ?? 1)
 }

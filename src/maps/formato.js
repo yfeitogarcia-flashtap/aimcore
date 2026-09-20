@@ -10,7 +10,7 @@
  * Nada de geometría: eso es de `scenario.js`, que monta **estos mismos datos**.
  */
 
-import { COVER, FONDOS, PRIMARY_WEAPONS, ROOM, ROUNDS, coverHeight } from '../config.js'
+import { COVER, FONDOS, PRIMARY_WEAPONS, ROOM, ROUNDS, coverHeight, esFotoDeFondo } from '../config.js'
 
 /**
  * **Todos los campos que puede tener un mapa, en el orden en que se escriben.**
@@ -135,14 +135,27 @@ export function sanearMapa(bruto) {
   if (bruto.card) mapa.card = bruto.card
   if (bruto.soloDuelo) mapa.soloDuelo = true
   /**
-   * **El fondo es una clave del catálogo, no una ruta** (vuelta 77). Un mapa
-   * no puede decidir descargar nada: lo que declara es **cuál** de los fondos
-   * que el juego sabe dibujar quiere detrás, y dibujarlo es de `backdrop.js`.
-   * Una clave desconocida se dice y se cae a ninguno, como cualquier otra.
+   * **El fondo es una clave del catálogo o una foto de `public/fondos/`.**
+   *
+   * Lo primero es lo de la vuelta 77: uno de los cuatro que el juego sabe
+   * **dibujar**, sin descargar nada. Lo segundo lo abre la 78 para poder
+   * valorarlo, y por eso se sanea estrecho (`esFotoDeFondo`): dentro de la
+   * carpeta y con extensión de imagen. Una URL arbitraria sería un mapa capaz
+   * de hacer que el juego pida lo que sea con sólo abrirlo.
+   *
+   * Y **se dice en voz alta**, porque es la diferencia entre un mapa que corre
+   * en cualquier PC sin descargar nada y uno que no: el aviso no es un error,
+   * es el dato que hay que tener delante al decidir si esa vía se cruza.
    */
   if (bruto.fondo !== undefined && bruto.fondo !== null) {
-    if (FONDOS[bruto.fondo]) mapa.fondo = bruto.fondo
-    else problemas.push(`fondo desconocido: ${JSON.stringify(bruto.fondo)}`)
+    if (typeof bruto.fondo === 'string' && FONDOS[bruto.fondo]) mapa.fondo = bruto.fondo
+    else if (esFotoDeFondo(bruto.fondo)) {
+      mapa.fondo = { tipo: 'imagen', url: bruto.fondo.url }
+      problemas.push(
+        `fondo: este mapa usa una foto (${bruto.fondo.url}), que es un archivo externo. ` +
+        'Los cuatro fondos dibujados no descargan nada.',
+      )
+    } else problemas.push(`fondo desconocido: ${JSON.stringify(bruto.fondo)}`)
   }
 
   if (bruto.room) {
@@ -211,6 +224,9 @@ export function sanearMapa(bruto) {
  * midan lo mismo—: eso son medidas, y las hace el editor contra la geometría
  * montada. El saneado dice si el dato es un dato.
  */
+/** Tope de la gracia de inicio de ronda. Por encima, el mapa no se puede jugar. */
+export const INVULNERABILIDAD_MAX = 10000
+
 function sanearDuelo(bruto, problemas) {
   if (!bruto || typeof bruto !== 'object') return null
   const duelo = {}
@@ -245,6 +261,24 @@ function sanearDuelo(bruto, problemas) {
     const fondo = finito(c?.fondo) ? c.fondo : ROUNDS.cajaCompra.fondo
     if (ancho <= 0 || fondo <= 0) problemas.push('duelo: la caja de compra no mide nada')
     else duelo.cajaCompra = { ancho, fondo }
+  }
+
+  /**
+   * **La gracia al empezar la ronda es del mapa** (vuelta 78), con 0 —ninguna—
+   * de valor por defecto, que es como se jugaba hasta aquí.
+   *
+   * Es la misma forma que la física de la vuelta 72 y segura por la misma
+   * razón: los dos extremos montan el mismo mapa y derivan el mismo número
+   * **sin que viaje ninguno**. Lo acota el formato porque una gracia de un
+   * minuto no es una gracia, es un mapa donde no se puede matar.
+   */
+  if (bruto.invulnerabilidadMs !== undefined) {
+    const ms = Number(bruto.invulnerabilidadMs)
+    if (!finito(ms) || ms < 0) problemas.push('duelo: la invulnerabilidad no es un número de ms')
+    else if (ms > INVULNERABILIDAD_MAX) {
+      problemas.push(`duelo: la invulnerabilidad no puede pasar de ${INVULNERABILIDAD_MAX} ms`)
+      duelo.invulnerabilidadMs = INVULNERABILIDAD_MAX
+    } else if (ms > 0) duelo.invulnerabilidadMs = Math.round(ms)
   }
 
   if (bruto.sinEconomia) duelo.sinEconomia = true

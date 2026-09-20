@@ -43,6 +43,14 @@ body {
   pointer-events: none;
 }
 #pista[hidden] { display: none; }
+/**
+ * **Y sólo se lee jugando** (vuelta 78). «Clic para jugar · ESC vuelve a
+ * editar» estaba puesto también mientras se construye, que es cuando ninguna
+ * de las dos frases es verdad: ahí el clic elige una pieza y ESC cierra el
+ * panel. Un cartel que miente sobre los controles es peor que no tenerlo.
+ */
+#pista { display: none; }
+body.jugando #pista { display: block; }
 
 /* --- La barra de estado (vuelta 77) ------------------------------------- */
 
@@ -54,7 +62,7 @@ body {
 #barra {
   position: absolute;
   inset: 0 0 auto 0;
-  z-index: 3;
+  z-index: 5;
   display: flex;
   gap: 10px;
   align-items: center;
@@ -63,9 +71,26 @@ body {
   border-bottom: 1px solid var(--linea);
   backdrop-filter: blur(6px);
 }
-#barra .hueco { flex: 1; }
-#barra button { width: auto; white-space: nowrap; }
-#barra .dato { color: var(--apagado); font-size: 11px; white-space: nowrap; }
+#barra .hueco { flex: 1; min-width: 0; }
+/**
+ * **Los botones no se encogen y los datos sí** (vuelta 78).
+ *
+ * En una ventana estrecha —640 px, que es donde mide un banco— los rótulos de
+ * estado empujaban **Guardar fuera de la pantalla**: `flex` no encoge a quien
+ * lleva `white-space: nowrap` y el desbordamiento se lo lleva el último. Es
+ * exactamente lo que le pasó al menú del duelo y que `menu62` estuvo tres
+ * vueltas diciendo. Los datos son información y se recortan con puntos
+ * suspensivos; los botones son acciones y se quedan enteros.
+ */
+#barra button { width: auto; white-space: nowrap; flex: none; }
+#barra .dato {
+  color: var(--apagado);
+  font-size: 11px;
+  white-space: nowrap;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 #barra .dato:empty { display: none; }
 #barra kbd {
   padding: 0 3px;
@@ -77,68 +102,182 @@ body {
 }
 body.jugando #barra { display: none; }
 
-/* --- El panel flotante (vuelta 77) -------------------------------------- */
+/* --- El panel lateral con raíl de iconos (vuelta 78) --------------------- */
 
 /**
- * **El telón se come el clic que cierra.** Sin él, cerrar el panel pinchando
- * fuera llegaba al lienzo y seleccionaba —o arrastraba— una pieza de propina:
- * un gesto de cerrar no puede editar el mapa.
+ * **El panel vuelve al lateral, y crece por el raíl y no por la columna.**
+ *
+ * La vuelta 77 lo puso flotante y centrado porque una barra fija de 300 px no
+ * escalaba a once secciones — y eso era cierto—, pero centrado **tapa justo lo
+ * que se está construyendo**: se abre para tocar un número, se cierra para
+ * mirar, se vuelve a abrir. Con el raíl, las secciones nuevas se añaden a una
+ * lista vertical de iconos en vez de estirar una columna, así que el problema
+ * de escala de la 77 no vuelve; y como el panel está pegado al borde, la vista
+ * pierde sólo el ancho que tú le des.
+ *
+ * Tres cosas:
+ *
+ * - **El raíl está siempre puesto**, abierto el panel o no: es la única pista
+ *   permanente de qué se puede configurar. Con el panel cerrado la vista es
+ *   entera menos esos 56 px.
+ * - **Cada icono lleva su palabra debajo.** Un raíl de pictogramas es un
+ *   examen: la leyenda es lo que lo convierte en un menú.
+ * - **Y el ancho lo decides tú**, arrastrando el borde. Se recuerda, porque
+ *   colocar piezas y escribir una física piden anchos distintos y cambiarlo
+ *   cada vez sería el ajuste que nadie usa.
  */
-#telon {
+#lateral {
   position: absolute;
-  inset: 0;
+  top: 34px;
+  bottom: 0;
+  left: 0;
   z-index: 4;
-  display: grid;
-  place-items: center;
-  background: #000000a8;
+  display: flex;
+  --ancho-panel: 340px;
 }
-#telon[hidden] { display: none; }
+body.jugando #lateral { display: none; }
+
+#rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 56px;
+  padding: 6px 4px;
+  background: #0d0d0de8;
+  border-right: 1px solid var(--linea);
+  backdrop-filter: blur(6px);
+}
+#rail .rail-hueco { flex: 1; }
+#rail button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 6px 2px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  background: none;
+  color: var(--apagado);
+  font-size: 9px;
+  letter-spacing: 0.02em;
+}
+#rail button:hover { color: var(--texto); background: #ffffff0c; }
+#rail button.puesta { color: var(--texto); background: #ffffff14; border-color: var(--accion); }
+#rail svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+/* Con el panel cerrado no hay nada que cerrar: el botón sobra y confunde. */
+#lateral[data-abierto="false"] #cerrar-panel { display: none; }
 
 #panel {
   display: flex;
   flex-direction: column;
-  width: min(620px, 94vw);
-  max-height: min(86vh, 760px);
-  padding: 14px 16px;
-  background: var(--panel);
-  border: 1px solid var(--linea);
-  border-radius: 4px;
-  box-shadow: 0 18px 60px #000000cc;
+  width: var(--ancho-panel);
+  background: #131313f2;
+  border-right: 1px solid var(--linea);
+  backdrop-filter: blur(6px);
 }
+#lateral[data-abierto="false"] #panel,
+#lateral[data-abierto="false"] #tirador { display: none; }
 
-#panel header { display: flex; align-items: center; gap: 10px; }
-#panel header h1 { flex: 1; }
-#cerrar-panel { width: auto; padding: 2px 9px; color: var(--apagado); }
-
-/** Pestañas: el panel crece por fases y una columna de diez secciones no se lee. */
-#pestanas {
-  display: flex;
-  gap: 4px;
-  margin: 10px 0 0;
-  border-bottom: 1px solid var(--linea);
+/**
+ * **El tirador de ancho.** 6 px de agarre y un filo que se enciende: más
+ * estrecho no se pilla con el ratón y más ancho se lee como una columna vacía.
+ */
+#tirador {
+  width: 6px;
+  cursor: col-resize;
+  background: linear-gradient(to right, #ffffff0a, transparent);
+  border-right: 1px solid var(--linea);
 }
-#pestanas button {
-  width: auto;
-  border: none;
-  border-bottom: 2px solid transparent;
-  border-radius: 0;
-  background: none;
-  color: var(--apagado);
-  padding: 6px 10px;
-}
-#pestanas button:hover { color: var(--texto); }
-#pestanas button.puesta { color: var(--texto); border-bottom-color: var(--accion); }
+#tirador:hover, #tirador.tirando { background: #2fcb8233; border-right-color: var(--accion); }
 
-/* El scroll es de las hojas, no del panel: la cabecera y las pestañas se quedan. */
-#hojas { flex: 1; overflow-y: auto; padding-right: 4px; }
+/* El scroll es de las hojas: el raíl no se mueve nunca. */
+#hojas { flex: 1; overflow-y: auto; padding: 4px 12px 24px; }
 .hoja[hidden] { display: none; }
 .hoja > section:first-child { border-top: none; }
 
-/** Dos columnas donde cabe: el panel es ancho y una sola columna lo desperdicia. */
-@media (min-width: 720px) {
-  .hoja { columns: 2; column-gap: 20px; }
-  .hoja > section { break-inside: avoid; }
+/**
+ * **Una columna, siempre.** El panel de la 77 iba a dos columnas por encima de
+ * 720 px y ahí es donde se perdió el botón de apilar: con `columns`, el orden
+ * de lectura deja de ser el orden del documento y una acción cae donde nadie la
+ * busca. Aquí el ancho lo pone el tirador, así que dos columnas serían además
+ * un ancho que el usuario no ha pedido.
+ */
+
+/* --- Los atajos, siempre a la vista (vuelta 78) -------------------------- */
+
+/**
+ * **Y acotado, o tapa la barra** (vuelta 78). En una ventana baja —420 px, que
+ * es donde mide un banco— doce filas llegan hasta arriba y se comen el clic de
+ * **Probar** y **Guardar**: los botones estaban en pantalla y no eran
+ * pulsables, que es el fallo del menú del duelo (`menu62`) otra vez. Va por
+ * debajo de la barra y con su propio scroll.
+ */
+#atajos {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  width: 230px;
+  max-height: calc(100vh - 52px);
+  overflow-y: auto;
+  padding: 6px 8px;
+  background: #0a0a0ad8;
+  border: 1px solid var(--linea);
+  border-radius: 3px;
+  backdrop-filter: blur(6px);
 }
+body.jugando #atajos { display: none; }
+#atajos-plegar {
+  display: flex;
+  justify-content: space-between;
+  border: none;
+  background: none;
+  padding: 0 0 4px;
+  color: var(--apagado);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+#atajos[data-plegado="true"] #atajos-lista { display: none; }
+#atajos[data-plegado="true"] #atajos-plegar span { transform: rotate(-90deg); }
+#atajos-plegar span { display: inline-block; }
+#atajos dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 2px 8px;
+  margin: 0;
+  font-size: 10px;
+}
+#atajos dt { color: var(--texto); white-space: nowrap; }
+#atajos dd { margin: 0; color: var(--apagado); }
+
+/* --- La marca de agua de Alchemist (vuelta 78) --------------------------- */
+
+/**
+ * **Translúcida y sin eventos.** Es una firma, no un control: si se come un
+ * clic del lienzo, la esquina inferior derecha deja de poder editarse.
+ */
+#marca {
+  position: absolute;
+  right: 12px;
+  bottom: 10px;
+  width: 120px;
+  opacity: 0.16;
+  pointer-events: none;
+}
+#marca:empty { display: none; }
+#marca svg { width: 100%; height: auto; display: block; }
+/* Con los atajos desplegados, la marca se aparta: dos cosas en la misma esquina. */
+#atajos:not([data-plegado="true"]) ~ #marca { display: none; }
+body.jugando #marca { display: none; }
 
 h1 { margin: 0; font-size: 14px; letter-spacing: 0.08em; text-transform: uppercase; }
 h1::first-letter { color: var(--naranja); }
@@ -188,7 +327,6 @@ button.accion { border-color: var(--accion); color: var(--accion); }
 #problemas { margin: 8px 0 0; padding-left: 16px; color: var(--naranja); font-size: 11px; }
 #problemas:empty { display: none; }
 
-body.jugando #telon { display: none; }
 /**
  * **Y el lienzo de editar se esconde mientras se juega.** Quedaba debajo del
  * del motor, a tamaño completo, así que el navegador componía **dos superficies
@@ -290,3 +428,105 @@ label.ancho2 { grid-column: span 2; }
 /* La capa del HUD va encima del lienzo del juego y no come clics. */
 #capa { position: absolute; inset: 0; pointer-events: none; }
 #capa .overlay { pointer-events: auto; }
+
+/* --- Fase 3 visual (vuelta 78) ------------------------------------------ */
+
+/**
+ * **La ficha de un Player Spawner.** Un bloque por salida, con el color de su
+ * equipo en el filo: el mismo azul y magenta de `TEAMS`, que es lo que se ve en
+ * la rejilla. Leer «1» y «2» en una lista y ver dos conos de colores en la
+ * vista son dos cosas que tienen que casar sin pensar.
+ */
+.ficha-salida {
+  margin-bottom: 8px;
+  padding: 7px 8px;
+  border-left: 3px solid var(--filo, var(--apagado));
+  background: #ffffff08;
+  border-radius: 0 3px 3px 0;
+}
+.ficha-salida.puesta { background: #ffffff16; }
+.ficha-salida h4 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 6px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--texto);
+}
+.ficha-salida h4 .punto {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--filo, var(--apagado));
+}
+.ficha-salida h4 button { width: auto; margin-left: auto; padding: 1px 6px; font-size: 10px; }
+
+/** Recetas de física: lo que ya existe, con su ápice calculado al lado. */
+.recetas { display: grid; gap: 4px; }
+.recetas button {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  text-align: left;
+  padding: 5px 8px;
+}
+.recetas b { color: var(--texto); font-size: 11px; }
+.recetas span { color: var(--apagado); font-size: 10px; }
+.recetas .cifras { grid-column: 1 / -1; color: var(--apagado); font-size: 10px; }
+
+/**
+ * El botón de restablecer de una fila, igual que en las opciones del juego.
+ *
+ * La etiqueta pasa a rejilla para que el botón quede **a la derecha del
+ * rótulo** y no en una línea propia debajo del campo, que es donde caía por ser
+ * `label` un bloque: un botón suelto bajo un número no se lee como «restablece
+ * éste», se lee como otro control más.
+ */
+label:has(> .por-defecto) {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  column-gap: 6px;
+}
+label:has(> .por-defecto) > input,
+label:has(> .por-defecto) > select { grid-column: 1 / -1; }
+/* El botón, arriba a la derecha: en la fila del rótulo y no debajo del campo,
+   que es donde caía por ser el último hijo de una rejilla de dos columnas. */
+label > .por-defecto { grid-row: 1; grid-column: 2; justify-self: end; }
+
+.por-defecto {
+  width: auto;
+  margin-left: 6px;
+  padding: 0 5px;
+  border-color: transparent;
+  background: none;
+  color: var(--apagado);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+.por-defecto:hover:not(:disabled) { color: var(--accion); border-color: var(--accion); }
+.por-defecto:disabled { opacity: 0.25; cursor: default; }
+
+/** Una acción que se busca con el dedo va sola y grande, no en una rejilla. */
+.accion-grande { margin-bottom: 8px; }
+.accion-grande button {
+  padding: 7px;
+  border-color: var(--accion);
+  color: var(--accion);
+  font-size: 12px;
+}
+.accion-grande .nota { margin-top: 3px; }
+
+kbd {
+  padding: 0 3px;
+  border: 1px solid currentColor;
+  border-radius: 2px;
+  font: inherit;
+  font-size: 9px;
+  opacity: 0.75;
+}
+
+.cabe { color: var(--accion); }
+.aprieta { color: var(--naranja); }

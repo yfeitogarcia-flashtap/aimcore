@@ -26,7 +26,7 @@
  * escrito en el SVG que se genera aquí y en el componente de React.
  */
 
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { boundsOf, buildMask, traceToPath } from './lib/trace.mjs'
@@ -92,6 +92,22 @@ function unionBounds(list) {
   return { minX, minY, maxX, maxY, width: maxX - minX, height: maxY - minY }
 }
 
+/**
+ * **La marca de Alchemist es opcional** (vuelta 78).
+ *
+ * Es el personaje del editor, sin texto, para la marca de agua de su esquina, y
+ * **puede no estar**: el editor se abre igual y la esquina se queda vacía. Un
+ * script que falle porque falta una firma sería un repositorio que no se puede
+ * clonar hasta que alguien dibuje algo. Dónde va y qué tiene que cumplir, en
+ * `Reference/Logo/LEEME.md`.
+ */
+const ALCHEMIST = 'alchemist.png'
+const hayAlchemist = existsSync(resolve(SOURCE_DIR, ALCHEMIST))
+const alchemist = hayAlchemist ? await trace(ALCHEMIST) : null
+if (!hayAlchemist) {
+  console.log(`(sin ${ALCHEMIST}: la marca de agua del editor se queda vacía)`)
+}
+
 const mark = await trace('vektor-mark-white.png')
 const faviconMark = await trace('vektor-mark-orange.png')
 const logoMark = await trace('vektor-logo-white-orange.png', isWhite)
@@ -139,6 +155,14 @@ export const LOGO = {
     markPath: '${logoMark.d}',
     wordPath: '${logoWord.d}',
   },
+  /**
+   * La marca de Vektor Alchemist, el editor. **\`null\` si no hay referencia**:
+   * la marca de agua es una firma, y una firma que no existe no se dibuja.
+   */
+  alchemist: ${alchemist ? `{
+    viewBox: '${viewBoxOf(alchemist.bounds)}',
+    d: '${alchemist.d}',
+  }` : 'null'},
 }
 `
 

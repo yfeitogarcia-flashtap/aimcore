@@ -115,6 +115,8 @@ export class ClienteRed {
     this._seqDisparo = 0
     /** Vida que dice el servidor. Con cero, abatido. */
     this.vida = 100
+    /** Lo que queda de gracia al empezar la ronda, en ms. 0 = ninguna. */
+    this.invulnerableMs = 0
     /** Escudo y casco, que desde la vuelta 64 también existen en red. */
     this.escudo = 0
     this.casco = false
@@ -829,6 +831,10 @@ export class ClienteRed {
     this.vida = mio.vida
     this.escudo = mio.esc ?? 0
     this.casco = !!mio.cas
+    // **La gracia de salida la calcula el servidor** (vuelta 78) y llega ya en
+    // ms, como el reloj de la ronda: no hay un cronómetro local que se pueda
+    // desfasar, y en pausa no baja porque en pausa no hay fotos nuevas.
+    this.invulnerableMs = mio.inv ?? 0
     this.vivoEn = mio.vivoEn ?? 0
     this.bajas = mio.bajas
     this.muertes = mio.muertes

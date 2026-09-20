@@ -218,10 +218,12 @@ export class TargetManager {
     this.typeKey = settings.targetType
     this.radius = settings.targetRadius
 
-    // Cada tipo puede traer su propio abanico de aparición.
-    const profile = this.spawnProfile
-    this.coneHalfAngle =
-      (profile ? profile.spawnConeHalfAngleDeg : SPAWN.coneHalfAngleDeg) * DEG_TO_RAD
+    // **El abanico lo dice el jugador** (vuelta 78). Era una constante por tipo
+    // —36° en Clásica y Cono, 110 en el hitbox— y ahora es un ajuste cuyo valor
+    // de fábrica es el del tipo, arrastrado al cambiarlo como ya se arrastraba
+    // la distancia. Lo que se escribe en el panel es la apertura **total**;
+    // aquí hace falta el semiángulo, y la división vive en un solo sitio.
+    this.coneHalfAngle = (settings.spawnConeDeg / 2) * DEG_TO_RAD
     this.cosConeHalfAngle = Math.cos(this.coneHalfAngle)
 
     if (geometryChanged) this._buildPool()
@@ -1124,6 +1126,29 @@ export class TargetManager {
     }
     const min = Math.max(profile.minSpawnDistance, this.distance * profile.distanceScale.min)
     return [min, Math.max(min, this.distance * profile.distanceScale.max)]
+  }
+
+  /**
+   * **El eje del abanico, para quien tenga que dibujarlo** (vuelta 78).
+   *
+   * Lo pide el cono translúcido del panel de opciones, y lo pide **aquí** y no
+   * lo recalcula: el acotado de cabeceo de `_buildConeBasis` es lo que hace que
+   * mirar al suelo no mande las dianas bajo tierra, y un dibujo con su propia
+   * copia de esa regla enseñaría un sitio donde no aparece nadie.
+   */
+  ejeDeAparicion(camera, out) {
+    this._buildConeBasis(camera)
+    return out.copy(_axis)
+  }
+
+  /** El rango de distancias vigente, por el mismo motivo. */
+  rangoDeDistancia() {
+    return this._distanceRange()
+  }
+
+  /** ¿Las dianas salen por cono, o el escenario pone los puntos? */
+  get muestreaPorCono() {
+    return !this.useRoutes
   }
 
   /**

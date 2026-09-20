@@ -25,6 +25,20 @@ import { OBJECTIVE, SCORING } from '../config.js'
 const clamp01 = (value) => (value < 0 ? 0 : value > 1 ? 1 : value)
 
 /**
+ * El componente de ritmo: 1 hasta el par y cayendo en recta hasta que revienta
+ * la bomba.
+ *
+ * El par se acota por debajo de la cuenta atrás porque si alguien lo pusiera
+ * igual o mayor, el componente valdría 1 siempre y la mitad de la nota dejaría
+ * de medir nada — un techo sin suelo, que es lo que la vuelta 57 prohibió.
+ */
+function tiempo(elapsedMs) {
+  const par = Math.min(SCORING.timeParMs, OBJECTIVE.timerMs - 1)
+  if (elapsedMs <= par) return 1
+  return clamp01(1 - (elapsedMs - par) / (OBJECTIVE.timerMs - par))
+}
+
+/**
  * Normaliza cada variable a 0..1, donde 1 siempre es "lo mejor posible".
  *
  * @param {object} input
@@ -51,8 +65,11 @@ export function scoreParts({
     // indicador no arranque la sesión en cero y baje: arranca lleno y se gana.
     // Con disparos, se mide contra el objetivo del arma: llegar a él es un 1.
     accuracy: shots > 0 ? clamp01(hits / shots / target) : 1,
-    // Cuanto antes se desactive dentro de la cuenta atrás, mejor.
-    time: clamp01(1 - elapsedMs / OBJECTIVE.timerMs),
+    // **Contra el par, no contra el cero** (vuelta 78). Desactivar en
+    // `SCORING.timeParMs` o menos vale 1; de ahí a que reviente la bomba, cae
+    // en recta. Medido contra el cero, el componente exigía desactivar al
+    // instante y dejaba una partida impecable de 30 s en tres estrellas.
+    time: tiempo(elapsedMs),
     // RESERVADAS: con peso 0 no entran en la media, pero se calculan igual para
     // que el día que se les dé peso no haya que tocar nada más.
     damage: clamp01(1 - damageTaken / SCORING.damageReference),

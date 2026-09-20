@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Editor de mapas · Vektor</title>
+    <title>Vektor Alchemist · Editor de mapas</title>
     <link rel="icon" href="/favicon.svg" />
     <link rel="stylesheet" href="/editor/editor.css" />
   </head>
@@ -20,14 +20,19 @@
         <div id="capa"></div>
       </div>
       <p id="pista">Clic para jugar · <b>ESC</b> vuelve a editar</p>
+
+      <!--
+        **La marca de agua de Alchemist.** Se rellena desde `src/ui/logoPaths.js`
+        si el trazado existe, y si no se queda vacía: el editor no depende de
+        que nadie haya subido nada. Ver `Reference/Logo/LEEME.md`.
+      -->
+      <div id="marca" aria-hidden="true"></div>
     </div>
 
     <!-- **La barra dice el estado; el panel guarda los mandos** (vuelta 77).
          Lo que hay que poder leer sin abrir nada es qué mapa tienes delante,
-         cuántas piezas lleva, lo que cuesta y si hay algo sin guardar. Todo lo
-         que se *toca* vive en el panel flotante, que se abre con ESPACIO. -->
+         cuántas piezas lleva, lo que cuesta y si hay algo sin guardar. -->
     <div id="barra">
-      <button id="abrir-panel" type="button" class="accion">Opciones <kbd>ESPACIO</kbd></button>
       <span id="barra-mapa" class="dato"></span>
       <span id="cuenta" class="dato"></span>
       <span id="presupuesto" class="dato"></span>
@@ -38,29 +43,42 @@
     </div>
 
     <!--
-      **El panel es flotante y modal a medias** (vuelta 77): tapa la vista
-      mientras está abierto y se quita con ESPACIO o con un clic fuera. El
-      telón existe para que ese clic de cerrar **no llegue al lienzo**: sin él,
-      cerrar el panel seleccionaba o arrastraba una pieza de propina.
+      **El panel vuelve a ser lateral, con raíl de iconos y ancho arrastrable**
+      (vuelta 78). Centrado tapaba justo lo que se está construyendo; fijo de
+      300 px no escalaba a once secciones. El raíl resuelve las dos cosas: las
+      secciones crecen **a lo largo del raíl**, no dentro de una columna, y el
+      panel sólo ocupa el ancho que le des.
     -->
-    <div id="telon" hidden>
-      <div id="panel" role="dialog" aria-label="Opciones del editor">
-        <header>
-          <h1>Editor de mapas</h1>
-          <button id="cerrar-panel" type="button" title="ESPACIO">✕</button>
-        </header>
+    <aside id="lateral" data-abierto="false">
+      <nav id="rail" aria-label="Secciones del editor">
+        <button type="button" data-pestana="mapa" title="Mapa · identidad, sala y fondo">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6l6-3 6 3 6-3v15l-6 3-6-3-6 3z"/><path d="M9 3v15M15 6v15"/></svg>
+          <span>Mapa</span>
+        </button>
+        <button type="button" data-pestana="construir" title="Construir · piezas y ayudas">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l9 5v10l-9 5-9-5V7z"/><path d="M3 7l9 5 9-5M12 12v10"/></svg>
+          <span>Construir</span>
+        </button>
+        <button type="button" data-pestana="duelo" title="Duelo · salidas, zonas, simetría y física">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l7-7M20 4l-7 7"/><path d="M3 15l6 6M21 9l-6-6"/></svg>
+          <span>Duelo</span>
+        </button>
+        <button type="button" data-pestana="probar" title="Probar · muñecos, plantado y vuelo">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 1v5M12 18v5M1 12h5M18 12h5"/></svg>
+          <span>Probar</span>
+        </button>
+        <button type="button" data-pestana="archivo" title="Archivo · abrir y versiones">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6l2 3h8v13H4z"/><path d="M4 11h16"/></svg>
+          <span>Archivo</span>
+        </button>
+        <span class="rail-hueco"></span>
+        <button type="button" id="cerrar-panel" title="Cerrar el panel · ESPACIO">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 5l-7 7 7 7"/></svg>
+          <span>Cerrar</span>
+        </button>
+      </nav>
 
-        <!-- Pestañas y no una columna larga: este panel va a crecer con cada
-             fase, y una columna de diez secciones se recorre con la rueda en
-             vez de leerse. -->
-        <nav id="pestanas">
-          <button type="button" data-pestana="mapa" class="puesta">Mapa</button>
-          <button type="button" data-pestana="construir">Construir</button>
-          <button type="button" data-pestana="duelo">Duelo</button>
-          <button type="button" data-pestana="probar">Probar</button>
-          <button type="button" data-pestana="archivo">Archivo</button>
-        </nav>
-
+      <div id="panel" role="region" aria-label="Opciones del editor">
         <div id="hojas">
           <!-- ------------------------------------------------- MAPA -->
           <div class="hoja" data-hoja="mapa">
@@ -82,6 +100,8 @@
                 <label>Salida Z <input id="spawn-z" type="number" step="0.5" /></label>
                 <label></label>
               </div>
+              <p class="nota">El cono azul de la vista es esta salida. Arrástralo por la
+                rejilla y estos dos números se escriben solos.</p>
               <p id="limites" class="nota"></p>
             </section>
 
@@ -92,10 +112,10 @@
                    entra en los oclusores, no tiene colisión y no cuenta en el
                    presupuesto de geometría. -->
               <label>Qué se ve más allá de la sala <select id="fondo"></select></label>
-              <p class="nota">Ni colisión, ni oclusor, ni presupuesto: una esfera vista
-                por dentro con una textura dibujada al vuelo. Una foto panorámica
-                sería el primer asset externo del proyecto, y eso está sin
-                decidir.</p>
+              <p id="fondo-nota" class="nota"></p>
+              <p class="nota">Con fondo puesto, <b>la rejilla de los muros deja de
+                dibujarse</b>: el decorado viste la pared y una rejilla por delante
+                sería el interior de la caja encima del paisaje.</p>
             </section>
           </div>
 
@@ -122,6 +142,18 @@
 
             <section id="pieza" hidden>
               <h2>Pieza seleccionada</h2>
+
+              <!-- **Apilar, arriba y solo** (vuelta 78). Estaba al final de la
+                   sección, debajo de los candados y de la base, y con la hoja a
+                   dos columnas quedaba enterrado: se dio por desaparecido. Es la
+                   acción que más se usa de esta sección, así que va la primera y
+                   además tiene tecla y clic derecho. -->
+              <div class="accion-grande">
+                <button id="p-apilar" type="button"
+                  title="Pone la base en el techo de la pieza de debajo">⬒ Apilar sobre lo de debajo</button>
+                <span class="nota">También con <kbd>clic derecho</kbd> sobre la pieza, o <kbd>F</kbd>.</span>
+              </div>
+
               <div class="trio">
                 <label>X <input id="p-x" type="number" /></label>
                 <label>Z <input id="p-z" type="number" /></label>
@@ -143,16 +175,12 @@
 
               <h3>Apoyo</h3>
               <!-- **Base es «desde qué altura empieza»**, no «sobre qué pieza
-                   se apoya»: un número, como el alto. Apilar es poner esa base
-                   en el techo de lo que haya debajo, y eso lo hace el botón. -->
-              <p class="nota">Una pieza va del suelo a su <b>Alto</b>. Súbela escribiendo
-                desde qué altura empieza, o apóyala en la que tenga debajo.</p>
-              <div class="trio">
-                <label>Base: empieza a <input id="p-base" type="number" step="0.1" min="0"
-                  title="Altura desde el suelo a la que arranca la pieza. 0 = en el suelo." /></label>
-                <label class="ancho2">Apilar <button id="p-apilar" type="button"
-                  title="Pone la base en el techo de la pieza de debajo">sobre lo de debajo</button></label>
-              </div>
+                   se apoya»: un número, como el alto. -->
+              <p class="nota">Una pieza va del suelo a su <b>Alto</b>. Súbela con
+                <kbd>R</kbd>/<kbd>F</kbd> o escribiendo desde qué altura empieza, y
+                apóyala en la de debajo con Apilar.</p>
+              <label>Base: empieza a <input id="p-base" type="number" step="0.1" min="0"
+                title="Altura desde el suelo a la que arranca la pieza. 0 = en el suelo." /></label>
               <p id="aviso-aire" class="aviso" hidden></p>
             </section>
 
@@ -197,29 +225,27 @@
             </section>
 
             <section id="duelo-campos">
-              <h2>Salidas</h2>
-              <!-- **Con su rumbo**, que en un mapa de dos extremos no es un
-                   detalle: una cámara mira a −Z con yaw 0, así que sin rumbo el
-                   del sur aparece mirando a la pared del fondo (vuelta 66). -->
-              <div class="trio">
-                <label>1 · X <input id="s1-x" type="number" step="0.5" /></label>
-                <label>1 · Z <input id="s1-z" type="number" step="0.5" /></label>
-                <label>1 · Rumbo <input id="s1-yaw" type="number" step="15" /></label>
-              </div>
-              <div class="trio">
-                <label>2 · X <input id="s2-x" type="number" step="0.5" /></label>
-                <label>2 · Z <input id="s2-z" type="number" step="0.5" /></label>
-                <label>2 · Rumbo <input id="s2-yaw" type="number" step="15" /></label>
-              </div>
+              <h2>Salidas <span id="cuenta-salidas" class="nota"></span></h2>
+              <!-- **Se colocan en la rejilla, no se teclean** (vuelta 78). Cada
+                   salida es un cono del color de su equipo con una flecha de
+                   rumbo: se arrastra el cono para moverla y la punta de la
+                   flecha para girarla. Los números están debajo porque afinar a
+                   la décima sigue siendo más fácil escribiéndola. -->
               <div class="botonera">
+                <button id="salida-anadir" type="button">+ Player Spawner</button>
                 <button id="s-mirarse" type="button" title="Pone cada rumbo apuntando a la otra salida">Que se miren</button>
                 <button id="s-medir" type="button">Medir</button>
               </div>
+              <p class="nota">Arrastra el cono por la rejilla y la <b>punta de la
+                flecha</b> para girarlo. Un 1v1 son dos; más es para los modos que
+                vendrán.</p>
+              <div id="salidas-fichas"></div>
               <p id="s-medida" class="nota"></p>
 
               <h3>Caja de compra</h3>
               <p class="nota">El corralito de la fase de compra, centrado en cada
-                salida. Es un <b>área</b>, no un punto.</p>
+                salida. Se dibuja en verde alrededor de cada cono: lo que ves es lo
+                que encierra al jugador.</p>
               <label>Lado de la caja <input id="caja-compra" type="number" step="0.5" min="1" /></label>
 
               <h3>Dotación</h3>
@@ -236,14 +262,25 @@
                   <label class="checkline"><input id="dotacion-casco" type="checkbox" /> Casco</label>
                   <label></label>
                 </div>
+                <p class="nota">La dotación es <b>del mapa y no de cada salida</b>: en
+                  un mapa simétrico por giro, dos dotaciones distintas serían dos
+                  juegos distintos según por dónde te toque salir.</p>
               </div>
+
+              <h3>Gracia al empezar la ronda</h3>
+              <label>Invulnerabilidad <input id="invulnerabilidad" type="number" step="100" min="0" max="10000" /> ms</label>
+              <p class="nota">Lo que tarda en poder hacerte daño una bala después de
+                salir de la caja de compra. A 0 no hay gracia, que es como se
+                jugaba hasta ahora.</p>
             </section>
 
             <section>
-              <h2>Zona de aparición</h2>
+              <h2>Zona de aparición <span id="cuenta-zonas" class="nota"></span></h2>
               <p class="nota">Una <b>banda que cruza la sala</b>, no una bolsa: de la
-                línea del muro hacia atrás no aparece nadie. Se declara como caja
-                —esquina mínima, ancho y fondo— igual que las piezas.</p>
+                línea del muro hacia atrás no aparece nadie. Se dibuja en azul
+                translúcido: arrástrala para moverla y tira de una esquina para
+                estirarla. Un mapa puede tener varias —El Espejo tiene una por
+                extremo—: los campos escriben en la que esté encendida.</p>
               <div class="trio">
                 <label>X <input id="zona-x" type="number" step="0.5" /></label>
                 <label>Z <input id="zona-z" type="number" step="0.5" /></label>
@@ -252,7 +289,10 @@
               <div class="trio">
                 <label>Ancho <input id="zona-w" type="number" step="0.5" min="0" /></label>
                 <label>Fondo <input id="zona-d" type="number" step="0.5" min="0" /></label>
-                <label class="ancho2"><button id="zona-quitar" type="button">Sin zona</button></label>
+                <label class="ancho2">
+                  <button id="zona-crear" type="button">+ Banda</button>
+                  <button id="zona-quitar" type="button">Quitar ésta</button>
+                </label>
               </div>
             </section>
 
@@ -286,6 +326,12 @@
                   <label>Techo aire <input id="fis-aire" type="number" step="0.5" min="0.1" /></label>
                 </div>
                 <p id="fisica-nota" class="nota"></p>
+                <!-- **Un campo en blanco pidiendo decimales no es un punto de
+                     partida** (vuelta 78). Lo que hay aquí son las físicas que
+                     ya existen y se han jugado, más dos combinaciones con su
+                     ápice calculado: se elige una y se afina desde ahí. -->
+                <h3>De dónde partir</h3>
+                <div id="fisica-recetas" class="recetas"></div>
               </div>
             </section>
           </div>
@@ -298,23 +344,28 @@
               <p class="nota">Apagado, la sala está completamente vacía: es lo que hace
                 falta para medir geometría sin que te disparen.</p>
 
+              <!-- **Cada herramienta con su tecla** (vuelta 78). Estaban las dos
+                   en el panel y el panel se abre con ESPACIO, que volando es
+                   subir: con el vuelo puesto no había forma de apagar el plantado
+                   sin salir de la prueba. Las teclas son del editor y no se
+                   parecen a ninguna del juego. -->
               <label class="checkline"><input id="tiro-muneco" type="checkbox" />
-                El disparo coloca un muñeco</label>
+                El disparo coloca un muñeco <kbd>F1</kbd></label>
               <p class="nota">Cada disparo pone un muñeco de prueba donde acabó el rayo
                 en vez de disparar. Es para ver si una cornisa se defiende, no
                 para jugar.</p>
 
               <label class="checkline"><input id="god" type="checkbox" />
-                God mode: volar por el mapa <kbd>G</kbd></label>
-              <p class="nota">Vuelas sin gravedad, que es lo que deja apuntar a
-                superficies a las que no se llega de pie. Al apagarlo caes hasta
-                el suelo <b>sin daño</b>. La <b>G</b> es del editor: esta página
-                no comparte binds con el juego.</p>
+                God mode: volar por el mapa <kbd>F2</kbd> o <kbd>G</kbd></label>
+              <p class="nota">Vuelas sin gravedad en las seis direcciones —WASD y las
+                teclas de saltar y agacharse— con la colisión puesta, que es lo que
+                deja apuntar a superficies a las que no se llega de pie. Al apagarlo
+                caes hasta el suelo <b>sin daño</b>.</p>
             </section>
             <section>
               <h2>Muñecos colocados <span id="cuenta-plantados" class="nota"></span></h2>
               <div class="botonera">
-                <button id="limpiar-plantados" type="button">Quitarlos todos</button>
+                <button id="limpiar-plantados" type="button">Quitarlos todos <kbd>F3</kbd></button>
               </div>
               <p class="nota">No se guardan con el mapa: son un instrumento de medida,
                 como el fantasma del duelo.</p>
@@ -332,19 +383,28 @@
             <section>
               <h2>Versiones <span id="cuenta-versiones" class="nota"></span></h2>
               <!-- Restaurar **carga**, no escribe: la versión se pone delante en
-                   el editor y se vuelve la de verdad al guardar. Así volver
+                   el editor y se vuelve la del disco al guardar. Así volver
                    atrás no puede romper el mapa que hay en el disco. -->
               <ul id="versiones"></ul>
               <p id="sin-versiones" class="nota">Este mapa todavía no tiene guardados.</p>
             </section>
           </div>
         </div>
-
-        <footer class="nota">
-          Clic izquierdo selecciona y arrastra · botón derecho orbita · rueda acerca<br>
-          <b>WASD</b> vuela con el ratón sobre el mapa · <b>Q/E</b> baja y sube · <b>Mayús</b> corre
-        </footer>
       </div>
+
+      <!-- El tirador de ancho. Es del panel, no de la ventana: el mapa se mira
+           desde fuera y cuánto sitio le robas a la vista lo decides tú. -->
+      <div id="tirador" title="Arrastra para ensanchar o estrechar el panel"></div>
+    </aside>
+
+    <!--
+      **Los atajos, a la vista y siempre** (vuelta 78). Un editor con teclas
+      escondidas en un panel que hay que abrir es un editor sin teclas: quien no
+      las sabe no las busca. Se pliega con su propia esquina y se acuerda.
+    -->
+    <div id="atajos" data-plegado="false">
+      <button id="atajos-plegar" type="button" title="Plegar">Atajos <span>▾</span></button>
+      <dl id="atajos-lista"></dl>
     </div>
 
     <dialog id="dlg-guardar">

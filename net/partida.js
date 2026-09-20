@@ -317,6 +317,8 @@ export class Partida {
        * muerto» daría distinto a cada lado y la reconciliación no cerraría.
        */
       vivoEn: 0,
+      /** Hasta qué paso no le puede hacer daño nadie. 0 = ya se puede. */
+      invulnerableHasta: 0,
       /** Veredictos pendientes de mandarle. */
       disparos: [],
       /**
@@ -818,6 +820,14 @@ export class Partida {
         esc: jugador.escudo,
         cas: jugador.casco ? 1 : 0,
         vivoEn: jugador.vivoEn,
+        // **Lo que le queda de gracia, en ms**, y sólo mientras la tenga: el
+        // HUD ya sabe dibujar ese marco desde el entrenamiento y lo único que
+        // le faltaba era el número. Va calculado por el servidor, como el reloj
+        // de la ronda y por la misma razón (vuelta 54): los relojes de las dos
+        // pantallas y el suyo no coinciden.
+        ...(jugador.invulnerableHasta > this.paso
+          ? { inv: (jugador.invulnerableHasta - this.paso) * SIM_STEP_MS }
+          : null),
         libres: jugador.pausasLibres,
         // Quién ha votado ya, para que su cartel se retire. Va por jugador y no
         // como lista en `vo` porque a cada cliente sólo le importa el suyo.
@@ -1152,6 +1162,13 @@ export class Partida {
    */
   _aplicarDano(victima, dano, tirador, zona = 'torso', mortal = false) {
     if (victima.vida <= 0) return false
+    // **La gracia de salida se mira aquí y no en quien dispara** (vuelta 78):
+    // es el único sitio por el que pasan las cuatro formas de hacer daño —bala,
+    // cuchillada, cuchillada por la espalda y lo que venga—, así que una
+    // comprobación arriba sería una comprobación que hay que acordarse de
+    // repetir. El disparo se resuelve igual y **recibe su veredicto**: lo que
+    // no hace es tocar el mundo.
+    if (this.paso < victima.invulnerableHasta) return false
     const tras = encajarImpacto(
       { health: victima.vida, shield: victima.escudo, helmet: victima.casco },
       { zone: zona, damage: dano, weaponKey: tirador.arma, mortal },
@@ -1191,6 +1208,9 @@ export class Partida {
     jugador.pose.rotation.y = salida.yaw ?? 0
     jugador.vida = 100
     jugador.vivoEn = 0
+    // La gracia es de **empezar la ronda**, no de reaparecer: sin rondas en
+    // marcha, quien vuelve lo hace con las mismas reglas que tenía al caer.
+    jugador.invulnerableHasta = 0
     jugador.hambre = 0
     // Reaparecer recarga, así que el reloj de cadencia vuelve a cero: arrastrar
     // el del último disparo de antes de morir castigaría el primer tiro nuevo.
@@ -1438,8 +1458,12 @@ export class Partida {
    */
   _cajaDe(equipo) {
     const salida = this.salidas[equipo] ?? this.salidas[0]
-    const mx = ROUNDS.cajaCompra.ancho / 2
-    const mz = ROUNDS.cajaCompra.fondo / 2
+    // **Y la mide el mapa** (vuelta 78). Hasta aquí esto cogía `ROUNDS`
+    // siempre, así que `duelo.cajaCompra` —que el formato sanea desde la 77—
+    // no lo leía nadie: el editor escribía un número que el servidor ignoraba.
+    const caja = this.escenario.cajaCompraDeDuelo
+    const mx = caja.ancho / 2
+    const mz = caja.fondo / 2
     return { minX: salida.x - mx, maxX: salida.x + mx, minZ: salida.z - mz, maxZ: salida.z + mz }
   }
 
@@ -1447,7 +1471,23 @@ export class Partida {
   _empezarRonda() {
     this.rondas.fase = 'ronda'
     this.rondas.hastaPaso = this.paso + this._pasosDe(ROUNDS.duracionSegundos)
-    for (const jugador of this.jugadores.values()) jugador.movimiento.setCorralito(null)
+    /**
+     * **La gracia de salida, si el mapa la pide** (vuelta 78).
+     *
+     * Va **en número de paso**, como todo lo que dura varios pasos en esta
+     * clase: `vivoEn`, el reloj de la ronda y el de la fase. Con un instante de
+     * pared sería un tercer reloj que no comparte nadie, y en pausa seguiría
+     * corriendo — que es el agujero que la vuelta 54 ya cerró dos veces.
+     *
+     * A 0 no hay gracia y no hay nada que escribir: los mapas de hoy siguen
+     * empezando la ronda exactamente igual.
+     */
+    const gracia = this.escenario.invulnerabilidadDeDuelo
+    const hasta = gracia > 0 ? this.paso + this._pasosDe(gracia / 1000) : 0
+    for (const jugador of this.jugadores.values()) {
+      jugador.movimiento.setCorralito(null)
+      jugador.invulnerableHasta = hasta
+    }
   }
 
   /**

@@ -1,10 +1,13 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import Controls from './Controls.jsx'
 import { keyLabel, keysOf } from '../keybinds.js'
 import { persistenciaDisponible } from '../settings.js'
 import ScenarioThumbnail from './ScenarioThumbnail.jsx'
 import {
+  CAMERA,
   ENEMY_DIFFICULTIES,
+  SESSION_DURATION_S,
+  SESSION_MODES,
   FRAME_LIMITS,
   MOVEMENT,
   TRAINER_SCENARIOS,
@@ -12,7 +15,7 @@ import {
   scenarioHasCover,
   SIMULTANEOUS_TARGETS,
   TARGET_TYPES,
-  DEATHMATCH_DURATIONS,
+  SESSION_DURATIONS,
   SECONDARY_WEAPON,
   WEAPONS,
 } from '../config.js'
@@ -157,17 +160,38 @@ function weaponHint(weaponKey) {
 }
 
 /**
- * Qué significa la duración con el escenario que haya elegido: en la sala vacía
- * el segundo botón sigue siendo práctica libre, no un Deathmatch.
+ * Qué va a durar la sesión con lo que haya elegido.
+ *
+ * **Se resuelve igual que en el motor**, incluido el «la del modo»: una pista
+ * que dijera otra cosa que el reloj sería un control que promete lo que el
+ * juego ignora, que es justo lo que se arregló en la vuelta 78.
  */
-function deathmatchHint(settings) {
-  const duration = DEATHMATCH_DURATIONS[settings.deathmatchDuration]
-  if (!scenarioHasCover(settings.scenario)) {
-    return 'En la sala vacía el segundo modo es práctica libre y no termina solo.'
+function durationHint(settings) {
+  const elegida = SESSION_DURATIONS[settings.sessionDuration]
+  const bomba = 'La ronda con explosivo no usa esto: la mide la bomba.'
+  if (elegida.seconds === null) {
+    return `Cada modo trae la suya: ${SESSION_DURATION_S} s jugando ahora y sin límite en ${
+      scenarioHasCover(settings.scenario)
+        ? SESSION_MODES.deathmatch.label
+        : SESSION_MODES.deathmatch.plainLabel
+    }. ${bomba}`
   }
-  return duration.seconds > 0
-    ? `El Deathmatch acaba a los ${duration.label}. La ronda con explosivo no usa esto: la mide la bomba.`
-    : 'El Deathmatch no acaba solo; lo cierras tú. La ronda con explosivo la mide la bomba.'
+  return elegida.seconds > 0
+    ? `Los dos modos acaban a los ${elegida.label}. ${bomba}`
+    : `Ningún modo acaba solo; lo cierras tú. ${bomba}`
+}
+
+/** Qué se ve del abanico de aparición, y dónde deja de significar algo. */
+function coneHint(settings) {
+  if (scenarioHasCover(settings.scenario)) {
+    return 'Con escenario no se aplica: las dianas salen en puntos de ruta, no dentro del cono.'
+  }
+  const encuadre = Math.round(
+    2 * Math.atan(Math.tan((CAMERA.fov * Math.PI) / 360) * (16 / 9)) * (180 / Math.PI),
+  )
+  return settings.spawnConeDeg > encuadre
+    ? `Más ancho que el encuadre (~${encuadre}°): alguna diana nace fuera del cuadro y hay que buscarla.`
+    : `Dentro del encuadre (~${encuadre}°): todo lo que salga cabe en pantalla sin girar.`
 }
 
 /** Explica de dónde salen las dianas en el escenario elegido. */
@@ -303,8 +327,35 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
   // La tecla de la armería sale del store de binds, no escrita a mano: es
   // reasignable y una «B» en duro se quedaría mintiendo al primer cambio.
   const armouryKey = keyLabel(keysOf('armoury', binds)[0])
+
+  /**
+   * **El panel abre por arriba** (vuelta 78).
+   *
+   * Abría por el final, y no porque recordara nada: el `autoFocus` estaba en
+   * «Volver», que es el **último** elemento de un panel que además *es* el
+   * contenedor con scroll, así que el navegador lo traía a la vista al montar y
+   * con él arrastraba la lista entera. El primer ajuste no se veía nunca.
+   *
+   * El foco tiene que ir a alguna parte —Escape y el tabulador lo necesitan—,
+   * así que va **al panel**, que está arriba del todo. Y el `scrollTop` se pone
+   * a cero explícitamente además de eso: si algún día vuelve a haber un hijo
+   * autoenfocado, esta línea sigue mandando.
+   */
+  const panelRef = useRef(null)
+  useEffect(() => {
+    const panel = panelRef.current
+    if (!panel) return
+    panel.scrollTop = 0
+    panel.focus({ preventScroll: true })
+  }, [])
+
   return (
-    <div className="panel panel--options" onMouseDown={(event) => event.stopPropagation()}>
+    <div
+      className="panel panel--options"
+      ref={panelRef}
+      tabIndex={-1}
+      onMouseDown={(event) => event.stopPropagation()}
+    >
       <h2 className="panel__title panel__title--small">Opciones</h2>
 
       <SliderRow
@@ -378,6 +429,19 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
         onChange={onChange}
       />
 
+      {/* **Y con el panel abierto se ve** (vuelta 78): el motor dibuja el
+          abanico delante de la cámara mientras estas opciones están puestas,
+          así que mover el slider enseña el efecto en vez de describirlo. Un
+          número de grados no se sabe leer hasta haber jugado una ronda con él. */}
+      <SliderRow
+        id="opt-cone"
+        setting="spawnConeDeg"
+        value={settings.spawnConeDeg}
+        onChange={onChange}
+        suffix="°"
+        hint={coneHint(settings)}
+      />
+
       <SliderRow
         id="opt-cadence"
         setting="spawnIntervalMs"
@@ -398,16 +462,17 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
         }
       />
 
-      {/* La duración sólo manda en Deathmatch: la ronda con explosivo la mide la
-          bomba y el gridshot de la sala vacía tiene la suya. La fila se queda
-          siempre para no ser un ajuste que aparece y desaparece, y el aviso dice
-          a qué se aplica. */}
+      {/* **La duración es de la sesión, no de un modo** (vuelta 78). «La del
+          modo» es el valor de fábrica y devuelve lo de siempre; cualquier otro
+          se aplica también a «Jugar ahora», que es lo que hasta aquí ignoraba
+          el ajuste con el cronómetro contando igual. La ronda con explosivo la
+          sigue midiendo la bomba. */}
       <SegmentedRow
-        setting="deathmatchDuration"
-        catalog={DEATHMATCH_DURATIONS}
-        value={settings.deathmatchDuration}
+        setting="sessionDuration"
+        catalog={SESSION_DURATIONS}
+        value={settings.sessionDuration}
         onChange={onChange}
-        hint={deathmatchHint(settings)}
+        hint={durationHint(settings)}
       />
 
       <SegmentedRow
@@ -475,7 +540,7 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
       <Controls binds={binds} />
 
       <div className="panel__actions">
-        <button type="button" className="button button--primary" onClick={onClose} autoFocus>
+        <button type="button" className="button button--primary" onClick={onClose}>
           Volver
         </button>
         <button type="button" className="button button--quiet" onClick={onReset}>

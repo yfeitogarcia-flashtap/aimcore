@@ -522,13 +522,20 @@ que no existen.
 
 Dos botones en la pantalla de inicio:
 
-- **Jugar ahora** — sesión cronometrada de `SESSION_DURATION_S`, que termina
-  sola y saca el resumen. Con escenario, es **la ronda del explosivo**: la bomba
-  lleva el reloj y los muñecos **no reaparecen** (ver más abajo).
-- **Deathmatch** — el escenario **sin bomba**. Dura lo que diga su ajuste: sin
-  límite (lo de siempre, con `∞` en el HUD y cierre manual desde la pausa) o 3, 5
-  o 10 minutos. En la sala vacía este botón se sigue llamando **Práctica libre
-  ∞**: sin cobertura ni muñecos que disparen no hay deathmatch que valga.
+- **Jugar ahora** — sesión cronometrada, que termina sola y saca el resumen.
+  Con escenario, es **la ronda del explosivo**: la bomba lleva el reloj y los
+  muñecos **no reaparecen** (ver más abajo).
+- **Deathmatch** — el escenario **sin bomba**. En la sala vacía este botón se
+  sigue llamando **Práctica libre ∞**: sin cobertura ni muñecos que disparen no
+  hay deathmatch que valga.
+
+**Cuánto dura lo decides tú, y vale para los dos.** El ajuste *Duración de la
+sesión* viene de fábrica en **«La del modo»**, que es lo de siempre —30 s
+jugando ahora, sin límite en Deathmatch— y puedes ponerlo en sin límite, 30
+segundos, 1, 3, 5 o 10 minutos. Hasta la vuelta 78 ese ajuste sólo lo leía el
+Deathmatch: puesto en «sin límite» con dianas clásicas, el cronómetro seguía
+contando igual. La ronda con explosivo sigue siendo la excepción, y no es un
+olvido: su cuenta atrás **es** el reloj de esa sesión.
 
 En Deathmatch el resumen enseña **bajas, muertes, KD y precisión**, y **no hay
 estrellas**: las estrellas puntúan cumplir un objetivo —la mitad de la nota es
@@ -596,14 +603,22 @@ herramienta de autor, no una pantalla del juego.
 
 ### El panel
 
-La pantalla entera es el mapa. Los mandos están en un **panel flotante** que se
-abre y se cierra con **ESPACIO**, con su botón de la esquina o pinchando fuera,
-y tiene cinco pestañas: **Mapa**, **Construir**, **Duelo**, **Probar** y
-**Archivo**.
+Pegada al borde izquierdo hay una **tira de iconos** —**Mapa**, **Construir**,
+**Duelo**, **Probar** y **Archivo**, cada uno con su palabra debajo— que está
+siempre puesta y ocupa 56 px. Pinchar uno abre su sección al lado; pinchar el
+mismo otra vez la cierra, y **ESPACIO** hace lo mismo sin soltar el ratón.
+
+**El ancho del panel lo decides tú**, arrastrando su borde derecho, y se
+recuerda: colocar piezas y escribir una física piden anchos distintos.
 
 Arriba se queda una barra fina con lo que hay que poder leer sin abrir nada
 —qué mapa tienes delante, cuántas piezas, lo que cuesta y si queda algo por
-guardar— más **Probar** y **Guardar**.
+guardar— más **Probar** y **Guardar**. Y abajo a la derecha, **la lista de
+atajos**, que se pliega si estorba.
+
+Cada valor con un punto de partida claro lleva su botón **«por defecto»**, como
+en las opciones del juego: trastear con la gravedad y querer volver atrás no
+tiene por qué costarte también la sala.
 
 ### Dibujar
 
@@ -672,11 +687,18 @@ entrenamiento, no una versión aparte— y tres interruptores en la pestaña
 
 - **Con muñecos**, o la sala completamente vacía. Para medir geometría lo
   segundo; para ver cómo se juega, lo primero.
-- **El disparo coloca un muñeco**: cada clic planta uno donde acabe el rayo en
-  vez de disparar. No gasta munición ni cuenta en la precisión, porque no es un
-  disparo — es una pregunta: *¿desde dónde se defiende esta cornisa?*
-- **God mode** (tecla **G**): vuelas sin gravedad, que es lo que deja apuntar a
-  lo que no se alcanza de pie. Al apagarlo caes hasta el suelo, sin daño.
+- **El disparo coloca un muñeco** (**F1**): cada clic planta uno donde acabe el
+  rayo en vez de disparar. No gasta munición ni cuenta en la precisión, porque
+  no es un disparo — es una pregunta: *¿desde dónde se defiende esta cornisa?*
+- **God mode** (**F2**, o la **G** de siempre): vuelas sin gravedad **en las
+  seis direcciones** —WASD, y las teclas de saltar y agacharse para subir y
+  bajar— con la colisión puesta, que es lo que deja apuntar a lo que no se
+  alcanza de pie. Al apagarlo caes hasta el suelo, sin daño.
+- **F3** quita todos los muñecos que hayas plantado.
+
+Cada herramienta tiene **su propia tecla** a propósito: volando, ESPACIO es
+subir, así que si el panel fuera la única forma de apagar el plantado no habría
+manera de volver a disparar de verdad sin salir de la prueba.
 
 Los muñecos que plantes **no se guardan con el mapa**: son un instrumento de
 medida. Dónde puede nacer uno de verdad sale de un barrido medido, no de
@@ -731,22 +753,34 @@ notarlo más que por un parpadeo. Y la dirección lleva el mapa abierto
 
 La pestaña **Duelo** es lo que convierte un montón de cajas en un 1v1:
 
-- **Dos salidas, con su rumbo.** «Que se miren» pone cada una apuntando a la
-  otra, que no es un adorno: una cámara mira a −Z con yaw 0, así que sin rumbo
-  el que sale al sur aparece mirando a la pared del fondo.
+- **Dos Player Spawners, y se colocan en la rejilla.** Cada uno es un cono del
+  color de su equipo: se arrastra como una pieza y se gira **agarrando la punta
+  de su flecha**. El rumbo no es un adorno —una cámara mira a −Z con yaw 0, así
+  que sin él el que sale al sur aparece mirando a la pared del fondo— y es
+  justo lo que un número no sabe decir. «Que se miren» sigue estando para
+  ponerlos enfrentados de un clic, y su ficha del panel afina a la décima.
+  Puedes añadir más de dos: son para los modos que vendrán, y el editor avisa de
+  que un 1v1 necesita exactamente dos.
 - **«Medir»** dice cuánto hay entre ellas **y si se ven**. Lo segundo es lo que
   importa: dos puntos a treinta unidades con línea de visión entre ellos son una
   ronda que empieza resuelta.
-- **Zona de aparición** y **caja de compra**, las dos como **áreas**. La zona es
-  una banda que cruza la sala —de la línea del muro hacia atrás no aparece
-  nadie—, no una bolsa alrededor del punto.
+- **Zona de aparición** y **cajas de compra**, las dos como **cajas
+  translúcidas que se ven**: se arrastran enteras y se estiran tirando de una
+  esquina. La zona es una banda que cruza la sala —de la línea del muro hacia
+  atrás no aparece nadie—, no una bolsa alrededor del punto, y un mapa puede
+  tener varias: El Espejo tiene una por extremo, y se dibujan todas.
+- **Gracia al empezar la ronda**: los milisegundos que tardas en poder recibir
+  daño al salir de la caja de compra. A 0 no hay gracia, que es como se jugaba
+  hasta ahora.
 - **Simetría por giro de 180°.** Dibujas media sala y el botón pone la otra. Es
   giro y no espejo a propósito: con un espejo cada jugador tendría la esquina
   estrecha por un lado distinto, o sea un mapa distinto para cada uno. Y
   «Comprobar parejas» te dice qué pieza se ha quedado sin la suya.
-- **Física propia**: gravedad, salto y techo del aire. Debajo, la cuenta de lo
-  que sube un salto con esos números — que es de donde salen las alturas de las
-  piezas, no del gusto.
+- **Física propia**: gravedad, salto y techo del aire, con **cuatro recetas de
+  partida** —la de siempre, la de Los Pilares y dos más— que dicen cuánto se
+  sube de un salto con cada una. Eliges una y afinas desde ahí, en vez de un
+  campo en blanco pidiéndote decimales. Debajo, esa misma cuenta en vivo: es de
+  donde salen las alturas de las piezas, no del gusto.
 - **Sin economía**: el mapa reparte en vez de vender, y dices con qué.
 
 ### Fondo panorámico
@@ -756,9 +790,19 @@ ciudad, volcán o nave industrial.
 
 **Se dibuja, no se descarga.** Es una esfera vista por dentro con la textura
 generada en un canvas al montar el escenario: ni colisión, ni oclusor, ni
-presupuesto de geometría. Un panorama fotográfico sería el primer asset externo
-de Vektor —que hoy no tiene ninguno, ni de audio ni de imagen— y esa decisión
-está sin tomar.
+presupuesto de geometría.
+
+Con un fondo puesto, **la rejilla de los muros deja de dibujarse**: el decorado
+viste la pared, y una rejilla por delante sería el interior de la caja encima
+del paisaje. El suelo se queda, que es con lo que se construye.
+
+**Y se puede probar una foto de verdad.** Deja un `.jpg` panorámico
+(equirectangular, 2:1) en `public/fondos/` y sale en el desplegable junto a los
+cuatro dibujados. Ojo a lo que significa: un panorama fotográfico sería **el
+primer asset externo de Vektor** —que hoy no tiene ninguno, ni de audio ni de
+imagen—, así que el mapa que lo use lo declara con su ruta y el editor lo dice
+en voz alta. La decisión sigue sin tomarse; lo que hay ahora es la forma de
+tomarla con la foto delante.
 
 ### Lo que todavía no hace
 
@@ -1075,9 +1119,19 @@ y sin bomba no hay contra qué medir (ver *Modos de sesión*). Salen de dos cosa
   arma**. La Pulse pide un 85% para el máximo, la Rift un 50% y la Volt
   un 40%: un arma que sacude es más indulgente, así que elegir la difícil no te
   penaliza en la nota.
-- **Tiempo** — cuanto antes desactives dentro de los 45 s, mejor.
+- **Tiempo** — cuanto antes desactives, mejor, **contra un tiempo de referencia
+  de 20 segundos**. Por debajo de ahí, el máximo; de ahí a que reviente la
+  bomba, va bajando.
 
-Como el tiempo cuenta la mitad, **las estrellas bajan solas según pasan los
+Ese tiempo de referencia no es redondo: son los 8 segundos que cuesta cruzar el
+Plano A en diagonal, los 3 que dura la pulsación de desactivar y un margen para
+el combate del camino. Antes el máximo se medía contra el cero, o sea contra
+desactivar **al instante**, y eso dejaba las cinco estrellas fuera de alcance:
+despejando la fórmula de entonces, pedían hacerlo en 10.8 segundos con la
+precisión llena, sin recibir un tiro y sin morir. Una partida impecable de 30
+segundos se quedaba en tres estrellas.
+
+Como el tiempo cuenta la mitad, **las estrellas bajan según pasan los
 segundos** aunque no falles un tiro. Empiezas con las cinco y las vas gastando.
 
 Que el explosivo detone **no es una estrella baja**: es **Fallido**, un resultado
@@ -1085,8 +1139,14 @@ aparte. No llegar a desactivar no es jugar mal, es no terminar.
 
 Desde que los muñecos disparan hay además **daño recibido y muertes**, con peso
 0.1 cada una: la nota sigue siendo sobre todo puntería y ritmo, y sobrevivir es
-un extra, no la mitad del examen. Los pesos y los cortes de estrella están en
-`SCORING`, en `src/config.js`.
+un extra, no la mitad del examen. Una bala al torso te cuesta un 1.4% de la
+nota, así que **no es lo que decide una estrella**; morir sí, porque hunde los
+dos componentes a la vez. Los pesos y los cortes están en `SCORING`, en
+`src/config.js`.
+
+**Cinco estrellas quiere decir impecable**: precisión al objetivo de tu arma,
+desactivar dentro del tiempo de referencia y no morir. Cuatro es haber jugado
+bien.
 
 ## Air-strafe: acelerar en el aire
 
@@ -1214,7 +1274,8 @@ vieja.
 | Distancia de aparición | distancia base del cono respecto al jugador |
 | Cadencia | milisegundos entre apariciones. Menos es más difícil |
 | Dianas simultáneas | x1 · x2 · x3 · x5 · x8 — cuántas a la vez; con explosivo, **cuántas en toda la ronda** |
-| Duración de Deathmatch | Sin límite · 3 · 5 · 10 minutos |
+| Duración de la sesión | La del modo · Sin límite · 30 s · 1 · 3 · 5 · 10 minutos — **vale para los dos modos** |
+| Ancho del cono de aparición | 6° a 110°, con el cono dibujado delante mientras lo mueves |
 | Dificultad de los muñecos | Fácil · Normal · Difícil — cono y reacción a la vez |
 | Modo dinámico | las dianas vivas se desplazan mientras están en pantalla |
 | Velocidad de patrulla | 1.5 a 8 u/s, sólo con el modo dinámico puesto |
@@ -1447,6 +1508,13 @@ quieres que correr penalice también el centro de masa.
 **Clásica** (esfera) y **Cono** comparten lógica: un disparo, una baja. Sólo
 cambia la geometría.
 
+> **Si vienes de una versión anterior:** entre las vueltas 70 y 78 estas dos
+> **no se rompían nunca**. Se ponían blancas al recibir el tiro —que es lo que
+> hace una zona que encaja un impacto y sobrevive— y se quedaban ahí. La causa
+> fue que la tabla de daño por zona se derivaba sólo del hitbox, y la zona única
+> de la Clásica y el Cono no estaba en ella, así que valía cero **en silencio**.
+> Está arreglado y lo guarda un banco; el detalle, en `docs/decisions.md` §78.1.
+
 **Hitbox completo** es una figura humanoide de tres zonas con vida compartida
 (`TARGET.maxHealth`, 100 por defecto):
 
@@ -1460,7 +1528,10 @@ Las combinaciones salen solas: piernas + torso deja 16 de vida, y cualquier
 tercer impacto remata. Un impacto que no mata hace parpadear su zona, para que
 se distinga de un fallo. Este tipo aparece **más lejos por defecto** (20 frente
 a 15.5), aunque el slider de distancia manda igual: al cambiar de tipo, la
-distancia salta al valor base de ese tipo y a partir de ahí la mueves tú.
+distancia salta al valor base de ese tipo y a partir de ahí la mueves tú. Lo
+mismo con **el ancho del cono de aparición**: 36° en Clásica y Cono, 110° en el
+hitbox —más ancho que el encuadre a propósito, para que alguno nazca fuera del
+cuadro— y a partir de ahí, tuyo.
 
 **El hitbox va siempre de pie en el suelo**, nunca flotando: es una figura
 humana. Su origen está en los pies (`anchor: 'feet'` en `TARGET_TYPES`), la

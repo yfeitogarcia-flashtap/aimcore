@@ -17,7 +17,7 @@
 
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { COVER, claveDeEscenario, coverColor, coverEdgeColor, coverHeight, definicionDeEscenario, fisicaDeEscenario, fondoDeEscenario, scenarioRoom } from '../config.js'
+import { COVER, ROUNDS, claveDeEscenario, coverColor, coverEdgeColor, coverHeight, definicionDeEscenario, fisicaDeEscenario, fondoDeEscenario, scenarioRoom } from '../config.js'
 import { crearFondo } from './backdrop.js'
 
 /**
@@ -135,6 +135,11 @@ export class Scenario {
    * Coloca el fondo donde toca. Lo llama quien dibuja, una vez por frame: es
    * una escritura de posición, sin reloj y sin estado.
    */
+  /** ¿Este mapa trae decorado detrás de sus paredes? */
+  get tieneFondo() {
+    return Boolean(this.fondo)
+  }
+
   seguirConFondo(camara) {
     this.fondo?.seguir(camara)
   }
@@ -167,6 +172,33 @@ export class Scenario {
       { x: spawn.x - 2.5, z: spawn.z, yaw: 0 },
       { x: spawn.x + 2.5, z: spawn.z, yaw: 0 },
     ]
+  }
+
+  /**
+   * **El corralito de la fase de compra, y lo dice el mapa** (vuelta 78).
+   *
+   * `duelo.cajaCompra` existe y se sanea desde la vuelta 77, y **nadie lo
+   * leía**: `Partida._cajaDe` cogía `ROUNDS.cajaCompra` siempre, así que el
+   * campo del editor era un control que el servidor ignoraba — el fallo de la
+   * vuelta 67 por la puerta del formato. Se lee aquí, junto a las salidas, y
+   * es seguro por lo mismo que la física de la 72: los dos extremos montan el
+   * mismo mapa y derivan la misma caja **sin que viaje ningún número**.
+   */
+  get cajaCompraDeDuelo() {
+    const suya = this.definition.duelo?.cajaCompra
+    return suya?.ancho > 0 && suya?.fondo > 0 ? suya : ROUNDS.cajaCompra
+  }
+
+  /**
+   * **La gracia con la que arranca una ronda** (vuelta 78), en milisegundos.
+   *
+   * Cero —lo que devuelve un mapa que no dice nada— es cómo se jugaba hasta
+   * aquí: se abre la caja de compra y ya se puede matar. Un mapa donde las
+   * salidas se ven, o donde se sale a campo abierto, puede pedir un respiro sin
+   * que eso cambie el resto de los mapas.
+   */
+  get invulnerabilidadDeDuelo() {
+    return this.definition.duelo?.invulnerabilidadMs ?? 0
   }
 
   /**

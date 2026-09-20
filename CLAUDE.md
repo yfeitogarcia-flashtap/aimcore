@@ -351,6 +351,123 @@ suelo por los pelos, contando el escalón— y la `atalaya` **6.0** —ahí sól
 llega desde una torre—. Si algún día cambia esa gravedad, esas dos alturas se
 recalculan con ella.
 
+**En Alchemist, todo lo configurable se coloca viendo el efecto** (vuelta 78).
+**Ésta es la convención permanente del editor**, no un arreglo de una fase:
+cualquier cosa que un mapa pueda declarar necesita **una forma 100% visual de
+ponerla y ajustarla** —arrastrándola por la rejilla, con su imán y su cuadrado
+de rejilla, viendo lo que cambia— y no sólo un campo numérico. Los números se
+quedan, al lado, para afinar a la décima; lo que no se queda es que sean la
+única puerta.
+
+El porqué no es estético. **La mayoría de quien vaya a usar Alchemist no ha
+construido nunca en 3D**, y «Salida 2 · Z: −16» no dice *dónde* cae eso hasta
+que se prueba el mapa: un campo sin representación no es una interfaz austera,
+es una barrera de entrada. Es además la misma regla que el juego ya se aplica a
+sí mismo desde esta vuelta con el cono de aparición —el panel de opciones
+dibuja el abanico delante mientras lo mueves— y la que lleva puesta desde la
+74: «probar es el motor, no una vista previa».
+
+Cómo se cumple, que es lo que hay que respetar al añadir la fase siguiente:
+
+- **El dibujo sale del dato, no al revés.** Lo que se pinta es `duelo.salidas`,
+  `spawnZone` y `duelo.cajaCompra` tal cual; arrastrar escribe en el mapa y
+  repintar lo vuelve a leer de ahí. Un estado intermedio «la posición del
+  gizmo» sería una segunda verdad que se despega del fichero.
+- **El mismo gesto que una pieza.** Se arrastra igual, cuadra con la misma
+  rejilla y se elige con el mismo clic. Aprender a colocar una caja tiene que
+  servir para colocar una salida.
+- **Y lo que se pincha se decide por prioridad, no por distancia.** Un área es
+  un volumen que **contiene** los conos y las piezas que hay dentro, así que
+  mirando desde arriba su cara superior está siempre delante: con la distancia
+  sola, la banda de aparición de El Espejo se comía el clic de sus dos salidas
+  y de media docena de piezas. El orden es el del tamaño del gesto —tirador,
+  cuerpo, pieza, área—, y a igualdad, el más cercano.
+- **Y no son geometría.** Fuera de `Scenario`, fuera de los oclusores y fuera
+  del presupuesto: son ayudas de autor, como los láseres.
+
+**El panel vuelve al lateral, con raíl de iconos y ancho arrastrable** (vuelta
+78). La 77 lo puso flotante y centrado con un argumento correcto —una barra
+fija de 300 px no escala a once secciones, y `menu62` ya había enseñado a dónde
+lleva eso— pero lo resolvió rompiendo lo que la herramienta hace: **construir es
+mirar el mapa**, y un panel centrado tapa justo la parte que se está tocando. Se
+abría para mover un número, se cerraba para mirar, se volvía a abrir.
+
+El raíl resuelve las dos cosas, y por eso no es volver atrás: **las secciones
+crecen por el raíl** —un icono más en una lista vertical de 56 px— y la columna
+de contenido no se entera, así que el problema de escala de la 77 no puede
+volver. Cuatro reglas:
+
+- **El raíl está siempre puesto**, abierto el panel o no: es la única pista
+  permanente de qué se puede configurar. Y **cada icono lleva su palabra
+  debajo**, porque un raíl de pictogramas es un examen.
+- **El ancho lo decide quien construye**, arrastrando el borde, y se recuerda:
+  colocar piezas y escribir una física piden anchos distintos y cambiarlo cada
+  vez sería el ajuste que nadie usa.
+- **Una columna, siempre.** El panel de la 77 iba a dos columnas por encima de
+  720 px, y ahí es donde se perdió el botón de apilar: con `columns`, el orden
+  de lectura deja de ser el orden del documento y una acción cae donde nadie la
+  busca. **Se dio por desaparecido, y estaba.**
+- **Y los atajos se leen sin abrir nada**, en una esquina que se pliega. Un
+  editor con teclas escondidas dentro de un panel que hay que abrir es un editor
+  sin teclas: quien no las sabe no va a buscarlas ahí. La lista sale de una
+  tabla, no escrita a mano en el HTML.
+
+**Y una acción que se busca con el dedo tiene gesto, no sólo botón** (vuelta
+78): apilar es además **clic derecho sobre la pieza** —fuera de una pieza el
+clic derecho sigue orbitando— y **R/F** suben y bajan la elegida del paso de la
+rejilla, enteras. Colocar en altura pedía abrir el panel, encontrar «Base» y
+escribir un número, o sea salir de la vista para mover algo que se está mirando.
+
+**Las teclas de herramienta son suyas y no se sobrecargan** (vuelta 78). El
+plantado de muñecos sólo se podía apagar desde el panel, y el panel se abre con
+ESPACIO — **que volando es subir**: con el God mode puesto no había forma de
+volver a disparar de verdad sin salir de la prueba entera. Son **F1** (plantar),
+**F2** (volar, y la **G** se queda porque ya estaba en los dedos) y **F3**
+(limpiar), y son de esta página: `KEYBINDS` es el mapa saneado y reasignable del
+jugador, y una tecla que no existe en ninguna partida no tiene por qué gastarle
+una entrada. Lo que cambia se dice en el HUD, porque probando no hay panel a la
+vista y un interruptor que se mueve en silencio es un interruptor que no se sabe
+en qué posición está.
+
+**Y el vuelo del editor no puede ser el modelo del aire** (vuelta 78). `_volar`
+llamaba a `_updateHorizontal`, y como el vuelo fuerza `airborne`, ahí manda el
+vector de velocidad guardado y **no las teclas**: con `_airVelX/_airVelZ` a cero
+—que es como se entra a volar— esa función se sale en la primera línea, así que
+**volando no se movía uno de sitio en ninguna dirección**; lo poco que se movía
+era la inercia que quedara de un salto. Ahora el paso se resuelve como el de a
+pie —`_readWish` y `_moveTo`, con la colisión puesta— a la marcha del vuelo.
+Medido: 8.10 u de avance con W en 1.08 s de mundo, y lo mismo atrás, de lado y
+en vertical.
+
+**Un mapa puede repartir gracia al empezar la ronda** (vuelta 78).
+`duelo.invulnerabilidadMs` lo declara el mapa, lo lee
+`scenario.invulnerabilidadDeDuelo` y lo aplica `Partida._empezarRonda`; a 0 —lo
+que devuelve un mapa que no dice nada— el duelo se comporta exactamente como
+antes. Cuatro cosas:
+
+- **Va en número de paso**, como `vivoEn` y como el reloj de la ronda. Con un
+  instante de pared sería un tercer reloj que no comparte nadie y que seguiría
+  corriendo en pausa, que es el agujero que la vuelta 54 ya cerró dos veces.
+- **Se mira en `_aplicarDano` y no en quien dispara**: es el único sitio por el
+  que pasan las cuatro formas de hacer daño —bala, cuchillada, cuchillada por la
+  espalda, y lo que venga—, así que una comprobación arriba sería una
+  comprobación que hay que acordarse de repetir. El disparo **recibe su
+  veredicto** igual; lo que no hace es tocar el mundo.
+- **Y lo que queda viaja en la foto** (`inv`), calculado por el servidor como el
+  reloj de la ronda y por la misma razón: los relojes de las dos pantallas y el
+  suyo no coinciden. El marco azul del HUD existe desde el entrenamiento y lo
+  único que le faltaba en el duelo era el número, que iba en cero fijo.
+- **La gracia es de empezar la ronda, no de reaparecer.** Sin rondas en marcha,
+  quien vuelve lo hace con las mismas reglas que tenía al caer.
+
+**Y de paso se arregló un campo que nadie leía** (vuelta 78):
+`duelo.cajaCompra` existe y se sanea desde la 77, y `Partida._cajaDe` cogía
+`ROUNDS.cajaCompra` **siempre**. O sea que el editor escribía un número que el
+servidor ignoraba, que es el fallo de la vuelta 67 por la puerta del formato. Lo
+lee `scenario.cajaCompraDeDuelo`, y es seguro por lo mismo que la física de la
+72: los dos extremos montan el mismo mapa y derivan la misma caja sin que viaje
+ningún número.
+
 **El editor de mapas, y las cinco reglas que lo hacen seguro** (vuelta 74,
 fase 1). Se dibuja en `/editor/` y se prueba ahí mismo **con el motor de
 verdad**. Lo que hay que respetar al seguir construyéndolo:
@@ -545,12 +662,19 @@ clave de `FONDOS` y `src/game/backdrop.js` pinta con ella una textura
 equirectangular en un canvas, al montar el escenario. Vive en `Scenario`, así
 que sale igual entrenando, en el duelo y en el editor (vuelta 63). Cuatro cosas:
 
-- **No es un asset, y eso es una decisión pendiente y no una limitación.** Un
-  panorama fotográfico sería **el primer asset externo del proyecto**: el
-  argumento en contra es el mismo que hizo revertir el audio grabado en la
-  vuelta 63 —que corra en cualquier PC sin descargar nada, y que verse así sea
-  lo que es Vektor—. La puerta es una clave más en el catálogo; no se ha cruzado
-  sin preguntar.
+- **No es un asset, y eso sigue sin decidirse — pero ya se puede mirar**
+  (vuelta 78). Un panorama fotográfico sería **el primer asset externo del
+  proyecto**, y el argumento en contra es el mismo que hizo revertir el audio
+  grabado en la vuelta 63: que corra en cualquier PC sin descargar nada, y que
+  verse así sea lo que es Vektor. Lo que la 78 abre no es la decisión, es poder
+  tomarla con la foto delante: se deja un `.jpg` en `public/fondos/`, el editor
+  lo ofrece junto a los cuatro dibujados y se juega con él puesto. Tres cosas lo
+  hacen seguro mientras se decide: **el mapa declara un objeto con su ruta y no
+  una clave**, así que en su fichero se ve que depende de un archivo y el
+  saneado lo dice en voz alta; **la ruta va acotada** a esa carpeta y a
+  extensiones de imagen, porque un `fondo` con una URL cualquiera sería un mapa
+  capaz de hacer que el juego pida lo que sea con sólo abrirlo; y **el mundo no
+  la espera**, que si no llega, el mapa se juega con el fondo apagado.
 - **No es geometría del mapa.** Fuera de `this.group`, **fuera de
   `occluders`** y fuera del presupuesto: ningún rayo le pregunta nada. Montarlo
   como una pieza más sería una pared invisible a ciento sesenta unidades que
@@ -1221,6 +1345,20 @@ se reconstruye con la misma disciplina que el avatar —cúpula, faldón y una v
 **que sobresale**—, porque sin luces lo único que distingue una pieza de otra es
 la silueta, y una visera metida dentro de la cúpula no cambia la silueta.
 
+**Una zona de disparo desconocida valía cero, en silencio** (vuelta 78). La
+tabla de `zoneDamage` salía **sólo** de `TARGET_TYPES.hitbox` —`head`, `torso`
+y `legs`— y la Clásica y el Cono declaran una sola zona, `single`. Desde la
+vuelta 70, cuando `applyHit` dejó de leer `part.damage` y pasó a preguntar por
+la zona, **un disparo a una diana clásica devolvía 0 y la diana no moría
+nunca**: parpadeaba de blanco —que es lo que hace una zona que encaja un
+impacto y sobrevive— y se quedaba ahí. No dio ni un error, y ésa es la lección.
+Ahora la tabla se deriva **del catálogo entero**, que es donde están escritas
+las zonas que el juego puede producir, y la excepción de no escalar sale del
+número y no del nombre: **lo que ya vale una vida entera no se escala**, que
+cubre la cabeza (por la regla del casco) y la zona única (que es el blanco
+entero) por el mismo motivo. `dianas78` comprueba que ninguna zona del catálogo
+hace cero daño.
+
 **El jugador también es un blanco, y sus zonas son las del muñeco.** Desde que
 los muñecos disparan, un disparo recibido tiene que caer en algún sitio, y ese
 sitio sale de `TARGET_TYPES.hitbox.parts` escalado a la altura de ojos del
@@ -1471,6 +1609,42 @@ una forma legítima de llegar a la bomba. **El cupo se descuenta cuando la diana
 sale, no cuando se intenta** —un intento sin punto visible se reintenta— y se
 comprueba también dentro de `_spawn`, porque la primera la siembra `beginSession`
 por su cuenta. Fuera de ese modo, el respawn es el de siempre.
+
+**La duración de una sesión es del jugador, no de un modo** (vuelta 78).
+`SETTINGS.sessionDuration` se aplica a los dos modos y su valor de fábrica,
+`mode`, es «la del modo»: 30 s jugando ahora y sin límite en Deathmatch, que es
+exactamente lo que hacía el juego hasta la 77. Hasta aquí ese ajuste se llamaba
+`deathmatchDuration` y **sólo lo leía un modo**, así que ponerlo en «sin
+límite» con dianas clásicas dejaba el control puesto y el cronómetro contando
+igual — un control que promete lo que el juego ignora, que es el fallo de la
+vuelta 67. La ronda con explosivo **sigue siendo suya**: su cuenta atrás *es* el
+reloj de esa sesión. Y renombrar un ajuste se traduce, no se tira: quien
+tuviera cinco minutos puestos los conserva (la hermana de `LEGACY_WEAPON_KEYS`,
+aplicada al nombre del ajuste en vez de al de su valor).
+
+**El abanico de aparición se toca y se ve** (vuelta 78). `SETTINGS.spawnConeDeg`
+es la apertura **total** del cono en la sala vacía —el semiángulo es una cuenta
+que el jugador no tiene por qué hacer— y con el panel abierto el motor la dibuja
+delante de la cámara (`src/game/spawnCone.js`). Cuatro reglas:
+
+- **El dibujo sale de las mismas cuentas que sortean una diana**: el eje se lo
+  pide a `Targets` (`ejeDeAparicion`, que es quien acota el cabeceo) y el rango
+  de distancias también. Con una copia de la fórmula sería un dibujo que promete
+  un sitio donde no aparece nadie.
+- **No se enciende donde no significa nada.** Con escenario las dianas salen en
+  puntos de ruta, así que ahí no se dibuja: es la misma razón por la que el panel
+  ya avisa de que la distancia tampoco se aplica.
+- **El valor de fábrica es de cada tipo de diana** (`TARGET_TYPES[x].spawnConeDeg`,
+  36 en Clásica y Cono y 110 en el hitbox) y cambiar de tipo lo arrastra, igual
+  que la distancia desde siempre. `SPAWN.coneHalfAngleDeg` pasa a **derivarse**
+  de ahí, no al revés.
+- **Y no se puede cerrar del todo**: con 0 las dianas saldrían todas en la misma
+  recta, que no es un aim trainer, es un metrónomo.
+
+**Y `spawnDistance` sí tiene efecto, en la sala vacía y sólo ahí.** Medido en
+sus dos extremos: pedidos 8 u salen a 7.94 y pedidos 21 —su tope, que lo pone la
+sala vía `computeMaxSpawnDistance`— salen a 20.54, sobre 25 dianas cada uno. Con
+escenario no se aplica, y el panel lo dice desde que existe.
 
 **Las estrellas puntúan cumplir un objetivo, así que en Deathmatch no salen.** La
 mitad de la nota es el tiempo, y ese tiempo se mide contra lo que tardaste en
@@ -2197,6 +2371,38 @@ añades un arma, ponle su objetivo; sin él se cae a la precisión en bruto.
 **Las estrellas no llevan color.** El naranja es de las dianas y el ámbar del
 explosivo: una estrella teñida se confunde de reojo con cualquiera de los dos. El
 contraste va por forma —relleno blanco contra contorno apagado—, no por tono.
+
+**Cinco estrellas es una partida impecable, y hasta la vuelta 78 era
+inalcanzable.** El componente de ritmo era `1 − transcurrido / 45 s`, o sea que
+la nota máxima pedía **desactivar al instante**; despejando el corte viejo,
+cinco estrellas exigían hacerlo en **10.8 s** con la precisión llena, sin un
+rasguño y sin morir — y sólo la pulsación de desactivar dura 3 s. Una partida
+perfecta de 18 s daba 0.833, o sea **cuatro**; una perfecta de 30 s, tres. El
+techo no estaba calibrado alto: estaba fuera de alcance, y de ahí venía la
+sensación de que las cinco estrellas no existen. Tres cambios, y los tres son
+la misma idea —que lo que se mide tenga suelo y techo alcanzables—:
+
+- **El tiempo se mide contra un par** (`SCORING.timeParMs`, 20 s): por debajo
+  vale 1 y de ahí a que reviente la bomba cae en recta. Los 20 s salen de sumar
+  lo que cuesta llegar (8.1 s en diagonal por el Plano A), la desactivación (3 s)
+  y margen para el combate del camino. El par se acota por debajo de la cuenta
+  atrás: igualarlo dejaría el componente a 1 siempre, que es un techo sin suelo
+  (vuelta 57).
+- **El daño deja de ser un acantilado.** Con la referencia en 100, una ráfaga
+  de dos balas al torso ponía el componente a cero y no había forma de
+  distinguir «me han rozado» de «me han barrido». Ahora son **tres barras de
+  vida**, y una bala al torso cuesta 0.014 de nota contra los 0.042 de antes:
+  **no es lo que decide una estrella**, que era la queja.
+- **Y los cortes se recortan** a 0.95 / 0.78 / 0.56 / 0.34. El 0.95 deja fuera
+  una muerte —que hunde dos componentes a la vez— y deja dentro un par de balas
+  encajadas; los otros tres bajan porque con el par la escalera entera se ha
+  movido, y lo que se quería es que cuatro estrellas fuera «he jugado bien» y no
+  «he jugado perfecto y he tardado un poco».
+
+Medido sobre las mismas ocho partidas, antes y después: impecable 4★ → **5★**,
+impecable con una bala 4★ → **5★**, impecable con una muerte 3★ → **4★**, muy
+buena 3★ → **4★**, buena 2★ → **3★**, normal 2★ → **2★**, floja 1★ → **1★**. La
+tabla entera, en `docs/decisions.md` §78.
 
 **La puntuación normaliza por la suma de los pesos, no por el número de
 variables.** Es lo que hace que una variable a peso 0 sea de verdad inerte, y lo
@@ -3158,6 +3364,22 @@ reescribe el registro, y el registro lo importa `config.js`: la página se recar
 (vuelta 61) aplicado al editor — `editor74`, `hist75` y `ed76` no se pasan a la
 vez que la batería del entrenamiento.
 
+**Y un banco en rojo puede estar midiendo un mapa, no el juego** (vuelta 78).
+Tres suites de la batería llevaban en rojo desde que se fusionaron las ediciones
+a mano de los mapas oficiales, y ninguna de las tres tenía nada que ver con el
+juego: dos contaban **cuántos escenarios hay** con un número escrito a mano —y
+había aparecido un tercero— y la otra clasificaba los puestos ciegos leyendo
+`spawnZone`, que en el Plano A editado quedó **vacía**. La propiedad que
+guardaba seguía cumpliéndose —plantado en el spawn se ven cero puntos— y aun así
+salía roja.
+
+Cómo se distingue, y es lo repetible: **`git stash`, reiniciar, y volver a pasar
+la suite contra el código de antes**. Verde con el viejo y rojo con el nuevo es
+una regresión; rojo con los dos es otra cosa. Aquí de cuatro rojas, **tres eran
+de antes** y una era mía. Y la lección de fondo es la de siempre por otra
+puerta: un banco que sabe cuántos escenarios hay no prueba el selector, prueba
+un número.
+
 **Si un resultado te parece extraño, reinicia el servidor de desarrollo antes de
 creerte el diagnóstico.** No depures un falso negativo durante media hora.
 
@@ -3502,22 +3724,32 @@ cara de al lado moviendo **por un solo eje**, giro de 90°, **deshacer/rehacer**
 WASD** con el puntero sobre el mapa, y un **presupuesto medido** que enseña lo
 que cuesta la colisión de tu mapa con su denominador al lado.
 
-**Y desde la vuelta 77 el panel flota** (ESPACIO lo abre y lo cierra, o un clic
-fuera), con cinco pestañas —Mapa, Construir, Duelo, Probar, Archivo— y una barra
-arriba que lleva el estado y los dos botones que se usan cada poco. La vista
-entera es del mapa.
+**Y desde la vuelta 78 el panel es lateral, con raíl de iconos** —Mapa,
+Construir, Duelo, Probar, Archivo, cada uno con su palabra debajo—, **de ancho
+arrastrable y recordado**, con ESPACIO para abrirlo y cerrarlo y una barra
+arriba con el estado y los dos botones de siempre. Los **atajos se leen en una
+esquina** sin abrir nada. La 77 lo había puesto flotante y centrado, y eso tapa
+justo lo que se está construyendo; el raíl deja que las secciones crezcan sin
+estirar la columna, que era el problema que la 77 venía a resolver.
 
-**La fase 3 está construida**: salidas con su rumbo y un botón para que se miren
-—más una medida que dice la distancia **y si hay línea de visión entre ellas**—,
-zona de aparición y caja de compra **como áreas**, simetría por giro de 180° con
-su comprobación de parejas, física propia del mapa con la cuenta del ápice
-delante, y «sin economía» con su dotación. Y un **fondo panorámico 360°**
-(`FONDOS`: noche, ciudad, volcán y nave), dibujado en un canvas, sin colisión y
-fuera del presupuesto.
+**La fase 3 está construida, y desde la vuelta 78 se coloca viendo el efecto**:
+las salidas son **conos del color de su equipo que se arrastran por la
+rejilla**, con una flecha cuya punta se agarra para girarlas; la zona de
+aparición y las cajas de compra son **cajas translúcidas** que se mueven y se
+estiran por una esquina —y se dibujan **todas** las bandas, no la primera—; los
+números siguen ahí, al lado, para afinar a la décima. Más: simetría por giro de
+180° con su comprobación de parejas, física propia con **cuatro recetas de
+partida** que dicen cuánto se sube de un salto, «sin economía» con su dotación,
+**gracia de inicio de ronda** y un botón «por defecto» por valor. Y un **fondo
+panorámico 360°** (`FONDOS`: noche, ciudad, volcán y nave) dibujado en un
+canvas, más **la vía de la foto** abierta para valorarla (`public/fondos/`): sin
+colisión, fuera del presupuesto, y con la rejilla de los muros apagada debajo.
 
-Al probar salen **la mira y el HUD del juego**, y tres interruptores: si hay
-muñecos, si **el disparo planta un muñeco** donde acabe el rayo, y **God mode**
-(tecla **G**) para volar y poder apuntar a una cornisa desde arriba.
+Al probar salen **la mira y el HUD del juego**, y tres interruptores con **tecla
+propia**: si hay muñecos, si **el disparo planta un muñeco** donde acabe el rayo
+(**F1**) y **God mode** (**F2**, o la **G** de siempre) para volar —en las seis
+direcciones, con la colisión puesta— y poder apuntar a una cornisa desde arriba.
+**F3** quita los muñecos plantados.
 
 Lo que todavía no hace —y son las fases 4 y 5 de
 `docs/propuestas/05-editor-de-mapas.md`—: rampas, vanos y métricas de mapa en
@@ -3849,13 +4081,23 @@ precios y sin comprar: no hay economía todavía.
 
 **Opciones** (accesibles antes de empezar y desde la pausa, persistidas):
 escenario, sensibilidad, **sensibilidad con mirilla**, tipo de diana,
-**duración de Deathmatch**
-(sin límite / 3 / 5 / 10 minutos), tamaño de diana, distancia de spawn, cadencia
+**duración de la sesión** —la del modo / sin límite / 30 s / 1 / 3 / 5 / 10
+minutos, y **vale para los dos modos** desde la vuelta 78—, tamaño de diana,
+distancia de spawn, **ancho del cono de aparición** (que se ve dibujado delante
+mientras se mueve), cadencia
 de aparición, dianas simultáneas, límite de FPS, **audio espacial**, mensajes de
 ayuda, **dificultad de los muñecos**,
 modo dinámico y **velocidad de
 patrulla** (1.5–8 u/s, por defecto 4: `TARGET.moveSpeed` pasa a ser sólo el valor
 por defecto del ajuste, y el motor lee el del store).
+
+**Y el panel abre por arriba** (vuelta 78). Abría por el final, y no porque
+recordara nada: el `autoFocus` estaba en «Volver», que es el **último** elemento
+de un panel que además *es* el contenedor con scroll, así que el navegador lo
+traía a la vista al montar y con él arrastraba la lista entera — el primer
+ajuste no se veía nunca. El foco tiene que ir a alguna parte, así que va **al
+panel**, que está arriba del todo, y el `scrollTop` se pone a cero además de
+eso.
 
 Cada ajuste lleva **su propio botón «por defecto»** junto a su etiqueta, que
 restablece sólo ese; el **Restablecer** del final sigue restableciéndolos todos.
@@ -3896,7 +4138,7 @@ compra en la tienda del 1v1, y en el mapa que reparte (vuelta 72) tampoco.
 de `docs/propuestas/01-escenario-cobertura.md`. No los construyas hasta que el
 Plano A esté validado jugando.
 
-**El editor visual de mapas está a medias, y a propósito** (vueltas 74-77). Las
+**El editor visual de mapas está a medias, y a propósito** (vueltas 74-78). Las
 **fases 1, 2 y 3 están construidas** —ver §3 y §5—; las fases 4 y 5 están
 diseñadas y sin tocar en `docs/propuestas/05-editor-de-mapas.md`. Lo que hay que
 saber antes de seguir, porque es lo que decide el alcance:

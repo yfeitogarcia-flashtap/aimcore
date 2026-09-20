@@ -11,7 +11,7 @@
  */
 
 import {
-  DEATHMATCH_DURATIONS,
+  SESSION_DURATIONS,
   ENEMY_DIFFICULTIES,
   LEGACY_WEAPON_KEYS,
   FRAME_LIMITS,
@@ -37,7 +37,7 @@ const CATALOGS = {
   // El del duelo no se elige aquí (vuelta 66): es de un modo que ni siquiera
   // pasa por este store. Misma idea que el arma y su ranura.
   scenario: TRAINER_SCENARIOS,
-  deathmatchDuration: DEATHMATCH_DURATIONS,
+  sessionDuration: SESSION_DURATIONS,
   enemyDifficulty: ENEMY_DIFFICULTIES,
   targetType: TARGET_TYPES,
   // **El catálogo del arma es el de las principales, no el de todas.** La
@@ -124,7 +124,15 @@ export function sanitizeSettings(raw) {
     // mismo arma con otro nombre, y tirarlo a fábrica sería cambiarle el arma a
     // quien ya la tenía elegida. Lo que no esté en la tabla sigue el camino de
     // siempre: si el catálogo no lo conoce, cae al valor por defecto.
-    const value = key === 'weapon' ? LEGACY_WEAPON_KEYS[raw[key]] ?? raw[key] : raw[key]
+    let value = key === 'weapon' ? LEGACY_WEAPON_KEYS[raw[key]] ?? raw[key] : raw[key]
+    // **Y un ajuste que cambia de nombre se traduce, no se tira** (vuelta 78).
+    // `deathmatchDuration` pasó a ser `sessionDuration` al dejar de valer sólo
+    // para un modo. Los valores del catálogo son los mismos, así que lo único
+    // que hay que hacer es mirar la clave vieja cuando no está la nueva: es la
+    // misma idea que `LEGACY_WEAPON_KEYS`, aplicada al nombre del ajuste en vez
+    // de al de su valor. Sin esto, a quien tuviera puestos cinco minutos de
+    // Deathmatch se le habría quedado en fábrica sin explicación.
+    if (key === 'sessionDuration' && value === undefined) value = raw.deathmatchDuration
     if (Object.prototype.hasOwnProperty.call(CATALOGS[key], value)) result[key] = value
   }
   return result
@@ -182,14 +190,23 @@ export function getSettings() {
 export function updateSettings(patch) {
   const next = sanitizeSettings({ ...current, ...patch })
 
-  // Cambiar de tipo de diana arrastra su distancia base: el hitbox tiene que
-  // salir más lejos que la esfera. El slider sigue mandando después.
+  // Cambiar de tipo de diana arrastra su distancia base y **su abanico**: el
+  // hitbox tiene que salir más lejos que la esfera y con un frente mucho más
+  // ancho. Los dos sliders siguen mandando después.
   if (patch.targetType !== undefined && patch.targetType !== current.targetType) {
+    const tipo = TARGET_TYPES[next.targetType]
     if (patch.spawnDistance === undefined) {
       next.spawnDistance = clamp(
-        TARGET_TYPES[next.targetType].defaultDistance,
+        tipo.defaultDistance,
         SETTINGS.spawnDistance.min,
         SETTINGS.spawnDistance.max,
+      )
+    }
+    if (patch.spawnConeDeg === undefined) {
+      next.spawnConeDeg = clamp(
+        tipo.spawnConeDeg,
+        SETTINGS.spawnConeDeg.min,
+        SETTINGS.spawnConeDeg.max,
       )
     }
   }

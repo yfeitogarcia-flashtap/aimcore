@@ -9,7 +9,7 @@ import {
 import {
   COLORS,
   CROSSHAIR,
-  DEATHMATCH_DURATIONS,
+  SESSION_DURATIONS,
   FEEDBACK,
   MOVEMENT,
   NET,
@@ -180,6 +180,16 @@ export default function App() {
   const swallowClick = useCallback((event) => event.stopPropagation(), [])
   const openOptions = useCallback(() => setOptionsOpen(true), [])
   const closeOptions = useCallback(() => setOptionsOpen(false), [])
+
+  /**
+   * **Con el panel abierto se ve el abanico de aparición** (vuelta 78). Es lo
+   * único que hace falta por este lado: el cono es geometría del mundo y lo
+   * dibuja el motor, que además es el único que sabe si en este escenario el
+   * cono decide algo.
+   */
+  useEffect(() => {
+    engineRef.current?.mostrarConoDeAparicion(optionsOpen)
+  }, [optionsOpen])
   const openArmoury = useCallback(() => setArmouryOpen(true), [])
   const closeArmoury = useCallback(() => setArmouryOpen(false), [])
 
@@ -192,9 +202,13 @@ export default function App() {
    * sitio donde se ve antes de empezar.
    */
   const deathmatch = scenarioHasCover(settings.scenario)
-  const duration = DEATHMATCH_DURATIONS[settings.deathmatchDuration]
+  // **Y la duración elegida vale para los dos modos** (vuelta 78), así que el
+  // rótulo la resuelve igual que el motor: `mode` es «la del modo», y ahí el
+  // Deathmatch sigue siendo sin límite.
+  const elegida = SESSION_DURATIONS[settings.sessionDuration]
+  const segundosDeathmatch = elegida.seconds ?? 0
   const deathmatchLabel = deathmatch
-    ? `${SESSION_MODES.deathmatch.label}${duration.seconds > 0 ? ` · ${duration.label}` : ' ∞'}`
+    ? `${SESSION_MODES.deathmatch.label}${segundosDeathmatch > 0 ? ` · ${elegida.label}` : ' ∞'}`
     : SESSION_MODES.deathmatch.plainLabel
 
   const optionsPanel = (

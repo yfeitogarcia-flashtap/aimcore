@@ -127,6 +127,10 @@ export class MovementController {
     this.feetY = 0
     this.verticalVelocity = 0
     this.airborne = false
+    /** **Vuelo del editor.** Aquí y no sólo en `setVolando`: un campo que se
+     * lee antes de escribirse vale `undefined`, y `undefined` no es `false`
+     * para quien lo compare. */
+    this.volando = false
     /** Altura de los ojos sobre los pies. Sólo el agachado la mueve. */
     this.eyeHeight = MOVEMENT.standHeight
     /**
@@ -701,12 +705,22 @@ export class MovementController {
   }
 
   /**
-   * **El vuelo del editor**: la horizontal de siempre —con su colisión, que es
-   * lo que impide colarse dentro de una caja— y la vertical a mano.
+   * **El vuelo del editor**: las teclas mandan directamente, con la colisión de
+   * siempre y sin gravedad.
    *
    * La colisión horizontal se conserva a propósito: volar **a través** de la
    * geometría haría imposible juzgar si una cornisa se defiende, que es justo
    * para lo que se vuela. Lo que se quita es la gravedad y el suelo.
+   *
+   * **Y la horizontal no puede ser la del aire** (vuelta 78). La primera
+   * versión llamaba a `_updateHorizontal`, y como el vuelo fuerza `airborne`,
+   * ahí manda el modelo vectorial: la velocidad guardada, no las teclas. Con
+   * `_airVelX`/`_airVelZ` a cero —que es como se entra a volar— esa función
+   * **se sale en la primera línea**, así que volando no se movía uno de sitio
+   * en ninguna dirección; lo poco que se movía era la inercia que quedara de un
+   * salto anterior. Aquí el paso se resuelve como el de a pie —`_readWish` y
+   * `_moveTo`— pero a la marcha del vuelo, que es lo que hace que cruzar el
+   * mapa por arriba no cueste un minuto.
    */
   _volar(dt) {
     // Sin gravedad no hay vuelo que resolver: el estado del despegue se limpia
@@ -717,8 +731,18 @@ export class MovementController {
     this._launchY = this.feetY
     this._launchVelocity = 0
     this.verticalVelocity = 0
+    // Y la velocidad del aire también, o al apagar el vuelo se saldría
+    // disparado con la marcha que se traía de antes de encenderlo.
+    this._airVelX = 0
+    this._airVelZ = 0
 
-    this._updateHorizontal(dt)
+    if (this._readWish()) {
+      const position = this.camera.position
+      const fromX = position.x
+      const fromZ = position.z
+      const paso = EDITOR.vuelo * dt
+      this._moveTo(fromX, fromZ, fromX + this._wishX * paso, fromZ + this._wishZ * paso, dt)
+    }
     const sube = Number(Boolean(this.keys.jump)) - Number(Boolean(this.keys.crouch))
     this.feetY = Math.max(this.feetY + sube * EDITOR.vuelo * dt, 0)
     this.camera.position.y = this.feetY + this.eyeHeight
