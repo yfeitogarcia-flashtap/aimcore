@@ -10,7 +10,7 @@
 # El paso a paso de cómo se despliega esto está en `docs/despliegue-fly.md`.
 # Cámbiale el nombre a la aplicación y nada más.
 
-app = 'vektor'
+app = "ancient-violet-678"
 
 # **París y no Madrid**, y no por gusto: Fly cerró la región de Madrid (`mad`) en
 # la consolidación de 2025. Son unos 15 ms más de ida y vuelta desde España,

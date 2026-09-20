@@ -10,7 +10,25 @@
  * juego: está para poder decir el coste sin ir a mirar la carpeta.
  */
 
-export const WEAPON_SAMPLES = {}
+export const WEAPON_SAMPLES = {
+  'pulse': {
+    reload: { url: '/audio/weapons/pulse-reload.wav', bytes: 197810 },
+    suppressed: { url: '/audio/weapons/pulse-suppressed.wav', bytes: 101810 },
+    normal: { url: '/audio/weapons/pulse.wav', bytes: 197810 },
+  },
+  'rift': {
+    reload: { url: '/audio/weapons/rift-reload.wav', bytes: 197810 },
+    suppressed: { url: '/audio/weapons/rift-suppressed.wav', bytes: 101810 },
+    normal: { url: '/audio/weapons/rift.wav', bytes: 293810 },
+  },
+  'volt': {
+    reload: { url: '/audio/weapons/volt-reload.wav', bytes: 197810 },
+    suppressed: { url: '/audio/weapons/volt-suppressed.wav', bytes: 101810 },
+    normal: { url: '/audio/weapons/volt.wav', bytes: 101810 },
+  },
+}
 
 /** Sonidos que no son de un arma en concreto. Hoy: `dry`, el cargador vacío. */
-export const COMMON_SAMPLES = {}
+export const COMMON_SAMPLES = {
+  dry: { url: '/audio/comunes/gatillo-seco.wav', bytes: 101810 },
+}
