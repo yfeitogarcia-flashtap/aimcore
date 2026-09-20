@@ -7,7 +7,10 @@
  *    `n`, y los dos extremos la ejecutan con `now = n · SIM_STEP_MS`. No hay
  *    `performance.now()` de nadie en la simulación: el reloj del cliente y el
  *    del servidor no tienen por qué coincidir, pero el número de paso sí.
- * 2. **Las teclas viajan como máscara**, en un orden fijo. Siete bits.
+ * 2. **Las teclas viajan como máscara**, en un orden fijo. Ocho bits desde la
+ *    vuelta 83, que es cuando la tecla contextual pasó a ser del movimiento:
+ *    la tirolina se engancha y se suelta con ella, así que tiene que viajar o
+ *    el servidor reejecutaría un jugador que nunca se agarra a nada.
  * 3. **La pulsación de salto lleva su fracción de paso.** La ventana de
  *    encadenado son 130 ms medidos entre la pulsación y el aterrizaje exacto
  *    (vuelta 44), así que redondear la pulsación al paso se cargaría 16.7 ms de
@@ -19,8 +22,12 @@
  */
 import { SIM_STEP_MS } from '../src/config.js'
 
-/** Orden fijo de los bits. Añadir una acción es añadirla **al final**. */
-export const ACCIONES = ['forward', 'back', 'left', 'right', 'jump', 'crouch', 'walk']
+/**
+ * Orden fijo de los bits. Añadir una acción es añadirla **al final**: los dos
+ * extremos leen esta misma lista, así que meterla por el medio le cambiaría el
+ * significado a todos los bits de detrás.
+ */
+export const ACCIONES = ['forward', 'back', 'left', 'right', 'jump', 'crouch', 'walk', 'use']
 
 export function empaquetarTeclas(teclas) {
   let mascara = 0

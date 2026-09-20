@@ -10,7 +10,7 @@
  * Nada de geometría: eso es de `scenario.js`, que monta **estos mismos datos**.
  */
 
-import { COVER, FONDOS, PRIMARY_WEAPONS, ROOM, ROUNDS, SURFACES, TUBES, coverHeight, esFotoDeFondo } from '../config.js'
+import { COVER, FANS, FONDOS, PRIMARY_WEAPONS, PRISMAS, ROOM, ROUNDS, SURFACES, TUBES, ZIPLINES, coverHeight, esFotoDeFondo } from '../config.js'
 
 /**
  * **Todos los campos que puede tener un mapa, en el orden en que se escriben.**
@@ -22,7 +22,7 @@ import { COVER, FONDOS, PRIMARY_WEAPONS, ROOM, ROUNDS, SURFACES, TUBES, coverHei
  */
 export const CAMPOS = [
   'clave', 'label', 'card', 'soloDuelo', 'fondo', 'room', 'spawn', 'fisica', 'duelo',
-  'boxes', 'ramps', 'tubos', 'teletransportes', 'spawnZone', 'objectiveSites', 'pickups', 'routes',
+  'boxes', 'prismas', 'ramps', 'tubos', 'ventiladores', 'tirolinas', 'teletransportes', 'spawnZone', 'objectiveSites', 'pickups', 'routes',
   'anchors',
 ]
 
@@ -47,7 +47,10 @@ export function mapaNuevo(clave = 'mapa-nuevo') {
     spawn: { x: 0, z: 16 },
     boxes: [],
     ramps: [],
+    prismas: [],
     tubos: [],
+    ventiladores: [],
+    tirolinas: [],
     teletransportes: [],
     spawnZone: [],
     objectiveSites: [],
@@ -124,6 +127,8 @@ function sanearSuperficie(bruta, problemas, donde) {
   // **Sin malla, pero con todo lo demás** (vuelta 82). Se declara sólo cuando
   // está puesta: un campo `false` en cada dispositivo de cada mapa es ruido.
   if (bruta.invisible === true) sup.invisible = true
+  // El hielo se queda con `tipo` y `fuerza` (su rozamiento) y nada más: no
+  // tiene rumbo ni impulso que declarar.
   if (sup.tipo === 'velocidad') {
     if (!finito(bruta.rumbo)) {
       problemas.push(`${donde}: la superficie de velocidad no declara rumbo`)
@@ -137,6 +142,118 @@ function sanearSuperficie(bruta, problemas, donde) {
     sup.salto = acotar(salto, SURFACES.saltoMin, SURFACES.saltoMax)
   }
   return sup
+}
+
+/**
+ * **Un ventilador: un volumen que empuja hacia arriba** (vuelta 83).
+ *
+ * Es un área con altura, como un teletransporte pero con `base` y `alto`: lo
+ * que decide si te empuja es estar **dentro del volumen**, no pisar nada — por
+ * eso no es una `superficie` de una pieza.
+ */
+function sanearVentilador(bruto, problemas, donde) {
+  const area = sanearArea(bruto, problemas, donde)
+  if (!area) return null
+  if (!(area.w > 0 && area.d > 0)) {
+    problemas.push(`${donde}: el área no tiene tamaño`)
+    return null
+  }
+  if (!finito(bruto.fuerza) || bruto.fuerza <= 0) {
+    problemas.push(`${donde}: la fuerza no es un número positivo`)
+    return null
+  }
+  if (!finito(bruto.alto) || bruto.alto <= 0) {
+    problemas.push(`${donde}: el alto no es un número positivo`)
+    return null
+  }
+  return {
+    ...area,
+    base: acotar(finito(bruto.base) ? bruto.base : 0, 0, FANS.altoMax),
+    alto: acotar(bruto.alto, 0.1, FANS.altoMax),
+    fuerza: acotar(bruto.fuerza, 0.1, FANS.fuerzaMax),
+  }
+}
+
+/**
+ * **Un prisma convexo: una pieza que el motor sabe chocar girada** (vuelta 83).
+ *
+ * Se sanea como una pieza —tiene `kind`, `base` y `superficie` igual que ella—
+ * y se diferencia en tres números: `lados`, `giro` y que `x`/`z` son **el
+ * centro** y no la esquina mínima. Lo segundo es la misma divergencia que ya
+ * tiene un tubo desde la vuelta 81 y por la misma razón: la esquina de algo que
+ * gira no quiere decir nada, y al girar un prisma lo que se queda quieto es su
+ * centro.
+ */
+function sanearPrisma(bruto, problemas, donde) {
+  // **El alto, la base y la superficie los sanea `sanearPieza`**, que es la
+  // misma pregunta con las mismas reglas: un prisma con `kind: 'alta'` tiene
+  // que significar lo mismo que una caja con `kind: 'alta'`. Lo que se añade
+  // aquí son los dos números que una caja no tiene.
+  const base = sanearPieza(bruto, problemas, donde)
+  if (!base) return null
+  const d = PRISMAS.porDefecto
+  if (!finito(bruto.lados)) problemas.push(`${donde}: sin número de lados, se ponen ${d.lados}`)
+  const lados = Math.round(
+    acotar(finito(bruto.lados) ? bruto.lados : d.lados, PRISMAS.ladosMin, PRISMAS.ladosMax),
+  )
+  /**
+   * **El giro va en radianes y acotado a una vuelta**, como los rumbos de las
+   * salidas. Un `giro: 37` escrito a mano —grados— daría casi seis vueltas y
+   * el mismo prisma en otra postura sin decir nada; acotarlo no lo arregla,
+   * pero deja el fichero legible y el editor enseñando un número que se
+   * reconoce.
+   */
+  let giro = finito(bruto.giro) ? bruto.giro : 0
+  const vuelta = Math.PI * 2
+  giro -= Math.floor((giro + Math.PI) / vuelta) * vuelta
+  return { ...base, lados, giro }
+}
+
+/**
+ * **Una tirolina: dos puntos en el aire y la velocidad a la que se recorren**
+ * (vuelta 83).
+ *
+ * No es un área ni una pieza, así que no pasa por `sanearArea`: lo que declara
+ * son **dos puntos en tres dimensiones**, que es lo único de un mapa que tiene
+ * una `y` por derecho propio y no una `base` más un `alto`.
+ *
+ * Y el cable **tiene sentido**: se viaja de `desde` a `hasta` y nunca al revés.
+ * Por eso un cable de largo cero no se puede sanear a nada —no tiene dirección
+ * que declarar— y se tira diciéndolo.
+ */
+function sanearTirolina(bruto, problemas, donde) {
+  const punto = (bruta, cual) => {
+    if (!bruta || typeof bruta !== 'object') {
+      problemas.push(`${donde}: sin punto «${cual}»`)
+      return null
+    }
+    for (const clave of ['x', 'y', 'z']) {
+      if (!finito(bruta[clave])) {
+        problemas.push(`${donde}: ${cual}.${clave} no es un número`)
+        return null
+      }
+    }
+    return { x: bruta.x, y: bruta.y, z: bruta.z }
+  }
+  const desde = punto(bruto?.desde, 'desde')
+  const hasta = punto(bruto?.hasta, 'hasta')
+  if (!desde || !hasta) return null
+  const largo = Math.hypot(hasta.x - desde.x, hasta.y - desde.y, hasta.z - desde.z)
+  if (largo < 0.5) {
+    problemas.push(`${donde}: el cable no llega a media unidad`)
+    return null
+  }
+  const d = ZIPLINES.porDefecto
+  if (!finito(bruto.velocidad)) problemas.push(`${donde}: sin velocidad, se pone ${d.velocidad}`)
+  return {
+    desde,
+    hasta,
+    velocidad: acotar(
+      finito(bruto.velocidad) ? bruto.velocidad : d.velocidad,
+      ZIPLINES.velocidadMin,
+      ZIPLINES.velocidadMax,
+    ),
+  }
 }
 
 /**
@@ -321,7 +438,10 @@ export function sanearMapa(bruto) {
   const listas = {
     boxes: (b, i) => sanearPieza(b, problemas, `pieza ${i}`),
     ramps: (b, i) => sanearRampa(b, problemas, `rampa ${i}`),
+    prismas: (b, i) => sanearPrisma(b, problemas, `prisma ${i}`),
     tubos: (b, i) => sanearTubo(b, problemas, `tubo ${i}`),
+    ventiladores: (b, i) => sanearVentilador(b, problemas, `ventilador ${i}`),
+    tirolinas: (b, i) => sanearTirolina(b, problemas, `tirolina ${i}`),
     spawnZone: (b, i) => sanearArea(b, problemas, `zona ${i}`),
     teletransportes: (b, i) => sanearTeletransporte(b, problemas, `teletransporte ${i}`),
   }

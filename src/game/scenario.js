@@ -17,7 +17,8 @@
 
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { COLORS, COVER, ROUNDS, SURFACES, TELEPORTS, claveDeEscenario, coverColor, coverEdgeColor, coverHeight, definicionDeEscenario, fisicaDeEscenario, fondoDeEscenario, scenarioRoom } from '../config.js'
+import { COLORS, COVER, FANS, ROUNDS, SURFACES, TELEPORTS, ZIPLINES, claveDeEscenario, coverColor, coverEdgeColor, coverHeight, definicionDeEscenario, fisicaDeEscenario, fondoDeEscenario, scenarioRoom } from '../config.js'
+import { bandaDePrisma, carasDePrisma, dentroDePrisma, envolventeDePrisma, puntosDePrisma } from '../maps/prisma.js'
 import { cajasDeTubos } from '../maps/tubo.js'
 import { crearFondo } from './backdrop.js'
 
@@ -60,6 +61,74 @@ function buildRampGeometry(ramp) {
   return geometry
 }
 
+/**
+ * **La malla de un prisma convexo** (vuelta 83): tapa, fondo y una cara por
+ * lado, a mano.
+ *
+ * A mano y no con `ExtrudeGeometry` por dos razones, y ninguna es el gusto: la
+ * de three trae UVs, grupos y una tesela de tapa que aquí no se usan —y que
+ * **impedirían fundirla** con las cajas, que es lo que mantiene el número de
+ * llamadas de dibujo—, y el prisma es convexo, así que la tapa es un abanico
+ * desde el primer vértice y no hay nada que triangular.
+ *
+ * Y los triángulos salen con el mismo bobinado que los de una caja, para que
+ * `FrontSide` valga igual y una pieza girada no desaparezca vista de un lado.
+ */
+function geometriaDePrisma(prisma, bottom, thickness) {
+  const puntos = puntosDePrisma(prisma)
+  const top = bottom + thickness
+  const n = puntos.length
+  const tris = []
+  // Tapa: abanico desde el primer vértice, visto desde arriba.
+  for (let i = 1; i < n - 1; i++) {
+    tris.push([puntos[0].x, top, puntos[0].z])
+    tris.push([puntos[i].x, top, puntos[i].z])
+    tris.push([puntos[i + 1].x, top, puntos[i + 1].z])
+  }
+  // Fondo: el mismo abanico al revés.
+  for (let i = 1; i < n - 1; i++) {
+    tris.push([puntos[0].x, bottom, puntos[0].z])
+    tris.push([puntos[i + 1].x, bottom, puntos[i + 1].z])
+    tris.push([puntos[i].x, bottom, puntos[i].z])
+  }
+  // Costados.
+  for (let i = 0; i < n; i++) {
+    const p = puntos[i]
+    const q = puntos[(i + 1) % n]
+    tris.push([p.x, bottom, p.z], [q.x, bottom, q.z], [q.x, top, q.z])
+    tris.push([p.x, bottom, p.z], [q.x, top, q.z], [p.x, top, p.z])
+  }
+  const positions = new Float32Array(tris.length * 3)
+  for (let i = 0; i < tris.length; i++) {
+    positions[i * 3] = tris[i][0]
+    positions[i * 3 + 1] = tris[i][1]
+    positions[i * 3 + 2] = tris[i][2]
+  }
+  const geometry = new THREE.BufferGeometry()
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3))
+  geometry.computeVertexNormals()
+  /**
+   * **Y tiene que parecerse a una `BoxGeometry`, porque se funde con ellas.**
+   *
+   * Un prisma va al mismo montón que las cajas de su misma altura —para eso
+   * está el montón, para que todo un `kind` sea **una** llamada de dibujo— y
+   * `mergeGeometries` exige que todas traigan **los mismos atributos y el
+   * mismo índice**. Una `BoxGeometry` trae `position`, `normal`, `uv` e
+   * índice; ésta traía las dos primeras y ninguna de las otras dos, y la fusión
+   * fallaba entera: **el montón de esa altura no se dibujaba**.
+   *
+   * No dio ningún error en pantalla — sólo una línea en la consola del
+   * navegador, que es lo que `ed76` cuenta y por eso lo cazó. Las `uv` van a
+   * cero porque aquí no hay texturas y el índice es la identidad, que es lo que
+   * significa «triángulos sueltos» en una malla indexada.
+   */
+  geometry.setAttribute('uv', new THREE.BufferAttribute(new Float32Array(tris.length * 2), 2))
+  const indices = new Uint32Array(tris.length)
+  for (let i = 0; i < tris.length; i++) indices[i] = i
+  geometry.setIndex(new THREE.BufferAttribute(indices, 1))
+  return geometry
+}
+
 /** Acota un valor a un intervalo. El bucle de colisión lo usa por frame. */
 function clamp(value, min, max) {
   return value < min ? min : value > max ? max : value
@@ -79,6 +148,13 @@ function clampAgainstBand(to, from, lo, hi) {
   // que tiene más cerca, y salir por la otra sigue siendo libre.
   return from - lo <= hi - from ? Math.min(to, from) : Math.max(to, from)
 }
+
+/**
+ * El hueco donde `bandaDePrisma` escribe. Temporal de módulo, como los vectores
+ * del bucle caliente: se pregunta dos veces por paso y por jugador, por cada
+ * prisma, y devolver un objeto sería basura para el recolector.
+ */
+const _banda = { lo: 0, hi: 0 }
 
 /**
  * Un escenario ya montado. Mientras `key` sea `empty` no hay geometría, no hay
@@ -102,6 +178,17 @@ export class Scenario {
 
     /** AABB de colisión: {minX, maxX, minZ, maxZ, bottom, top}. */
     this.boxes = []
+    /**
+     * **Prismas convexos** (vuelta 83): lo mismo con caras en vez de bandas.
+     *
+     * Van en su propia lista y no mezclados con `boxes` a propósito. Una caja
+     * se resuelve con cuatro comparaciones y un prisma con N productos
+     * escalares, así que fundirlos costaría lo segundo **en todos los mapas**,
+     * incluidos los cuatro que no tienen ni uno. Con dos listas, un mapa sin
+     * prismas recorre un bucle vacío y el camino de siempre no se entera —que
+     * es lo que `curva83` mide dígito a dígito.
+     */
+    this.prismas = []
     /** Rampas: no frenan, sólo levantan el suelo. */
     this.ramps = []
     /** Mallas contra las que se comprueba la visibilidad de un punto. */
@@ -149,7 +236,7 @@ export class Scenario {
 
   /** ¿Este escenario tiene cobertura, o es la sala vacía de siempre? */
   get hasGeometry() {
-    return this.boxes.length > 0 || this.ramps.length > 0
+    return this.boxes.length > 0 || this.ramps.length > 0 || this.prismas.length > 0
   }
 
   /** Punto de aparición del jugador. */
@@ -327,6 +414,36 @@ export class Scenario {
       byKind.get(box.kind).push(geometry)
     }
 
+    /**
+     * **Los prismas convexos** (vuelta 83). Cuatro lados es una caja girada y
+     * de cinco en adelante un pilar de N caras; el motor los ve igual porque
+     * los dos son la misma primitiva (`src/maps/prisma.js`).
+     *
+     * Las caras y la envolvente se calculan **aquí**, al montar, y de ahí no
+     * se vuelven a tocar: lo que el bucle caliente lee son N normales ya
+     * unitarias. Es la misma disposición que las cajas, que tampoco guardan
+     * `x/w` sino `minX/maxX`.
+     */
+    for (const prisma of definition.prismas ?? []) {
+      const height = coverHeight(prisma.kind)
+      const bottom = prisma.base ? coverHeight(prisma.base) : 0
+      const thickness = height - bottom
+      if (thickness <= 0) continue
+
+      this.prismas.push({
+        caras: carasDePrisma(prisma),
+        ...envolventeDePrisma(prisma),
+        bottom,
+        top: height,
+        kind: prisma.kind,
+        superficie: prisma.superficie ?? null,
+      })
+
+      if (prisma.superficie?.invisible) continue
+      if (!byKind.has(prisma.kind)) byKind.set(prisma.kind, [])
+      byKind.get(prisma.kind).push(geometriaDePrisma(prisma, bottom, thickness))
+    }
+
     for (const ramp of definition.ramps ?? []) {
       const top = coverHeight(ramp.top)
       this.ramps.push({
@@ -380,6 +497,36 @@ export class Scenario {
      * aparezca en otro sitio.
      */
     this.teletransportes = definition.teletransportes ?? []
+    /**
+     * **Los ventiladores** (vuelta 83). Como los teletransportes: un volumen,
+     * no geometría — fuera de `occluders`, fuera de la colisión y fuera del
+     * presupuesto. Lo único que hacen es cambiar con qué gravedad se evalúa la
+     * parábola de quien esté dentro.
+     */
+    this.ventiladores = definition.ventiladores ?? []
+    /**
+     * **Las tirolinas** (vuelta 83), ya masticadas: dirección unitaria y largo.
+     *
+     * Se precalculan **al montar** y no por consulta por la razón de siempre —
+     * el enganche se pregunta una vez por pulsación, pero la raíz cuadrada de
+     * un cable no cambia nunca y este módulo es el que sabe cuándo empieza el
+     * mundo—. Y por lo mismo que la física de la vuelta 72: los dos extremos
+     * montan el mismo mapa y derivan **los mismos** números sin que viaje
+     * ninguno.
+     */
+    this.tirolinas = (definition.tirolinas ?? []).map((t) => {
+      const dx = t.hasta.x - t.desde.x
+      const dy = t.hasta.y - t.desde.y
+      const dz = t.hasta.z - t.desde.z
+      const largo = Math.hypot(dx, dy, dz) || 1
+      return {
+        ...t,
+        dirX: dx / largo,
+        dirY: dy / largo,
+        dirZ: dz / largo,
+        largo,
+      }
+    })
     this._pintarSuperficies()
 
     /**
@@ -607,6 +754,24 @@ export class Scenario {
         continue
       }
 
+      if (sup.tipo === 'hielo') {
+        /**
+         * **Un cristal**, que es lo que dice «esto resbala» sin leer nada. No
+         * es una flecha ni un muelle a propósito: la regla de la vuelta 67 es
+         * que lo que distingue los dispositivos es **la forma**, y un hielo no
+         * te lanza a ninguna parte — no tiene dirección que dibujar.
+         */
+        const c = SURFACES.marca.cristal
+        porLaCara(box, (cx, cz, escala) => {
+          const r = c.radio * escala
+          for (let k = 0; k < c.brazos; k++) {
+            const a = (k / c.brazos) * Math.PI * 2
+            trazo(cx, cz, cx + Math.cos(a) * r, cz + Math.sin(a) * r, y, c.grosor * escala)
+          }
+        })
+        continue
+      }
+
       if (sup.tipo === 'velocidad') {
         /**
          * **Galones gruesos hacia donde lanza.** El rumbo es el de una cámara
@@ -628,6 +793,109 @@ export class Scenario {
           trazo(tipX, tipZ, cx - dx * l + px * a, cz - dz * l + pz * a, y, g.grosor * escala)
           trazo(tipX, tipZ, cx - dx * l - px * a, cz - dz * l - pz * a, y, g.grosor * escala)
         })
+      }
+    }
+
+    /**
+     * **Un ventilador se dibuja como lo que hace: flechas subiendo** (vuelta
+     * 83, norma permanente de la 82). Van en varias capas de altura dentro del
+     * volumen, para que se lea que el empuje ocupa un espacio y no una losa —
+     * que es exactamente lo que lo distingue de un rebote—. Y la rejilla de la
+     * planta sale de `FANS.marca.paso`, como los galones: un ventilador del
+     * tamaño de media sala se ve entero.
+     */
+    for (const v of this.ventiladores) {
+      const m = FANS.marca
+      const nx = Math.max(1, Math.round(v.w / m.paso))
+      const nz = Math.max(1, Math.round(v.d / m.paso))
+      const pasoX = v.w / nx
+      const pasoZ = v.d / nz
+      const alto = Math.min(m.altoFlecha, v.alto / (m.capas + 1))
+      for (let i = 0; i < nx; i++) {
+        for (let j = 0; j < nz; j++) {
+          const cx = v.x + pasoX * (i + 0.5)
+          const cz = v.z + pasoZ * (j + 0.5)
+          for (let k = 0; k < m.capas; k++) {
+            const y0 = v.base + (v.alto * (k + 0.5)) / m.capas - alto / 2
+            linea(cx, y0, cz, cx, y0 + alto, cz)
+            for (const d of [-1, 1]) {
+              linea(cx, y0 + alto, cz, cx + d * 0.2, y0 + alto - 0.3, cz)
+              linea(cx, y0 + alto, cz, cx, y0 + alto - 0.3, cz + d * 0.2)
+            }
+          }
+        }
+      }
+      // Y la huella al ras, para saber dónde acaba el empuje mirando el suelo.
+      const x2 = v.x + v.w
+      const z2 = v.z + v.d
+      const y = v.base + SURFACES.marcaY
+      linea(v.x, y, v.z, x2, y, v.z)
+      linea(x2, y, v.z, x2, y, z2)
+      linea(x2, y, z2, v.x, y, z2)
+      linea(v.x, y, z2, v.x, y, v.z)
+    }
+
+    /**
+     * **Una tirolina se dibuja entera: el cable, sus dos anclajes y su
+     * sentido** (vuelta 83, norma permanente de la 82).
+     *
+     * Las tres cosas hacen falta y ninguna sobra. El **cable** es lo único que
+     * dice que ahí arriba se puede ir a algún sitio; los **anclajes** dicen
+     * dónde ponerse a la altura de la cabeza para engancharse, que es la
+     * pregunta que se hace quien la ve por primera vez; y las **flechas**
+     * dicen hacia dónde lleva, que en un cable de un solo sentido no es
+     * decoración: sin ellas, la mitad de los que la usen la mirarán desde el
+     * extremo equivocado.
+     *
+     * Va en líneas y no en franjas gruesas a propósito: una tirolina se mira
+     * **desde lejos y contra el cielo**, y un trazo de dos triángulos visto de
+     * canto desaparece — el grosor de una franja vive en el plano del suelo.
+     */
+    for (const t of this.tirolinas) {
+      const m = ZIPLINES.marca
+      const { x: x1, y: y1, z: z1 } = t.desde
+      const { x: x2, y: y2, z: z2 } = t.hasta
+      linea(x1, y1, z1, x2, y2, z2)
+      // Los dos anclajes: una cruz en tres ejes, que se lee desde cualquier
+      // ángulo sin ser una esfera de treinta triángulos.
+      for (const p of [t.desde, t.hasta]) {
+        const r = m.anclaje
+        linea(p.x - r, p.y, p.z, p.x + r, p.y, p.z)
+        linea(p.x, p.y - r, p.z, p.x, p.y + r, p.z)
+        linea(p.x, p.y, p.z - r, p.x, p.y, p.z + r)
+      }
+      /**
+       * **Y el sentido, repartido por el cable.** Una sola flecha en el medio
+       * no se ve desde el extremo del que se sale, que es justo el sitio desde
+       * el que hay que poder leerla.
+       *
+       * Los barbos salen del **plano perpendicular al cable**, no de los ejes
+       * del mundo: un cable en diagonal con barbos en X daría una flecha
+       * torcida. La perpendicular se saca contra el eje vertical, y contra el
+       * X si el cable **es** vertical, que es el único caso degenerado.
+       */
+      let px = -t.dirZ, py = 0, pz = t.dirX
+      let n = Math.hypot(px, pz)
+      if (n < 1e-4) { px = 1; py = 0; pz = 0; n = 1 }
+      px /= n; pz /= n
+      // La otra perpendicular, para que la flecha tenga dos planos y no sea
+      // una raya vista de canto.
+      const qx = t.dirY * pz - t.dirZ * py
+      const qy = t.dirZ * px - t.dirX * pz
+      const qz = t.dirX * py - t.dirY * px
+      for (let i = 1; i <= m.flechas; i++) {
+        const d = (t.largo * i) / (m.flechas + 1)
+        const cx = x1 + t.dirX * d
+        const cy = y1 + t.dirY * d
+        const cz = z1 + t.dirZ * d
+        const bx = cx - t.dirX * m.flecha
+        const by = cy - t.dirY * m.flecha
+        const bz = cz - t.dirZ * m.flecha
+        const a = m.flecha * 0.45
+        linea(cx, cy, cz, bx + px * a, by + py * a, bz + pz * a)
+        linea(cx, cy, cz, bx - px * a, by - py * a, bz - pz * a)
+        linea(cx, cy, cz, bx + qx * a, by + qy * a, bz + qz * a)
+        linea(cx, cy, cz, bx - qx * a, by - qy * a, bz - qz * a)
       }
     }
 
@@ -681,6 +949,47 @@ export class Scenario {
   }
 
   /**
+   * **El cable que tienes al alcance, o `null`** (vuelta 83).
+   *
+   * Se mide contra **los ojos** y no contra los pies: un cable se agarra con
+   * las manos, y con los pies de referencia habría que ponerse debajo de él —
+   * o sea justo donde no se ve—.
+   *
+   * Y devuelve un objeto, que en este proyecto siempre pide explicación: esto
+   * **no es del bucle caliente**. Se pregunta una vez por pulsación de la tecla
+   * contextual, no dos veces por paso y por jugador como el suelo (vuelta 80),
+   * así que aquí no hay basura que evitar y sí un segundo valor —dónde has
+   * enganchado— que devolver.
+   *
+   * Gana **el más cercano**, no el primero: con dos cables cruzándose, «el
+   * primero de la lista» sería el orden en que se escribieron en el fichero.
+   */
+  tirolinaAlAlcance(x, y, z) {
+    let mejor = null
+    for (let i = 0; i < this.tirolinas.length; i++) {
+      const t = this.tirolinas[i]
+      // Proyección sobre la recta del cable, acotada al segmento.
+      const vx = x - t.desde.x
+      const vy = y - t.desde.y
+      const vz = z - t.desde.z
+      let d0 = vx * t.dirX + vy * t.dirY + vz * t.dirZ
+      if (d0 < 0) d0 = 0
+      else if (d0 > t.largo) d0 = t.largo
+      // **Y si no queda cable por delante, no hay nada que enganchar.** Sin
+      // esto, agarrarse en el extremo de llegada sería engancharse y soltarse
+      // en el mismo paso, que es un ruido y un destello por pulsación.
+      if (t.largo - d0 < 0.5) continue
+      const px = t.desde.x + t.dirX * d0
+      const py = t.desde.y + t.dirY * d0
+      const pz = t.desde.z + t.dirZ * d0
+      const dist = Math.hypot(x - px, y - py, z - pz)
+      if (dist > ZIPLINES.alcanceU) continue
+      if (!mejor || dist < mejor.dist) mejor = { i, d0, dist }
+    }
+    return mejor
+  }
+
+  /**
    * **A dónde lleva el área en la que estás, o `null`.** Es una comprobación de
    * caja en planta más la altura: un teletransporte es una puerta, no un techo,
    * así que sólo cuenta si los pies están dentro de su volumen.
@@ -693,6 +1002,45 @@ export class Scenario {
       return tp
     }
     return null
+  }
+
+  /**
+   * **La fuerza del ventilador en el que estás, o 0** (vuelta 83).
+   *
+   * Es una comprobación de caja en planta más la franja de alturas, igual que
+   * `teletransporteEn`. Se suman los que se solapen: dos ventiladores encarados
+   * son un ventilador más fuerte, que es lo que espera quien los pone.
+   *
+   * Se pregunta **una vez por paso**, así que el bucle caliente sigue sin
+   * asignar: no devuelve objeto, devuelve un número.
+   */
+  ventiladorEn(x, z, feetY) {
+    let fuerza = 0
+    for (let i = 0; i < this.ventiladores.length; i++) {
+      const v = this.ventiladores[i]
+      if (x < v.x || x > v.x + v.w || z < v.z || z > v.z + v.d) continue
+      if (feetY < v.base || feetY > v.base + v.alto) continue
+      fuerza += v.fuerza
+    }
+    return fuerza
+  }
+
+  /**
+   * **Y hasta dónde llega el que estás usando**, para saber por dónde se sale.
+   * Lo pide el cálculo del ápice: con la gravedad efectiva en negativo la
+   * parábola no tiene máximo, y el máximo de verdad está **encima del
+   * ventilador**, volando ya con la gravedad de siempre.
+   */
+  techoDeVentiladorEn(x, z, feetY) {
+    let techo = -Infinity
+    for (let i = 0; i < this.ventiladores.length; i++) {
+      const v = this.ventiladores[i]
+      if (x < v.x || x > v.x + v.w || z < v.z || z > v.z + v.d) continue
+      if (feetY < v.base || feetY > v.base + v.alto) continue
+      const t = v.base + v.alto
+      if (t > techo) techo = t
+    }
+    return techo
   }
 
   /**
@@ -726,8 +1074,34 @@ export class Scenario {
       const box = this.boxes[i]
       if (x < box.minX || x > box.maxX || z < box.minZ || z > box.maxZ) continue
       if (box.top <= ground) continue
+      // **Y una pieza que empieza por encima de tu cabeza no es tu suelo**
+      // (vuelta 83). Esto no estaba, y no hacía falta: hasta ahora ninguna
+      // pieza tenía la base en el aire, así que `bottom` valía cero en todas.
+      // Desde que un mapa puede declarar un dintel, sin esta línea pasar por
+      // debajo de uno **te subía a su techo de golpe**: el suelo te daba 3.6
+      // estando a 0.2. Es la otra mitad de la deuda de la vuelta 69, y la que
+      // no estaba escrita en ninguna parte.
+      if (box.bottom > reach) continue
       ground = box.top
       superficie = box.superficie
+    }
+
+    /**
+     * **Un prisma se pisa igual que una caja** (vuelta 83), y con la misma
+     * regla: dentro de su huella lo que hay bajo los pies es su techo, sin
+     * mirar el escalón. Estar dentro de la huella de un sólido sólo puede
+     * pasar habiendo entrado por arriba —la horizontal mantiene el centro a un
+     * radio de cualquier cara— y los dos sistemas tienen que admitir los
+     * mismos sitios, que es lo que ya valía para las cajas.
+     */
+    for (let i = 0; i < this.prismas.length; i++) {
+      const prisma = this.prismas[i]
+      if (x < prisma.minX || x > prisma.maxX || z < prisma.minZ || z > prisma.maxZ) continue
+      if (prisma.top <= ground) continue
+      if (prisma.bottom > reach) continue
+      if (!dentroDePrisma(prisma.caras, x, z)) continue
+      ground = prisma.top
+      superficie = prisma.superficie
     }
 
     for (let i = 0; i < this.ramps.length; i++) {
@@ -757,6 +1131,43 @@ export class Scenario {
    */
   get superficieDelSuelo() {
     return this._superficieDelSuelo ?? null
+  }
+
+  /**
+   * **El techo más bajo que hay encima de los pies, o `Infinity`** (vuelta 83).
+   *
+   * Esto es la deuda que la vuelta 69 dejó anotada y que `slide69` [9] llevaba
+   * cuatro vueltas guardando: la colisión **sabe** pasar por debajo de algo
+   * (`box.bottom >= headY`), pero nadie comprobaba que no te levantaras ahí
+   * debajo. Hasta ahora no podía pasar porque ninguna pieza de ningún mapa
+   * tenía la base en el aire; desde que el editor deja subirlas (vuelta 76) y
+   * desde que hay prismas girados (ésta), sí.
+   *
+   * Se mide **en el centro del jugador**, como `groundHeightAt` y por lo mismo:
+   * los dos sistemas tienen que admitir los mismos sitios, y mirar medio cuerpo
+   * alrededor aquí sería más severo que el suelo de al lado.
+   *
+   * Y sólo cuenta lo que está **por encima de los pies**: una pieza cuya base
+   * queda por debajo no es un techo, es donde estás metido, y tratarla como
+   * techo dejaría al jugador aplastado dentro de su propio suelo.
+   */
+  techoSobre(x, z, feetY) {
+    let techo = Infinity
+    const suelo = feetY + 1e-4
+    for (let i = 0; i < this.boxes.length; i++) {
+      const box = this.boxes[i]
+      if (box.bottom <= suelo || box.bottom >= techo) continue
+      if (x < box.minX || x > box.maxX || z < box.minZ || z > box.maxZ) continue
+      techo = box.bottom
+    }
+    for (let i = 0; i < this.prismas.length; i++) {
+      const prisma = this.prismas[i]
+      if (prisma.bottom <= suelo || prisma.bottom >= techo) continue
+      if (x < prisma.minX || x > prisma.maxX || z < prisma.minZ || z > prisma.maxZ) continue
+      if (!dentroDePrisma(prisma.caras, x, z)) continue
+      techo = prisma.bottom
+    }
+    return techo
   }
 
   /** Altura de una rampa en un punto, o null si el punto queda fuera de ella. */
@@ -833,6 +1244,34 @@ export class Scenario {
       const lo = (axis === 'x' ? box.minX : box.minZ) - radius
       const hi = (axis === 'x' ? box.maxX : box.maxZ) + radius
       resolved = clampAgainstBand(resolved, from, lo, hi)
+    }
+
+    /**
+     * **Y los prismas, que es una pasada más y no un `resolveAxis` nuevo**
+     * (vuelta 83).
+     *
+     * Ésa era la condición que `CLAUDE.md` le ponía a esta vuelta —«un OBB
+     * suelto resuelve el 20% de los casos y paga el 90% del precio, que es
+     * reescribir `resolveAxis`»— y se cumple porque lo que un prisma aporta es
+     * **su banda**, que es exactamente lo que una caja aporta: `lo` y `hi` en
+     * el eje que se mueve. De ahí para abajo, la misma `clampAgainstBand` con
+     * sus dos reglas de siempre (nunca empuja hacia atrás, a quien está dentro
+     * se le deja salir).
+     *
+     * Un mapa sin prismas recorre un bucle vacío, así que el camino de las
+     * cajas sigue costando lo que costaba — medido en `curva83`.
+     */
+    for (let i = 0; i < this.prismas.length; i++) {
+      const prisma = this.prismas[i]
+      if (prisma.top <= reach || prisma.bottom >= headY) continue
+
+      // Descarte barato por la envolvente, antes de mirar N caras.
+      const minB = axis === 'x' ? prisma.minZ : prisma.minX
+      const maxB = axis === 'x' ? prisma.maxZ : prisma.maxX
+      if (other + radius <= minB || other - radius >= maxB) continue
+
+      if (!bandaDePrisma(prisma.caras, axis, other, radius, _banda)) continue
+      resolved = clampAgainstBand(resolved, from, _banda.lo, _banda.hi)
     }
 
     // Las rampas también son sólidas. No estaban en `boxes` —sólo las usaba

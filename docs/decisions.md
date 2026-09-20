@@ -10638,3 +10638,234 @@ regresión:
   roto. El banco medía un número en vez de la propiedad (vuelta 78): ahora el
   agregado se mide **fuera de la banda**, y lo de dentro lo afirma la línea que
   ya existía.
+
+## §83 — El bloque grande: ventilador, hielo, tirolina y colisión curva
+
+El triaje de la vuelta 79 dejó cuatro mecánicas aparcadas por escrito en
+`docs/propuestas/06-superficies-y-estructuras.md`, cada una con la razón de por
+qué no cabía en el bloque barato de la 80. Esta vuelta las construye las cuatro,
+y de paso paga una deuda que llevaba desde la 69.
+
+Lo que las cuatro tienen en común, y es lo que hace que quepan en una vuelta:
+**ninguna viaja por la red**. Los dos extremos montan el mismo mapa, derivan los
+mismos números y dan los mismos pasos, que es el patrón de la física de la 72 y
+de las superficies de la 80.
+
+### 83.1 El ventilador: no es una fuerza, es otra gravedad
+
+La razón por la que estaba aparcado no se ve en el editor, y está escrita desde
+la 79: **la vertical de Vektor está resuelta en forma cerrada**
+—`y = y₀ + v₀·t − ½g·t²` desde el despegue (vuelta 27)— así que un empuje
+sostenido **no es sumar una fuerza por frame**. Eso sería volver a integrar por
+Euler y perder la independencia del refresco que costó la vuelta 44.
+
+Lo que es, es **otra gravedad**. Dentro del volumen la parábola se evalúa con
+`gravedad − fuerza`, y lo único que hay que resolver es la frontera: al entrar o
+al salir, la parábola **se re-ancla** en el punto y con la velocidad que se
+traía. `_gVuelo` guarda con qué gravedad se despegó, viaja en `snapshot()` y es
+lo que `_land` usa para despejar el instante exacto del contacto.
+
+De ahí tres cosas que no son evidentes:
+
+- **Estar de pie dentro de uno te levanta.** Sin eso, el empuje sólo existiría
+  para quien ya está volando y la única forma de usar un ventilador sería saltar
+  dentro. Es «pisarla cuenta, no sólo caer sobre ella» (vuelta 80) aplicado a un
+  volumen. Despega con velocidad cero: lo que sube es la gravedad negativa.
+- **El ápice, con gravedad negativa, no existe dentro del volumen.** `_apexFeetY`
+  —que es lo que decide si un salto pasa por encima de una caja— se resuelve en
+  dos tramos: hasta el techo del ventilador con la gravedad de dentro, y de ahí
+  arriba con la del mapa.
+- **Y `_airTimeLeft` es `Infinity`** mientras la gravedad efectiva no sea
+  positiva: no hay «cuánto queda de vuelo» si el vuelo no baja.
+
+Medido (`vent83`): ápice **16.8583 u idéntico a 60, 144 y 240 Hz** (dispersión
+0.0006%), a **0.347%** de lo que predice la parábola de dos tramos, mayor cambio
+de altura en un solo paso **0.29 u** —o sea ningún salto en la frontera— y un
+mapa sin ventiladores acaba en la misma coordenada hasta el último decimal.
+
+### 83.2 El hielo: lo único del juego que le da velocidad al suelo
+
+Tampoco estaba aparcado por capricho. **A pie en Vektor no hay velocidad**: un
+paso es `posición + dirección × marcha × dt`, y soltar W para al jugador en ese
+mismo paso. «Resbaladizo» no es bajar un rozamiento que no existe — es estrenar
+un modelo de velocidad en el suelo, con sus campos en `snapshot()`.
+
+Eso es lo que se ha hecho, y con la puerta cerrada por construcción: mientras no
+haya hielo debajo y la velocidad de suelo valga cero, `_gobiernaElHielo` devuelve
+`false` y el paso es el camino de siempre. Medido: el mismo paseo por un mapa sin
+hielo acaba en `6.008711581, -28.248016082, 0.886333333` con y sin la mecánica.
+
+En una pista de hielo, `fuerza` **es el rozamiento** —en u/s², cuanto más bajo
+más se resbala— y no un empuje. Es el mismo campo con otro significado, así que
+la ficha del editor lo dice con todas las letras y la fila de la lista lo llama
+por su nombre: un panel que lo llamara «fuerza» a secas invitaría a subirlo para
+resbalar más.
+
+Y lo que se paga, anotado y no escondido: **es una integración, no una forma
+cerrada**, así que dispersa un **0.799%** entre 60 y 240 Hz. Se admite por lo
+mismo que el modelo vectorial del aire (vuelta 32): con el paso de mundo fijo a
+60 Hz desde la 44, el número de integraciones por segundo de juego **es el
+mismo** en cualquier monitor, y lo que queda es fase de muestreo.
+
+Medido (`hielo83`): 19.01 u de deriva tras soltar la tecla en hielo contra
+**0.0000** en suelo normal; el rozamiento declarado manda (30.24 / 22.14 / 6.2 u
+para 0.6 / 1.6 / 6); salir del hielo cuesta 1.06 u y 300 ms de recuperar el
+control, acabando en velocidad de suelo exactamente cero; 13 raspados
+deslizándose y 0 parado.
+
+### 83.3 La tirolina: un estado de movimiento nuevo
+
+El triaje la puso en «vuelta propia, del tamaño del deslizamiento», y lo es por
+la misma razón: **es un estado**, con sus campos que viajan, su forma cerrada y
+su regla de qué marcha conserva al soltarse. Es el primer estado nuevo desde la
+vuelta 69.
+
+Cinco decisiones, y ninguna es tuning:
+
+- **El cable es de un solo sentido.** Se declara `desde` y `hasta` y siempre se
+  viaja en esa dirección. Es lo que deja dibujar una flecha que no miente: un
+  cable de doble sentido tendría que decidir por qué extremo has entrado, y
+  entonces la flecha del editor diría una cosa distinta a cada jugador.
+- **Se avanza en forma cerrada**, `d(t) = velocidad · t` desde el enganche, no
+  `v · dt` sumado paso a paso. A velocidad constante los dos dan *casi* lo
+  mismo, y este proyecto ya sabe lo que cuesta ese «casi».
+- **Engancharse pega al cable**, y eso es un salto de hasta `alcanceU`, o sea un
+  teletransporte para quien te dibuja: sube `poseEpoch` (vueltas 44 y 50).
+- **Soltarse conserva la velocidad del cable**, las dos componentes. **No** es la
+  regla del deslizamiento —que siembra el vuelo con tu carrera y no con su
+  empujón— y la diferencia no es de gusto: allí se evitaba que una **técnica del
+  jugador** rematara por encima del techo lo que otra técnica había dado; aquí la
+  velocidad **la decide el mapa**, exactamente como la plataforma de la 82.
+- **Y va por el flanco de la tecla contextual**, que entra en la máscara de
+  entradas como octavo bit. Mantenerla pulsada da **un** enganche, como mantener
+  SPACE da un salto desde la 68, y el flanco se deduce comparando la máscara de
+  este paso con la del anterior — así no hace falta ni un campo más en el
+  protocolo.
+
+**La tecla contextual reparte ahora tres cosas**, y el orden es la regla de la
+vuelta 27 ampliada: dentro del radio del explosivo `use` desactiva y **nada
+más**; fuera manda el cable que tengas al alcance; y si no hay cable, el
+artilugio. Quién dice que hay cable es **el propio movimiento**
+(`hayTirolinaAlAlcance`), no una segunda cuenta desde el motor.
+
+#### El paso del enganche también avanza, y eso lo cazó el banco
+
+La primera versión gastaba el paso del enganche en agarrarse y empezaba a
+avanzar en el siguiente. Parecía inofensivo y no lo era: **un paso perdido es
+una fracción distinta del viaje según el refresco** —a 60 Hz es 1 de 90 y a 240
+es 1 de 360—, así que el recorrido de un cable salía con **0.84% de dispersión**
+entre monitores. Una forma cerrada no puede permitirse eso, y la causa no estaba
+en la fórmula sino en cuántas veces se evalúa. Con el enganche avanzando:
+**0.0000%**.
+
+Medido (`tiro83`): recorrido idéntico a 60/144/240 Hz; para **justo en el
+extremo** (x 20.000000 de un cable que acaba en 20); conserva 13.8451 u/s
+horizontales y −2.0768 verticales, que son exactamente las del cable; los ojos
+cuelgan 0.5500 u por debajo; snapshot/restore a mitad de cable y un segundo
+después los dos están en la misma coordenada hasta el noveno decimal; y la
+altura baja en **recta** —mayor cambio de pendiente entre pasos 0.00000000—,
+que es lo que demuestra que ahí debajo no hay gravedad.
+
+### 83.4 La colisión convexa, y «se hace entera»
+
+`CLAUDE.md` decía desde la 79 cómo había que hacer ésta: «No es una cosa sino
+tres —giro de 90° (ya está), OBB, y convexa de N lados, que es lo que de verdad
+hace falta—; un OBB suelto resuelve el 20% de los casos y paga el 90% del
+precio, que es reescribir `resolveAxis`».
+
+Así que la primitiva es **una sola**: un prisma convexo, guardado como **sus
+caras** (`src/maps/prisma.js`). Un polígono convexo **es** la intersección de sus
+semiplanos, y con esa forma la colisión sale siendo la que ya había: la banda
+`[lo, hi]` que `clampAgainstBand` acota en un eje se despeja de los semiplanos
+exactamente igual que se despejaba de `minX − radio` y `maxX + radio`. Por eso
+**`resolveAxis` no se reescribe**: los prismas son una pasada más que acaba
+llamando a la misma función, y un mapa sin ellos recorre un bucle vacío.
+
+Y las dos formas que se pueden dibujar salen de la misma primitiva:
+
+- **`lados: 4` es una caja girada**, que es la rotación libre que se pedía desde
+  la fase 5 del editor. No es un caso especial escondido: es lo que «cuatro
+  lados» significa. Medido: con `giro: 0` para al jugador en **la misma
+  coordenada** que la caja equivalente, en los cuatro rumbos.
+- **De cinco en adelante es el polígono regular inscrito** en ese ancho y ese
+  fondo: la columna, que es la curva. Es lo mismo que hace el tubo de la 81
+  —aproximar una curva con lo que el motor sabe chocar— pero por dentro.
+
+Lo que se paga, y va escrito porque no se adivina: **las esquinas se cortan a
+inglete y no en redondo**. Engordar un polígono convexo un radio de verdad deja
+las esquinas redondeadas; desplazar cada cara y cruzar los semiplanos sobra un
+poco justo en los vértices. Es el mismo defecto que la colisión de cajas tiene
+desde el primer día, así que un prisma se comporta **como una caja** y no como
+una cosa nueva que hay que aprender.
+
+Medido (`curva83`): un muro de 12×1.5 girado 45° para al jugador a **1.1500 u de
+su eje** en los seis rumbos que le llegan de frente, y los otros dos lo recorren
+a lo largo y salen por la punta —ninguno se cuela—; un pilar de doce caras para
+entre **3.2978 y 3.4141 u** del centro, con la apotema más el radio del cuerpo en
+3.2978 exacto; **14 641 puntos barridos sin una sola discrepancia** entre lo que
+el suelo admite y lo que la horizontal deja; y cien pilares de doce caras cuestan
+**0.00248 ms por paso** contra un presupuesto de 0.2.
+
+### 83.5 La deuda de la vuelta 69, y la mitad que no estaba escrita
+
+La colisión curva tenía una dependencia anterior anotada desde la 69: **la
+comprobación de no levantarse debajo de algo**, porque un tejado sólido es
+precisamente una pieza con aire debajo. `slide69` [9] era la alarma que la
+guardaba.
+
+Escribirla fue una línea: el objetivo de altura de ojos se acota contra
+`scenario.techoSobre(x, z, feetY)`, y es **el mismo número** que usa la
+horizontal —ahí la cabeza es `feetY + eyeHeight`— así que los dos sistemas
+admiten los mismos sitios.
+
+Lo que no estaba escrito en ninguna parte es la otra mitad, y sin ella la
+primera no sirve de nada: **`groundHeightAt` ignoraba `bottom`**. Una pieza que
+empieza por encima de tu cabeza era tu suelo, así que pasar por debajo de un
+dintel **te subía a su techo de golpe** —el suelo te daba 3.6 estando a 0.2—.
+Nunca había pasado porque ninguna pieza de ningún mapa tenía la base en el aire;
+desde que el editor deja subirlas (vuelta 76), sí.
+
+`slide69` [9] deja de ser una alarma y pasa a ser la medida que venía a pedir:
+un test que ya no puede fallar no guarda nada (vuelta 57). Medido: agachado se
+pasa por debajo con los pies en 0.200; soltando la tecla los ojos se quedan en
+**1.2000** de los 1.7 y la coronilla en **1.4000**, que es justo la base del
+dintel; y al salir se levanta solo, sin volver a tocar la tecla.
+
+### 83.6 Lo que vale su valor de fábrica no viaja
+
+Las tres mecánicas nuevas añaden **nueve campos** a `snapshot()`, y esa foto la
+manda el servidor a los dos jugadores sesenta veces por segundo. Medido: 138 B
+por jugador y foto, o sea **16 KB/s de bajada** — y `red45` [5] se puso rojo con
+135.8 KB/s contra un listón de 120.
+
+La respuesta no es subir el listón. `JSON.stringify` **se salta las propiedades
+`undefined`**, así que un campo que vale su valor de fábrica se escribe como
+`undefined`: desaparece del cable sin desaparecer del objeto —la forma se
+conserva, que es lo que el bucle caliente necesita— y `restore()` ya devolvía el
+valor de fábrica a lo que no llegara.
+
+Medido: la foto de un jugador volando vuelve a **575 B**, que es exactamente lo
+que pesaba antes de esta vuelta, y `red45` baja a **119.0 KB/s**. La regla, para
+el día que se añada estado nuevo: **lo que vale su valor de fábrica no viaja**.
+
+### 83.7 Dos bugs que salieron del editor, y los dos valen fuera de él
+
+- **Leer una lista del mapa no puede escribir en el mapa.** Los cinco accesores
+  de listas del editor la creaban al pedirla (`if (!Array.isArray(mapa.x))
+  mapa.x = []`). Parece inofensivo y no lo es, porque **el mapa es lo que compara
+  deshacer/rehacer**: pintar el panel le añadía campos al final y un mapa
+  restaurado ya no era igual al guardado —mismos datos, otro orden de claves—.
+- **Y el saneado es un punto fijo, también en el orden de las claves.** Sanear
+  dos veces da lo mismo byte a byte, y eso es lo que hace que deshacer/rehacer
+  pueda comparar dos mapas con un `JSON.stringify`. Un objeto creado con las
+  claves en otro orden rompe esa comparación sin cambiar ni un dato: `ed76` [6]
+  salió rojo con un «rehacer no devuelve el mapa al dígito» y los dos mapas eran
+  el mismo.
+
+Y uno de dibujado que no dio ni un error en pantalla: **una geometría que se
+funde con otras tiene que traer sus mismos atributos**. Un prisma iba al mismo
+montón que las cajas de su altura —para eso está el montón, para que todo un
+`kind` sea una llamada de dibujo— y `mergeGeometries` exige los mismos atributos
+y el mismo índice. Faltaban `uv` e índice, y la fusión fallaba **entera**: el
+montón de esa altura no se dibujaba. Lo único que lo delató fue una línea en la
+consola del navegador, que es lo que `ed76` cuenta.

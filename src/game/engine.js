@@ -2134,7 +2134,12 @@ export class Engine {
 
   _onKeyUp(event) {
     if (typingInField()) return
-    if (this._isBind('use', event)) this._defuseHeld = false
+    if (this._isBind('use', event)) {
+      this._defuseHeld = false
+      // Y la tecla del movimiento se suelta **siempre**, se hubiera escrito o
+      // no: una que se queda marcada es un enganche de tirolina que no llega.
+      this.movement.input.use = false
+    }
     if (this._isBind('scoreboard', event)) this._scoreboardHeld = false
   }
 
@@ -2216,14 +2221,30 @@ export class Engine {
     }
     if (this.phase !== PHASE.RUNNING || !this.isLocked || event.repeat) return
 
-    // **La acción contextual.** Dentro del radio del explosivo, `use` desactiva
-    // y no hace nada más: que ahí dentro sacara un artilugio sería perder la
-    // ronda por un reflejo. Fuera del radio equipa el lanzacohetes, que todavía
-    // no existe — la tecla está reservada y el hueco, hecho.
+    /**
+     * **La acción contextual, y ahora reparte tres cosas** (vuelta 27; la
+     * tercera, de la 83). El orden **es** la regla, y no cambia:
+     *
+     * 1. **Dentro del radio del explosivo, `use` desactiva y nada más.** Que
+     *    ahí dentro sacara un artilugio —o te colgara de un cable— sería perder
+     *    la ronda por un reflejo.
+     * 2. **Fuera, manda el cable que tengas al alcance**, porque es lo que
+     *    tienes delante y lo estás mirando.
+     * 3. **Y si no hay cable, el artilugio**, que todavía no existe: la tecla
+     *    está reservada y el hueco, hecho.
+     *
+     * La tirolina se resuelve **dentro del movimiento**, por el flanco de
+     * `keys.use`, que es lo que hace que viaje por la red como una tecla más;
+     * aquí lo único que se decide es si esa tecla llega a escribirse. Y quién
+     * dice que hay cable al alcance es el propio movimiento, no una segunda
+     * cuenta desde fuera.
+     */
     if (this._isBind('use', event)) {
       event.preventDefault()
       this._defuseHeld = true
-      if (!this.objective.isPlayerInRange(this.camera)) this._equipUltimate()
+      if (this.objective.isPlayerInRange(this.camera)) return
+      this.movement.input.use = true
+      if (!this.movement.hayTirolinaAlAlcance()) this._equipUltimate()
       return
     }
 

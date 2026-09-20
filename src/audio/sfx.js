@@ -1380,11 +1380,16 @@ export function playShieldCharge(durationS) {
  * - **velocidad**: un soplo. Ruido por un pasa-banda que **sube** de 420 a
  *   2600 Hz en 190 ms, o sea justo al revés que el silbido de una bala (que
  *   cae de 4.2 kHz a 1.25), más un golpe grave que le da el empujón.
+ * - **ventilador**: una corriente. Ruido ancho que sube y baja sin ataque de
+ *   golpe y sin grave — lo contrario del soplo de una plataforma, que es un
+ *   empujón. Y más bajo, porque suena cada pocas décimas mientras estés dentro.
+ * - **hielo**: un raspado. Ruido estrecho **sin barrido de tono**, que es lo
+ *   que lo separa de las otras tres — todas barren, y un derrape se arrastra.
  * - **puerta**: dos parciales **inarmónicos** cayendo. La relación es 2.37 —ni
  *   octava ni quinta, como el metal del disparo va en 1.48— porque una
  *   relación armónica suena a nota musical, y una puerta no es una nota.
  *
- * @param {'rebote'|'velocidad'|'puerta'} tipo
+ * @param {'rebote'|'velocidad'|'ventilador'|'hielo'|'puerta'} tipo
  * @param {{input: AudioNode|null}} [emitter] emisor posicionado, si lo hay.
  *   Sin él suena en el máster, que es lo que vale en el entrenamiento.
  */
@@ -1467,6 +1472,119 @@ export function playDevice(tipo, emitter = null) {
     thump.start(t)
     thump.stop(t + 0.16)
     soltar(thump, thumpGain)
+    return
+  }
+
+  if (tipo === 'ventilador') {
+    // La ráfaga: ruido ancho que **sube y baja**, sin ataque de golpe y sin
+    // grave. Lo que la separa del soplo de una plataforma de velocidad es que
+    // aquélla es un empujón —ataca en 30 ms y se va— y ésta es una corriente:
+    // entra despacio, se queda y se va despacio. Y va más baja, porque suena
+    // cada pocas décimas mientras estés dentro.
+    const noise = ctx.createBufferSource()
+    noise.buffer = noiseBuffer
+    const band = ctx.createBiquadFilter()
+    band.type = 'bandpass'
+    band.frequency.setValueAtTime(700, t)
+    band.frequency.linearRampToValueAtTime(1500, t + 0.16)
+    band.frequency.linearRampToValueAtTime(760, t + 0.34)
+    band.Q.value = 0.9
+    const noiseGain = ctx.createGain()
+    noiseGain.gain.setValueAtTime(0.0001, t)
+    noiseGain.gain.exponentialRampToValueAtTime(g * 0.42, t + 0.12)
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.36)
+    noise.connect(band).connect(noiseGain).connect(out)
+    noise.start(t)
+    noise.stop(t + 0.38)
+    soltar(noise, band, noiseGain)
+    return
+  }
+
+  if (tipo === 'hielo') {
+    // El raspado: ruido estrecho y **sin subida ni bajada de tono**, que es lo
+    // que lo separa de las otras tres voces —todas barren—. Un derrape no va a
+    // ninguna parte, se arrastra. Y bajo, porque suena cada tres décimas.
+    const noise = ctx.createBufferSource()
+    noise.buffer = noiseBuffer
+    const band = ctx.createBiquadFilter()
+    band.type = 'bandpass'
+    band.frequency.value = 2100
+    band.Q.value = 2.4
+    const noiseGain = ctx.createGain()
+    noiseGain.gain.setValueAtTime(0.0001, t)
+    noiseGain.gain.exponentialRampToValueAtTime(g * 0.3, t + 0.05)
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.3)
+    noise.connect(band).connect(noiseGain).connect(out)
+    noise.start(t)
+    noise.stop(t + 0.32)
+    soltar(noise, band, noiseGain)
+    return
+  }
+
+  if (tipo === 'tirolina' || tipo === 'tirolina-viaje') {
+    /**
+     * **La polea**, y son dos sonidos con el mismo material (vuelta 83).
+     *
+     * Lo que suena es **metal rodando sobre metal**: dos parciales inarmónicos
+     * —relación 1.48, la misma que la voz seca de un disparo usa para no sonar
+     * a nota— más un siseo estrecho y agudo, que es el cable pasando. Ni sube
+     * ni baja de tono: una polea no barre, traquetea.
+     *
+     * El **enganche** es el golpe seco de agarrarse, con su grave; el
+     * **traqueteo** de ir viajando es el mismo sin grave, más corto y a un
+     * tercio del volumen, porque suena cinco veces por segundo. Que sean la
+     * misma voz con dos sobres es lo que hace que se oigan como la misma cosa.
+     */
+    const viaje = tipo === 'tirolina-viaje'
+    const nivel = viaje ? 0.32 : 1
+    const dur = viaje ? 0.1 : 0.26
+
+    for (const [ratio, parte] of [[1, 0.5], [1.48, 0.3]]) {
+      const osc = ctx.createOscillator()
+      osc.type = 'triangle'
+      osc.frequency.value = 1450 * ratio
+      const oscGain = ctx.createGain()
+      oscGain.gain.setValueAtTime(0.0001, t)
+      oscGain.gain.exponentialRampToValueAtTime(g * parte * nivel, t + 0.004)
+      oscGain.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+      osc.connect(oscGain).connect(out)
+      osc.start(t)
+      osc.stop(t + dur + 0.02)
+      soltar(osc, oscGain)
+    }
+
+    // El cable pasando: ruido estrecho y arriba, sin barrido.
+    const noise = ctx.createBufferSource()
+    noise.buffer = noiseBuffer
+    const band = ctx.createBiquadFilter()
+    band.type = 'bandpass'
+    band.frequency.value = 3400
+    band.Q.value = 3
+    const noiseGain = ctx.createGain()
+    noiseGain.gain.setValueAtTime(0.0001, t)
+    noiseGain.gain.exponentialRampToValueAtTime(g * 0.35 * nivel, t + 0.006)
+    noiseGain.gain.exponentialRampToValueAtTime(0.0001, t + dur)
+    noise.connect(band).connect(noiseGain).connect(out)
+    noise.start(t)
+    noise.stop(t + dur + 0.02)
+    soltar(noise, band, noiseGain)
+
+    // Y el grave del enganche, que el traqueteo no lleva: es lo que hace que
+    // agarrarse se oiga como un suceso y viajar como un fondo.
+    if (!viaje) {
+      const thump = ctx.createOscillator()
+      thump.type = 'sine'
+      thump.frequency.setValueAtTime(190, t)
+      thump.frequency.exponentialRampToValueAtTime(90, t + 0.1)
+      const thumpGain = ctx.createGain()
+      thumpGain.gain.setValueAtTime(0.0001, t)
+      thumpGain.gain.exponentialRampToValueAtTime(g * 0.55, t + 0.005)
+      thumpGain.gain.exponentialRampToValueAtTime(0.0001, t + 0.12)
+      thump.connect(thumpGain).connect(out)
+      thump.start(t)
+      thump.stop(t + 0.14)
+      soltar(thump, thumpGain)
+    }
     return
   }
 

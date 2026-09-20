@@ -34,6 +34,10 @@ Abre la URL que imprime Vite, haz click en el canvas y a disparar.
   principal. Jugando, **pausa** igual que Escape.
 - **V** conmuta el silenciador, **E** es la acción contextual y **4** aplica una
   carga de escudo. Todo esto se reasigna — ver *Controles reasignables*.
+- La **acción contextual** reparte tres cosas, y siempre en este orden: dentro
+  del radio del explosivo **desactiva** y nada más; fuera, si tienes una
+  **tirolina** al alcance, te agarras a ella (y con la misma tecla te sueltas);
+  y si no hay ninguna, saca el artilugio — que todavía no existe.
 - **Escape**: suelta el ratón y **pausa** el cronómetro. En la pantalla de pausa
   hay un botón **Reanudar**, y también vale un click en cualquier sitio.
 
@@ -698,16 +702,18 @@ tiene por qué costarte también la sala.
 - **Un candado por dimensión**: con el ancho bloqueado, esa medida no la mueve
   nada —ni el número, ni el tirador, ni una forma nueva—.
 - **Base** dice desde qué altura empieza la pieza, y **Apilar** la apoya en el
-  techo de la que tenga debajo. Si la dejas con aire debajo el editor **avisa**:
-  se dibuja y para las balas, pero el juego todavía no comprueba que no te
-  levantes debajo agachado.
+  techo de la que tenga debajo. Dejarla con aire debajo ya vale: **desde la
+  vuelta 83 el juego lo entiende** —agachado se pasa por debajo, ahí abajo no te
+  levantas, y esa pieza no te sube a su techo—, así que un dintel es un dintel.
+  El editor lo sigue **avisando**, porque conviene saber que lo has hecho.
 - **Tres láseres de alineación**, uno por eje, que se encienden por separado.
   Salen de la **base** de la pieza, que es la superficie contra la que se
   alinea.
-- **90°** —el aro, o el botón del panel— intercambia ancho y fondo. No hay
-  rotación libre, y no es un olvido:
-  la colisión del juego es de cajas alineadas a los ejes, así que una caja
-  girada se dibujaría girada y **se chocaría sin girar**. Está explicado en
+- **90°** —el aro, o el botón del panel— intercambia ancho y fondo. Una **caja**
+  sigue girando sólo de 90 en 90, y no es un olvido: su colisión es de cajas
+  alineadas a los ejes. Lo que sí hay desde la vuelta 83 es **rotación libre con
+  otra forma**: «Muro girado» y «Columna» son prismas, el motor sabe chocarlos
+  girados y su aro gira a cualquier ángulo. Está explicado más abajo y en
   `docs/propuestas/05-editor-de-mapas.md` §3.
 - **Deshacer y rehacer** con los botones o con **Ctrl+Z** / **Ctrl+Mayús+Z**.
 - **Abrir** carga cualquiera de los mapas de hoy para tocarlo.
@@ -743,13 +749,29 @@ Cuatro cosas que conviene saber al usarlo:
   29% del hueco justo en las diagonales, o sea un pozo que por dentro no es
   redondo.
 
-### Dispositivos: rebote, velocidad y teletransportes
+### Dispositivos: rebote, velocidad, hielo, ventilador, tirolina y teletransportes
 
-Tienen **su propio icono** en la tira, en azul. Dentro hay tres botones y cada
-uno deja el suyo delante de la cámara, ya montado y ya elegido:
+Tienen **su propio icono** en la tira, en azul. Dentro hay un botón por cada uno
+y deja el suyo delante de la cámara, ya montado y ya elegido:
 
 - **Rebote** — te lanza hacia arriba al pisarla.
 - **Velocidad** — te lanza en el rumbo que le des.
+- **Hielo** *(vuelta 83)* — resbalas al andar encima: sueltas la tecla y sigues.
+  Su número es el **rozamiento**, no una fuerza: cuanto **más bajo, más se
+  resbala**. Por eso no lleva flecha que arrastrar — una flecha prometería una
+  dirección y una potencia que ahí no significan nada.
+- **Ventilador** *(vuelta 83)* — un **volumen**, no una losa: te empuja hacia
+  arriba mientras estés dentro. Su ficha dice lo que de verdad hace, que es
+  cambiar la gravedad ahí dentro: por encima de la del mapa **se sube solo**,
+  por debajo sólo **se cae más despacio**. Se agarra por el rombo del centro, se
+  estira por la esquina, se sube con el cubo de arriba y la punta de la flecha
+  le da fuerza.
+- **Tirolina** *(vuelta 83)* — un cable de **A a B**, siempre en ese sentido. Se
+  agarra con la tecla de acción contextual (**E**) estando cerca, y se suelta
+  con la misma tecla, saltando o al llegar. Al soltarte **te llevas la velocidad
+  del cable**, así que la velocidad es también lo fuerte que te lanza al final.
+  Cada anclaje se arrastra por el suelo y su cubo lo sube o lo baja; su ficha
+  dice cuánto se tarda en recorrerla.
 - **Teletransporte** — un área que te deja en otro sitio, con su destino y su
   rumbo, unidos por una línea.
 
@@ -795,6 +817,32 @@ la fuerza a la vez.
   dibujado. Con una losa al ras son 20 cm de diferencia en dónde cae la marca;
   con una pieza alta sería una pared invisible que no para balas, y por eso el
   editor lo avisa.
+
+### Muro girado y Columna: piezas que se chocan giradas
+
+Están en **Formas**, al lado del tubo, y son la novedad de la vuelta 83: por fin
+se puede poner una pieza **a cualquier ángulo**, porque el motor ya sabe chocar
+con ella.
+
+- **Muro girado** — una caja de 12×1 que se gira a lo que quieras.
+- **Columna** — un pilar de doce caras, que es lo más parecido a un cilindro que
+  el motor sabe chocar por dentro.
+
+Las dos son la misma cosa con otro número de lados: **cuatro lados es una caja
+girada** y de cinco en adelante, un polígono. Y se manejan como cualquier pieza,
+con un gesto más:
+
+- **la bola del centro** la mueve,
+- **la esquina** la estira —en sus propios ejes, así que estirar una girada no
+  la deforma en diagonal—,
+- **el cubo de arriba** le da alto, recorriendo la misma escalera que una caja,
+- y **el aro la gira**, y aquí **no cuadra a 90°**: gira a cualquier ángulo. En
+  una caja normal el aro sí cuadra, porque la colisión no sabía girar y un aro
+  libre prometería un gesto sin efecto.
+
+Ojo a lo que se paga, que es poco pero conviene saberlo: **las esquinas se
+cortan a inglete y no en redondo**, igual que en una caja de toda la vida. Un
+prisma se comporta como una caja, no como una cosa nueva que haya que aprender.
 
 ### Cuánto mide y cuánto cuesta
 
@@ -953,23 +1001,19 @@ salidas (tiempo de cruce, primer contacto, asomo). Son las fases 4 y 5 de
 recogibles y sitios de explosivo al guardarlos, pero el editor no los edita:
 salen de un barrido medido, no de ponerlos a ojo.
 
-Y lo que no va a hacer hasta que el motor sepa chocar con ello: **rotación
-libre, tejados y triángulos sólidos**.
+**La rotación libre dejó esa lista en la vuelta 83**: el motor ya sabe chocar
+una pieza girada, así que el editor ya la ofrece («Muro girado» y «Columna», más
+abajo). Lo que sigue sin poder construirse hasta que el motor sepa chocarlo son
+los **triángulos sólidos**.
 
-De las siete mecánicas triadas en
-`docs/propuestas/06-superficies-y-estructuras.md`, **el rebote, la plataforma de
-velocidad y el teletransportador están construidos** (vuelta 80). Siguen
-esperando, y por escrito: el **ventilador** y el **hielo**, que son una vuelta
-del movimiento —a pie en Vektor no hay velocidad que resbale, ni la vertical
-admite un empuje sostenido sin re-anclar su parábola—; y la **tirolina**, que es
-un estado de movimiento nuevo del tamaño del deslizamiento.
-
-El **tubo** dejó esa lista en la vuelta 81 y está construido, por la mitad que
-sí se podía: el pozo por el que se baja es un anillo de cajas, y ahora lo monta
-un botón. Lo que sigue en el cajón de la rotación libre es el **sólido curvo**,
-que no es lo mismo — y ojo a por qué ese fallo sería invisible: los disparos van
-contra la malla dibujada desde la vuelta 64, así que una pieza curva **pararía
-las balas bien** y mentiría sólo al andar.
+Y de las siete mecánicas triadas en
+`docs/propuestas/06-superficies-y-estructuras.md`, **están construidas las
+siete**: el rebote, la plataforma de velocidad y el teletransportador en la
+vuelta 80; el tubo en la 81; y el **ventilador**, el **hielo**, la **tirolina**
+y la **colisión convexa** en la 83. Lo único de aquel triaje que sigue sin
+hacerse es «guardar punto y volver», que no se llegó a pedir — y que en un duelo
+sería teletransportarse a voluntad, así que llevaría una bandera del mapa que
+comprueba el servidor.
 
 ## Escenarios
 
@@ -1303,6 +1347,39 @@ dos componentes a la vez. Los pesos y los cortes están en `SCORING`, en
 **Cinco estrellas quiere decir impecable**: precisión al objetivo de tu arma,
 desactivar dentro del tiempo de referencia y no morir. Cuatro es haber jugado
 bien.
+
+## Lo que un mapa te puede hacer
+
+Además de las cajas contra las que te chocas, un mapa puede declarar cosas que
+te mueven. Todas las pone quien construye el mapa, ninguna se elige en opciones,
+y **ninguna manda un número por la red**: los dos jugadores montan el mismo mapa
+y sacan los mismos números.
+
+- **Rebote** *(v80)* — una losa que te lanza hacia arriba. Funciona pisándola,
+  no sólo cayendo encima.
+- **Plataforma de velocidad** *(v80)* — te lanza en el rumbo que tenga dibujado,
+  a la fuerza que tenga. Desde la vuelta 82 esa fuerza no tiene techo de diseño.
+- **Teletransporte** *(v80)* — un área que te deja en otro sitio, mirando a
+  donde diga. Se ve y se oye por los dos extremos.
+- **Hielo** *(v83)* — el suelo deja de pararte en seco: aceleras hacia donde
+  pides y frenas con el rozamiento que el mapa declare, así que soltar la tecla
+  te deja deslizándote un buen trecho. Con el rozamiento de fábrica son unas
+  **19 unidades** de deriva a la carrera.
+- **Ventilador** *(v83)* — un volumen que cambia la gravedad ahí dentro. Con
+  fuerza por encima de la gravedad del mapa **subes solo**, aunque entres
+  andando; por debajo, sólo caes más despacio. Al salir, la parábola sigue desde
+  donde estés con la velocidad que llevabas.
+- **Tirolina** *(v83)* — un cable de un punto a otro. Te agarras con la **tecla
+  de acción contextual** (E) estando cerca, viajas a la velocidad del cable, y
+  te sueltas con la misma tecla, saltando o al llegar al final. **Al soltarte te
+  llevas la velocidad del cable**, en horizontal y en vertical: un cable rápido
+  es también un cañón.
+
+Y una cosa que no te mueve pero cambia lo que se puede construir: desde la
+vuelta 83 el motor sabe chocar con **piezas giradas** y con **pilares de N
+caras**, así que un mapa puede tener muros en diagonal y columnas redondeadas.
+Y una pieza con **aire debajo** ya es un dintel de verdad: te pasas por debajo
+agachado y ahí abajo no te levantas.
 
 ## Air-strafe: acelerar en el aire
 

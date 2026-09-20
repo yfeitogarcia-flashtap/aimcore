@@ -24,6 +24,17 @@
  *   se estrecha y **sale disparado hacia donde lanza**. Se lee como haber
  *   pasado por un aro.
  * - **Puerta, al entrar**: un anillo tumbado que **se cierra sobre sí mismo**.
+ * - **Ventilador**: un anillo tumbado que **sube rápido y se abre poco**. Se
+ *   distingue del rebote en que el rebote es un golpe —se abre mucho y se
+ *   queda— y esto es una corriente: sube atravesándote.
+ * - **Hielo**: un anillo **bajo y ancho** a los pies, que se abre y no sube.
+ *   Es la nube de un derrape, y no compite con nada: los otros tres suben.
+ * - **Tirolina**: un anillo **de pie** que se estrecha y sale por el cable, o
+ *   sea el de la plataforma de velocidad más apretado. Que se parezcan es
+ *   correcto y es la idea: las dos te lanzan, y lo que las separa es que una
+ *   lanza al vacío y la otra por un raíl — que es lo que dice el cable, no el
+ *   anillo. El **traqueteo** de ir viajando no enciende ninguno: sólo suena, o
+ *   un viaje de cinco segundos serían veinticinco aros.
  * - **Puerta, al salir**: el mismo, **al revés**. Los dos extremos de un
  *   teletransporte se dibujan a propósito con el mismo gesto invertido: es lo
  *   que hace que llegar se lea como la otra mitad de haber entrado.
@@ -44,7 +55,13 @@ const _mira = new THREE.Vector3()
 /** Los cuatro gestos, por su nombre. El quinto sería una entrada más aquí. */
 const GESTOS = {
   rebote: { clave: 'rebote', dePie: false },
-  velocidad: { clave: 'velocidad', dePie: true },
+  velocidad: { clave: 'velocidad', dePie: true, alza: 0.9 },
+  ventilador: { clave: 'ventilador', dePie: false },
+  hielo: { clave: 'hielo', dePie: false },
+  // `alza` cero: el punto que manda la tirolina **es** el del cable, que ya
+  // está en el aire. Los 0.9 de la plataforma son para subir el aro desde el
+  // suelo hasta la cintura, y aquí no hay suelo del que subir.
+  tirolina: { clave: 'tirolina', dePie: true, alza: 0 },
   'tp-entrada': { clave: 'tpEntrada', dePie: false },
   'tp-salida': { clave: 'tpSalida', dePie: false },
 }
@@ -180,7 +197,7 @@ export class Dispositivos {
       const dx = this.direccion[i * 3]
       const dz = this.direccion[i * 3 + 2]
       const avance = cfg.avanza * t
-      _dummy.position.set(ox + dx * avance, oy + 0.9, oz + dz * avance)
+      _dummy.position.set(ox + dx * avance, oy + (gesto.alza ?? 0), oz + dz * avance)
       _mira.set(_dummy.position.x + dx, _dummy.position.y, _dummy.position.z + dz)
       _dummy.lookAt(_mira)
     } else {

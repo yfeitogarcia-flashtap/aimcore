@@ -24,7 +24,7 @@
  */
 
 import * as THREE from 'three'
-import { COLORS, COVER, FONDOS, GIZMO, MOVEMENT, PRIMARY_WEAPONS, ROUNDS, SCENARIOS, SURFACES, TARGET, TEAMS, TELEPORTS, TUBES, coverHeight, esFotoDeFondo, fisicaDeEscenario, giro180, scenarioRoom } from '../src/config.js'
+import { COLORS, COVER, FANS, FONDOS, GIZMO, MOVEMENT, PRIMARY_WEAPONS, PRISMAS, ROUNDS, SCENARIOS, SURFACES, TARGET, TEAMS, TELEPORTS, TUBES, ZIPLINES, coverHeight, esFotoDeFondo, fisicaDeEscenario, giro180, scenarioRoom } from '../src/config.js'
 import { Avatar } from '../src/game/avatar.js'
 import { Engine } from '../src/game/engine.js'
 import { MovementController } from '../src/game/movement.js'
@@ -32,6 +32,7 @@ import { Scenario } from '../src/game/scenario.js'
 import { createScene } from '../src/game/scene.js'
 import { hasLineOfSight } from '../src/game/sight.js'
 import { INVULNERABILIDAD_MAX, SALA, mapaComoModulo, mapaNuevo, sanearMapa } from '../src/maps/formato.js'
+import { puntosDePrisma } from '../src/maps/prisma.js'
 import { cajasDeTubo } from '../src/maps/tubo.js'
 import { montarCapaDeDuelo } from '../src/ui/duelo.jsx'
 import { LOGO } from '../src/ui/logoPaths.js'
@@ -660,6 +661,20 @@ function pintarMarcas() {
     const alto = coverHeight(pieza.kind)
     const grupo = new THREE.Group()
 
+    /**
+     * **El hielo no lleva tirador, y eso es la convención de la 78 bien
+     * aplicada, no una excepción a ella** (vuelta 83).
+     *
+     * Lo que esa convención pide es poder poner una cosa **viendo el efecto**;
+     * lo que no pide es inventarse un gesto. En el hielo `fuerza` es
+     * **rozamiento** —cuánto te frena el suelo, en u/s²—, y una flecha
+     * arrastrable prometería una dirección y una potencia que ahí no
+     * significan nada. Lo que sí se ve es la marca del cristal que `Scenario`
+     * pinta encima, que es lo que dice *qué es*; cuánto resbala se afina con
+     * su número y se comprueba **probando**, que es el botón de al lado.
+     */
+    if (sup.tipo === 'hielo') { continue }
+
     if (sup.tipo === 'rebote') {
       // Vertical: la punta sube y baja, y lo que se lee en el largo es cuánto
       // te lanza. Girarla no significaría nada, así que no gira.
@@ -707,6 +722,99 @@ function pintarMarcas() {
    * verdad: se ve lo que hay dentro —que es donde se baja— y se sabe dónde hay
    * que pinchar para moverlo.
    */
+  /**
+   * **Un prisma se agarra como una pieza, y además gira libre** (vuelta 83).
+   *
+   * Los tres gestos de la vuelta 79 sin ningún modo —el cuerpo mueve, la
+   * esquina estira, el cubo de arriba elige alto— y un cuarto que allí no
+   * podía existir: **el aro gira a cualquier ángulo**. En una caja el aro
+   * cuadra a 90° porque más que eso sería un gesto sin efecto —la colisión no
+   * sabía girar—; aquí el ángulo que se ve girar es exactamente el que el
+   * motor va a chocar, así que cuadrarlo sería recortarlo a mano.
+   */
+  for (const [i, prisma] of (mapa.prismas ?? []).entries()) {
+    const grupo = new THREE.Group()
+    const puntos = puntosDePrisma(prisma)
+    const alto = coverHeight(prisma.kind)
+    const base = prisma.base ? coverHeight(prisma.base) : 0
+
+    // La huella, dibujada con sus caras de verdad: es el dato, no un dibujo
+    // paralelo (convención de la 78).
+    const anillo = []
+    for (let k = 0; k < puntos.length; k++) {
+      const a = puntos[k]
+      const b = puntos[(k + 1) % puntos.length]
+      anillo.push(
+        new THREE.Vector3(a.x, base + 0.03, a.z),
+        new THREE.Vector3(b.x, base + 0.03, b.z),
+        new THREE.Vector3(a.x, alto, a.z),
+        new THREE.Vector3(b.x, alto, b.z),
+        new THREE.Vector3(a.x, base + 0.03, a.z),
+        new THREE.Vector3(a.x, alto, a.z),
+      )
+    }
+    grupo.add(new THREE.LineSegments(
+      new THREE.BufferGeometry().setFromPoints(anillo),
+      new THREE.LineBasicMaterial({ color: COLOR_GIZMO, transparent: true, opacity: 0.85 }),
+    ))
+
+    // El cuerpo que se pincha: una bola en el centro, a media altura. Como el
+    // asa de un ventilador y por lo mismo —un prisma se pone encima del suelo,
+    // así que un clic sobre su volumen se lo llevaría la losa de abajo.
+    const cuerpo = new THREE.Mesh(
+      new THREE.SphereGeometry(0.42, 12, 8),
+      new THREE.MeshBasicMaterial({ color: COLOR_GIZMO, wireframe: true }),
+    )
+    cuerpo.position.set(prisma.x, base + (alto - base) / 2, prisma.z)
+    cuerpo.userData.marca = { que: 'prisma', i, prioridad: PRIORIDAD.cuerpo }
+    realceQueCrece(cuerpo)
+    grupo.add(cuerpo)
+    pinchables.push(cuerpo)
+
+    // Esquina: estira ancho y fondo **en los ejes del prisma**, no en los del
+    // mundo. Con los del mundo, estirar uno girado 30° le cambiaría la forma en
+    // diagonal y el número del panel diría otra cosa.
+    const cos = Math.cos(prisma.giro ?? 0)
+    const sen = Math.sin(prisma.giro ?? 0)
+    const ex = prisma.x + (prisma.w / 2) * cos - (prisma.d / 2) * sen
+    const ez = prisma.z + (prisma.w / 2) * sen + (prisma.d / 2) * cos
+    const esquina = tirador(COLOR_GIZMO)
+    esquina.position.set(ex, base + 0.25, ez)
+    esquina.userData.marca = { que: 'prisma-esquina', i, prioridad: PRIORIDAD.tirador }
+    grupo.add(esquina)
+    pinchables.push(esquina)
+
+    const tAlto = tirador(COLOR_GIZMO)
+    tAlto.position.set(prisma.x, alto, prisma.z)
+    tAlto.userData.marca = { que: 'prisma-alto', i, prioridad: PRIORIDAD.tirador }
+    grupo.add(tAlto)
+    pinchables.push(tAlto)
+
+    /**
+     * **El aro, y lo que se pincha no es el aro** (vuelta 79). Un toro tiene el
+     * centro hueco y apuntarle al centro —que es donde apunta cualquiera— es un
+     * clic que se cuela por el agujero. Debajo va una bola invisible.
+     */
+    const radioAro = Math.max(prisma.w, prisma.d) / 2 + 0.9
+    const aro = new THREE.Mesh(
+      new THREE.TorusGeometry(radioAro, 0.06, 6, 28),
+      new THREE.MeshBasicMaterial({ color: COLOR_GIZMO }),
+    )
+    aro.rotation.x = -Math.PI / 2
+    aro.position.set(prisma.x, alto + 0.35, prisma.z)
+    grupo.add(aro)
+    const pinchaAro = new THREE.Mesh(
+      new THREE.CylinderGeometry(radioAro + 0.25, radioAro + 0.25, 0.3, 16),
+      new THREE.MeshBasicMaterial({ visible: false }),
+    )
+    pinchaAro.position.copy(aro.position)
+    pinchaAro.userData.marca = { que: 'prisma-giro', i, prioridad: PRIORIDAD.tirador }
+    grupo.add(pinchaAro)
+    pinchables.push(pinchaAro)
+
+    marcas.add(grupo)
+  }
+
   for (const [i, tubo] of (mapa.tubos ?? []).entries()) {
     const grupo = new THREE.Group()
     const fuera = tubo.radio + tubo.grosor
@@ -751,6 +859,127 @@ function pintarMarcas() {
     grupo.add(tAlto)
     pinchables.push(tAlto)
 
+    marcas.add(grupo)
+  }
+
+  /**
+   * **Un ventilador es un volumen, y se agarra como tal** (vuelta 83). Cuatro
+   * tiradores y ninguno es un modo, que es la regla de la 79: el cuerpo lo
+   * mueve, la esquina le da planta, el cubo de arriba le da alto y la punta de
+   * la flecha le da fuerza.
+   *
+   * La flecha de fuerza sale **por encima del volumen** a propósito: dentro ya
+   * hay flechas dibujadas por `Scenario` —las que dicen qué es esto— y un
+   * tirador entre ellas sería un tirador que no se encuentra.
+   */
+  for (const [i, v] of (mapa.ventiladores ?? []).entries()) {
+    const grupo = new THREE.Group()
+    const { grupo: cajaGrupo } = cajaDeArea(v.w, v.d, v.alto, COLORS.electric, 0.07)
+    cajaGrupo.position.set(v.x + v.w / 2, v.base + v.alto / 2, v.z + v.d / 2)
+    cajaGrupo.children[0].userData.marca = { que: 'vent', i, prioridad: PRIORIDAD.area }
+    pinchables.push(cajaGrupo.children[0])
+    grupo.add(cajaGrupo)
+
+    /**
+     * **Y un asa en el centro, porque el volumen solo no se puede agarrar.**
+     *
+     * El orden de la vuelta 78 es tirador, cuerpo, pieza, área, y es correcto:
+     * un área tiene que ser lo último para que las piezas de dentro sigan
+     * siendo pinchables. El precio se ve con un ventilador y no se veía con
+     * una banda de aparición: **un ventilador se pone encima del suelo**, así
+     * que cualquier clic sobre su volumen atraviesa hasta la losa de abajo y
+     * gana la losa. Medido: arrastrar el cuerpo movía cero.
+     *
+     * El asa lo resuelve sin tocar el orden, que es lo que no hay que tocar:
+     * es un **cuerpo** (como el de un tubo o el destino de un teletransporte),
+     * o sea por encima de una pieza y por debajo de un tirador, y el volumen
+     * se queda como área para lo que el área es — poder pinchar lo de dentro.
+     */
+    const asa = new THREE.Mesh(
+      new THREE.OctahedronGeometry(0.55),
+      new THREE.MeshBasicMaterial({ color: COLORS.electric, wireframe: true }),
+    )
+    asa.position.set(v.x + v.w / 2, v.base + v.alto / 2, v.z + v.d / 2)
+    asa.userData.marca = { que: 'vent', i, prioridad: PRIORIDAD.cuerpo }
+    realceQueCrece(asa)
+    grupo.add(asa)
+    pinchables.push(asa)
+
+    const esquina = tirador(COLORS.electric)
+    esquina.position.set(v.x + v.w, v.base + 0.25, v.z + v.d)
+    esquina.userData.marca = { que: 'vent-esquina', i, prioridad: PRIORIDAD.tirador }
+    grupo.add(esquina)
+    pinchables.push(esquina)
+
+    const cx = v.x + v.w / 2
+    const cz = v.z + v.d / 2
+    const tAlto = tirador(COLORS.electric)
+    tAlto.position.set(cx, v.base + v.alto, cz)
+    tAlto.userData.marca = { que: 'vent-alto', i, prioridad: PRIORIDAD.tirador }
+    grupo.add(tAlto)
+    pinchables.push(tAlto)
+
+    // La flecha de fuerza, como la de un rebote: su largo **es** el número.
+    const yFlecha = v.base + v.alto + 0.6 + v.fuerza * LARGO_POR_FUERZA * 0.25
+    grupo.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(cx, v.base + v.alto + 0.4, cz),
+        new THREE.Vector3(cx, yFlecha, cz),
+      ]),
+      new THREE.LineBasicMaterial({ color: COLORS.electric }),
+    ))
+    const punta = tirador(COLORS.electric)
+    punta.position.set(cx, yFlecha, cz)
+    punta.userData.marca = { que: 'vent-fuerza', i, prioridad: PRIORIDAD.tirador }
+    grupo.add(punta)
+    pinchables.push(punta)
+
+    marcas.add(grupo)
+  }
+
+  /**
+   * **Una tirolina son dos anclajes y el cable que los une** (vuelta 83), y
+   * los dos anclajes se arrastran.
+   *
+   * Son **dos tiradores por extremo y no uno**, y la razón es que el gesto del
+   * editor vive en el plano del suelo: un rayo contra y=0 dice X y Z y no sabe
+   * nada de la altura (es lo mismo que obligó a estirar la flecha de un rebote
+   * con el ratón en pantalla, vuelta 80). La bola pone dónde cae el anclaje en
+   * planta; el cubo de encima, a qué altura.
+   *
+   * El cable, sus cruces y las flechas del sentido los dibuja `Scenario`, así
+   * que salen igual aquí que jugando — que es la convención de la 78 al
+   * derecho: **lo que se ve es el dato**, no un dibujo paralelo del editor.
+   */
+  for (const [i, t] of (mapa.tirolinas ?? []).entries()) {
+    const grupo = new THREE.Group()
+    for (const [cual, p] of [['a', t.desde], ['b', t.hasta]]) {
+      const bola = new THREE.Mesh(
+        new THREE.SphereGeometry(0.42, 12, 8),
+        new THREE.MeshBasicMaterial({ color: COLORS.electric, wireframe: true }),
+      )
+      bola.position.set(p.x, p.y, p.z)
+      bola.userData.marca = { que: `tiro-${cual}`, i, prioridad: PRIORIDAD.cuerpo }
+      realceQueCrece(bola)
+      grupo.add(bola)
+      pinchables.push(bola)
+
+      const alto = tirador(COLORS.electric)
+      alto.position.set(p.x, p.y + 1.1, p.z)
+      alto.userData.marca = { que: `tiro-${cual}-alto`, i, prioridad: PRIORIDAD.tirador }
+      grupo.add(alto)
+      pinchables.push(alto)
+
+      // Y la plomada hasta el suelo: sin ella, un anclaje a nueve unidades de
+      // alto no dice **sobre qué sitio del mapa** está.
+      grupo.add(new THREE.Line(
+        new THREE.BufferGeometry().setFromPoints([
+          new THREE.Vector3(p.x, 0.02, p.z),
+          new THREE.Vector3(p.x, p.y, p.z),
+        ]),
+        new THREE.LineBasicMaterial({ color: COLORS.electric, transparent: true, opacity: 0.35 }),
+      ))
+    }
     marcas.add(grupo)
   }
 
@@ -1201,6 +1430,37 @@ function comenzarArrastreDeMarca(marca, punto) {
   if (marca.que === 'tp-esquina' || marca.que === 'tp-rumbo') {
     return { que: marca.que, i: marca.i }
   }
+  if (marca.que === 'vent') {
+    const v = ventiladoresDe()[marca.i]
+    return { que: 'vent', i: marca.i, dx: v.x - punto.x, dz: v.z - punto.z }
+  }
+  if (marca.que === 'vent-esquina' || marca.que === 'vent-alto' || marca.que === 'vent-fuerza') {
+    return { que: marca.que, i: marca.i }
+  }
+  if (marca.que === 'tiro-a' || marca.que === 'tiro-b') {
+    const t = tirolinasDe()[marca.i]
+    const p = marca.que === 'tiro-a' ? t.desde : t.hasta
+    return { que: marca.que, i: marca.i, dx: p.x - punto.x, dz: p.z - punto.z }
+  }
+  if (marca.que === 'tiro-a-alto' || marca.que === 'tiro-b-alto') {
+    return { que: marca.que, i: marca.i }
+  }
+  if (marca.que === 'prisma') {
+    const p = prismasDe()[marca.i]
+    return { que: 'prisma', i: marca.i, dx: p.x - punto.x, dz: p.z - punto.z }
+  }
+  if (marca.que === 'prisma-giro') {
+    const p = prismasDe()[marca.i]
+    return {
+      que: 'prisma-giro',
+      i: marca.i,
+      giro0: p.giro ?? 0,
+      angulo0: Math.atan2(punto.z - p.z, punto.x - p.x),
+    }
+  }
+  if (marca.que === 'prisma-esquina' || marca.que === 'prisma-alto') {
+    return { que: marca.que, i: marca.i }
+  }
   if (marca.que === 'tubo') {
     const t = tubosDe()[marca.i]
     return { que: 'tubo', i: marca.i, dx: t.x - punto.x, dz: t.z - punto.z }
@@ -1329,6 +1589,124 @@ function moverMarcaDeSuperficie(arrastre, punto, evento) {
 }
 
 /**
+ * **Arrastrar un prisma.** Los tres gestos de una pieza (vuelta 79) más el que
+ * allí no podía existir: **girar a cualquier ángulo**.
+ */
+function moverMarcaDePrisma(arrastre, punto, evento) {
+  const p = prismasDe()[arrastre.i]
+  if (!p) return
+  if (arrastre.que === 'prisma') {
+    p.x = aRejilla(punto.x + arrastre.dx)
+    p.z = aRejilla(punto.z + arrastre.dz)
+    return
+  }
+  if (arrastre.que === 'prisma-esquina') {
+    /**
+     * **Se estira en los ejes del prisma**, no en los del mundo: el puntero se
+     * lleva a coordenadas locales, y de ahí salen el semiancho y el semifondo.
+     * El centro se queda clavado, que es lo que distingue esto de la esquina
+     * de una caja —allí se ancla la esquina opuesta porque `x`/`z` es la
+     * mínima; aquí `x`/`z` **es el centro**, así que anclarlo es lo coherente
+     * y además es lo único que deja girar y estirar sin pelearse.
+     */
+    const cos = Math.cos(p.giro ?? 0)
+    const sen = Math.sin(p.giro ?? 0)
+    const dx = punto.x - p.x
+    const dz = punto.z - p.z
+    const localX = dx * cos + dz * sen
+    const localZ = -dx * sen + dz * cos
+    p.w = Number(Math.max(aRejilla(Math.abs(localX) * 2), paso).toFixed(4))
+    p.d = Number(Math.max(aRejilla(Math.abs(localZ) * 2), paso).toFixed(4))
+    return
+  }
+  if (arrastre.que === 'prisma-alto') {
+    // La misma escalera que una pieza: el alto no es un número libre, es una
+    // palabra de `COVER.heights`.
+    if (arrastre.y0 === undefined) { arrastre.y0 = evento.clientY; arrastre.kind0 = p.kind }
+    const escalones = Object.entries(COVER.heights).sort((a, b) => a[1] - b[1])
+    const base = p.base ? coverHeight(p.base) : 0
+    const i0 = Math.max(escalones.findIndex(([k]) => k === arrastre.kind0), 0)
+    const salto = Math.round((arrastre.y0 - evento.clientY) / GIZMO.pixelesPorEscalon)
+    const i = Math.min(Math.max(i0 + salto, 0), escalones.length - 1)
+    const [clave, alto] = escalones[i]
+    if (alto > base) p.kind = clave
+    return
+  }
+  if (arrastre.que === 'prisma-giro') {
+    /**
+     * **Y aquí el aro NO cuadra a 90°**, que es la diferencia entera de esta
+     * vuelta. En una caja se cuadra porque la colisión no sabe girar y un aro
+     * libre prometería un gesto sin efecto (vuelta 79); un prisma se choca
+     * exactamente como se ve, así que recortarlo sería quitar a mano lo que se
+     * acaba de construir.
+     *
+     * Lo que sí se cuadra es a **grados enteros**, como el rumbo de una salida:
+     * un ángulo con siete decimales no es más preciso, es un fichero que no se
+     * lee.
+     */
+    const angulo = Math.atan2(punto.z - p.z, punto.x - p.x)
+    const grados = Math.round(((arrastre.giro0 + angulo - arrastre.angulo0) * 180) / Math.PI)
+    p.giro = aRadianes(((grados % 360) + 540) % 360 - 180)
+  }
+}
+
+/**
+ * **Arrastrar un ventilador.** Cuatro gestos, y los dos que miden altura van
+ * con el ratón en pantalla y no contra el suelo, por lo mismo que la flecha de
+ * un rebote (vuelta 80): un rayo contra el plano y=0 no dice nada de una
+ * altura.
+ */
+function moverMarcaDeVentilador(arrastre, punto, evento) {
+  const v = ventiladoresDe()[arrastre.i]
+  if (!v) return
+  if (arrastre.que === 'vent') {
+    v.x = aRejilla(punto.x + arrastre.dx)
+    v.z = aRejilla(punto.z + arrastre.dz)
+    return
+  }
+  if (arrastre.que === 'vent-esquina') {
+    v.w = Math.max(aRejilla(punto.x - v.x), paso)
+    v.d = Math.max(aRejilla(punto.z - v.z), paso)
+    return
+  }
+  if (arrastre.que === 'vent-alto') {
+    if (arrastre.y0 === undefined) { arrastre.y0 = evento.clientY; arrastre.a0 = v.alto }
+    const delta = (arrastre.y0 - evento.clientY) / GIZMO.pixelesPorEscalon
+    v.alto = Number(Math.min(Math.max(arrastre.a0 + delta, 0.5), FANS.altoMax).toFixed(2))
+    return
+  }
+  if (arrastre.que === 'vent-fuerza') {
+    if (arrastre.y0 === undefined) { arrastre.y0 = evento.clientY; arrastre.f0 = v.fuerza }
+    const delta = (arrastre.y0 - evento.clientY) / GIZMO.pixelesPorEscalon
+    v.fuerza = Number(Math.min(Math.max(arrastre.f0 + delta, 0.1), FANS.fuerzaMax).toFixed(2))
+  }
+}
+
+/**
+ * **Arrastrar una tirolina.** Dos anclajes, dos gestos cada uno: la bola por el
+ * suelo y su cubo para la altura.
+ *
+ * La altura **no se cuadra a la rejilla**: un cable va de una cornisa a otra y
+ * lo que hace falta es poder ponerlo justo encima de la cabeza de quien pasa
+ * por debajo, no en números redondos. Lo que sí se redondea son dos decimales,
+ * que es lo que evita un fichero con `7.400000000000001`.
+ */
+function moverMarcaDeTirolina(arrastre, punto, evento) {
+  const t = tirolinasDe()[arrastre.i]
+  if (!t) return
+  const cual = arrastre.que.startsWith('tiro-a') ? 'desde' : 'hasta'
+  const p = t[cual]
+  if (arrastre.que === 'tiro-a' || arrastre.que === 'tiro-b') {
+    p.x = aRejilla(punto.x + arrastre.dx)
+    p.z = aRejilla(punto.z + arrastre.dz)
+    return
+  }
+  if (arrastre.y0 === undefined) { arrastre.y0 = evento.clientY; arrastre.h0 = p.y }
+  const delta = (arrastre.y0 - evento.clientY) / GIZMO.pixelesPorEscalon
+  p.y = Number(Math.max(arrastre.h0 + delta, 0.2).toFixed(2))
+}
+
+/**
  * **Arrastrar un tubo.** Tres gestos y ninguno es un modo: el cuerpo lo mueve,
  * el tirador del suelo le da radio y el de arriba le da alto. Girarlo no está
  * porque **no significaría nada**: un anillo de revolución girado es el mismo
@@ -1360,6 +1738,15 @@ function moverMarcaDeTubo(arrastre, punto, evento) {
 
 /** Lo que gobierna `moverMarcaDeTubo`. */
 const MARCAS_DE_TUBO = new Set(['tubo', 'tubo-radio', 'tubo-alto'])
+
+/** Lo que gobierna `moverMarcaDePrisma`. */
+const MARCAS_DE_PRISMA = new Set(['prisma', 'prisma-esquina', 'prisma-alto', 'prisma-giro'])
+
+/** Lo que gobierna `moverMarcaDeVentilador`. */
+const MARCAS_DE_VENTILADOR = new Set(['vent', 'vent-esquina', 'vent-alto', 'vent-fuerza'])
+
+/** Lo que gobierna `moverMarcaDeTirolina`. */
+const MARCAS_DE_TIROLINA = new Set(['tiro-a', 'tiro-b', 'tiro-a-alto', 'tiro-b-alto'])
 
 /** Lo que gobierna `moverMarcaDeSuperficie` y no `moverMarca`. */
 const MARCAS_DE_SUPERFICIE = new Set([
@@ -1398,7 +1785,10 @@ lienzo.addEventListener('pointermove', (evento) => {
     pintarPanel()
     return
   }
-  if (MARCAS_DE_TUBO.has(arrastrando.que)) moverMarcaDeTubo(arrastrando, punto, evento)
+  if (MARCAS_DE_PRISMA.has(arrastrando.que)) moverMarcaDePrisma(arrastrando, punto, evento)
+  else if (MARCAS_DE_TUBO.has(arrastrando.que)) moverMarcaDeTubo(arrastrando, punto, evento)
+  else if (MARCAS_DE_VENTILADOR.has(arrastrando.que)) moverMarcaDeVentilador(arrastrando, punto, evento)
+  else if (MARCAS_DE_TIROLINA.has(arrastrando.que)) moverMarcaDeTirolina(arrastrando, punto, evento)
   else if (MARCAS_DE_SUPERFICIE.has(arrastrando.que)) moverMarcaDeSuperficie(arrastrando, punto, evento)
   else moverMarca(arrastrando, punto)
   sucio = true
@@ -1450,9 +1840,10 @@ function elegirMarca(marca) {
   // Y se abre la hoja donde vive ese marcador: pinchar una salida y no ver sus
   // números en ninguna parte es media herramienta.
   if (marca.que === 'spawn') abrirPanel(true, 'mapa')
-  else if (marca.que.startsWith('tubo')) abrirPanel(true, 'construir')
-  else if (marca.que.startsWith('tp')) abrirPanel(true, 'dispositivos')
-  else abrirPanel(true, 'duelo')
+  else if (marca.que.startsWith('tubo') || marca.que.startsWith('prisma')) abrirPanel(true, 'construir')
+  else if (marca.que.startsWith('tp') || marca.que.startsWith('vent') || marca.que.startsWith('tiro')) {
+    abrirPanel(true, 'dispositivos')
+  } else abrirPanel(true, 'duelo')
 }
 
 function rellenarAlturas() {
@@ -1460,6 +1851,10 @@ function rellenarAlturas() {
     .map(([clave, alto]) => `<option value="${clave}">${clave} · ${alto} u</option>`)
     .join('')
   $('p-kind').innerHTML = opciones
+  // **La misma escalera para el prisma**, que es lo que hace que `kind: 'alta'`
+  // signifique lo mismo en los dos: una segunda lista de alturas sería una
+  // pieza que se apila con otra sin cuadrar.
+  $('k-kind').innerHTML = opciones
   $('abrir').innerHTML = `<option value="">(mapa nuevo)</option>` + Object.entries(SCENARIOS)
     .map(([clave, def]) => `<option value="${clave}">${def.label ?? clave}</option>`)
     .join('')
@@ -1545,7 +1940,10 @@ function pintarPanel() {
   }
   pintarSuperficieDePieza(pieza)
   pintarTubo()
+  pintarPrisma()
   pintarTeletransportes()
+  pintarVentiladores()
+  pintarTirolinas()
   pintarDispositivos()
   $('deshacer').disabled = pila.atras.length === 0
   $('rehacer').disabled = pila.adelante.length === 0
@@ -1588,17 +1986,63 @@ function pintarSuperficieDePieza(pieza) {
   // un rebote se lee en unidades de altura y un lanzamiento contra el techo
   // del aire del mapa, que es lo que lo acota.
   const g = fisicaDeEscenario(mapa).gravity
+  if (sup.tipo === 'hielo') {
+    // **Y aquí `fuerza` es rozamiento**, así que la nota lo dice con todas las
+    // letras: es el mismo campo con otro significado, y un panel que lo
+    // llamara «fuerza» a secas invitaría a subirlo para resbalar más.
+    $('p-sup-nota').textContent =
+      `Aquí el número es el ROZAMIENTO (${sup.fuerza} u/s²): cuanto MÁS BAJO, `
+      + `más se resbala. Soltar la tecla a la carrera deja unas `
+      + `${(MOVEMENT.speed * MOVEMENT.speed / (2 * Math.max(sup.fuerza, 0.01)) / 2).toFixed(1)} u de deriva.`
+    return
+  }
   $('p-sup-nota').textContent = esVelocidad
-    ? `Lanza a ${Math.min(sup.fuerza, fisicaDeEscenario(mapa).airStrafeMaxSpeed).toFixed(1)} u/s `
-      + `(el techo del aire de este mapa es ${fisicaDeEscenario(mapa).airStrafeMaxSpeed}).`
+    ? `Lanza a ${sup.fuerza.toFixed(1)} u/s (sin techo desde la vuelta 82; `
+      + `el del aire de este mapa es ${fisicaDeEscenario(mapa).airStrafeMaxSpeed}).`
     : `Sube ${(sup.fuerza * sup.fuerza / (2 * g)).toFixed(2)} u sobre la pieza, `
       + `con la gravedad ${g} de este mapa.`
 }
 
+/**
+ * **Leer una lista del mapa no puede escribir en el mapa** (vuelta 83).
+ *
+ * Los cinco accesores de listas —piezas macro, dispositivos, cables— la creaban
+ * al pedirla: `if (!Array.isArray(mapa.x)) mapa.x = []`. Parece inofensivo y
+ * no lo es, porque **el mapa es lo que compara deshacer/rehacer**: pintar el
+ * panel le añadía campos al final, así que un mapa restaurado del historial ya
+ * no era igual al que se había guardado —mismos datos, otro orden de claves— y
+ * `ed76` [6] lo cazó con un «rehacer no devuelve el mapa al dígito».
+ *
+ * Así que leer devuelve una lista vacía **compartida y congelada** —si alguien
+ * intenta escribir en ella, salta en vez de escribir en la nada— y quien va a
+ * añadir algo pide la otra.
+ */
+const LISTA_VACIA = Object.freeze([])
+
+function listaDe(campo) {
+  return Array.isArray(mapa[campo]) ? mapa[campo] : LISTA_VACIA
+}
+
+/** La misma lista, creada si no está, para quien va a escribir en ella. */
+function listaParaEscribir(campo) {
+  if (!Array.isArray(mapa[campo])) mapa[campo] = []
+  return mapa[campo]
+}
+
+/** Los prismas del mapa. */
+function prismasDe() {
+  return listaDe('prismas')
+}
+
+/** El prisma elegido, o `null`. */
+function prismaElegido() {
+  if (!marcaElegida?.que?.startsWith('prisma')) return null
+  return prismasDe()[marcaElegida.i] ?? null
+}
+
 /** Los tubos del mapa. Se materializa la lista al pedirla, como los teletransportes. */
 function tubosDe() {
-  if (!Array.isArray(mapa.tubos)) mapa.tubos = []
-  return mapa.tubos
+  return listaDe('tubos')
 }
 
 /** El tubo elegido, o `null`. La selección de un tubo es una marca, como un área. */
@@ -1613,6 +2057,38 @@ function tuboElegido() {
  * es para afinar a la décima y para leer **lo que cuesta** — que en un tubo no
  * es obvio, porque un objeto en el fichero son veintidós piezas en el motor.
  */
+function pintarPrisma() {
+  const prisma = prismaElegido()
+  $('prisma').hidden = !prisma
+  if (!prisma) return
+  $('k-x').value = prisma.x
+  $('k-z').value = prisma.z
+  $('k-w').value = prisma.w
+  $('k-d').value = prisma.d
+  $('k-base').value = prisma.base ?? 0
+  $('k-lados').value = prisma.lados
+  $('k-lados').min = PRISMAS.ladosMin
+  $('k-lados').max = PRISMAS.ladosMax
+  $('k-giro').value = Math.round(((prisma.giro ?? 0) * 180) / Math.PI)
+  for (const id of ['k-x', 'k-z']) $(id).step = paso
+  $('k-kind').value = prisma.kind
+  /**
+   * **Lo que se dice es lo que se va a notar jugando**, no el número otra vez:
+   * lo que le importa a quien construye una columna es **por dónde se pasa**,
+   * y eso es la apotema —lo más estrecho del polígono— más el radio del cuerpo.
+   */
+  const a = prisma.w / 2
+  const b = prisma.d / 2
+  if (prisma.lados === 4) {
+    $('k-nota').textContent = `Una caja de ${prisma.w}×${prisma.d} girada ${Math.round((prisma.giro * 180) / Math.PI)}°.`
+  } else {
+    const apotema = Math.min(a, b) * Math.cos(Math.PI / prisma.lados)
+    $('k-nota').textContent =
+      `Pilar de ${prisma.lados} caras. Lo más estrecho mide ${(apotema * 2).toFixed(2)} u, `
+      + `así que el jugador lo rodea a ${(apotema + COVER.playerRadius).toFixed(2)} u del centro.`
+  }
+}
+
 function pintarTubo() {
   const tubo = tuboElegido()
   $('tubo').hidden = !tubo
@@ -1640,6 +2116,81 @@ function pintarTubo() {
     `Hueco libre de ${(tubo.radio * 2).toFixed(1)} u de diámetro, ` +
     `pared de ${tubo.grosor} y ${tubo.alto} u de alto. ` +
     `El motor lo ve como ${piezas} pieza${piezas === 1 ? '' : 's'}.`
+}
+
+/** Los ventiladores, con sus números al lado del dibujo. */
+function pintarVentiladores() {
+  const vs = mapa.ventiladores ?? []
+  $('cuenta-vents').textContent = vs.length === 0 ? '' : `· ${vs.length}`
+  const g = fisicaDeEscenario(mapa).gravity
+  $('vent-fichas').innerHTML = vs
+    .map((v, i) => {
+      // **Lo que hace se dice en palabras, no en un número suelto.** «Fuerza
+      // 42» no dice si se sube o se cae más despacio hasta que se prueba el
+      // mapa, que es justo la barrera que la vuelta 78 vino a quitar.
+      const neta = g - v.fuerza
+      const que = neta < -0.01
+        ? `sube solo (gravedad neta ${neta.toFixed(1)}, hacia arriba)`
+        : neta < g * 0.5
+          ? `se cae mucho más despacio (gravedad neta ${neta.toFixed(1)} de ${g})`
+          : `apenas se nota (gravedad neta ${neta.toFixed(1)} de ${g})`
+      return `
+      <div class="ficha-salida${marcaElegida?.que?.startsWith('vent') && marcaElegida.i === i ? ' puesta' : ''}">
+        <h3>Ventilador ${i + 1}</h3>
+        <div class="trio">
+          <label>X <input data-vent="${i}" data-campo="x" type="number" step="${paso}" value="${v.x}" /></label>
+          <label>Z <input data-vent="${i}" data-campo="z" type="number" step="${paso}" value="${v.z}" /></label>
+        </div>
+        <div class="trio">
+          <label>Ancho <input data-vent="${i}" data-campo="w" type="number" step="${paso}" min="${paso}" value="${v.w}" /></label>
+          <label>Fondo <input data-vent="${i}" data-campo="d" type="number" step="${paso}" min="${paso}" value="${v.d}" /></label>
+        </div>
+        <div class="trio">
+          <label>Base <input data-vent="${i}" data-campo="base" type="number" step="${paso}" min="0" value="${v.base}" /></label>
+          <label>Alto <input data-vent="${i}" data-campo="alto" type="number" step="0.5" min="0.5" value="${v.alto}" /></label>
+          <label>Fuerza <input data-vent="${i}" data-campo="fuerza" type="number" step="1" min="0.1" value="${v.fuerza}" /></label>
+        </div>
+        <p class="nota">Dentro ${que}.</p>
+        <button data-vent-quitar="${i}" type="button">Quitar éste</button>
+      </div>`
+    })
+    .join('')
+}
+
+/** Las tirolinas, con su largo y lo que se tarda en recorrerlas. */
+function pintarTirolinas() {
+  const ts = mapa.tirolinas ?? []
+  $('cuenta-tiros').textContent = ts.length === 0 ? '' : `· ${ts.length}`
+  $('tiro-fichas').innerHTML = ts
+    .map((t, i) => {
+      // **Lo que hace falta saber de un cable es cuánto tarda**, que es el
+      // número que decide si cruzar por arriba compensa. Un largo en unidades
+      // no lo contesta sin dividir.
+      const largo = Math.hypot(t.hasta.x - t.desde.x, t.hasta.y - t.desde.y, t.hasta.z - t.desde.z)
+      const seg = largo / Math.max(t.velocidad, 0.01)
+      const cae = t.desde.y - t.hasta.y
+      const pendiente = cae > 0.05 ? `baja ${cae.toFixed(1)} u` : cae < -0.05 ? `sube ${(-cae).toFixed(1)} u` : 'horizontal'
+      return `
+      <div class="ficha-salida${marcaElegida?.que?.startsWith('tiro') && marcaElegida.i === i ? ' puesta' : ''}">
+        <h3>Tirolina ${i + 1}</h3>
+        <div class="trio">
+          <label>A · X <input data-tiro="${i}" data-campo="desde.x" type="number" step="${paso}" value="${t.desde.x}" /></label>
+          <label>A · Y <input data-tiro="${i}" data-campo="desde.y" type="number" step="0.5" value="${t.desde.y}" /></label>
+          <label>A · Z <input data-tiro="${i}" data-campo="desde.z" type="number" step="${paso}" value="${t.desde.z}" /></label>
+        </div>
+        <div class="trio">
+          <label>B · X <input data-tiro="${i}" data-campo="hasta.x" type="number" step="${paso}" value="${t.hasta.x}" /></label>
+          <label>B · Y <input data-tiro="${i}" data-campo="hasta.y" type="number" step="0.5" value="${t.hasta.y}" /></label>
+          <label>B · Z <input data-tiro="${i}" data-campo="hasta.z" type="number" step="${paso}" value="${t.hasta.z}" /></label>
+        </div>
+        <label>Velocidad <input data-tiro="${i}" data-campo="velocidad" type="number" step="1"
+          min="${ZIPLINES.velocidadMin}" max="${ZIPLINES.velocidadMax}" value="${t.velocidad}" /></label>
+        <p class="nota">${largo.toFixed(1)} u, ${pendiente}, <b>${seg.toFixed(1)} s</b> de viaje.
+          Al soltarse se sale a ${t.velocidad} u/s.</p>
+        <button data-tiro-quitar="${i}" type="button">Quitar ésta</button>
+      </div>`
+    })
+    .join('')
 }
 
 /** La lista de teletransportes, con sus números al lado del dibujo. */
@@ -1852,6 +2403,58 @@ for (const [id, clave, min, max] of [
   })
 }
 
+/**
+ * Los campos del prisma. Se acotan **aquí y en el saneado**, como los del tubo:
+ * el saneado garantiza el fichero y esto evita que el panel enseñe un número
+ * que al guardar va a cambiar solo.
+ */
+for (const [id, clave] of [['k-x', 'x'], ['k-z', 'z'], ['k-w', 'w'], ['k-d', 'd']]) {
+  campo(id, (v) => {
+    const prisma = prismaElegido()
+    const n = Number(v)
+    if (!prisma || !Number.isFinite(n)) return
+    prisma[clave] = clave === 'w' || clave === 'd' ? Math.max(n, paso) : n
+  })
+}
+campo('k-lados', (v) => {
+  const prisma = prismaElegido()
+  const n = Number(v)
+  if (!prisma || !Number.isFinite(n)) return
+  prisma.lados = Math.round(Math.min(Math.max(n, PRISMAS.ladosMin), PRISMAS.ladosMax))
+})
+campo('k-giro', (v) => {
+  const prisma = prismaElegido()
+  const n = Number(v)
+  if (!prisma || !Number.isFinite(n)) return
+  // El campo va en **grados** y el fichero en radianes, como el rumbo de una
+  // salida: lo que se escribe a mano se escribe en grados o no se escribe.
+  prisma.giro = aRadianes(((n % 360) + 540) % 360 - 180)
+})
+campo('k-kind', (v) => {
+  const prisma = prismaElegido()
+  if (prisma) prisma.kind = v
+})
+campo('k-base', (v) => {
+  const prisma = prismaElegido()
+  if (!prisma) return
+  const base = Math.max(Number(v) || 0, 0)
+  // Subirlo lo sube **entero**, como una pieza: mover sólo la base lo
+  // aplastaría contra su propio techo hasta hacerlo desaparecer.
+  const grosor = Math.max(coverHeight(prisma.kind) - (prisma.base ? coverHeight(prisma.base) : 0), 0.1)
+  if (base <= 0) delete prisma.base
+  else prisma.base = Number(base.toFixed(4))
+  prisma.kind = Number((base + grosor).toFixed(4))
+})
+
+$('k-borrar').addEventListener('click', () => {
+  if (!marcaElegida?.que?.startsWith('prisma')) return
+  anotarParaDeshacer()
+  prismasDe().splice(marcaElegida.i, 1)
+  marcaElegida = null
+  sucio = true
+  pintarPanel()
+})
+
 $('t-borrar').addEventListener('click', () => {
   if (!marcaElegida?.que?.startsWith('tubo')) return
   anotarParaDeshacer()
@@ -1886,9 +2489,18 @@ const ALTO_DE_PLATAFORMA = 0.2
  */
 let ladoDeDispositivo = 4
 
+/** Cómo se llama cada superficie en pantalla. El catálogo está en `SURFACES`. */
+const NOMBRE_DE_SUPERFICIE = { rebote: 'Rebote', velocidad: 'Velocidad', hielo: 'Hielo' }
+
 function ponerDispositivo(cual) {
   anotarParaDeshacer()
   if (cual === 'teletransporte') { anadirTeletransporte(); return }
+  // **Ni un ventilador ni una tirolina son una losa** (vuelta 83), así que no
+  // pasan por aquí: uno es un volumen y la otra es un cable. Comparten botón
+  // porque para quien construye son lo mismo —una cosa que te mueve— y eso es
+  // lo que decide dónde va el botón, no cómo está guardado el dato.
+  if (cual === 'ventilador') { anadirVentilador(); return }
+  if (cual === 'tirolina') { anadirTirolina(); return }
   const w = ladoDeDispositivo
   const d = ladoDeDispositivo
   // Se aparta de lo que ya haya ahí, como una forma nueva desde la vuelta 76:
@@ -1976,8 +2588,20 @@ function pintarDispositivos() {
   for (const [i, pieza] of mapa.boxes.entries()) {
     if (!pieza.superficie) continue
     const sup = pieza.superficie
-    const que = sup.tipo === 'rebote' ? 'Rebote' : 'Velocidad'
-    filas.push(`<li data-pieza="${i}"><b>${que}</b> · fuerza ${sup.fuerza} @ ${pieza.x},${pieza.z}</li>`)
+    // El nombre sale del catálogo y no de un `if` por tipo: añadir uno más a
+    // `SURFACES.tipos` no puede dejar una fila llamándose «Velocidad».
+    const que = NOMBRE_DE_SUPERFICIE[sup.tipo] ?? sup.tipo
+    // **Y en el hielo `fuerza` no es fuerza, es rozamiento**, así que la fila
+    // lo dice con su palabra. Un número con dos significados y una sola
+    // etiqueta es cómo alguien pone 40 esperando resbalar más.
+    const cuanto = sup.tipo === 'hielo' ? `rozamiento ${sup.fuerza}` : `fuerza ${sup.fuerza}`
+    filas.push(`<li data-pieza="${i}"><b>${que}</b> · ${cuanto} @ ${pieza.x},${pieza.z}</li>`)
+  }
+  for (const [i, v] of ventiladoresDe().entries()) {
+    filas.push(`<li data-vent="${i}"><b>Ventilador</b> · fuerza ${v.fuerza}, ${v.alto} u de alto @ ${v.x},${v.z}</li>`)
+  }
+  for (const [i, t] of tirolinasDe().entries()) {
+    filas.push(`<li data-tiro="${i}"><b>Tirolina</b> · ${t.desde.x},${t.desde.y},${t.desde.z} → ${t.hasta.x},${t.hasta.y},${t.hasta.z}</li>`)
   }
   for (const [i, tp] of teletransportesDe().entries()) {
     filas.push(`<li data-tp="${i}"><b>Teletransporte</b> · ${tp.x},${tp.z} → ${tp.destino.x},${tp.destino.z}</li>`)
@@ -1991,18 +2615,19 @@ $('lista-disp').addEventListener('click', (evento) => {
   const fila = evento.target.closest('li')
   if (!fila) return
   if (fila.dataset.pieza !== undefined) elegir(Number(fila.dataset.pieza))
+  else if (fila.dataset.vent !== undefined) elegirMarca({ que: 'vent', i: Number(fila.dataset.vent) })
+  else if (fila.dataset.tiro !== undefined) elegirMarca({ que: 'tiro-a', i: Number(fila.dataset.tiro) })
   else if (fila.dataset.tp !== undefined) elegirMarca({ que: 'tp', i: Number(fila.dataset.tp) })
 })
 
 /** Los teletransportes: añadir, quitar y afinar sus números. */
 function teletransportesDe() {
-  if (!Array.isArray(mapa.teletransportes)) mapa.teletransportes = []
-  return mapa.teletransportes
+  return listaDe('teletransportes')
 }
 
 /** Poner uno delante de la cámara. Lo llaman su botón y la hoja de dispositivos. */
 function anadirTeletransporte() {
-  const tps = teletransportesDe()
+  const tps = listaParaEscribir('teletransportes')
   const base = TELEPORTS.porDefecto
   // Se pone delante de la cámara, como una pieza nueva: un teletransporte que
   // nace en el origen es uno que hay que ir a buscar.
@@ -2030,6 +2655,102 @@ $('tp-fichas').addEventListener('click', (evento) => {
   anotarParaDeshacer()
   teletransportesDe().splice(Number(quitar), 1)
   marcaElegida = null
+  sucio = true
+  pintarPanel()
+})
+
+/** Los ventiladores: añadir, quitar y afinar sus números. */
+function ventiladoresDe() {
+  return listaDe('ventiladores')
+}
+
+/** Las tirolinas. Mismo patrón: la lista se crea al pedirla. */
+function tirolinasDe() {
+  return listaDe('tirolinas')
+}
+
+/** Uno delante de la cámara, como una pieza nueva. */
+function anadirVentilador() {
+  const vs = listaParaEscribir('ventiladores')
+  const base = FANS.porDefecto
+  const centro = orbita.centro
+  vs.push({
+    ...base,
+    x: aRejilla(centro.x + base.x),
+    z: aRejilla(centro.z + base.z),
+  })
+  elegirMarca({ que: 'vent', i: vs.length - 1 })
+  sucio = true
+  pintarPanel()
+}
+
+function anadirTirolina() {
+  const ts = listaParaEscribir('tirolinas')
+  const base = ZIPLINES.porDefecto
+  const centro = orbita.centro
+  ts.push({
+    desde: { x: aRejilla(centro.x + base.desde.x), y: base.desde.y, z: aRejilla(centro.z + base.desde.z) },
+    hasta: { x: aRejilla(centro.x + base.hasta.x), y: base.hasta.y, z: aRejilla(centro.z + base.hasta.z) },
+    velocidad: base.velocidad,
+  })
+  elegirMarca({ que: 'tiro-a', i: ts.length - 1 })
+  sucio = true
+  pintarPanel()
+}
+
+$('vent-anadir').addEventListener('click', () => { anotarParaDeshacer(); anadirVentilador() })
+$('tiro-anadir').addEventListener('click', () => { anotarParaDeshacer(); anadirTirolina() })
+
+$('vent-fichas').addEventListener('click', (evento) => {
+  const quitar = evento.target.dataset?.ventQuitar
+  if (quitar === undefined) return
+  anotarParaDeshacer()
+  ventiladoresDe().splice(Number(quitar), 1)
+  marcaElegida = null
+  sucio = true
+  pintarPanel()
+})
+
+$('vent-fichas').addEventListener('change', (evento) => {
+  const campo = evento.target.dataset?.campo
+  const i = evento.target.dataset?.vent
+  if (campo === undefined || i === undefined) return
+  const v = ventiladoresDe()[Number(i)]
+  if (!v) return
+  anotarParaDeshacer()
+  const n = Number(evento.target.value) || 0
+  if (campo === 'w' || campo === 'd') v[campo] = Math.max(n, paso)
+  else if (campo === 'alto') v.alto = Math.min(Math.max(n, 0.5), FANS.altoMax)
+  else if (campo === 'fuerza') v.fuerza = Math.min(Math.max(n, 0.1), FANS.fuerzaMax)
+  else v[campo] = n
+  sucio = true
+  pintarPanel()
+})
+
+$('tiro-fichas').addEventListener('click', (evento) => {
+  const quitar = evento.target.dataset?.tiroQuitar
+  if (quitar === undefined) return
+  anotarParaDeshacer()
+  tirolinasDe().splice(Number(quitar), 1)
+  marcaElegida = null
+  sucio = true
+  pintarPanel()
+})
+
+$('tiro-fichas').addEventListener('change', (evento) => {
+  const campo = evento.target.dataset?.campo
+  const i = evento.target.dataset?.tiro
+  if (campo === undefined || i === undefined) return
+  const t = tirolinasDe()[Number(i)]
+  if (!t) return
+  anotarParaDeshacer()
+  const n = Number(evento.target.value) || 0
+  if (campo === 'velocidad') {
+    t.velocidad = Math.min(Math.max(n, ZIPLINES.velocidadMin), ZIPLINES.velocidadMax)
+  } else {
+    const [cual, eje] = campo.split('.')
+    t[cual][eje] = n
+  }
   sucio = true
   pintarPanel()
 })
@@ -2144,6 +2865,20 @@ const FORMAS = [
    * contra lo que el motor sabe chocar: por eso se puede ofrecer.
    */
   { id: 'tubo', nombre: 'Tubo', pista: 'pozo redondo', macro: 'tubo' },
+  /**
+   * **Y dos que se chocan giradas** (vuelta 83). Hasta esta vuelta el editor
+   * no podía ofrecerlas y la razón estaba escrita: la colisión era AABB, así
+   * que una caja girada se habría dibujado girada, parado las balas bien y
+   * chocado sin girar. Con el prisma convexo el motor ya sabe chocarlas, y por
+   * eso ahora sí (la regla de la 74).
+   *
+   * Son dos botones y un solo dato —`prismas`— porque para quien construye son
+   * dos cosas distintas: un **muro girado** es la rotación libre que se pedía
+   * desde la fase 5, y una **columna** es la curva. Por debajo, cuatro lados o
+   * doce.
+   */
+  { id: 'muro-girado', nombre: 'Muro girado', pista: '12×1 a cualquier ángulo', macro: 'prisma', prisma: { w: 12, d: 1, kind: 'alta', lados: 4 } },
+  { id: 'columna', nombre: 'Columna', pista: 'pilar de 12 caras', macro: 'prisma', prisma: { w: 3, d: 3, kind: 'alta', lados: 12 } },
 ]
 
 function pintarFormas() {
@@ -2158,8 +2893,22 @@ $('formas').addEventListener('click', (evento) => {
   const forma = FORMAS.find((f) => f.id === boton.dataset.forma)
   if (!forma) return
   anotarParaDeshacer()
+  if (forma.macro === 'prisma') {
+    const lista = listaParaEscribir('prismas')
+    // Delante de la cámara y **por su centro**, que es lo que `x`/`z` significa
+    // en un prisma: la esquina de algo que gira no quiere decir nada.
+    lista.push({
+      ...PRISMAS.porDefecto,
+      ...forma.prisma,
+      x: aRejilla(orbita.centro.x),
+      z: aRejilla(orbita.centro.z),
+    })
+    sucio = true
+    elegirMarca({ que: 'prisma', i: lista.length - 1 })
+    return
+  }
   if (forma.macro === 'tubo') {
-    const tubos = tubosDe()
+    const tubos = listaParaEscribir('tubos')
     // Delante de la cámara, como una pieza nueva: uno que nace en el origen es
     // uno que hay que ir a buscar.
     tubos.push({

@@ -105,7 +105,7 @@ export class ClienteRed {
      */
     this.arma = WEAPON_ORDER[0]
     /** Teclas de este frame, que las escribe quien lea el teclado. */
-    this.teclas = { forward: false, back: false, left: false, right: false, jump: false, crouch: false, walk: false }
+    this.teclas = { forward: false, back: false, left: false, right: false, jump: false, crouch: false, walk: false, use: false }
     /** Instante real de la última pulsación de saltar sin repartir, o null. */
     this._saltoTs = null
     /** El clic de disparo pendiente de repartir: instante real y adónde apuntaba. */

@@ -1117,6 +1117,54 @@ export const LEGACY_KEYBINDS = {
 export const MOVEMENT = {
   enabled: true,
 
+  /**
+   * **El hielo: lo único del juego que le da velocidad al suelo** (vuelta 83).
+   *
+   * Y por eso estaba en el cajón de «vuelta propia» del triaje de la 79: a pie
+   * en Vektor **no hay velocidad**. Un paso es `posición + dirección × marcha ×
+   * dt`, así que soltar W para al jugador en ese mismo paso y «resbaladizo» no
+   * es bajar un rozamiento que no existe — es estrenar un modelo.
+   *
+   * Lo que lo hace asumible es que el modelo nuevo está **apagado por
+   * construcción**: mientras no haya hielo debajo y la velocidad de suelo valga
+   * cero, `_gobiernaElHielo` se sale en la primera línea y el paso lo resuelve
+   * el camino de siempre. Medido: el mismo paseo por un mapa sin hielo acaba en
+   * la misma coordenada hasta el último decimal.
+   *
+   * **Y es una integración, como el modelo vectorial del aire** (vuelta 32): no
+   * tiene forma cerrada porque la entrada son las teclas, paso a paso. Lo que
+   * la hace segura es lo mismo que allí — el mundo va a 60 Hz fijos desde la
+   * vuelta 44, así que los dos extremos de una partida dan los mismos pasos con
+   * las mismas máscaras. La dispersión entre refrescos está medida en
+   * `vent83`/`hielo83` y se anota, no se esconde.
+   */
+  hielo: {
+    /**
+     * Cuánto manda la tecla, en u/s². Bajo a propósito: lo que distingue el
+     * hielo es que **lo que pides tarda en pasar**, no que vayas más despacio.
+     */
+    aceleracion: 9,
+    /**
+     * Lo que frena el suelo normal cuando sales del hielo con marcha. Alto: un
+     * derrape de un par de décimas y se recupera el control. Sin esto, salir
+     * del hielo sería seguir resbalando por el resto del mapa.
+     */
+    frenadoFuera: 26,
+    /**
+     * Techo de la marcha en hielo, como fracción de tu carrera. Por encima de
+     * 1 a propósito —coger carrerilla en una pista es la gracia— y con techo,
+     * por lo mismo que el air-strafe lo tiene.
+     */
+    factorMarchaMax: 1.35,
+    /** Por debajo de esto la velocidad se pone a cero exacto. Ver el porqué en
+     * `_gobiernaElHielo`: es lo que devuelve el paso al camino de siempre. */
+    umbralParada: 0.05,
+    /** Cada cuánto suena el raspado mientras se resbala de verdad. */
+    pulsoMs: 300,
+    /** Y a partir de qué marcha suena, en fracción de la carrera. */
+    umbralSonido: 0.45,
+  },
+
   /** Velocidad horizontal de pie, en unidades por segundo. */
   speed: 6.5,
   /**
@@ -2146,7 +2194,7 @@ export const EDITOR = {
  */
 export const SURFACES = {
   /** Los tipos que el motor sabe resolver. Un `tipo` fuera de aquí se tira y se dice. */
-  tipos: ['rebote', 'velocidad'],
+  tipos: ['rebote', 'velocidad', 'hielo'],
   /**
    * **El tope de fuerza no es un límite de diseño** (vuelta 82). Era 40 y, peor
    * todavía, el lanzamiento se acotaba además al techo del aire —9.5 u/s de
@@ -2180,6 +2228,14 @@ export const SURFACES = {
   porDefecto: {
     rebote: { tipo: 'rebote', fuerza: 14 },
     velocidad: { tipo: 'velocidad', fuerza: 12, rumbo: 0, salto: 4 },
+    /**
+     * **El hielo** (vuelta 83). Aquí `fuerza` es **el rozamiento**, en u/s² de
+     * frenada: cuanto más bajo, más resbala. Se reutiliza el campo que ya
+     * existe en vez de inventar uno porque es literalmente lo mismo —cuánto
+     * empuja la superficie— con el signo cambiado, y así el mismo deslizador
+     * del editor vale para las tres.
+     */
+    hielo: { tipo: 'hielo', fuerza: 1.6 },
   },
   /**
    * **El alto de la marca que se pinta encima**, sobre la cara de la pieza. No
@@ -2220,6 +2276,8 @@ export const SURFACES = {
      * una pieza del mapa.
      */
     muelle: { vueltas: 2.5, lados: 9, radio: 0.4, altoMin: 0.3, altoMax: 0.85 },
+    /** El cristal de una pista de hielo: una estrella de seis brazos, al ras. */
+    cristal: { brazos: 6, radio: 0.44, grosor: 0.16 },
   },
 
   /**
@@ -2248,9 +2306,49 @@ export const SURFACES = {
     /** Radios de salida y de llegada de cada uno de los cuatro gestos. */
     rebote: { r0: 0.5, r1: 2.6, sube: 1.7 },
     velocidad: { r0: 1.5, r1: 0.9, avanza: 5.5 },
+    ventilador: { r0: 1.1, r1: 1.7, sube: 3.4 },
+    hielo: { r0: 0.35, r1: 1.4, sube: 0.12 },
     tpEntrada: { r0: 2.2, r1: 0.15, sube: 1.2 },
     tpSalida: { r0: 0.2, r1: 2.4, sube: 1.2 },
+    /** La tirolina: un aro que sale disparado **por el cable**, como el de la
+     *  plataforma de velocidad pero más estrecho — ahí se lanza al vacío y aquí
+     *  se va por un raíl. */
+    tirolina: { r0: 1.2, r1: 0.5, avanza: 4.5 },
   },
+}
+
+/**
+ * **Los ventiladores de un mapa** (vuelta 83). Un volumen que empuja hacia
+ * arriba mientras estés dentro.
+ *
+ * El triaje de la vuelta 79 lo puso en «vuelta propia» y la razón está en el
+ * modelo, no en el dibujo: **la vertical de Vektor está resuelta en forma
+ * cerrada** —`y = y0 + v0·t − ½g·t²` desde el despegue— así que un empuje
+ * sostenido no es sumar una fuerza por frame, que sería volver a integrar por
+ * Euler y perder la independencia del refresco que costó la vuelta 44. Lo que
+ * es, es **otra gravedad**: dentro del volumen la parábola se evalúa con
+ * `gravedad − fuerza`, y cruzar la frontera **re-ancla** el vuelo.
+ *
+ * Y es seguro en red por lo mismo que la física de la 72 y las superficies de
+ * la 80: **no viaja ningún número**. Los dos extremos montan el mismo mapa,
+ * dan los mismos pasos y cruzan la frontera en el mismo paso.
+ */
+export const FANS = {
+  /** Topes del formato, como los de `SALA`. No son límites de diseño. */
+  fuerzaMax: 120,
+  altoMax: 60,
+  /** Valores de partida al añadir uno en el editor. */
+  porDefecto: { x: -3, z: -3, w: 6, d: 6, base: 0, alto: 10, fuerza: 42 },
+  /**
+   * **Cada cuánto suelta una ráfaga** mientras estás dentro. Un ventilador que
+   * suena una vez al entrar y luego calla no se lee como un ventilador, y un
+   * bucle de verdad —arrancar y parar una fuente— es maquinaria que este
+   * proyecto no tiene en ninguna otra voz. Una ráfaga cada 380 ms **es** el
+   * sonido de un ventilador, y sale gratis con lo que ya hay.
+   */
+  pulsoMs: 380,
+  /** Lo que se dibuja dentro: flechas subiendo, repetidas por la planta. */
+  marca: { paso: 2.6, altoFlecha: 1.1, capas: 3 },
 }
 
 /**
@@ -2261,6 +2359,101 @@ export const TELEPORTS = {
   alto: 3,
   /** Valores de partida al añadir uno en el editor. */
   porDefecto: { x: -2, z: -2, w: 4, d: 4, destino: { x: 2, z: 2, yaw: 0 } },
+}
+
+/**
+ * **Las tirolinas de un mapa** (vuelta 83).
+ *
+ * El triaje de la vuelta 79 la puso en «vuelta propia, del tamaño del
+ * deslizamiento», y lo es por la misma razón: **es un estado de movimiento
+ * nuevo**, con sus campos que viajan, su forma cerrada y su regla de qué marcha
+ * conserva al soltarse. No es una superficie ni un volumen — no te hace algo al
+ * pisarla: te lleva.
+ *
+ * Cinco reglas, y ninguna es tuning:
+ *
+ * - **El cable es de un solo sentido.** Se declara `desde` y `hasta` y siempre
+ *   se viaja en esa dirección, que es lo que deja dibujar una flecha que no
+ *   miente. Un cable de doble sentido tendría que decidir por qué extremo has
+ *   entrado, y entonces la flecha del editor diría una cosa distinta a cada
+ *   jugador.
+ * - **Se avanza en forma cerrada**, como la parábola y como el deslizamiento:
+ *   `d(t) = velocidad · t` desde el instante del enganche, no `v · dt` sumado
+ *   paso a paso. A velocidad constante los dos dan casi lo mismo, pero lo
+ *   segundo es una integración y este proyecto ya sabe a dónde lleva.
+ * - **Engancharse te pega al cable**, y eso es un salto de hasta `alcanceU`, o
+ *   sea un teletransporte para quien te dibuja: sube `poseEpoch` (vueltas 44 y
+ *   50) o el rival vería un barrido de dos unidades.
+ * - **Soltarse conserva la velocidad del cable**, horizontal y vertical. No es
+ *   la regla del deslizamiento —que siembra el vuelo con tu carrera y no con su
+ *   empujón— porque aquí la velocidad **la decide el mapa**, como en la
+ *   plataforma de la vuelta 82, y no una técnica del jugador.
+ * - **Y es seguro en red por lo de siempre: no viaja ningún número.** Los dos
+ *   extremos montan el mismo mapa, derivan la misma lista de cables y lo único
+ *   que viaja es en qué cable estás (un índice) y cuánto llevas recorrido.
+ */
+export const ZIPLINES = {
+  /**
+   * A qué distancia del cable se engancha uno. 2.2 u es poco más que un brazo
+   * largo, y es lo que hace que enganchar sea un gesto y no una casualidad.
+   */
+  alcanceU: 2.2,
+  /**
+   * Cuánto cuelgan los ojos por debajo del cable. Un jugador mide 1.8 y mira
+   * desde 1.7: con 0.55 el cable queda **justo encima de la cabeza**, que es
+   * donde tiene que estar para que se entienda de qué vas colgado.
+   */
+  caidaU: 0.55,
+  /** Topes del formato, como los de `SALA`. No son límites de diseño. */
+  velocidadMin: 1,
+  velocidadMax: 60,
+  /** Valores de partida al añadir una en el editor. */
+  porDefecto: {
+    desde: { x: -8, y: 7, z: 0 },
+    hasta: { x: 8, y: 2.5, z: 0 },
+    velocidad: 14,
+  },
+  /**
+   * **Cada cuánto suena la polea** mientras viajas. Es la misma idea que el
+   * pulso del ventilador y por el mismo motivo: un bucle de verdad —arrancar y
+   * parar una fuente— es maquinaria que este proyecto no tiene en ninguna otra
+   * voz, y una ráfaga cada 190 ms **es** el traqueteo de una polea.
+   */
+  pulsoMs: 190,
+  /** Lo que se dibuja: el cable, sus dos anclajes y la flecha del sentido. */
+  marca: { grosor: 0.05, anclaje: 0.34, flechas: 5, flecha: 0.5 },
+}
+
+/**
+ * **Los prismas convexos de un mapa** (vuelta 83). El último renglón del
+ * triaje de la 79, y el que abre la rotación libre: `lados: 4` **es** una caja
+ * girada.
+ *
+ * El porqué de hacerlo entero —y no un OBB suelto— está en `src/maps/prisma.js`
+ * y venía escrito en `CLAUDE.md` desde la 79. Los topes son del formato, como
+ * los de `SALA`: no son límites de diseño.
+ */
+export const PRISMAS = {
+  ladosMin: 3,
+  /**
+   * **Veinticuatro caras, el mismo techo que un tubo.** Por encima de ahí un
+   * pilar de radio normal ya da escalones por debajo de lo que un ojo separa,
+   * y cada cara cuesta un producto escalar por eje, por paso y por jugador.
+   */
+  ladosMax: 24,
+  /**
+   * Valores de partida al añadir uno en el editor.
+   *
+   * **Y el orden de las claves importa**, que es de las cosas que no se
+   * adivinan: `sanearMapa` es un **punto fijo** —sanear dos veces da lo mismo,
+   * byte a byte— y eso es lo que hace que deshacer/rehacer pueda comparar dos
+   * mapas con un `JSON.stringify`, que es como está escrito desde la vuelta 76.
+   * Un objeto creado con las claves en otro orden rompe esa comparación sin
+   * cambiar ni un dato: `ed76` [6] salió rojo con un «rehacer no devuelve el
+   * mapa al dígito» y los dos mapas eran el mismo. El orden es el que emite
+   * `sanearPrisma`: primero lo de una pieza, después lo que un prisma añade.
+   */
+  porDefecto: { x: 0, z: 0, w: 3, d: 3, kind: 'alta', lados: 8, giro: 0 },
 }
 
 /**

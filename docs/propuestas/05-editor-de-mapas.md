@@ -138,6 +138,14 @@ así:
 |---|---|---|
 | Cubo, prisma, muro, bordillo, plataforma, parapeto (todos son la misma caja con otros números y otro `kind`) · giros de 90° | Rampa en las **4** orientaciones · hueco/ventanal/puerta como **composición** (jambas + dintel con `base`) + la comprobación de agacharse | Rotación libre (OBB) · tejado y triángulo **sólidos** · todo lo que se choque y no esté alineado |
 
+> **Al día (vuelta 83):** la tercera columna se pagó, y salió mejor de lo que
+> esta tabla proponía: en vez de un OBB se hizo el **convexo de N caras**, que
+> era lo que `CLAUDE.md` exigía desde la 79 —«un OBB suelto resuelve el 20% de
+> los casos y paga el 90% del precio»—. La regla de arriba no se relajó ni un
+> milímetro: la forma entró en el menú **cuando su colisión existió**. Lo que
+> sigue en esa columna son los triángulos sólidos. Y la segunda columna también
+> está pagada: el vano necesitaba la comprobación de agacharse, y está.
+
 Y para que no se pierda la capacidad, lo que compensa a la rotación libre en un
 juego de cajas es el **giro de 90° más la composición**: una torre con un vano,
 un tejado a dos aguas hecho de rampas, un pasillo en L. Es lo que hay en los
@@ -742,8 +750,19 @@ la primera y sola**. Además ahora tiene gesto —clic derecho sobre la pieza—
 ### 12.5 Lo que sigue fuera
 
 Las fases 4 y 5 no se han tocado: rampas, vanos y las métricas de mapa más allá
-de la de salidas; y rotación libre, tejados y triángulos sólidos, que siguen
-esperando a que el motor sepa chocar con ellos (§3).
+de la de salidas.
+
+**La rotación libre salió de esta lista en la vuelta 83**, y por la puerta que
+§3 dejaba abierta: no se relajó la regla, se construyó la colisión. `prismas`
+es un sólido convexo de N caras —con `lados: 4` siendo la caja girada— así que
+el motor ya sabe chocar con una pieza a cualquier ángulo y el editor la ofrece
+(«Muro girado» y «Columna» en Formas). El **vano** también: lo que le faltaba
+no era dibujo sino las dos comprobaciones del motor —no levantarse debajo de
+algo, y que una pieza con la base en el aire no sea tu suelo—, y las dos están
+escritas y medidas.
+
+Lo que sigue esperando a que el motor sepa chocar con ello son los **triángulos
+sólidos** y los **tejados** hechos de ellos (§3).
 
 Y una cosa nueva que **no** se hizo a propósito: **el arma sigue siendo del mapa
 y no de cada salida**. En un mapa simétrico por giro, dos dotaciones distintas

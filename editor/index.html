@@ -210,6 +210,40 @@
                 <b>Dispositivos</b>.</p>
             </section>
 
+            <!-- **El prisma convexo** (vuelta 83): la pieza que el motor sabe
+                 chocar girada. Se añade desde Formas («Muro girado» o
+                 «Columna»); esta ficha son sus números. -->
+            <section id="prisma" hidden>
+              <h2>Prisma seleccionado</h2>
+              <p class="nota">Una pieza que <b>se choca como se ve</b>, girada.
+                Arrástrala por la bola del centro, tira de la <b>esquina</b>
+                para el tamaño, del <b>cubo de arriba</b> para el alto y del
+                <b>aro</b> para girarla — y aquí el aro <b>no cuadra a 90°</b>:
+                gira a cualquier ángulo.</p>
+              <div class="trio">
+                <label>X (centro) <input id="k-x" type="number" /></label>
+                <label>Z (centro) <input id="k-z" type="number" /></label>
+                <label>Base <input id="k-base" type="number" step="0.1" min="0" /></label>
+              </div>
+              <div class="trio">
+                <label>Ancho <input id="k-w" type="number" step="0.5" /></label>
+                <label>Fondo <input id="k-d" type="number" step="0.5" /></label>
+                <label>Giro ° <input id="k-giro" type="number" step="5" /></label>
+              </div>
+              <div class="trio">
+                <label>Lados <input id="k-lados" type="number" step="1" /></label>
+                <label>Alto <select id="k-kind"></select></label>
+              </div>
+              <p class="nota"><b>Cuatro lados es una caja girada</b>; de cinco
+                en adelante, el polígono regular inscrito en ese ancho y ese
+                fondo. Y <b>X/Z es el centro</b>, no la esquina: la esquina de
+                algo que gira no quiere decir nada.</p>
+              <p id="k-nota" class="nota"></p>
+              <div class="botonera">
+                <button id="k-borrar" type="button">Borrar el prisma</button>
+              </div>
+            </section>
+
             <!-- **El tubo: un objeto en el fichero, cajas en el motor** (vuelta
                  81). Se añade desde Formas; esta ficha son sus números. -->
             <section id="tubo" hidden>
@@ -288,6 +322,15 @@
                 <button type="button" data-dispositivo="velocidad" class="macro">
                   <b>Velocidad</b><span>te lanza a un rumbo</span>
                 </button>
+                <button type="button" data-dispositivo="hielo" class="macro">
+                  <b>Hielo</b><span>resbala al andar</span>
+                </button>
+                <button type="button" data-dispositivo="ventilador" class="macro">
+                  <b>Ventilador</b><span>volumen que sube</span>
+                </button>
+                <button type="button" data-dispositivo="tirolina" class="macro">
+                  <b>Tirolina</b><span>cable de A a B</span>
+                </button>
                 <button type="button" data-dispositivo="teletransporte" class="macro">
                   <b>Teletransporte</b><span>área y destino</span>
                 </button>
@@ -333,6 +376,7 @@
                   <option value="">Ninguna (una caja normal)</option>
                   <option value="rebote">Rebote · te lanza hacia arriba</option>
                   <option value="velocidad">Velocidad · te lanza en un rumbo</option>
+                  <option value="hielo">Hielo · resbalas al andar encima</option>
                 </select>
               </label>
               <div class="trio" id="p-sup-campos" hidden>
@@ -367,6 +411,43 @@
               <p class="nota">Pincha uno para elegirlo y que la cámara sepa
                 cuál es.</p>
               <ul id="lista-disp"></ul>
+            </section>
+
+            <section>
+              <h2>Ventiladores <span id="cuenta-vents" class="nota"></span></h2>
+              <!-- **Un ventilador es un volumen, no una losa** (vuelta 83), y
+                   por eso se dibuja como una caja translúcida con flechas
+                   dentro y no como una marca en el suelo: lo que decide si te
+                   empuja es estar dentro, no pisar nada. -->
+              <p class="nota">Un volumen que te empuja hacia arriba mientras
+                estés dentro. Arrástralo por el cuerpo, tira de la
+                <b>esquina</b> para la planta, del <b>cubo de arriba</b> para
+                el alto y de la <b>punta de la flecha</b> para la fuerza.</p>
+              <p class="nota">Dentro del volumen la gravedad es
+                <b>la del mapa menos la fuerza</b>: por encima de la gravedad
+                se sube solo, por debajo sólo se cae más despacio.</p>
+              <div class="botonera">
+                <button id="vent-anadir" type="button">+ Ventilador</button>
+              </div>
+              <div id="vent-fichas"></div>
+            </section>
+
+            <section>
+              <h2>Tirolinas <span id="cuenta-tiros" class="nota"></span></h2>
+              <!-- **Un cable de un solo sentido** (vuelta 83). La flecha
+                   dibujada no puede mentir, así que se viaja siempre de A a B
+                   y nunca al revés. -->
+              <p class="nota">Un cable de <b>A a B</b>, siempre en ese sentido.
+                Se agarra con la tecla de acción contextual (<b>E</b>) estando
+                cerca, y se suelta con la misma tecla, saltando o al llegar.</p>
+              <p class="nota">Arrastra cada <b>anclaje</b> por el suelo y su
+                <b>cubo</b> para subirlo o bajarlo. Al soltarse se conserva la
+                velocidad del cable, así que la velocidad es también lo fuerte
+                que te lanza al final.</p>
+              <div class="botonera">
+                <button id="tiro-anadir" type="button">+ Tirolina</button>
+              </div>
+              <div id="tiro-fichas"></div>
             </section>
 
             <section>

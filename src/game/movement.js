@@ -53,7 +53,7 @@
  * clavada en el centro a la altura de pie, que es la línea base de puntería.
  */
 
-import { COVER, EDITOR, LANDING, MOVEMENT, ROOM, fisicaDeEscenario, weaponSpeedFactor } from '../config.js'
+import { COVER, EDITOR, FANS, LANDING, MOVEMENT, ROOM, ZIPLINES, fisicaDeEscenario, weaponSpeedFactor } from '../config.js'
 import { defaultKeybinds, keysOf, typingInField } from '../keybinds.js'
 
 const DEG_TO_RAD = Math.PI / 180
@@ -65,6 +65,16 @@ const TWO_PI = Math.PI * 2
  * flotante con `===`.
  */
 const CLIP_EPSILON = 1e-9
+
+/**
+ * **El rumbo de un cable, en la convención de la cámara.** Mira a −Z con yaw 0,
+ * que es la misma conversión con la que se dibuja el galón de una plataforma de
+ * velocidad — y el error de 180° de la vuelta 60 es lo que pasa cuando cada
+ * llamante la escribe por su cuenta.
+ */
+function rumboDeCable(cable) {
+  return Math.atan2(-cable.dirX, -cable.dirZ)
+}
 
 /** Las siete acciones del movimiento, tal como se llaman en `KEYBINDS`. */
 const MOVEMENT_ACTIONS = ['forward', 'back', 'left', 'right', 'jump', 'walk', 'crouch']
@@ -107,6 +117,18 @@ export class MovementController {
       jump: false,
       walk: false,
       crouch: false,
+      /**
+       * **La tecla contextual** (vuelta 83), que entra aquí con la tirolina.
+       *
+       * Y la escribe **el motor**, no `buildKeyMap`: `use` no está en
+       * `MOVEMENT_ACTIONS` a propósito, porque la prioridad de esa tecla ya
+       * está decidida y vive en un sitio donde el movimiento no puede mirar —
+       * dentro del radio del explosivo, `use` desactiva y **nunca hace nada
+       * más ahí dentro** (vuelta 27)—. Si la capturara este módulo, esa regla
+       * tendría que escribirse por segunda vez y aquí no hay bomba que
+       * consultar.
+       */
+      use: false,
     }
     /**
      * **Lo que el jugador está pulsando ahora.** Lo escribe el teclado y de
@@ -153,6 +175,49 @@ export class MovementController {
     /** La que se traía al aterrizar, que es lo que conserva un encadenado. */
     this._landingVelX = 0
     this._landingVelZ = 0
+    /**
+     * **La velocidad del suelo** (vuelta 83), que es lo que el hielo estrena.
+     *
+     * Fuera del hielo vale cero y **el juego es exactamente el de antes**: el
+     * paso de a pie sigue siendo posición más dirección por marcha. Viaja en
+     * `snapshot()` porque sobrevive a un paso, igual que los seis campos del
+     * deslizamiento.
+     */
+    this._sueloVelX = 0
+    this._sueloVelZ = 0
+    /** Cuándo toca el próximo raspado de hielo. Cosmético: no viaja. */
+    this._raspadoAt = 0
+    /**
+     * ¿Se pisaba hielo en el paso anterior? De su flanco sale la siembra, que
+     * es lo que hace que entrar corriendo en una pista no te pare en el borde.
+     * Viaja por lo mismo que `_crouchWasDown`: es la máscara de un paso.
+     */
+    this._enHieloAntes = false
+    /**
+     * **La tirolina** (vuelta 83): el estado de movimiento nuevo de esta
+     * vuelta, y el primero desde el deslizamiento.
+     *
+     * Son cuatro campos y los cuatro viajan: si vas colgado, de qué cable
+     * —**un índice** en la lista que los dos extremos derivan del mismo mapa,
+     * así que no viaja ningún número del mapa—, desde qué punto del cable
+     * enganchaste y cuánto tiempo llevas. Lo recorrido **no** es un campo: sale
+     * de `velocidad · tiempo`, que es la forma cerrada.
+     */
+    this.enTirolina = false
+    this._tiroCable = -1
+    this._tiroD0 = 0
+    this._tiroTime = 0
+    /**
+     * La máscara de la tecla contextual del paso anterior. De ella sale el
+     * flanco, exactamente como `_crouchWasDown` con el deslizamiento: así
+     * engancharse y soltarse son **pulsaciones** y no una tecla apoyada, y no
+     * hace falta ni un campo más en el protocolo.
+     */
+    this._useWasDown = false
+    /** Cuándo toca el próximo traqueteo de la polea. Cosmético: no viaja. */
+    this._poleaAt = 0
+    /** La superficie bajo los pies de este paso. La escribe `update`. */
+    this._superficieDeSuelo = null
     /** Dirección pedida por las teclas, unitaria. La escribe `_readWish`. */
     this._wishX = 0
     this._wishZ = 0
@@ -172,6 +237,20 @@ export class MovementController {
     this._airTime = 0
     this._launchY = 0
     this._launchVelocity = 0
+    /**
+     * **Con qué gravedad está anclado el vuelo en curso** (vuelta 83).
+     *
+     * Normalmente es la del mapa. Dentro de un ventilador es
+     * `gravedad − fuerza`, que puede ser **negativa**: ahí se acelera hacia
+     * arriba. Es un campo y no una consulta porque la parábola tiene que
+     * evaluarse con la **misma** g con la que se ancló — cambiarla a mitad de
+     * vuelo sin re-anclar daría un salto de posición, que es exactamente lo
+     * que la forma cerrada evita. Viaja en `snapshot()` porque sobrevive a un
+     * paso.
+     */
+    this._gVuelo = MOVEMENT.gravity
+    /** Cuándo toca la próxima ráfaga de ventilador. Cosmético: no viaja. */
+    this._rafagaAt = 0
 
     /**
      * Salto encadenado. Tres marcas, las tres en milisegundos reales:
@@ -373,6 +452,7 @@ export class MovementController {
     keys.jump = false
     keys.walk = false
     keys.crouch = false
+    keys.use = false
   }
 
   /**
@@ -497,7 +577,15 @@ export class MovementController {
      * teletransportaba a nadie — sin un error en ninguna pantalla, que es como
      * se pierden estas cosas.
      */
-    const util = scenario && (scenario.hasGeometry || scenario.teletransportes?.length > 0)
+    // **«Tiene geometría» no era la pregunta** (vuelta 80), y desde la 83 hay
+    // un tercer sitio donde se ve: un mapa de sólo ventiladores tampoco tiene
+    // contra qué chocar y aun así el movimiento lo necesita.
+    const util = scenario && (
+      scenario.hasGeometry ||
+      scenario.teletransportes?.length > 0 ||
+      scenario.ventiladores?.length > 0 ||
+      scenario.tirolinas?.length > 0
+    )
     this.scenario = util ? scenario : null
     // La sala la trae el escenario aunque no tenga geometría: el límite de
     // movimiento tiene que ser el mismo que el de las paredes que se dibujan.
@@ -546,6 +634,29 @@ export class MovementController {
     out.airTime = this._airTime
     out.launchY = this._launchY
     out.launchVelocity = this._launchVelocity
+    /**
+     * **Y con qué gravedad se ancló** (vuelta 83): dentro de un ventilador no
+     * es la del mapa, y la parábola tiene que evaluarse con la misma con la
+     * que empezó.
+     *
+     * **Va `undefined` cuando vale lo de siempre**, y eso no es una
+     * micro-optimización: esta foto la manda el servidor a los dos jugadores
+     * **sesenta veces por segundo**, así que cada campo cuesta unos 60 B/s por
+     * jugador. Los nueve que esta vuelta añade pesan 138 B por jugador y foto
+     * —medido—, o sea **16 KB/s de bajada** que casi nadie va a usar: los
+     * ventiladores, el hielo y las tirolinas son de un mapa que los declare.
+     *
+     * `JSON.stringify` **se salta las propiedades `undefined`**, así que esto
+     * las borra del cable sin borrarlas del objeto —la forma se conserva, que
+     * es lo que el bucle caliente necesita— y `restore()` ya devolvía el valor
+     * de fábrica a lo que no llegara. Medido en `red45`: **135.8 → 121.5 KB/s**
+     * con los dos jugadores volando, y **lo de siempre vuelve a costar lo de
+     * siempre**.
+     *
+     * La regla, para el día que se añada estado nuevo: **lo que vale su valor
+     * de fábrica no viaja**.
+     */
+    out.gVuelo = this._gVuelo === this.fisica.gravity ? undefined : this._gVuelo
     // La marcha aérea, en los dos modelos.
     out.airSpeed = this._airSpeed
     out.airVelX = this._airVelX
@@ -554,6 +665,11 @@ export class MovementController {
     out.landingSpeed = this._landingSpeed
     out.landingVelX = this._landingVelX
     out.landingVelZ = this._landingVelZ
+    // **La velocidad del suelo** (vuelta 83), que es lo que el hielo estrena, y
+    // la máscara de la que sale su flanco. Fuera del hielo valen cero y false.
+    out.sueloVelX = this._sueloVelX || undefined
+    out.sueloVelZ = this._sueloVelZ || undefined
+    out.enHieloAntes = this._enHieloAntes || undefined
     out.landedAt = this._landedAt
     out.jumpPressedAt = this._jumpPressedAt
     out.chainedJump = this.chainedJump
@@ -588,6 +704,14 @@ export class MovementController {
     out.slideSpeed0 = this._slideSpeed0
     out.slideEndedAt = this._slideEndedAt
     out.crouchWasDown = this._crouchWasDown
+    // **Tirolina** (vuelta 83): los cuatro campos del estado más la máscara de
+    // la que sale su flanco. Sin ellos, la reconciliación reejecuta entradas
+    // con un jugador que el servidor cree colgado y el cliente andando.
+    out.enTirolina = this.enTirolina || undefined
+    out.tiroCable = this._tiroCable === -1 ? undefined : this._tiroCable
+    out.tiroD0 = this._tiroD0 || undefined
+    out.tiroTime = this._tiroTime || undefined
+    out.useWasDown = this._useWasDown || undefined
     return out
   }
 
@@ -602,12 +726,16 @@ export class MovementController {
     this._airTime = state.airTime
     this._launchY = state.launchY
     this._launchVelocity = state.launchVelocity
+    this._gVuelo = Number.isFinite(state.gVuelo) ? state.gVuelo : this.fisica.gravity
     this._airSpeed = state.airSpeed
     this._airVelX = state.airVelX
     this._airVelZ = state.airVelZ
     this._landingSpeed = state.landingSpeed
     this._landingVelX = state.landingVelX
     this._landingVelZ = state.landingVelZ
+    this._sueloVelX = Number.isFinite(state.sueloVelX) ? state.sueloVelX : 0
+    this._sueloVelZ = Number.isFinite(state.sueloVelZ) ? state.sueloVelZ : 0
+    this._enHieloAntes = Boolean(state.enHieloAntes)
     // Los dos centinelas son `-Infinity` y JSON no sabe escribirlo: cualquier
     // cosa que no sea un número finito vuelve a significar «nunca».
     this._landedAt = Number.isFinite(state.landedAt) ? state.landedAt : -Infinity
@@ -636,6 +764,11 @@ export class MovementController {
     // significar «nunca», que es lo que JSON hace con `-Infinity`.
     this._slideEndedAt = Number.isFinite(state.slideEndedAt) ? state.slideEndedAt : -Infinity
     this._crouchWasDown = Boolean(state.crouchWasDown)
+    this.enTirolina = Boolean(state.enTirolina)
+    this._tiroCable = Number.isFinite(state.tiroCable) ? state.tiroCable : -1
+    this._tiroD0 = Number.isFinite(state.tiroD0) ? state.tiroD0 : 0
+    this._tiroTime = Number.isFinite(state.tiroTime) ? state.tiroTime : 0
+    this._useWasDown = Boolean(state.useWasDown)
     p.y = this.feetY + this.eyeHeight - this.landingDip
   }
 
@@ -662,6 +795,7 @@ export class MovementController {
     this._airTime = 0
     this._launchY = this.feetY
     this._launchVelocity = 0
+    this._gVuelo = this.fisica.gravity
     this._jumpPressedAt = -Infinity
     this._landedAt = -Infinity
     this._landingSpeed = this.topSpeed
@@ -679,6 +813,16 @@ export class MovementController {
     this._airVelZ = 0
     this._landingVelX = 0
     this._landingVelZ = 0
+    this._sueloVelX = 0
+    this._sueloVelZ = 0
+    this._enHieloAntes = false
+    // Reaparecer suelta el cable, por lo mismo que suelta el área de
+    // teletransporte: el estado de antes de morir no manda sobre el de ahora.
+    this.enTirolina = false
+    this._tiroCable = -1
+    this._tiroD0 = 0
+    this._tiroTime = 0
+    this._useWasDown = false
     this._lastYaw = this.camera.rotation.y
     this.airStrafing = false
     this._safeX = this.spawnX
@@ -730,6 +874,39 @@ export class MovementController {
       this._guardState()
       return
     }
+    /**
+     * **Sobre qué se está, antes de mover nada** (vuelta 83). La horizontal
+     * corre antes que la vertical, así que el hielo necesita saber qué pisa
+     * **ahora**, no lo que averigüe la vertical después. Se respeta la única
+     * regla del captador (vuelta 80): se lee en la línea de al lado de su
+     * propio `groundHeightAt` y con la misma posición.
+     */
+    if (this.scenario) {
+      const p = this.camera.position
+      this.scenario.groundHeightAt(p.x, p.z, this.feetY)
+      this._superficieDeSuelo = this.scenario.superficieDelSuelo
+    } else {
+      this._superficieDeSuelo = null
+    }
+
+    /**
+     * **La tirolina manda sobre el paso entero** (vuelta 83), y por eso está
+     * aquí arriba y no metida dentro de la horizontal o de la vertical.
+     *
+     * Es la forma del vuelo del editor (vuelta 77) aplicada a una mecánica de
+     * verdad: colgado de un cable no hay marcha de suelo, ni parábola, ni
+     * deslizamiento, ni colisión que resolver — hay un punto de un segmento y
+     * un reloj. Meterlo como una rama dentro del modelo sería un camino nuevo
+     * por el que los dos extremos de una partida pueden discrepar; así es un
+     * `if` con un `return`, y lo de debajo no se entera de que existe.
+     */
+    if (this._updateTirolina(dt, now)) {
+      this._updateLandingDip(dt)
+      this.camera.position.y = this.feetY + this.eyeHeight - this.landingDip
+      this._guardState()
+      return
+    }
+
     // Antes que la horizontal, porque decide con qué marcha y hacia dónde se
     // mueve este paso.
     this._updateSlide(dt, now)
@@ -748,6 +925,7 @@ export class MovementController {
     // Al final del paso, con la posición ya definitiva: un teletransporte que
     // se comprobara a medio paso mandaría al jugador desde un sitio en el que
     // todavía no estaba.
+    this._raspadoDeHielo(now)
     this._comprobarTeletransporte()
     this._updateLandingDip(dt)
     this.camera.position.y = this.feetY + this.eyeHeight - this.landingDip
@@ -1099,6 +1277,13 @@ export class MovementController {
       const step = this._avanceDeDeslizamiento(dt)
       wantedX = fromX + this._slideDirX * step
       wantedZ = fromZ + this._slideDirZ * step
+    } else if (this._gobiernaElHielo(dt)) {
+      // **En hielo manda la velocidad del suelo, no las teclas** (vuelta 83).
+      // Es la misma forma que el aire con vector: el input ya se ha gastado
+      // acelerándola, y lo que mueve el paso es ella.
+      if (this._sueloVelX === 0 && this._sueloVelZ === 0) return
+      wantedX = fromX + this._sueloVelX * dt
+      wantedZ = fromZ + this._sueloVelZ * dt
     } else {
       if (!this._readWish()) return
       const step = this.currentSpeed * dt
@@ -1108,6 +1293,132 @@ export class MovementController {
 
     this._moveTo(fromX, fromZ, wantedX, wantedZ, dt)
     if (this.usingAirVector) this._clipAirVelocity(fromX, fromZ, wantedX, wantedZ)
+    // Y la del suelo por lo mismo que la del aire: empujar contra un muro no
+    // puede guardar marcha para soltarla de golpe al doblarlo.
+    if (this._sueloVelX !== 0 || this._sueloVelZ !== 0) {
+      this._clipVelocidadDeSuelo(fromX, fromZ, wantedX, wantedZ)
+    }
+  }
+
+  /**
+   * **El hielo, que es el único sitio del juego donde el suelo tiene
+   * velocidad** (vuelta 83).
+   *
+   * Devuelve si este paso lo gobierna él. Y la primera línea **es** la mitad
+   * del diseño: sin hielo debajo y sin velocidad que quede, se sale, y el paso
+   * lo resuelve el camino de siempre. Por eso un mapa sin hielo acaba en la
+   * misma coordenada hasta el último decimal — está medido, no supuesto.
+   *
+   * El modelo son tres cosas y ninguna es nueva en este motor:
+   *
+   * 1. **La tecla acelera, no coloca.** Se proyecta la velocidad sobre lo que
+   *    se pide y se suma lo que falte, acotado por `aceleracion · dt`. Es
+   *    literalmente `_updateAirAccel`, que es de lo que el hielo es primo: en
+   *    los dos sitios la marcha tiene dirección propia y la tecla sólo la
+   *    empuja.
+   * 2. **El rozamiento lo declara el mapa**, en `superficie.fuerza`, y es una
+   *    frenada en u/s². Fuera del hielo manda `frenadoFuera`, que es alto: un
+   *    derrape de un par de décimas y se recupera el control.
+   * 3. **Y por debajo de un umbral se pone a cero exacto.** No es cosmético:
+   *    es lo que devuelve el paso al camino de siempre, y sin él una velocidad
+   *    residual de 1e-9 dejaría el modelo nuevo encendido para siempre.
+   *
+   * Lo que se paga, y va escrito porque es una excepción de las gordas: **esto
+   * es una integración**, no tiene forma cerrada porque la entrada son las
+   * teclas paso a paso. Es la misma excepción que el modelo vectorial del aire
+   * (vuelta 32) y lo que la hace segura es lo mismo: el mundo va a **60 Hz
+   * fijos** desde la 44, así que los dos extremos de una partida dan los
+   * mismos pasos con las mismas máscaras y no hay nada que reconciliar.
+   */
+  _gobiernaElHielo(dt) {
+    const cfg = MOVEMENT.hielo
+    const enHielo = this._superficieDeSuelo?.tipo === 'hielo' && !this.airborne
+    /**
+     * **Entrar con la marcha que traías**, que es el flanco. Sin esto, pisar
+     * una pista corriendo te dejaría clavado en el borde: la velocidad
+     * arrancaría de cero y la aceleración del hielo es baja a propósito. Se
+     * siembra con lo que venías haciendo — lo que aterrizó, si vienes por el
+     * aire, y lo que pedían las teclas si vienes andando.
+     */
+    if (enHielo && !this._enHieloAntes) {
+      if (this._landingVelX !== 0 || this._landingVelZ !== 0) {
+        this._sembrarVelocidadDeSuelo(this._landingVelX, this._landingVelZ)
+      } else if (this._readWish()) {
+        this._sembrarVelocidadDeSuelo(this._wishX * this.currentSpeed, this._wishZ * this.currentSpeed)
+      }
+    }
+    this._enHieloAntes = enHielo
+
+    if (!enHielo && this._sueloVelX === 0 && this._sueloVelZ === 0) return false
+    if (!(dt > 0)) return true
+
+    const tope = this.topSpeed * cfg.factorMarchaMax
+    if (this._readWish()) {
+      const actual = this._sueloVelX * this._wishX + this._sueloVelZ * this._wishZ
+      const objetivo = enHielo ? tope : this.currentSpeed
+      const falta = objetivo - actual
+      if (falta > 0) {
+        const gana = Math.min(cfg.aceleracion * dt, falta)
+        this._sueloVelX += this._wishX * gana
+        this._sueloVelZ += this._wishZ * gana
+      }
+    }
+
+    // Rozamiento: el del mapa si estás encima, el del suelo normal si ya has
+    // salido y lo que queda es la inercia.
+    const roce = enHielo ? this._superficieDeSuelo.fuerza : cfg.frenadoFuera
+    const v = Math.hypot(this._sueloVelX, this._sueloVelZ)
+    if (v > 0) {
+      const queda = Math.max(0, v - roce * dt)
+      if (queda <= cfg.umbralParada) {
+        this._sueloVelX = 0
+        this._sueloVelZ = 0
+        // Se ha parado del todo: fuera del hielo, el paso vuelve a ser el de
+        // siempre **este mismo paso**, no el siguiente.
+        if (!enHielo) return false
+      } else {
+        const k = queda / v
+        this._sueloVelX *= k
+        this._sueloVelZ *= k
+      }
+    }
+
+    // Y el techo, que es duro como el del air-strafe.
+    const vFinal = Math.hypot(this._sueloVelX, this._sueloVelZ)
+    if (vFinal > tope) {
+      const k = tope / vFinal
+      this._sueloVelX *= k
+      this._sueloVelZ *= k
+    }
+    return true
+  }
+
+  /**
+   * **Entrar en el hielo con la marcha que traías**, no parado. Sin esto, pisar
+   * una pista corriendo te dejaría quieto en el borde — que es lo contrario de
+   * lo que hace el hielo.
+   */
+  _sembrarVelocidadDeSuelo(x, z) {
+    this._sueloVelX = x
+    this._sueloVelZ = z
+  }
+
+  /**
+   * **Y un raspado cada tanto mientras se resbale de verdad** (norma de la
+   * vuelta 82: un dispositivo nace con su voz). Sólo por encima de un umbral de
+   * marcha: caminar por una pista no raspa, derrapar sí.
+   */
+  _raspadoDeHielo(now) {
+    const cfg = MOVEMENT.hielo
+    if (this._superficieDeSuelo?.tipo !== 'hielo' || this.airborne) {
+      this._raspadoAt = 0
+      return
+    }
+    const v = Math.hypot(this._sueloVelX, this._sueloVelZ)
+    if (v < this.topSpeed * cfg.umbralSonido) return
+    if (now < this._raspadoAt) return
+    this._raspadoAt = now + cfg.pulsoMs
+    this._avisarDeUso('hielo', v, 0)
   }
 
   /**
@@ -1139,6 +1450,18 @@ export class MovementController {
   }
 
   /**
+   * **Lo mismo para la velocidad del suelo** (vuelta 83), y más simple: en el
+   * suelo no hay ápice al que mirar, así que lo que frena, frena. La componente
+   * bloqueada se anula y la otra sobrevive entera, que es lo que hace que rozar
+   * una pared deslizando por hielo te haga seguirla en vez de pararte en seco.
+   */
+  _clipVelocidadDeSuelo(fromX, fromZ, wantedX, wantedZ) {
+    const position = this.camera.position
+    if (Math.abs(position.x - wantedX) > CLIP_EPSILON) this._sueloVelX = 0
+    if (Math.abs(position.z - wantedZ) > CLIP_EPSILON) this._sueloVelZ = 0
+  }
+
+  /**
    * ¿Lo que acaba de frenar este paso dejará de estorbar en lo alto del vuelo?
    * Se resuelve el **mismo** paso contra la **misma** colisión, cambiando sólo la
    * altura de los pies por la del ápice. Sólo se llama en el frame en que algo
@@ -1159,7 +1482,24 @@ export class MovementController {
   _apexFeetY() {
     const v0 = this._launchVelocity
     if (v0 <= 0) return this.feetY
-    return this._launchY + (v0 * v0) / (2 * this.fisica.gravity)
+    const g = this._gVuelo
+    /**
+     * **Con la gravedad efectiva en negativo la parábola no tiene máximo**
+     * (vuelta 83): dentro de un ventilador se sube y punto. El máximo de
+     * verdad está **encima del ventilador**, ya con la gravedad de siempre, y
+     * sale en dos tramos — se sale por su techo con
+     * `v² = v0² + 2·(−g)·(techo − y0)` y desde ahí se sube `v²/2g`.
+     */
+    if (g <= 0) {
+      const techo = this.scenario
+        ? this.scenario.techoDeVentiladorEn(this.camera.position.x, this.camera.position.z, this.feetY)
+        : -Infinity
+      if (!Number.isFinite(techo)) return this.feetY
+      const subida = Math.max(0, techo - this._launchY)
+      const vSalida = Math.sqrt(Math.max(0, v0 * v0 + 2 * -g * subida))
+      return techo + (vSalida * vSalida) / (2 * this.fisica.gravity)
+    }
+    return this._launchY + (v0 * v0) / (2 * g)
   }
 
   /**
@@ -1254,7 +1594,7 @@ export class MovementController {
    */
   _fallSpeedFrom(ground) {
     const drop = this._launchY - ground
-    const impactSq = this._launchVelocity * this._launchVelocity + 2 * this.fisica.gravity * drop
+    const impactSq = this._launchVelocity * this._launchVelocity + 2 * this._gVuelo * drop
     return impactSq > 0 ? Math.sqrt(impactSq) : 0
   }
 
@@ -1273,7 +1613,11 @@ export class MovementController {
     const ground = this.scenario
       ? this.scenario.groundHeightAt(position.x, position.z, this.feetY)
       : 0
-    const total = (this._launchVelocity + this._fallSpeedFrom(ground)) / this.fisica.gravity
+    // Con la gravedad efectiva a cero o en negativo el vuelo no se acaba: se
+    // está subiendo dentro de un ventilador y lo que queda es «todo».
+    const g = this._gVuelo
+    if (g <= 0) return Infinity
+    const total = (this._launchVelocity + this._fallSpeedFrom(ground)) / g
     const left = total - this._airTime
     return left > 0 ? left : 0
   }
@@ -1286,12 +1630,40 @@ export class MovementController {
   _feetYAfter(dt) {
     if (!this.airborne) return this.feetY
     const t = this._airTime + dt
-    return this._launchY + this._launchVelocity * t - 0.5 * this.fisica.gravity * t * t
+    return this._launchY + this._launchVelocity * t - 0.5 * this._gVuelo * t * t
   }
 
   _updateVertical(dt, now) {
     // Agachado: la altura de ojos persigue su objetivo a velocidad constante.
-    const targetEye = this.keys.crouch ? MOVEMENT.crouchHeight : MOVEMENT.standHeight
+    let targetEye = this.keys.crouch ? MOVEMENT.crouchHeight : MOVEMENT.standHeight
+    /**
+     * **Y no se levanta uno debajo de algo** (vuelta 83).
+     *
+     * Ésta es la comprobación que la vuelta 69 dejó anotada y que `slide69` [9]
+     * llevaba cuatro vueltas guardando en forma de alarma: la colisión
+     * horizontal sabe pasar por debajo de una pieza con la base levantada
+     * (`box.bottom >= headY`), así que agacharse abre pasos — y sin esto, al
+     * soltar la tecla el jugador se ponía de pie **dentro** del dintel.
+     *
+     * Lo que acota es **el objetivo, no la altura de ojos**, para que subir siga
+     * siendo la misma interpolación de siempre: debajo del techo el objetivo es
+     * más bajo y ya está. Y no baja de agachado: por debajo de eso el jugador
+     * estaría metido en el suelo, y de que no se cuele por un hueco más bajo que
+     * su postura se encarga la horizontal, que mide la cabeza en
+     * `feetY + eyeHeight`.
+     *
+     * Y es el **mismo número** que usa la horizontal, que es lo que hace que los
+     * dos sistemas admitan los mismos sitios: ahí la cabeza es `feetY +
+     * eyeHeight`, así que el techo que deja pasar es el que deja levantarse.
+     */
+    if (this.scenario && targetEye > MOVEMENT.crouchHeight) {
+      const p = this.camera.position
+      const techo = this.scenario.techoSobre(p.x, p.z, this.feetY)
+      if (techo < Infinity) {
+        const hueco = techo - this.feetY - CLIP_EPSILON
+        if (hueco < targetEye) targetEye = Math.max(hueco, MOVEMENT.crouchHeight)
+      }
+    }
     const step = MOVEMENT.crouchTransitionSpeed * dt
     if (this.eyeHeight < targetEye) this.eyeHeight = Math.min(targetEye, this.eyeHeight + step)
     else if (this.eyeHeight > targetEye) this.eyeHeight = Math.max(targetEye, this.eyeHeight - step)
@@ -1325,6 +1697,21 @@ export class MovementController {
     }
 
     if (!this.airborne) {
+      /**
+       * **Un ventilador que puede contigo te levanta del suelo** (vuelta 83).
+       * Sin esto, quedarse de pie dentro de uno no haría nada: el empuje sólo
+       * existe para quien ya está volando, y la única manera de usarlo sería
+       * saltar dentro. Es la misma idea que «pisarla cuenta, no sólo caer
+       * sobre ella» de la vuelta 80, aplicada a un volumen en vez de a una
+       * losa. Despega con velocidad cero: lo que sube es la gravedad negativa.
+       */
+      if (this._gravedadEfectiva() < 0) {
+        this._takeOff(0, false, dt)
+        this._avisarDeUso('ventilador', -this._gVuelo, 0)
+      }
+    }
+
+    if (!this.airborne) {
       // Sin salto de por medio el jugador sigue al suelo: subir una rampa es
       // pegarse a ella, y salirse de una plataforma es empezar a caer.
       if (ground >= this.feetY - 1e-6) {
@@ -1349,7 +1736,14 @@ export class MovementController {
       this._takeOff(0, false, dt, marchaAlCaer)
     }
 
-    const g = this.fisica.gravity
+    // **Entrar o salir de un ventilador cierra la parábola y abre otra**
+    // (vuelta 83). Va aquí, justo antes de evaluarla, y no en el paso
+    // siguiente: evaluar con una g y anclar con otra es el salto de posición
+    // que la forma cerrada existe para no tener.
+    this._reanclarSiCambiaLaGravedad()
+    this._rafagaDeVentilador(now)
+
+    const g = this._gVuelo
     this._airTime += dt
     const t = this._airTime
     this.feetY = this._launchY + this._launchVelocity * t - 0.5 * g * t * t
@@ -1364,6 +1758,82 @@ export class MovementController {
       // la marcha que se traía, y un rebote necesita las tres.
       this._impulsarPorSuperficie(superficie, dt, true)
     }
+  }
+
+  /**
+   * **La gravedad con la que se vuela aquí mismo** (vuelta 83).
+   *
+   * La del mapa menos lo que empujen los ventiladores en los que estés. Puede
+   * salir **negativa**, y eso es exactamente lo que significa un ventilador que
+   * puede contigo: se acelera hacia arriba.
+   *
+   * Se pregunta con los pies donde están ahora, una vez por paso. Sale un
+   * número y no un objeto por lo mismo que `superficieDelSuelo`: esto está en
+   * el bucle caliente y el bucle caliente no asigna.
+   */
+  _gravedadEfectiva() {
+    const g = this.fisica.gravity
+    if (!this.scenario?.ventiladores?.length) return g
+    const position = this.camera.position
+    const empuje = this.scenario.ventiladorEn(position.x, position.z, this.feetY)
+    return empuje > 0 ? g - empuje : g
+  }
+
+  /**
+   * **Cruzar la frontera de un ventilador re-ancla el vuelo** (vuelta 83).
+   *
+   * Es la pieza que hace que un empuje sostenido quepa en este motor. La
+   * vertical está resuelta en **forma cerrada** desde el despegue, así que no
+   * se le puede sumar una fuerza por frame —eso es integrar por Euler, y su
+   * error va con el tamaño del paso, que es justo lo que la vuelta 44 quitó—.
+   * Lo que se hace es tratar cada tramo como **su propia parábola**: entrar o
+   * salir de un ventilador cierra la de antes y abre otra, con la posición y la
+   * velocidad que había en ese instante.
+   *
+   * Dos consecuencias que conviene ver:
+   *
+   * - **Dentro de un tramo no hay error acumulado**, porque sigue siendo forma
+   *   cerrada. Lo que se cuantiza al paso es **dónde cae la frontera**, y eso
+   *   en este juego es un número fijo (60 Hz, vuelta 44) y el mismo en los dos
+   *   extremos de una partida: cruzan en el mismo paso porque dan los mismos
+   *   pasos.
+   * - **Y no hace falta un campo en el protocolo.** La gravedad anclada sale de
+   *   dónde estás y del mapa, que los dos lados tienen; viaja en `snapshot()`
+   *   por lo mismo que `sliding` —sobrevive a un paso— y no porque haga falta
+   *   comunicarla.
+   */
+  _reanclarSiCambiaLaGravedad() {
+    const g = this._gravedadEfectiva()
+    if (g === this._gVuelo) return false
+    this._launchY = this.feetY
+    this._launchVelocity = this.verticalVelocity
+    this._airTime = 0
+    this._gVuelo = g
+    return true
+  }
+
+  /**
+   * **Un ventilador suelta una ráfaga cada tanto mientras estés dentro**
+   * (vuelta 83, norma de la 82).
+   *
+   * Uno que sonara una vez al entrar y luego callara no se leería como un
+   * ventilador; y un bucle de verdad —arrancar y parar una fuente que dura lo
+   * que dure— es maquinaria que ninguna otra voz de este juego tiene. Una
+   * ráfaga cada `FANS.pulsoMs` **es** el sonido de un ventilador y sale gratis
+   * con lo que ya hay.
+   *
+   * El reloj es el del paso y la marca **no viaja**: esto es cosmético, el
+   * servidor no lo mira y una repetición de la reconciliación la tira
+   * `cliente.js` con el resto del recado.
+   */
+  _rafagaDeVentilador(now) {
+    if (this._gVuelo >= this.fisica.gravity) {
+      this._rafagaAt = 0
+      return
+    }
+    if (now < this._rafagaAt) return
+    this._rafagaAt = now + FANS.pulsoMs
+    this._avisarDeUso('ventilador', this.fisica.gravity - this._gVuelo, 0)
   }
 
   /**
@@ -1429,6 +1899,202 @@ export class MovementController {
     }
 
     return false
+  }
+
+  /**
+   * **¿Hay cable al alcance de la mano?** Lo pregunta el motor para repartir la
+   * tecla contextual, y sale de **la misma función** que decide el enganche: si
+   * lo mirase por su cuenta, habría dos ideas de «estoy al lado de un cable» y
+   * se despegarían el día que una de las dos cambie de radio.
+   */
+  hayTirolinaAlAlcance() {
+    if (this.enTirolina) return true
+    if (!this.scenario) return false
+    const p = this.camera.position
+    return this.scenario.tirolinaAlAlcance(p.x, p.y, p.z) !== null
+  }
+
+  /**
+   * **La tirolina** (vuelta 83). Devuelve `true` si este paso lo resuelve ella.
+   *
+   * Engancharse y soltarse van **por flanco** de la tecla contextual, como el
+   * salto desde la 68 y el deslizamiento desde la 69: mantenerla pulsada da un
+   * enganche, no un enganche por paso. Y el flanco se deduce comparando la
+   * máscara de este paso con la del anterior, así que **no hace falta ni un
+   * campo más en el protocolo** — los dos extremos ejecutan los mismos pasos
+   * con las mismas máscaras.
+   *
+   * Hay tres maneras de bajarse y las tres acaban en lo mismo (`_soltarTirolina`):
+   * volver a pulsar la tecla, saltar, o llegar al final del cable.
+   */
+  _updateTirolina(dt, now) {
+    const pulsada = Boolean(this.keys.use)
+    const flanco = pulsada && !this._useWasDown
+    this._useWasDown = pulsada
+
+    if (!this.enTirolina) {
+      if (!flanco || !this.scenario) return false
+      const p = this.camera.position
+      const enganche = this.scenario.tirolinaAlAlcance(p.x, p.y, p.z)
+      if (!enganche) return false
+      this._engancharTirolina(enganche)
+      /**
+       * **Y sigue hacia abajo: el paso del enganche también avanza.**
+       *
+       * Gastarlo en agarrarse parecía inofensivo y no lo era, y el banco lo
+       * cazó a la primera: un paso perdido es **una fracción distinta del
+       * viaje según el refresco** —a 60 Hz es 1 de 90 y a 240 es 1 de 360—,
+       * así que el recorrido de un cable salía con **0.84% de dispersión**
+       * entre monitores. Una forma cerrada no puede permitirse eso, y la causa
+       * no estaba en la fórmula sino en cuántas veces se evalúa.
+       */
+    } else if (flanco || this._pulsacionDeSaltoViva(now)) {
+      const cable = this.scenario?.tirolinas?.[this._tiroCable]
+      // **Saltar gasta la pulsación**, o el mismo flanco que te baja del cable
+      // te haría saltar otra vez en el paso siguiente.
+      if (!flanco) this._jumpPressedAt = -Infinity
+      this._soltarTirolina(cable ?? null)
+      // **Y el paso sigue siendo de aire**: `_takeOff` se ha llamado con `dt`
+      // cero a propósito, así que lo de debajo da el primer paso de vuelo
+      // completo y no se pierde ni uno.
+      return false
+    }
+
+    const cable = this.scenario?.tirolinas?.[this._tiroCable]
+    // El mapa ha cambiado debajo: se baja sin impulso, que es lo honesto —
+    // conservar la velocidad de un cable que ya no existe sería inventarla.
+    if (!cable) {
+      this._soltarTirolina(null)
+      return false
+    }
+    /**
+     * **Se avanza en forma cerrada**, como la parábola del salto y como el
+     * deslizamiento: lo recorrido sale de `velocidad · tiempo` desde el
+     * enganche, no de sumar `v · dt` paso a paso. A velocidad constante los dos
+     * dan casi lo mismo —casi—, y este proyecto ya sabe lo que cuesta ese
+     * «casi» cuando alguien cambia de monitor.
+     */
+    this._tiroTime += dt * 1000
+    const restante = cable.largo - this._tiroD0
+    let recorrido = cable.velocidad * (this._tiroTime / 1000)
+    const final = recorrido >= restante
+    if (final) recorrido = restante
+    this._colocarEnElCable(cable, this._tiroD0 + recorrido)
+    this._poleaDeTirolina(cable, now)
+    if (final) this._soltarTirolina(cable)
+    /**
+     * **El paso que llega al final se gasta en el cable**, y el vuelo empieza
+     * en el siguiente. Es una cuantización de un paso —16.67 ms, iguales en
+     * cualquier monitor porque el mundo va a 60 Hz fijos desde la vuelta 44— y
+     * la alternativa era peor: dejar correr el resto del paso después de haber
+     * recorrido ya su trozo de cable movería al jugador dos veces.
+     */
+    return true
+  }
+
+  /**
+   * Agarra el cable. **Pega al jugador a él**, y eso es un salto de hasta
+   * `ZIPLINES.alcanceU`: para quien te dibuja es un teletransporte, así que
+   * sube `poseEpoch` — la regla de las vueltas 44 y 50, que existe justo para
+   * que un salto no se dibuje como un barrido.
+   */
+  _engancharTirolina(enganche) {
+    const cable = this.scenario.tirolinas[enganche.i]
+    this._pararDeslizamiento()
+    this.enTirolina = true
+    this._tiroCable = enganche.i
+    this._tiroD0 = enganche.d0
+    this._tiroTime = 0
+    this._poleaAt = 0
+    /**
+     * **Colgado cuenta como estar en el aire**, y no es un detalle de
+     * implementación: la dispersión de disparo del juego se aplica «siempre en
+     * el aire», y disparar desde una tirolina tiene que costar lo que cuesta
+     * disparar en movimiento. Lo que no hay es parábola — de eso se encarga el
+     * `return` de `_updateTirolina`.
+     */
+    this.airborne = true
+    this.verticalVelocity = 0
+    this._airTime = 0
+    this._launchVelocity = 0
+    this._gVuelo = this.fisica.gravity
+    this._airSpeed = 0
+    this._airVelX = 0
+    this._airVelZ = 0
+    this._sueloVelX = 0
+    this._sueloVelZ = 0
+    this.poseEpoch += 1
+    this._colocarEnElCable(cable, enganche.d0)
+    this._launchY = this.feetY
+    this._avisoDeCable('tirolina', cable)
+  }
+
+  /**
+   * Suelta el cable. **Conserva su velocidad**, la vertical en la parábola y la
+   * horizontal en el vector del aire.
+   *
+   * No es la regla del deslizamiento —que siembra el vuelo con tu carrera y no
+   * con su empujón de 9.43— y la diferencia no es de gusto: allí lo que se
+   * evitaba era que una **técnica del jugador** (el air-strafe) rematara por
+   * encima del techo lo que otra técnica había dado. Aquí la velocidad **la
+   * decide el mapa**, exactamente como en la plataforma de la vuelta 82, y el
+   * techo del aire no la acota por la misma razón que allí.
+   */
+  _soltarTirolina(cable) {
+    this.enTirolina = false
+    this._tiroCable = -1
+    this._tiroD0 = 0
+    this._tiroTime = 0
+    if (!cable) return
+    const v = cable.velocidad
+    // Un empuje del mapa no es un salto tuyo, así que no gasta fatiga.
+    this._reiniciarFatiga()
+    // `dt` cero: quien llama decide si el resto del paso es de vuelo.
+    this._takeOff(cable.dirY * v, false, 0)
+    this._airVelX = cable.dirX * v
+    this._airVelZ = cable.dirZ * v
+    this._airSpeed = Math.hypot(this._airVelX, this._airVelZ)
+    this._avisoDeCable('tirolina', cable)
+  }
+
+  /**
+   * El aviso de un cable, **en el punto del cable y no en los pies**. Los pies
+   * de quien va colgado están metro y medio por debajo, así que el aro saldría
+   * flotando bajo la polea.
+   */
+  _avisoDeCable(tipo, cable) {
+    const p = this.camera.position
+    const y = this.feetY + this.eyeHeight + ZIPLINES.caidaU
+    this._avisarDeUso(tipo, cable.velocidad, rumboDeCable(cable), p.x, y, p.z)
+  }
+
+  /** Dónde queda el jugador colgado del punto `d` del cable. */
+  _colocarEnElCable(cable, d) {
+    const p = this.camera.position
+    p.x = cable.desde.x + cable.dirX * d
+    p.z = cable.desde.z + cable.dirZ * d
+    const y = cable.desde.y + cable.dirY * d
+    // `feetY` es lo que `update()` convierte en altura de cámara al cerrar el
+    // paso, así que la caída se resta aquí una sola vez.
+    this.feetY = y - ZIPLINES.caidaU - this.eyeHeight
+  }
+
+  /**
+   * **El traqueteo de la polea**, una ráfaga cada `ZIPLINES.pulsoMs`. Es la
+   * misma idea que el pulso del ventilador y por el mismo motivo: un bucle de
+   * verdad —arrancar y parar una fuente— es maquinaria que este proyecto no
+   * tiene en ninguna otra voz, y un cable que sólo suena al agarrarlo no se
+   * lee como un cable.
+   *
+   * Va por el reloj del mundo, así que en pausa no suena; y **no pisa un aviso
+   * que ya hubiera**, porque el enganche y el primer traqueteo pueden caer en
+   * el mismo paso y de los dos el que cuenta es el enganche.
+   */
+  _poleaDeTirolina(cable, now) {
+    if (now < this._poleaAt) return
+    this._poleaAt = now + ZIPLINES.pulsoMs
+    if (this.usoDeDispositivo) return
+    this._avisoDeCable('tirolina-viaje', cable)
   }
 
   /**
@@ -1776,6 +2442,10 @@ export class MovementController {
     this._launchVelocity = velocity
     this.verticalVelocity = velocity
     this.airborne = true
+    // Se despega con la gravedad que toque **aquí**: dentro de un ventilador,
+    // la suya. Sin esto el primer tramo del vuelo se evaluaría con la del mapa
+    // y el re-anclaje del paso siguiente lo corregiría de golpe.
+    this._gVuelo = this._gravedadEfectiva()
     // Ya está en el aire: este frame le toca acelerar como a cualquier otro.
     if (dt > 0 && MOVEMENT.airVector) this._updateAirAccel(dt)
   }
@@ -1791,7 +2461,10 @@ export class MovementController {
    * que un mismo salto suena y hunde la cámara igual a 60 que a 240 Hz.
    */
   _land(ground, now) {
-    const g = this.fisica.gravity
+    // La g del vuelo que acaba, no la del mapa: quien cae dentro de un
+    // ventilador cae más despacio, y el instante exacto del contacto —que es
+    // lo que esta función despeja— sale de la parábola que se estaba volando.
+    const g = this._gVuelo
     const fallSpeed = this._fallSpeedFrom(ground)
 
     // Instante exacto del contacto, por el mismo motivo que la velocidad de

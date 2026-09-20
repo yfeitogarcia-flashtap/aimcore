@@ -1,11 +1,30 @@
 # Propuesta 06 — Superficies, estructuras y la colisión curva
 
-**Estado:** triaje hecho; **el bloque barato está construido en la vuelta 80**
-—rebote, plataforma de velocidad y teletransportador de zona, más el cimiento
-de §2—. Lo que sigue en pie, y por decisión del encargo: el ventilador, el
-hielo, la tirolina y la colisión curva quedan **aparcados hasta después de
-completar el arsenal**. Lo que cambió al construirlo está en
-`docs/decisions.md` §80.
+**Estado: construida entera.** El bloque barato —rebote, plataforma de
+velocidad y teletransportador de zona, más el cimiento de §2— se construyó en la
+**vuelta 80**; el tubo, en la **81**; y el **ventilador**, el **hielo**, la
+**tirolina** y la **colisión convexa**, en la **83**, cuando el encargo
+desaparcó el bloque grande.
+
+De este documento, por tanto, lo que queda vivo no es la lista de pendientes
+sino el **triaje**: lo que cada renglón decía que iba a costar, y por qué. Lo
+que costó de verdad está en `docs/decisions.md` §80, §81, §82 y §83. Lo único
+que sigue sin construirse es **«guardar punto y volver»** (§1), que no se llegó
+a pedir — y que en un duelo sería teletransportarse a voluntad, así que llevaría
+una bandera del mapa que comprueba el servidor.
+
+Dos cosas del triaje que salieron ciertas y conviene no olvidar:
+
+- **El ventilador y el hielo eran del modelo, no del editor.** El primero es
+  otra gravedad con la parábola re-anclada en cada frontera; el segundo, el
+  estreno de una velocidad de suelo con sus campos en `snapshot()` y la única
+  dispersión por refresco que el proyecto se permite (0.799%, la misma excepción
+  que el modelo vectorial del aire).
+- **Y la colisión curva se hizo entera, que era la condición.** No un OBB suelto
+  —«resuelve el 20% de los casos y paga el 90% del precio»— sino el prisma
+  convexo de N caras, con `lados: 4` siendo la caja girada. Y `resolveAxis` no
+  se reescribió: un polígono convexo es la intersección de sus semiplanos, así
+  que aporta su banda y acaba en la misma `clampAgainstBand` de siempre.
 
 **Y el tubo por composición (§5) se construyó en la vuelta 81**, que **revierte**
 la decisión de la 80 de dejarlo a mano. El motivo es el dato de esa vuelta y vale

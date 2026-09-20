@@ -1,4 +1,5 @@
 import { COVER, SCENARIOS, coverEdgeColor, coverHeight, scenarioRoom } from '../config.js'
+import { puntosDePrisma } from '../maps/prisma.js'
 
 /**
  * Plano cenital de un escenario, dibujado **desde los datos de `SCENARIOS`**.
@@ -16,7 +17,9 @@ import { COVER, SCENARIOS, coverEdgeColor, coverHeight, scenarioRoom } from '../
 
 /** Piezas ordenadas de más baja a más alta: las altas se dibujan encima. */
 function sortedBoxes(definition) {
-  return [...definition.boxes].sort((a, b) => coverHeight(a.kind) - coverHeight(b.kind))
+  // `?? []` porque un mapa de fichero puede no traer geometría (vuelta 76), y
+  // aquí eso sería una miniatura que tumba la pantalla de inicio entera.
+  return [...(definition.boxes ?? [])].sort((a, b) => coverHeight(a.kind) - coverHeight(b.kind))
 }
 
 export default function ScenarioThumbnail({ scenarioKey, className = '' }) {
@@ -71,6 +74,24 @@ export default function ScenarioThumbnail({ scenarioKey, className = '' }) {
           /* Mismo borde que llevan los bloques en partida. Sin él, las piezas
              bajas —bordillo sobre fondo negro— desaparecen a este tamaño. */
           stroke={coverEdgeColor(box.kind)}
+          strokeWidth="0.4"
+          strokeOpacity={COVER.edgeOpacity}
+        />
+      ))}
+
+      {/* **Y los prismas, con su forma de verdad** (vuelta 83). Un `<rect>` los
+          dibujaría sin girar, que es exactamente la mentira que esta vuelta
+          vino a quitar del motor: la miniatura no puede decir una cosa y el
+          mapa otra. Los puntos salen de la misma función que monta la
+          colisión. */}
+      {(definition.prismas ?? []).map((prisma, i) => (
+        <polygon
+          key={`prisma-${i}`}
+          points={puntosDePrisma(prisma)
+            .map((p) => `${p.x + halfW},${p.z + halfD}`)
+            .join(' ')}
+          fill={COVER.colors[prisma.kind] ?? COVER.colors.media}
+          stroke={coverEdgeColor(prisma.kind)}
           strokeWidth="0.4"
           strokeOpacity={COVER.edgeOpacity}
         />
