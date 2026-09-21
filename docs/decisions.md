@@ -11547,3 +11547,69 @@ pasa sola. **Cero errores de página.**
   que nadie ha decidido. Atraviesa a quien se cruce y sigue su camino.
 - **Y un lanzamiento no cuenta como disparo**, que es la regla del cuchillazo de
   la vuelta 71: la precisión de la sesión es la de la puntería.
+
+### §87.1 — La curva de carga es de quien apunta, y se verificó midiendo
+
+La pregunta llegó antes de la primera sesión de pruebas y es de equilibrio, no
+de código: **¿ve el rival el láser mientras cargas?** Si lo viera, esquivaría el
+100% de los lanzamientos y las tres armas de tiro curvo dejarían de existir.
+
+**No lo ve, y no puede verlo**, por cuatro cosas que ya estaban en pie:
+
+1. `Trayectoria` se instancia en la escena del **motor local** y `dibujar` se
+   llama desde un solo sitio, gobernado por `this.cargando`.
+2. `_cargaDesde` sólo lo escribe `_empezarCarga`, llamada desde `_onMouseDown`.
+   No hay camino desde la red.
+3. `ACCIONES` —la máscara de entradas— son ocho bits de movimiento. **No hay bit
+   de gatillo**: mantener el botón no viaja.
+4. La foto (`foto.p[id]`) no tiene ningún campo de carga, y `movement.snapshot()`
+   es de movimiento. Lo que viaja de un lanzamiento es el **lanzamiento**, al
+   soltar.
+
+Pero eso es una deducción, así que se midió **contra el producto y mirando las
+dos pantallas a la vez**, que es lo que la vuelta 60 enseñó con la brújula: un
+error de 180° sólo se ve comparando. `laser87` abre dos navegadores en la misma
+sala, los pone cara a cara con `MSG.COLOCAR` y cuenta los píxeles del láser en
+las dos.
+
+**Y la premisa costó tres intentos, que es la lección de esta nota.** Las tres
+primeras versiones salieron con «B no ve nada» en verde y las tres estaban
+**vacías**, cada una por un motivo distinto:
+
+- El código de sala se leía de la barra y salía `duelo`: los dos navegadores
+  estaban **en partidas distintas**. Se lee de `#codigo`, que es donde la página
+  lo escribe.
+- Puestos a ±7 del origen, El Espejo hace **exactamente lo que se diseñó en la
+  vuelta 66**: tapar el centro. B miraba una caja gris.
+- Y buscando un par con `hasLineOfSight` a 1.4 de altura salió uno que dejaba a
+  A **encima de una pieza de 3.6**, porque `COLOCAR` pone x y z y el suelo sube
+  al jugador. El barrido exige además que los dos puntos tengan el suelo a cero.
+
+Con la premisa de verdad —**4.711 px del cuerpo del rival en la pantalla del
+otro**, comprobados antes de cada medida y otra vez al final— el resultado es:
+
+| | el que apunta | el rival |
+|---|---|---|
+| Arco, cargando | 353 px | **0** |
+| Granada, tiro largo | 393 px | **0** |
+| Granada, tiro corto | 29 px | **0** |
+
+Los 29 px del tiro corto no son un láser débil: son el recorte del banco, que
+deja fuera la franja de abajo de la pantalla. Mirando la captura, la curva sale
+de la boca del arma y acaba en su anillo de caída, a ras de suelo, entera.
+
+Dos avisos que vienen con esto y no se adivinan:
+
+- **El rojo del Core es un píxel cálido.** Una Core tirada en el suelo
+  contaminaba la cuenta del láser (que va en `COLORS.dispositivo`). El banco
+  mide con la **Blind**, que es blanca y además no hace daño — así los dos
+  siguen vivos para que la premisa siga en pie.
+- **Tensar con el cargador vacío no hace nada, a propósito** (vuelta 85). Medir
+  ahí «cero píxeles de láser» es medir la recarga, no el láser: el banco espera
+  a que el arma esté lista antes de cada medida.
+
+Lo que el rival **sí** ve, y es por diseño: el proyectil ya lanzado —esquivarlo
+es lo que el arma ofrece a quien lo ve venir (vuelta 85)— y el arma que empuñas
+en su ficha flotante, desde tu primer disparo (vuelta 56). El día que se quiera
+darle además una señal de «está tensando», eso es una decisión de diseño con su
+precio, no un detalle: hoy la promesa es la contraria.

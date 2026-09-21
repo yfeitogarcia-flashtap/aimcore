@@ -533,6 +533,38 @@ en la boca y converge a la curva real en siete puntos, así que el punto de caí
 —que es lo que se apunta— no se mueve. Mover el dibujo y no la bala, con la mitad
 que en la 40 no hizo falta: volver.
 
+**Y la curva es de quien apunta, nunca del rival** (verificado en la vuelta 87).
+No es una preferencia: un rival que viera dónde va a caer una flecha o una
+granada **antes de que salga** las esquivaría todas, y las tres armas de tiro
+curvo dejarían de existir. Hoy es imposible **por construcción**, y conviene
+saber por dónde, porque son cuatro puertas y las cuatro hay que mantener
+cerradas:
+
+- **El láser es un objeto de la escena del motor local** (`new Trayectoria(this.scene)`),
+  y cada cliente tiene la suya. `trayectoria.dibujar` se llama desde **un solo
+  sitio**, `_dibujarTrayectoria`, y sale de `this.cargando`.
+- **`_cargaDesde` sólo lo escribe `_empezarCarga`**, y a ésa sólo la llama
+  `_onMouseDown` — un manejador de entrada **local**. No hay ni un camino desde
+  la red.
+- **La máscara de entradas no tiene bit de gatillo.** `ACCIONES` son ocho:
+  `forward, back, left, right, jump, crouch, walk, use`. Mantener el botón no
+  viaja, ni al servidor ni al rival.
+- **Y la foto no lleva ningún campo de carga.** Lo que viaja de un lanzamiento
+  es el lanzamiento, y viaja **al soltar** (`d` dentro de la entrada, y
+  `MSG.PROYECTIL` al otro extremo). Antes de eso, para el resto del mundo no
+  está pasando nada.
+
+Así que si algún día se le quiere poner al rival una señal de «está tensando»
+—una animación, un campo en la foto—, eso es **una decisión de diseño con su
+propio precio**, no un detalle de implementación: lo que hay hoy es la promesa
+contraria.
+
+Medido (`laser87`, dos navegadores en la misma sala y cara a cara, **con su
+premisa delante**: el cuerpo del rival ocupa 4.711 px en la pantalla del otro):
+cargando el arco, el tiro largo y el tiro corto, el que apunta ve su curva
+(353 / 393 / 29 px del láser) y **el rival ve exactamente cero en los tres, y en
+todo momento de la carga**.
+
 **Core, Blind y KO: lo primero del juego que se queda en el suelo** (vuelta 87).
 Las tres granadas ocupan **la cuarta ranura** —`throwable`, la **G**, que llevaba
 reservada con su bind y sin lógica desde la vuelta 27—, exactamente como el
