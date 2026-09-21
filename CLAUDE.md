@@ -532,6 +532,50 @@ en la boca y converge a la curva real en siete puntos, así que el punto de caí
 —que es lo que se apunta— no se mueve. Mover el dibujo y no la bala, con la mitad
 que en la 40 no hizo falta: volver.
 
+**El U2: un cohete que sigue volando cuando tú ya no estás** (vuelta 86). El
+nombre en clave del encargo —«yo muero, pero tú también»— ya funcionaba antes de
+escribir el arma, porque la 85 puso el pool en el mundo y no en el jugador.
+Cuatro reglas:
+
+- **Explota en área, y el área es una sola fórmula** (`caidaDeArea`), la misma
+  que usarán las granadas. **Dar de pleno no se suma aparte**: un cuerpo tocado
+  está a distancia cero del centro, así que se lleva el núcleo entero — sumarle
+  el daño directo sería contar dos veces lo mismo.
+- **Un chaleco no para una onda**, y por eso `shieldAbsorb` es **cero** y no un
+  número pequeño: con 0.25 se comía 30 de los 120 del núcleo y el impacto directo
+  **dejaba vivo con 10**, que contradice lo único que el arma promete. No la hace
+  matar más lejos: la hace matar **donde ya mataba**.
+- **Y el dueño no está exento** (`propio`), que es la otra mitad del nombre en
+  clave. Lo que se le rebaja no es piedad: un arma que se suicida al primer
+  despiste es un arma que nadie saca.
+- **Tiene reserva, y es lo primero del juego que la tiene.** Hasta aquí
+  `magazine` era la única cuenta y todo recargaba infinito. La regla de cómo se
+  gana es **una frase** —«un cohete que mata repone uno», con tope— y de ella sale
+  sola la condición que se pidió: hacen falta **dos cohetes con baja**, porque
+  matar a dos de uno sigue valiendo uno. Viaja en el inventario y no en la foto,
+  como el dinero: cambia cada pocos disparos y **la del rival no se enseña**.
+
+**Y es el primer sonido del juego que dura** (vuelta 86). `playRocket('silbido')`
+es la única voz que se **devuelve** para poder pararla — todo lo demás se dispara
+y se olvida porque ocurre en un instante. Dos cosas: **la clave es el número de
+serie y no la ranura del pool** (una ranura se reutiliza, y un cohete nuevo
+heredaría el silbido del anterior), y **el emisor lo sigue por frame**, porque un
+panner clavado en el punto de salida dice que el cohete sigue en el tubo.
+
+**Un `NaN` en un proyectil no choca con nada** (vuelta 86), y ésta es la lección
+que vale para cualquier cosa que vuele. `_onMouseDown` desviaba al camino de carga
+con **cualquier arma con bloque `tiro`**, y el U2 lanza pero no carga: `cargaActual`
+dividía por un `cargaMs` inexistente y el cohete nacía con velocidad `NaN`. Y
+entonces **ninguna comparación con `NaN` es cierta**, así que no se paraba en
+ninguna pared, no caducaba y **volaba para siempre** con su silbido detrás —
+sesenta excepciones de audio por segundo y el juego corriendo, que es el «degrada
+en silencio» de la vuelta 60. Tres reglas se quedan: **el camino de carga lo
+decide el modo** (`mode === 'carga'`), no tener bloque `tiro`; **un proyectil con
+un número roto no sale** (es `_guardState` aplicado al pool); y **un número roto
+no llega a una matriz de audio** (`Emitter.setPosition` lo rechaza). Y cómo se
+encontró: `git stash` para separarlo de lo preexistente, y luego **una guarda con
+aviso en el sitio por el que el valor pasa**, que nombró al culpable a la primera.
+
 **Un dispositivo se ve por su marca, y su marca es amarilla** (vuelta 84). Tres
 reglas que salieron de jugarlo, y ninguna cambia el modelo de nada:
 
@@ -4628,6 +4672,7 @@ con sonido propio.
 | Volt | principal (tecla **1**) | auto | 800 | 25 | 1800 ms | sí | 2.6 kg | 6.14 u/s |
 | Scout | principal (tecla **1**) | semi | 48 | 10 | 2600 ms | **no** | 3.2 kg | 5.98 u/s |
 | Bow | principal (tecla **1**) | **carga** | 55 | 12 | 2200 ms | **no** | 2.8 kg | 6.03 u/s |
+| U2 | principal (tecla **1**) | semi | 40 | 1 (+reserva) | 2000 ms | **no** | 5.4 kg | 5.41 u/s |
 | Vanta | cuerpo a cuerpo (tecla **3**, siempre) | cuchillo | — | — | — | no | 0.6 kg | 6.50 u/s |
 
 **Vanta** (vuelta 71) es el **cuchillo**, y ocupa la tercera ranura —la tecla 3,

@@ -11215,3 +11215,125 @@ centímetros del ojo ocupa la pantalla entera**. Sale a 2.4 u por delante, que e
 donde medio metro mide medio metro. Es la lección de la vuelta 40 por la otra
 punta — allí el problema era que el destello estaba dentro de algo, aquí que
 estaba dentro del ojo.
+
+---
+
+## §86 — El U2: un cohete que sigue volando cuando tú ya no estás
+
+El nombre en clave con el que llegó el encargo era **«yo muero, pero tú
+también»**, y eso no es una frase: es la mecánica. Un cohete tarda en llegar, así
+que quien lo lanza puede caer por otro disparo mientras el suyo sigue volando — y
+matar igual. **Eso ya funcionaba** antes de escribir una línea del arma, porque la
+vuelta 85 puso el pool de proyectiles en el mundo y no en el jugador: una baja no
+apaga lo que ya salió.
+
+### 86.1 Explota en área, y el área es una sola fórmula
+
+`caidaDeArea` (vuelta 85) es lineal con un núcleo donde vale entero, y la
+comparten el cohete y las tres granadas que vienen. Lineal y no cuadrática a
+propósito: con el cuadrado, la mitad del radio ya vale un cuarto y el radio
+declarado diría una cosa mientras la explosión hace otra.
+
+Los tres números del U2 salen de una cuenta: **120 en el núcleo** (1.2 u) mata a
+vida llena, a mitad de radio quedan **79** —cuatro quintos de una vida y ni una
+más— y en el borde (5 u) **cero**.
+
+**Y dar de pleno no es un caso aparte que se sume.** Un cuerpo tocado por el
+cohete está a distancia cero del centro de la explosión, así que se lleva el
+núcleo entero. Sumarle además el daño directo sería contar dos veces lo mismo, y
+haría que el número que mata dependiera de si la onda pilló al cuerpo por delante
+o por detrás.
+
+**Un chaleco no para una onda expansiva**, y por eso `shieldAbsorb` es **cero** y
+no un número pequeño. Con 0.25 el chaleco se comía 30 de los 120 del núcleo y el
+impacto directo **dejaba vivo con 10** — medido en `u286`, y eso contradice lo
+único que el arma promete. Un chaleco es una placa delante del pecho: para lo que
+llega por delante en línea recta, y una explosión no llega por delante, llega de
+todas partes a la vez. Lo que se paga está medido y es justo: que ignore el
+chaleco no la hace matar más lejos, la hace matar **donde ya mataba**.
+
+**Y el dueño no está exento**, que es la otra mitad del nombre en clave. Lo que se
+le rebaja (`propio: 0.7`) no es piedad: un arma que se suicida al primer despiste
+es un arma que nadie saca. Medido: a los pies, 84 de 100.
+
+### 86.2 La reserva, y cómo se gana
+
+Es **lo primero del juego con munición contada**. Hasta aquí todas las armas
+recargaban infinito porque `magazine` era la única cuenta que existía; aquí hay
+un cohete en el tubo y una reserva, y de ahí sale la decisión que el arma pide:
+lanzar ahora o guardárselo.
+
+Lo que se pidió: dos al comprar, cuatro como tope, y el tercero y el cuarto por
+bajas — «al menos una baja distinta por cada uno de los dos primeros disparos».
+La regla que lo cumple es **una frase**: **un cohete que mata repone uno**, con
+tope. Hacen falta dos cohetes con baja para llegar a cuatro, porque cada uno vale
+uno — matar a dos de un solo cohete sigue valiendo uno. No hizo falta una segunda
+condición ni llevar la cuenta de a quién se mató con qué.
+
+**Y se reinicia al empezar ronda y al morir con él equipado**, que es lo que se
+pidió. Lo segundo sale gratis: morir cuesta el equipo desde la vuelta 64, y el
+arma y sus cohetes son lo mismo. La reserva viaja en el **inventario** y no en la
+foto, por lo mismo que el dinero: cambia cada pocos disparos, no sesenta veces por
+segundo, y es **de quien la recibe** — cuántos cohetes le quedan al rival no se
+enseña.
+
+**Y sin reserva no hay recarga, y se dice.** Un arma que no responde a la R sin
+explicar por qué es un arma que parece rota.
+
+Medido (`u286`): un cohete de pleno mata con chaleco y casco; reventar más cerca
+hace más daño que lejos; el dueño encaja 84 y sobrevive; con la reserva a cero,
+un cohete con baja la sube a **1**; en el máximo se queda en **4**; y uno que no
+mata a nadie no la mueve.
+
+### 86.3 El primer sonido del juego que dura
+
+`playRocket('silbido')` es la única voz que se **devuelve** para poder pararla.
+Todo lo demás en `sfx.js` se dispara y se olvida —un disparo, un golpe, un
+destello— porque todo lo demás ocurre en un instante. Un cohete vuela medio
+segundo, y lo que eso pide es un asa: se enciende al salir, su emisor se mueve con
+él en cada frame y **se apaga donde revienta**.
+
+Dos cosas que son el mecanismo:
+
+- **La clave del mapa es el número de serie, no la ranura del pool.** Una ranura
+  se reutiliza en cuanto queda libre: con la ranura, un cohete nuevo heredaría el
+  silbido del anterior y apagar uno callaría al otro.
+- **Y el emisor lo sigue**, que es la mitad de que sirva de algo. Lo que dice de
+  dónde viene es el panner, y un panner clavado en el punto de salida dice que el
+  cohete sigue en el tubo. Va por frame y no por paso, como el dibujo, porque es
+  lo que el oído compara con lo que ve.
+
+Y la explosión **pierde agudos con la distancia, no volumen** — eso lo hace el
+aire, no el altavoz; el volumen ya lo pone el panner.
+
+### 86.4 Un `NaN` en un proyectil no choca con nada
+
+El fallo de esta vuelta, y la lección vale para cualquier cosa que vuele.
+
+`_onMouseDown` desviaba al camino de carga **con cualquier arma que tuviera
+bloque `tiro`**, y el U2 lanza pero no carga. Así que `cargaActual` dividía por un
+`cargaMs` que no existe, salía `NaN`, y el cohete nacía con velocidad `NaN`.
+
+Lo que pasa entonces es lo que no se ve venir: **ninguna comparación con `NaN` es
+cierta**, así que el proyectil no se para en ninguna pared, no caduca por
+distancia y **vuela para siempre**. Con su silbido detrás. Lo que llegaba a la
+pantalla eran sesenta excepciones de audio por segundo en la consola —`panner.positionX`
+rechazando un no-finito— y el juego seguía corriendo, que es exactamente el
+«degrada en silencio» de la vuelta 60.
+
+Tres arreglos, y los tres se quedan:
+
+- **El camino de carga lo decide el modo** (`mode === 'carga'`), no tener bloque
+  `tiro`. El modo es el dato que dice **cómo se dispara**; el bloque dice **qué
+  sale**.
+- **Un proyectil con un número roto no sale.** Es `_guardState` del movimiento
+  aplicado al pool: un vuelo que no sale es un fallo que se ve, uno que vuela para
+  siempre es un fallo que no.
+- **Y un número roto no llega a una matriz de audio.** `Emitter.setPosition` lo
+  rechaza y el emisor se queda donde estaba, que es lo único sensato.
+
+Cómo se encontró, que es lo repetible: **no depurando el síntoma**. Los 441
+errores decían «linearRampToValueAtTime» y apuntaban a three. Lo que lo resolvió
+fue `git stash` —verde con el código viejo, rojo con el nuevo, y sólo con el U2 en
+la mano: el arco daba cero— y luego **una guarda con un aviso en el sitio por el
+que el valor pasa**, que nombró al culpable en la primera ejecución.

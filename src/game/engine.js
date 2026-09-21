@@ -24,7 +24,7 @@ import { createSceneTransition } from './transition.js'
 import { LookControls } from './lookControls.js'
 import { MovementController } from './movement.js'
 import { TargetManager } from './targets.js'
-import { initAudio, playBow, playDamage, playDevice, playFootstep, playHeal, playHelmetCrack, playHit, playKill, playLanding, playMelee, playObjectiveDefused, playObjectiveExplosion, playShieldCharge, playUiConfirm } from '../audio/sfx.js'
+import { initAudio, playBow, playDamage, playRocket, playDevice, playFootstep, playHeal, playHelmetCrack, playHit, playKill, playLanding, playMelee, playObjectiveDefused, playObjectiveExplosion, playShieldCharge, playUiConfirm } from '../audio/sfx.js'
 import { loadWeaponSamples, playDrySound, playWeaponReload, playWeaponShot } from '../audio/samples.js'
 import { attachListener, createEmitter, detachListener, setSpatialEnabled } from '../audio/spatial.js'
 import { ActionPanel } from './actionPanel.js'
@@ -34,7 +34,7 @@ import { DummyMarkers, facingDesdeCamara } from './markers.js'
 import { MuzzleFlash } from './muzzleFlash.js'
 import { Dispositivos } from './dispositivos.js'
 import { Impacts } from './impacts.js'
-import { Proyectiles, lanzamientoDeArma } from './proyectiles.js'
+import { Proyectiles, caidaDeArea, lanzamientoDeArma } from './proyectiles.js'
 import { Trayectoria } from './trayectoria.js'
 import { VueloDeProyectiles } from './vuelo.js'
 import { SpawnCone } from './spawnCone.js'
@@ -306,6 +306,19 @@ export class Engine {
      * cargando», como `_jumpPressedAt` en el movimiento (vuelta 68).
      */
     this._cargaDesde = -Infinity
+    /**
+     * **La reserva de las armas que la tienen** (vuelta 86), por clave. Vacío
+     * quiere decir «lo de fábrica»: `reservaDe` lo siembra al preguntarlo, que
+     * es lo que hace que un arma sin reserva no pague nada por esto.
+     */
+    this._reserva = {}
+    /**
+     * **Los silbidos vivos, por número de serie** (vuelta 86). Un cohete que
+     * vuela suena, y ese sonido hay que poder pararlo: la clave es la serie y
+     * no la ranura del pool, porque una ranura se reutiliza y un cohete nuevo
+     * heredaría el silbido del anterior.
+     */
+    this._silbidos = new Map()
     /**
      * Emisor para la voz de un dispositivo, **con su propia curva**. Se coloca
      * por uso, así que sirve para el tuyo y para el que use un rival a doce
@@ -731,6 +744,17 @@ export class Engine {
   _aplicarInventario(inv) {
     if (!inv) return
     this._invRed = inv
+    /**
+     * **Y la reserva la manda el servidor** (vuelta 86), como todo lo demás que
+     * se tiene en una partida (vuelta 64). Lo que el motor lleva en local es
+     * una predicción —baja al recargar— y esto la corrige: cuántos cohetes te
+     * quedan lo decide quien reparte, no tu pantalla. Llega en el inventario y
+     * no en la foto porque cambia cada pocos disparos, y **por destinatario**,
+     * que los del rival no se enseñan.
+     */
+    if (inv.reserva) {
+      for (const [clave, n] of Object.entries(inv.reserva)) this._reserva[clave] = n
+    }
     const antes = this.slots.primary
     this.slots.primary = inv.primaria ?? null
     if (antes && antes !== this.slots.primary) delete this._stowed[antes]
@@ -1213,8 +1237,67 @@ export class Engine {
 
   /** Deja el cargador lleno y el aviso de munición baja rearmado. */
   _refillMagazine() {
-    this.ammo = this.weapon.magazine
+    /**
+     * **Y hay armas con reserva** (vuelta 86). Hasta el U2 todas recargaban
+     * infinito porque `magazine` era la única cuenta que existía; un
+     * lanzacohetes con munición infinita no tiene la decisión que el arma es
+     * —lanzar ahora o guardárselo—, así que lo que se mete en el tubo **sale de
+     * algún sitio**.
+     *
+     * Un arma sin `reserva` recorre exactamente el camino de antes: se llena y
+     * ya. Nada de lo calibrado hasta hoy se mueve.
+     */
+    const reserva = this.armaDeTiro?.reserva
+    if (!reserva) {
+      this.ammo = this.weapon.magazine
+      this._lowAmmoWarned = false
+      return
+    }
+    const quedan = this.reservaDe(this.weaponKey)
+    if (quedan <= 0) {
+      this.ammo = 0
+      return
+    }
+    const mete = Math.min(this.weapon.magazine - this.ammo, quedan)
+    this.ammo += mete
+    this._reserva[this.weaponKey] = quedan - mete
     this._lowAmmoWarned = false
+  }
+
+  /**
+   * **Cuánta reserva queda de un arma.** La primera vez sale de su
+   * `reserva.inicial`, que es lo que trae al comprarse; en red manda el
+   * servidor, que es quien decide lo que tienes (vuelta 64).
+   */
+  reservaDe(clave) {
+    if (this._reserva[clave] === undefined) {
+      this._reserva[clave] = WEAPONS[clave]?.tiro?.reserva?.inicial ?? 0
+    }
+    return this._reserva[clave]
+  }
+
+  /**
+   * **Un cohete que mata repone uno** (vuelta 86), con tope.
+   *
+   * Es la regla entera, y dicha así cumple lo que se pidió sin necesitar otra:
+   * hacen falta **dos cohetes con baja** para llegar a cuatro, porque cada uno
+   * repone como mucho uno — matar a dos de un solo cohete sigue valiendo uno.
+   * Lo que se gana matando no se acumula entre vidas: `reiniciarReserva` lo
+   * devuelve a lo de fábrica al empezar una ronda y al morir con él en la mano.
+   */
+  premiarBajaDeProyectil(clave) {
+    const r = WEAPONS[clave]?.tiro?.reserva
+    if (!r) return
+    const tiene = this.reservaDe(clave) + this.ammo
+    if (tiene >= r.maxima) return
+    this._reserva[clave] = Math.min(r.maxima - this.ammo, this.reservaDe(clave) + r.porBaja)
+  }
+
+  /** Devuelve la reserva de un arma a lo que trae de fábrica. */
+  reiniciarReserva(clave) {
+    const r = WEAPONS[clave]?.tiro?.reserva
+    if (!r) return
+    this._reserva[clave] = r.inicial
   }
 
   /**
@@ -1224,6 +1307,12 @@ export class Engine {
   _startReload(now) {
     if (this.reloading || this.phase !== PHASE.RUNNING) return
     if (this.ammo >= this.weapon.magazine) return
+    // **Sin reserva no hay recarga**, y se dice: un arma que no responde a la R
+    // sin explicar por qué es un arma que parece rota (vuelta 86).
+    if (this.armaDeTiro?.reserva && this.reservaDe(this.weaponKey) <= 0) {
+      this._showHelp('Sin cohetes: consigue una baja para recuperar uno')
+      return
+    }
     this.reloadStartedAt = now
     this.reloadEndsAt = now + this.weapon.reloadMs
     // Suena **una vez, al empezar**, y no se corta si la recarga se cancela: lo
@@ -1600,13 +1689,22 @@ export class Engine {
       return
     }
     /**
-     * **Con un arma de tiro curvo la pulsación no dispara: empieza a tensar**
+     * **Con un arma de carga la pulsación no dispara: empieza a tensar**
      * (vuelta 85). Es lo que hace de `carga` un modo y no un `semi` con un
      * adorno: en `semi` la pulsación **es** el disparo, y aquí es el principio
      * de otra cosa que puede durar tres cuartos de segundo y que se puede
-     * abortar. Lo que dispara es soltar, en `_releaseTrigger`.
+     * abortar. Lo que dispara es soltar, en `_onMouseUp`.
+     *
+     * **Y lo decide el modo, no tener bloque `tiro`** (vuelta 86). Esto decía
+     * `armaDeTiro` y con el U2 —que lanza pero no carga— el clic entraba por
+     * aquí: `cargaActual` dividía por un `cargaMs` que no existe, salía `NaN`,
+     * y el cohete nacía con velocidad `NaN`. Un proyectil así **no choca con
+     * nada** —ninguna comparación con `NaN` es cierta— así que volaba para
+     * siempre con su silbido detrás, y lo que se veía por fuera eran sesenta
+     * errores de audio por segundo en una consola que nadie mira. Lo cazó la
+     * guarda de `spatial.setPosition`.
      */
-    if (this.armaDeTiro) {
+    if (this.weapon.mode === 'carga') {
       this._empezarCarga(now)
       return
     }
@@ -2885,6 +2983,23 @@ export class Engine {
       return
     }
 
+    /**
+     * **Un arma de proyectil lanza en vez de resolver un rayo** (vuelta 86), y
+     * el desvío va aquí arriba para que lo compartan los dos modos que pueden
+     * tenerla: `carga` —el arco, que llega por `_soltarCarga`— y `semi` —el U2,
+     * que llega por `_tryShoot` como cualquier otra arma—. Lo que decide no es
+     * el modo: es tener bloque `tiro`, igual que `melee` decide que un arma es
+     * un cuchillo (vuelta 71).
+     *
+     * `_lanzarProyectil` cuenta el disparo, así que aquí se sale antes de
+     * `shots += 1`: contarlo dos veces sería una precisión que no cuadra.
+     */
+    const tiro = this.armaDeTiro
+    if (tiro) {
+      this._lanzarProyectil(tiro, 0, instanteReal)
+      return
+    }
+
     this.shots += 1
 
     /**
@@ -2984,7 +3099,7 @@ export class Engine {
 
   /** Empieza a tensar. Una sola vez por pulsación: es un flanco. */
   _empezarCarga(now) {
-    if (this.cargando) return
+    if (this.cargando || this.weapon.mode !== 'carga' || !this.armaDeTiro?.cargaMs) return
     /**
      * **No se tensa antes de que el arma esté lista**, y eso es lo que hace que
      * soltar dispare **siempre**. La alternativa —dejar tensar durante el
@@ -3054,7 +3169,7 @@ export class Engine {
      * segundo de algo que no necesita ninguna.
      */
     if (this.enRed) this.net.disparar(instanteReal, yaw, pitch, 0, carga)
-    this.proyectiles.lanzar({
+    const serie = this.proyectiles.lanzar({
       tipo: l.tipo,
       dueno: this.enRed ? this.net.id : 'yo',
       x: l.x, y: l.y, z: l.z,
@@ -3064,7 +3179,19 @@ export class Engine {
       intensidad: l.intensidad,
     })
     this.shots += 1
-    playBow('soltar', carga)
+    /**
+     * **Cada proyectil suena como lo que es**, y lo decide su clase y no el
+     * arma: un cohete no es un arco con otro volumen (la regla de la vuelta 40).
+     * Y el cohete estrena lo que no había: **un sonido que dura mientras
+     * vuela**, con su asa para pararlo al estallar.
+     */
+    if (l.tipo === 'cohete') {
+      this._emisorDispositivo.setPosition(l.x, l.y, l.z)
+      playRocket('salida', this._emisorDispositivo)
+      this._encenderSilbido(serie)
+    } else {
+      playBow('soltar', carga)
+    }
     /**
      * **Y a carga llena, un destello sutil** (lo pidió quien lo juega). Es el
      * anillo de `dispositivos.js`, que ya es un pool aditivo del motor: un
@@ -3083,6 +3210,117 @@ export class Engine {
       )
     }
     this.callbacks.onShot?.(false)
+  }
+
+/**
+   * **El silbido de un cohete, que es el único sonido del juego que dura**
+   * (vuelta 86).
+   *
+   * Cada vuelo tiene el suyo, con su emisor propio: se enciende al salir, su
+   * emisor se mueve con él en cada frame y se apaga al estallar. La clave del
+   * mapa es **el número de serie** y no la ranura del pool, porque una ranura se
+   * reutiliza en cuanto queda libre: con la ranura, un cohete nuevo heredaría el
+   * silbido del anterior y apagar uno callaría al otro.
+   */
+  _encenderSilbido(serie) {
+    if (!serie) return
+    const emisor = createEmitter(this.scene, SURFACES.audio)
+    const voz = playRocket('silbido', emisor)
+    if (!voz) { emisor.dispose(); return }
+    this._silbidos.set(serie, { voz, emisor })
+  }
+
+  /** Lo apaga y suelta su emisor. Llamarlo dos veces no hace nada. */
+  _apagarSilbido(serie) {
+    const s = this._silbidos.get(serie)
+    if (!s) return
+    s.voz.parar()
+    s.emisor.dispose()
+    this._silbidos.delete(serie)
+  }
+
+  /**
+   * **Y sigue al cohete**, que es la mitad de que sirva de algo: lo que dice de
+   * dónde viene es el panner, y un panner clavado en el punto de salida dice
+   * que el cohete sigue en el tubo. Va por frame y no por paso, como el dibujo,
+   * porque es lo que el oído compara con lo que ve.
+   */
+  _moverSilbidos() {
+    if (this._silbidos.size === 0) return
+    const pr = this.proyectiles
+    for (let i = 0; i < pr.pool; i++) {
+      if (pr.estado[i] === 0) continue
+      const s = this._silbidos.get(pr.serie[i])
+      if (s) s.emisor.setPosition(pr.x[i], pr.y[i], pr.z[i])
+    }
+  }
+
+  /**
+   * **Lo que revienta alrededor de un impacto** (vuelta 86).
+   *
+   * Es lo mismo para el cohete y para las tres granadas que vienen, y por eso
+   * la caída sale de `caidaDeArea` —una sola fórmula (vuelta 85)— y lo que
+   * cambia es quién la recibe. Aquí, en el entrenamiento, los muñecos; en red
+   * lo hace el servidor, que es quien decide el daño (vuelta 56).
+   *
+   * **El dueño no está exento**, y ésa es la mitad del nombre en clave del U2:
+   * lanzarlo a tus pies te lleva por delante. Lo que se le rebaja
+   * (`explosion.propio`) no es piedad, es que un arma que se suicida al primer
+   * despiste es un arma que nadie saca.
+   */
+  _explotar(im, explosion) {
+    const ahora = this.gameTime
+    // Lo que se ve y lo que se oye, en el sitio y con su distancia: una
+    // explosión lejana no suena más floja, suena **más sorda** (vuelta 86).
+    this.dispositivos.emitir('explosion', im.x, im.y, im.z, 0, ahora)
+    this._emisorDispositivo.setPosition(im.x, im.y, im.z)
+    const d = Math.hypot(
+      this.camera.position.x - im.x, this.camera.position.y - im.y, this.camera.position.z - im.z,
+    )
+    playRocket('explosion', this._emisorDispositivo, Math.min(1, d / SURFACES.audio.maxDistanceU))
+
+    if (this.enRed) return
+
+    // **Al jugador**, si le pilla dentro. Es el mismo `encajarImpacto` que usan
+    // el fuego enemigo y el duelo: dos escaleras de daño serían dos juegos.
+    const alJugador = caidaDeArea(d, explosion.radioU, explosion.nucleoU)
+    if (alJugador > 0 && this.status.alive) {
+      const suyo = im.dueno === 'yo' ? explosion.propio : 1
+      /**
+       * **Y la onda entra por el torso**, que es el único camino que el motor
+       * tiene para hacerle daño al jugador (`_onPlayerHit`). No es una zona
+       * elegida: es que una esfera no elige, y `torso` es la que no lleva ni la
+       * regla del casco ni la del blanco entero. El número ya viene resuelto.
+       */
+      this._onPlayerHit({
+        zone: 'torso',
+        damage: explosion.dano * alJugador * suyo,
+        weaponKey: null,
+        fromX: im.x,
+        fromZ: im.z,
+      })
+    }
+
+    // Y a los muñecos. Se cuenta si alguno cae, que es lo que repone un cohete.
+    let mato = false
+    for (const instancia of this.targets.instances) {
+      if (instancia.state !== 'alive') continue
+      const p = instancia.group.position
+      const cerca = Math.hypot(p.x - im.x, p.y + 0.9 - im.y, p.z - im.z)
+      const k = caidaDeArea(cerca, explosion.radioU, explosion.nucleoU)
+      if (k <= 0) continue
+      /**
+       * **La onda no tiene zonas.** Un disparo elige dónde entra y una
+       * explosión no: pasarla por `zoneDamage` sería decidir a qué altura te
+       * pilla una onda esférica, que es una precisión que el modelo no tiene.
+       * Se resta de la vida directamente, que es lo que hace `applyMelee`.
+       */
+      const parte = instancia.parts[0]
+      if (!parte) continue
+      const { killed } = this.targets.applyMelee({ instance: instancia, part: parte }, ahora, explosion.dano * k)
+      if (killed) { this.kills += 1; this.status.onKill(); mato = true }
+    }
+    if (mato && im.dueno === 'yo') this.premiarBajaDeProyectil(this.weaponKey)
   }
 
   /**
@@ -3104,14 +3342,40 @@ export class Engine {
     }
   }
 
+  /**
+   * **Con qué explota una clase de proyectil**, o `null` si no explota. Sale
+   * del catálogo de armas y no de una segunda tabla: el día que dos armas
+   * lancen la misma clase, las dos revientan igual.
+   */
+  _explosionDe(tipo) {
+    for (const arma of Object.values(WEAPONS)) {
+      if (arma.tiro?.proyectil === tipo) return arma.tiro.explosion ?? null
+    }
+    return null
+  }
+
   /** Lo que le pasa a un proyectil que ha chocado. */
   _impactoDeProyectil(im) {
+    // El silbido se apaga **donde revienta**, no donde salió: es lo que
+    // convierte un sonido que dura en un sonido que termina.
+    this._apagarSilbido(im.serie)
     // La marca: la misma de una bala, que es lo correcto — lo que dice es
     // «aquí acabó un tiro», y de qué arma venía no lo cambia.
     if (!im.porMecha) {
       _dir.set(im.nx, im.ny, im.nz)
       _punto.set(im.x, im.y, im.z)
       this.impacts.spawn(_punto, _dir, this.gameTime)
+    }
+    /**
+     * **Lo que explota, explota** (vuelta 86), y lo dice el proyectil y no el
+     * arma que tengas ahora en la mano: entre que sale y llega puedes haber
+     * cambiado. `_explosionDe` lo saca de su clase, que es lo único que viaja
+     * con él.
+     */
+    const explosion = this._explosionDe(im.tipo)
+    if (explosion) {
+      this._explotar(im, explosion)
+      return
     }
     this._emisorDispositivo.setPosition(im.x, im.y, im.z)
     playBow('clavar', 1)
@@ -3391,6 +3655,7 @@ export class Engine {
      */
     this._dibujarTrayectoria()
     this.vuelo.update(this.proyectiles)
+    this._moverSilbidos()
     this._actualizarCono()
     this._publishStats()
     this.renderer.render(this.scene, this.camera)

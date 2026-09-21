@@ -86,6 +86,13 @@ const GESTOS = {
    * medio— y por eso se admite aquí sin ser un segundo sistema de anillos.
    */
   arcoLleno: { clave: 'arcoLleno', dePie: true, alza: 0 },
+  /**
+   * **Una explosión** (vuelta 86): tumbada, porque lo que dice es hasta dónde
+   * llegó por el suelo. Es la misma pieza que un rebote con otro radio — y eso
+   * está bien, que la regla de la vuelta 67 dice que lo que distingue las cosas
+   * es la forma, y aquí la forma **es** el tamaño.
+   */
+  explosion: { clave: 'explosion', dePie: false },
   'tp-entrada': { clave: 'tpEntrada', dePie: false },
   'tp-salida': { clave: 'tpSalida', dePie: false },
 }

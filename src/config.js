@@ -1083,6 +1083,125 @@ export const WEAPONS = {
     },
   },
   /**
+   * **U2: el lanzacohetes** (vuelta 86). El nombre en clave con el que llegó
+   * el encargo era «yo muero, pero tú también», y eso **no es una frase: es la
+   * mecánica**. Un cohete tarda en llegar, así que quien lo lanza puede caer
+   * por otro disparo mientras el suyo sigue volando — y matar igual. Por eso
+   * el pool de proyectiles cuelga del mundo y no del jugador (vuelta 85): una
+   * baja no apaga lo que ya salió.
+   *
+   * Dos cosas lo separan del arco, y las dos son suyas:
+   *
+   * **Explota en un área** (`explosion`), no en un punto. La caída es la misma
+   * que usarán las granadas (`caidaDeArea`, en `proyectiles.js`): lineal, con
+   * un núcleo donde vale entero — que es lo que hace que el impacto directo
+   * mate y rozar no.
+   *
+   * **Y tiene reserva**, que es lo primero del juego que la tiene. Hasta aquí
+   * todas las armas recargaban infinito porque `magazine` era la única cuenta;
+   * aquí hay **un cohete en el tubo y una reserva de cuatro como mucho**, y de
+   * ahí sale la decisión que el arma pide: lanzar ahora o guardárselo.
+   */
+  'u2': {
+    label: 'U2',
+    character: 'lanzacohetes',
+    slot: 'primary',
+    /**
+     * **Semi, no carga.** Un cohete sale con la fuerza que tiene el motor: no
+     * hay nada que tensar, y cargar aquí sería un gesto sin significado. Lo que
+     * decide dónde cae es **apuntar**, y para eso está el láser.
+     */
+    mode: 'semi',
+    /** 40 «RPM» = 1500 ms. No es la cadencia: es que sólo hay uno en el tubo. */
+    rpm: 40,
+    /** **Uno en el tubo.** La recarga es sacar otro de la espalda. */
+    magazine: 1,
+    reloadMs: 2000,
+    supportsSuppressor: false,
+    /** Con dos cohetes y un área de cinco unidades, el listón es acertar. */
+    precisionTarget: 0.5,
+    /**
+     * **Un chaleco no para una onda expansiva**, y por eso es cero y no un
+     * número pequeño (vuelta 86). Con 0.25 el chaleco se comía 30 de los 120
+     * del núcleo y **el impacto directo dejaba vivo con 10** — medido en
+     * `u286`, y eso contradice lo único que el arma promete: que dar de pleno
+     * mata. Un chaleco es una placa delante del pecho: para lo que llega por
+     * delante en línea recta, y una explosión no llega por delante, llega de
+     * todas partes a la vez.
+     *
+     * Y lo que se paga está medido y es justo: a media distancia la onda quita
+     * 79, o sea **cuatro quintos de una vida y ni una más**. Que ignore el
+     * chaleco no la hace matar más lejos, la hace matar **donde ya mataba**.
+     */
+    shieldAbsorb: 0,
+    /** 5.4 kg → 5.53 u/s, la más lenta del arsenal. Un tubo pesa. */
+    weight: 5.4,
+    /** Una patada grande y hacia arriba, como la Scout pero más. */
+    recoil: [
+      [3.2, 0.4],
+      [2.6, -0.3],
+    ],
+    recoilLoopFrom: 1,
+    tiro: {
+      proyectil: 'cohete',
+      /**
+       * **Sin carga**, y por eso las dos velocidades son la misma: `mode` ya
+       * dice que se dispara al pulsar, pero estos dos números los lee
+       * `lanzamientoDeArma`, que es la misma función para todas las armas de
+       * proyectil. Iguales quiere decir «la carga no hace nada aquí».
+       */
+      vMin: 34,
+      vMax: 34,
+      /**
+       * **Un cohete cae poco**, que es lo que lo distingue de una flecha: tiene
+       * motor. 3.5 contra los 10 del arco son 35 u de alcance en tiro plano
+       * —casi el Plano A entero— con una curva que se ve pero que no obliga a
+       * apuntar al cielo.
+       */
+      gravedad: 3.5,
+      /**
+       * **El impacto directo**, aparte del área. 100 al torso es una vida
+       * entera: lo que se pidió es que dar de pleno mate, y esto es la mitad —
+       * la otra es el núcleo de la explosión, que suma.
+       */
+      danoMin: 100,
+      danoMax: 100,
+      /**
+       * **Y lo que revienta alrededor** (vuelta 86). `radioU` es hasta dónde
+       * llega algo, `nucleoU` el trozo central donde llega **entero** y `dano`
+       * lo que vale ahí.
+       *
+       * Los tres números salen de una cuenta, no del gusto: con 120 en el
+       * núcleo, **pillar de pleno mata aunque lleves chaleco y casco**, que es
+       * lo que se pidió; a mitad de radio quedan 60, o sea media vida, y en el
+       * borde cero. Y 5 u de radio es poco más que el ancho de un pasillo del
+       * Plano A: una explosión que cubriera un cuarto del mapa no sería un arma,
+       * sería un impuesto.
+       *
+       * **El dueño no está exento**, y eso es la mitad del nombre en clave: si
+       * lo tiras a tus pies, te llevas la onda entera. `propio` es cuánto de
+       * ella te toca — 0.7 y no 1, porque un lanzacohetes que se suicida al
+       * primer despiste es un arma que nadie saca.
+       */
+      explosion: { radioU: 5, nucleoU: 1.2, dano: 120, propio: 0.7 },
+      /**
+       * **La reserva, y cómo se gana** (vuelta 86). Es lo primero del juego que
+       * tiene munición contada: hasta aquí toda arma recargaba infinito.
+       *
+       * Se compra con `inicial` (2) y el tope es `maxima` (4). Lo que abre los
+       * otros dos es **un cohete que mata**: cada uno que consiga al menos una
+       * baja repone uno, con tope. Dicho así cumple lo que se pidió sin una
+       * regla más —hacen falta **dos cohetes con baja**, porque cada uno repone
+       * como mucho uno, así que matar a dos de un solo cohete sigue valiendo
+       * uno—.
+       *
+       * Y **se reinicia al empezar una ronda y al morir con él equipado**: lo
+       * que se gana matando no se acumula entre vidas.
+       */
+      reserva: { inicial: 2, maxima: 4, porBaja: 1 },
+    },
+  },
+  /**
    * **Vanta: el cuchillo** (vuelta 71). La tercera ranura, la que llevaba
    * reservada desde la vuelta 27 con su tecla (**3**) y sin lógica detrás.
    *
@@ -2605,6 +2724,15 @@ export const SURFACES = {
      * estaba dentro del ojo.
      */
     arcoLleno: { r0: 0.1, r1: 0.5, avanza: 1.4, adelanteU: 2.4 },
+    /**
+     * **Una explosión** (vuelta 86). Un anillo tumbado que se abre hasta el
+     * radio de la onda —`SURFACES.destello` sólo sabe de radios, así que esto
+     * **es** el radio del U2— y no sube nada: lo que hace una explosión en el
+     * suelo es extenderse. Es el gesto más grande de los seis y tiene que
+     * serlo: dice hasta dónde llegó, que es exactamente lo que hay que
+     * aprender de un arma de área.
+     */
+    explosion: { r0: 0.4, r1: 5, sube: 0.25 },
   },
 }
 
@@ -4968,6 +5096,20 @@ export const ECONOMY = {
     // quien no lleve chaleco. Y 3100 deja intacta la regla de la ronda 2: con
     // los 2700 del que pierde no llega, guarde o no los 300 del chaleco.
     { clave: 'scout', nombre: 'Scout', tipo: 'arma', ranura: 'primary', categoria: 5, codigo: 1, precio: 3100, disponible: true },
+    /**
+     * **El arco y el U2** (vueltas 85 y 86), en su propia categoría: no son
+     * rifles ni francotiradores, son **armas que lanzan algo**, y meterlos con
+     * los otros haría que la categoría dejara de significar nada. Los códigos
+     * siguen sin ser correlativos a propósito (vuelta 64): dejan sitio a lo que
+     * venga sin mover de los dedos lo que la gente ya se sabe.
+     *
+     * El arco a 2400 —entre el subfusil y el rifle— porque mata de un tiro sólo
+     * cargado y hay que adelantar a quien se mueve. El U2 a 4200, el artículo
+     * más caro del catálogo: con dos cohetes y un área de cinco unidades, un
+     * precio de rifle lo convertiría en el arma de todas las rondas.
+     */
+    { clave: 'bow', nombre: 'Bow', tipo: 'arma', ranura: 'primary', categoria: 8, codigo: 1, precio: 2400, disponible: true },
+    { clave: 'u2', nombre: 'U2', tipo: 'arma', ranura: 'primary', categoria: 8, codigo: 2, precio: 4200, disponible: true },
     { clave: 'chaleco', nombre: 'Chaleco', tipo: 'equipo', categoria: 6, codigo: 1, precio: 500, disponible: true },
     { clave: 'casco', nombre: 'Casco', tipo: 'equipo', categoria: 6, codigo: 2, precio: 350, disponible: true },
     { clave: 'granada', nombre: 'Granada', tipo: 'utilidad', categoria: 7, codigo: 1, precio: 300, disponible: false },
@@ -4983,6 +5125,7 @@ export const ECONOMY = {
     5: 'Francotirador',
     6: 'Equipo',
     7: 'Utilidad',
+    8: 'Proyectil',
   },
   /**
    * **El techo de la ronda 1**: los tipos que se pueden comprar. Sin `arma`, así

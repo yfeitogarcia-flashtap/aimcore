@@ -93,6 +93,15 @@ export class Emitter {
   }
 
   setPosition(x, y, z) {
+    /**
+     * **Un número roto no llega a una matriz** (vuelta 86). Es la misma regla
+     * que `_guardState` en el movimiento, y por el mismo motivo: de aquí el
+     * valor va a `panner.positionX`, que lo rechaza con una excepción **por
+     * frame** — o sea un bucle que degrada en silencio con la consola llena
+     * (vuelta 60). Se queda donde estaba, que es lo único sensato: un emisor
+     * que no sabe dónde está suena donde sonaba.
+     */
+    if (!Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(z)) return
     this.position.set(x, y, z)
     if (this._audio) this._audio.position.copy(this.position)
   }

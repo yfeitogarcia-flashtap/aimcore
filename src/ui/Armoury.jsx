@@ -274,10 +274,26 @@ function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip,
         {weapon.tiro ? (
           <Stat label="Cargado" value={damageLine(weaponKey, weapon.tiro.danoMax)} />
         ) : null}
-        {weapon.tiro ? (
+        {weapon.tiro?.cargaMs ? (
           <Stat
             label="Carga"
             value={`${(weapon.tiro.cargaMs / 1000).toFixed(2)} s al máximo · mantén para tensar, suelta para tirar`}
+          />
+        ) : null}
+        {/* **Y un arma de área dice hasta dónde llega** (vuelta 86). El radio
+            es el número que decide cómo se usa —si cubre un pasillo o una
+            esquina— y no se puede deducir del daño. El chaleco va aquí y no en
+            su fila porque aquí es donde significa algo: una onda no la para. */}
+        {weapon.tiro?.explosion ? (
+          <Stat
+            label="Explosión"
+            value={`${weapon.tiro.explosion.dano} en ${weapon.tiro.explosion.nucleoU} u · nada pasadas ${weapon.tiro.explosion.radioU} u · el chaleco no la para`}
+          />
+        ) : null}
+        {weapon.tiro?.reserva ? (
+          <Stat
+            label="Cohetes"
+            value={`${weapon.tiro.reserva.inicial} al comprar · hasta ${weapon.tiro.reserva.maxima} · cada cohete que mata repone uno`}
           />
         ) : null}
         <Stat

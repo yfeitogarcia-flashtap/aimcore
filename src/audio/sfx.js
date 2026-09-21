@@ -974,6 +974,113 @@ export function playBow(tipo, carga = 1) {
   roce('bandpass', 2600 * k, 5200 * k, 3, 0.13, 0.07, 0.012)
 }
 
+/**
+ * **El U2** (vuelta 86). Tres voces, y la primera es la que no existía en
+ * Vektor: **un sonido que dura mientras algo vuela**.
+ *
+ * - `salida`: el disparo. Lo que suena de un tubo no es un crack —eso es una
+ *   bala en un cañón— sino **la deflagración**: ruido grave de banda ancha que
+ *   se abre, sin metal y sin cerrojo.
+ * - `silbido`: **el trayecto**, y es la única voz del juego que se devuelve
+ *   para poder pararla. Se mantiene mientras el cohete vuela y se corta al
+ *   estallar — y por eso `playRocket('silbido')` devuelve un asa con `parar()`.
+ *   Va por un pasa-banda estrecho que **sube** despacio, que es lo que se lee
+ *   como «se acerca» aunque el panner ya diga de dónde viene.
+ * - `explosion`: lo que se pidió, y lo que la separa de todo lo demás es el
+ *   **grave largo**. Un disparo tiene cuerpo de 30 ms; esto tiene 700, y ésa es
+ *   toda la diferencia entre «ha pasado algo» y «ha pasado algo grande».
+ *
+ * `distancia` (0..1) sube con lo lejos que estés y **apaga los agudos, no el
+ * volumen**: una explosión lejana se oye igual de fuerte y mucho más sorda, que
+ * es lo que hace el aire de verdad. El volumen lo pone el panner, como siempre.
+ */
+export function playRocket(tipo, emitter = null, distancia = 0) {
+  if (!ctx || !master || !noiseBuffer) return null
+  const t = ctx.currentTime
+  // `input` devuelve null con el audio espacial apagado: se cae al máster sin
+  // dirección, que es lo que hacen todas las voces posicionadas del juego.
+  const destino = emitter?.input ?? master
+  const level = AUDIO.shotVolume
+  const lejos = Math.max(0, Math.min(1, distancia))
+
+  if (tipo === 'silbido') {
+    /**
+     * **El único sonido del juego que se sostiene**, así que es el único que
+     * hay que poder parar: se devuelve un asa y quien lo encendió lo apaga.
+     * Sin eso, un cohete que revienta seguiría silbando desde el sitio en el
+     * que estalló hasta que se le acabara la envolvente.
+     */
+    const noise = ctx.createBufferSource()
+    noise.buffer = noiseBuffer
+    noise.loop = true
+    const band = ctx.createBiquadFilter()
+    band.type = 'bandpass'
+    band.Q.value = 5
+    band.frequency.setValueAtTime(700, t)
+    band.frequency.exponentialRampToValueAtTime(1500, t + 2.5)
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, t)
+    g.gain.exponentialRampToValueAtTime(0.16 * level, t + 0.06)
+    noise.connect(band).connect(g).connect(destino)
+    noise.start(t)
+    let vivo = true
+    return {
+      parar() {
+        if (!vivo) return
+        vivo = false
+        const ahora = ctx.currentTime
+        g.gain.cancelScheduledValues(ahora)
+        g.gain.setValueAtTime(Math.max(0.0001, g.gain.value), ahora)
+        g.gain.exponentialRampToValueAtTime(0.0001, ahora + 0.04)
+        noise.stop(ahora + 0.06)
+        noise.onended = () => { noise.disconnect(); band.disconnect(); g.disconnect() }
+      },
+    }
+  }
+
+  /** Ruido por un filtro, el ladrillo de las dos que quedan. */
+  const capa = (tipoF, hz0, hz1, q, pico, dur, retardo = 0) => {
+    const noise = ctx.createBufferSource()
+    noise.buffer = noiseBuffer
+    const f = ctx.createBiquadFilter()
+    f.type = tipoF
+    f.Q.value = q
+    f.frequency.setValueAtTime(hz0, t + retardo)
+    f.frequency.exponentialRampToValueAtTime(hz1, t + retardo + dur)
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, t + retardo)
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, pico * level), t + retardo + 0.004)
+    g.gain.exponentialRampToValueAtTime(0.0001, t + retardo + dur)
+    noise.connect(f).connect(g).connect(destino)
+    noise.start(t + retardo)
+    noise.stop(t + retardo + dur + 0.05)
+    noise.onended = () => { noise.disconnect(); f.disconnect(); g.disconnect() }
+  }
+
+  if (tipo === 'salida') {
+    capa('lowpass', 1800, 420, 0.7, 0.42, 0.28)
+    capa('bandpass', 260, 120, 1.2, 0.30, 0.22, 0.008)
+    return null
+  }
+
+  if (tipo === 'recarga') {
+    // El tubo: un golpe hueco y un cierre metálico. Sin cola.
+    capa('bandpass', 320, 180, 3, 0.20, 0.12)
+    capa('highpass', 2600, 1800, 0.9, 0.10, 0.06, 0.16)
+    return null
+  }
+
+  // `explosion`. Lo que la separa de un disparo es el grave largo.
+  // Lo lejano pierde agudos, no volumen: eso lo hace el aire, no el altavoz.
+  const techo = 9000 - 7200 * lejos
+  capa('lowpass', techo, 160, 0.6, 0.62, 0.7)
+  capa('bandpass', 90, 45, 1.1, 0.55, 0.72, 0.006)
+  if (lejos < 0.7) capa('highpass', 5200, 2400, 0.8, 0.30 * (1 - lejos), 0.12)
+  // Y la cola: lo que queda retumbando, que es lo que dice «grande».
+  capa('lowpass', 700, 200, 0.5, 0.18, 1.1, 0.10)
+  return null
+}
+
 export function playKill() {
   if (!ctx || !master) return
   const t = ctx.currentTime

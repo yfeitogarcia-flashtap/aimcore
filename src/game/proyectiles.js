@@ -123,6 +123,18 @@ export class Proyectiles {
    * @param {object} p `{ tipo, dueno, x, y, z, vx, vy, vz, g, fuerza, mechaS }`
    */
   lanzar(p) {
+    /**
+     * **Un proyectil con un número roto no sale** (vuelta 86). Es la regla de
+     * `_guardState` en el movimiento —ningún frame sale con un valor que no sea
+     * finito— aplicada aquí, y hace falta por una razón que costó encontrarla:
+     * **un `NaN` en la velocidad no choca con nada**, porque ninguna
+     * comparación con `NaN` es cierta. El proyectil no se para en la pared, no
+     * caduca por distancia y se queda volando para siempre con lo que le
+     * cuelgue detrás. Un vuelo que no sale es un fallo que se ve; uno que vuela
+     * para siempre es un fallo que degrada en silencio.
+     */
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y) || !Number.isFinite(p.z)) return 0
+    if (!Number.isFinite(p.vx) || !Number.isFinite(p.vy) || !Number.isFinite(p.vz)) return 0
     const i = this._libre()
     if (i < 0) return 0
     this.estado[i] = VOLANDO

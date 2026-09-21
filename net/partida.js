@@ -20,7 +20,20 @@
 import { ECONOMY, NET, PAUSE, PROJECTILES, ROUNDS, SIM, SIM_STEP_MS, WEAPONS, WEAPON_ORDER, catalogoDeTienda } from '../src/config.js'
 import { MovementController } from '../src/game/movement.js'
 import { encajarImpacto, hitPlayer, zoneDamage } from '../src/game/player.js'
-import { Proyectiles, lanzamientoDeArma } from '../src/game/proyectiles.js'
+import { Proyectiles, caidaDeArea, lanzamientoDeArma } from '../src/game/proyectiles.js'
+
+/**
+ * **De qué arma es una clase de proyectil, y con qué explota.** Salen del
+ * catálogo y no de una segunda tabla: el día que dos armas lancen lo mismo,
+ * las dos revientan igual. Se resuelven una vez al cargar el módulo porque el
+ * catálogo no cambia en caliente.
+ */
+const ARMA_DE_PROYECTIL = new Map()
+for (const [clave, arma] of Object.entries(WEAPONS)) {
+  if (arma.tiro?.proyectil) ARMA_DE_PROYECTIL.set(arma.tiro.proyectil, clave)
+}
+const claveDeProyectil = (tipo) => ARMA_DE_PROYECTIL.get(tipo) ?? null
+const explosionDeProyectil = (tipo) => WEAPONS[claveDeProyectil(tipo)]?.tiro?.explosion ?? null
 import { crearPose, cuerpoDeJugador } from './pose.js'
 import { direccionDeMira, resolverCuchillada, resolverDisparo } from './disparo.js'
 import { MSG, compraAbierta, desempaquetarTeclas, instanteDePaso, instanteEnPaso } from './protocolo.js'
@@ -359,7 +372,7 @@ export class Partida {
        */
       dinero: ECONOMY.inicial,
       /** Lo comprado: el arma principal y los supresores montados. */
-      inventario: { primaria: null, supresor: {} },
+      inventario: { primaria: null, supresor: {}, reserva: {} },
       /** Escudo y casco, que ahora existen también en red. */
       escudo: 0,
       casco: false,
@@ -1081,8 +1094,22 @@ export class Partida {
     )
     for (let i = 0; i < cuantos; i++) {
       const im = this.proyectiles.impactos[i]
-      if (!im.victima) continue
       const tirador = this.jugadores.get(im.dueno) ?? null
+      /**
+       * **Lo que explota reparte por área y sólo por área** (vuelta 86). Dar de
+       * pleno no es un caso aparte que se sume: un cuerpo tocado por el cohete
+       * está a distancia cero del centro de la explosión, así que **se lleva el
+       * núcleo entero**, que es lo que hace que el impacto directo mate. Sumarle
+       * además el daño directo sería contar dos veces lo mismo, y encima haría
+       * que el número que mata dependiera de si la onda pilló al cuerpo por
+       * delante o por detrás.
+       */
+      const explosion = explosionDeProyectil(im.tipo)
+      if (explosion) {
+        this._explotar(im, explosion, tirador)
+        continue
+      }
+      if (!im.victima) continue
       /**
        * **El daño sale de la fuerza con la que salió, no del arma de ahora.**
        * Una flecha a medio cargar vale 45 y una llena 110, y entre que sale y
@@ -1092,6 +1119,61 @@ export class Partida {
       const dano = zoneDamage(im.zona, null, im.fuerza)
       this._aplicarDano(im.victima, dano, tirador, im.zona, false)
     }
+  }
+
+  /**
+   * **Lo que revienta alrededor**, con la misma caída que usará una granada
+   * (`caidaDeArea`, vuelta 85). Una sola fórmula: tres copias de «más cerca,
+   * más fuerte» son tres formas distintas de repartir el mismo daño.
+   *
+   * **El dueño no está exento** —es la mitad del nombre en clave del U2— pero
+   * se le rebaja (`explosion.propio`): un arma que se suicida al primer
+   * despiste es un arma que nadie saca.
+   *
+   * Y lo que hace con una baja es **reponer un cohete** a quien lo tiró, con
+   * tope: cada cohete que mata vale uno, así que llegar al máximo pide dos
+   * cohetes con baja y no uno que mate a dos.
+   */
+  _explotar(im, explosion, tirador) {
+    let mato = false
+    for (const jugador of this.jugadores.values()) {
+      if (!jugador.vida) continue
+      const p = jugador.pose.position
+      // Contra el **centro del cuerpo** y no contra los ojos: una onda no
+      // elige altura, y medir a la cabeza haría que agacharse salvara de una
+      // explosión, que es lo contrario de lo que hace agacharse.
+      const cy = jugador.movimiento.feetY + jugador.movimiento.eyeHeight * 0.5
+      const d = Math.hypot(p.x - im.x, cy - im.y, p.z - im.z)
+      const k = caidaDeArea(d, explosion.radioU, explosion.nucleoU)
+      if (k <= 0) continue
+      const suyo = jugador === tirador ? explosion.propio : 1
+      /**
+       * **La onda entra por el torso**, que es la zona que no lleva ni la regla
+       * del casco ni la del blanco entero: una esfera no elige dónde te pilla,
+       * y fingir que sí sería una precisión que el modelo no tiene.
+       */
+      const baja = this._aplicarDano(jugador, explosion.dano * k * suyo, tirador, 'torso', false)
+      if (baja && jugador !== tirador) mato = true
+    }
+    if (mato && tirador) this._reponerProyectil(tirador, im.tipo)
+  }
+
+  /**
+   * **Un cohete que mata repone uno**, con tope. Es la regla entera: hacen
+   * falta dos cohetes con baja para llegar al máximo, porque cada uno vale uno
+   * — matar a dos de un solo cohete sigue valiendo uno.
+   */
+  _reponerProyectil(jugador, tipo) {
+    const clave = claveDeProyectil(tipo)
+    const r = clave ? WEAPONS[clave]?.tiro?.reserva : null
+    if (!r) return
+    const inv = jugador.inventario
+    if (!inv) return
+    const tiene = inv.reserva?.[clave] ?? 0
+    if (tiene >= r.maxima) return
+    if (!inv.reserva) inv.reserva = {}
+    inv.reserva[clave] = Math.min(r.maxima, tiene + r.porBaja)
+    this._enviarEconomia(jugador)
   }
 
   /**
@@ -1438,6 +1520,17 @@ export class Partida {
       // **Una principal cada vez.** Comprar otra sustituye a la que hubiera, y
       // lo pagado por la anterior no vuelve: es una decisión, no un carrito.
       jugador.inventario.primaria = item.clave
+      /**
+       * **Un arma con reserva se compra llena** (vuelta 86). El U2 llega con
+       * dos cohetes, que es lo que se pidió: los otros dos se ganan matando. Va
+       * aquí y no en el catálogo porque es del **arma**, no de su precio — el
+       * día que haya otra con reserva, funciona sola.
+       */
+      const r = WEAPONS[item.clave]?.tiro?.reserva
+      if (r) {
+        if (!jugador.inventario.reserva) jugador.inventario.reserva = {}
+        jugador.inventario.reserva[item.clave] = r.inicial
+      }
     } else if (item.clave === 'chaleco') {
       const tope = ECONOMY.escudoPorChaleco
       if (jugador.escudo >= tope) return
@@ -1469,6 +1562,13 @@ export class Partida {
           supresor: { ...jugador.inventario.supresor },
           escudo: jugador.escudo,
           casco: jugador.casco,
+          /**
+           * **La reserva de las armas que la tienen** (vuelta 86). Viaja en el
+           * inventario y no en la foto por lo mismo que el dinero: cambia cada
+           * pocos disparos, no sesenta veces por segundo, y es **de quien la
+           * recibe** — cuántos cohetes le quedan al rival no se enseña.
+           */
+          reserva: { ...(jugador.inventario.reserva ?? {}) },
         },
         // El techo de la ronda 1, dicho por el servidor: el panel lo pinta, no
         // lo deduce. Si lo dedujera de su número de ronda —que llega en la foto,
@@ -1511,6 +1611,13 @@ export class Partida {
     jugador.inventario.primaria = null
     jugador.escudo = 0
     jugador.casco = false
+    /**
+     * **Y la reserva se va con el arma** (vuelta 86). Lo que se gana matando no
+     * se acumula entre vidas: es lo que se pidió, y sale gratis aquí porque
+     * morir ya cuesta el equipo desde la vuelta 64 — el arma y sus cohetes son
+     * lo mismo.
+     */
+    jugador.inventario.reserva = {}
   }
 
   /**
@@ -1629,6 +1736,19 @@ export class Partida {
      * 62).
      */
     this.proyectiles.apagarTodos()
+    /**
+     * **Y la reserva vuelve a lo de fábrica** (vuelta 86): lo que se gana
+     * matando es de esa ronda, no del partido. Quien conserve el arma la
+     * conserva llena; quien la haya perdido al morir no tiene nada que llenar.
+     */
+    for (const jugador of this.jugadores.values()) {
+      const clave = jugador.inventario?.primaria
+      const r = clave ? WEAPONS[clave]?.tiro?.reserva : null
+      if (!r) continue
+      if (!jugador.inventario.reserva) jugador.inventario.reserva = {}
+      jugador.inventario.reserva[clave] = r.inicial
+      this._enviarEconomia(jugador)
+    }
     this.rondas.fase = 'ronda'
     this.rondas.hastaPaso = this.paso + this._pasosDe(ROUNDS.duracionSegundos)
     /**

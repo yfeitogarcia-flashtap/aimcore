@@ -1531,7 +1531,7 @@ cambiar de tipo o de tamaño nunca cae dentro del bucle de render.
 
 ## Armas
 
-Cinco armas, en el bloque `WEAPONS` de `config.js`. Se llamaban **Scalar-2,
+Seis armas, en el bloque `WEAPONS` de `config.js`. Se llamaban **Scalar-2,
 Axis-7 y Vertex-9** hasta la vuelta 41: el renombrado no tocó ni una estadística,
 y si tenías una elegida, sigue elegida — el ajuste guardado con el nombre viejo
 se traduce al nuevo en vez de caer al valor de fábrica.
@@ -1543,6 +1543,7 @@ se traduce al nuevo en vez de caer al valor de fábrica.
 | **Volt** | principal (**1**) | auto | 800 | 25 | 1.8 s | sí | 2.6 kg | 6.14 u/s | SMG: patada más inmediata pero la mitad de techo vertical, y más bamboleo lateral que vertical |
 | **Scout** | principal (**1**) | semi | 48 | 10 | 2.6 s | **no** | 3.2 kg | 5.98 u/s | francotirador: una patada sola y grande, 2.4° de golpe |
 | **Bow** | principal (**1**) | **carga** | 55 | 12 | 2.2 s | **no** | 2.8 kg | 6.03 u/s | arco: un empujón corto hacia arriba, lo que sacude una cuerda |
+| **U2** | principal (**1**) | semi | 40 | 1 + reserva | 2.0 s | **no** | 5.4 kg | 5.41 u/s | lanzacohetes: una patada sola y grande, más que la Scout |
 | **Vanta** | cuchillo (**3**) | — | — | — | — | no | 0.6 kg | 6.50 u/s | cada golpe empuja la cámara: el flojo poco, el fuerte el doble |
 
 ### Vanta, el cuchillo
@@ -1614,6 +1615,31 @@ Dos cosas que conviene saber:
 
 **No lleva silenciador**, y no por falta de arte: un arco ya es el arma
 silenciosa. Eso le deja el clic derecho libre, como a la Scout.
+
+### U2, el lanzacohetes
+
+**«Yo muero, pero tú también.»** El cohete tarda en llegar, así que si te matan
+mientras vuela, **sigue volando** — y mata igual. Eso no es un detalle: es lo que
+el arma es.
+
+**Explota en un área de 5 unidades.** De pleno mata, lleve el otro lo que lleve:
+un chaleco no para una onda expansiva. A media distancia quita cuatro quintos de
+una vida, y pasadas las 5 u no hace nada. **Y a ti también te pilla**, algo
+rebajado — tirarlo a tus pies es exactamente lo que suena.
+
+**Un cohete en el tubo y una reserva.** Es la primera arma del juego con munición
+contada: al comprarla trae **dos**, el tope son **cuatro**, y los otros dos se
+ganan de una sola forma — **cada cohete que mata repone uno**. Así que llegar a
+cuatro pide dos cohetes con baja; matar a dos de un solo cohete sigue valiendo
+uno. La reserva vuelve a dos al empezar cada ronda y al morir con él en la mano.
+
+Si te quedas sin reserva, la R no hace nada y el HUD lo dice. No está roto: no
+tienes cohetes.
+
+**Se le oye venir.** Mientras vuela silba desde donde está —con dirección, así
+que se sabe de qué lado llega— y el silbido se corta al estallar. La explosión
+pierde agudos con la distancia en vez de volumen, que es lo que hace el aire: de
+lejos se oye igual de fuerte y mucho más sorda.
 
 ### La Scout, y la mirilla
 

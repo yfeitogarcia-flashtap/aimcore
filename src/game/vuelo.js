@@ -31,6 +31,11 @@ const TINTES = {
   // del mapa no se ve venir. Es el mismo argumento que el fogonazo de la
   // vuelta 40 — sin luces, lo único que separa una cosa del fondo es el tono.
   flecha: COLORS.health,
+  // El cohete en ámbar: es lo único del juego que **hay que ver venir para
+  // apartarse**, y el ámbar ya significa «hay algo que va a estallar» desde que
+  // existe el explosivo (vuelta 27). Aquí no compite con él — una bomba está
+  // quieta en el suelo y esto cruza el aire a treinta y cuatro unidades.
+  cohete: COLORS.objective,
 }
 
 export class VueloDeProyectiles {
