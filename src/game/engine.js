@@ -38,6 +38,7 @@ import { Dispositivos } from './dispositivos.js'
 import { Impacts } from './impacts.js'
 import { Proyectiles, caidaDeArea, lanzamientoDeArma } from './proyectiles.js'
 import { Trayectoria } from './trayectoria.js'
+import { direccionDeMira } from '../../net/disparo.js'
 import { VueloDeProyectiles } from './vuelo.js'
 import { SpawnCone } from './spawnCone.js'
 import { PickupField } from './pickups.js'
@@ -64,6 +65,9 @@ const _ejeCono = new THREE.Vector3()
 const _spreadV = new THREE.Vector3()
 const _spreadUp = new THREE.Vector3(0, 1, 0)
 const _spreadFallback = new THREE.Vector3(1, 0, 0)
+/** Para convertir rumbo+cabeceo en vector, desviarlo y volver. Ver `_miraConDesvio`. */
+const _miraDir = new THREE.Vector3()
+const _mira = { yaw: 0, pitch: 0 }
 /** Hacia dónde mira la cámara, para saber de qué lado te han disparado. */
 const _bearingForward = new THREE.Vector3()
 /**
@@ -458,6 +462,16 @@ export class Engine {
       melee: MELEE_WEAPON,
       throwable: getSettings().throwable,
     }
+    /**
+     * **Las clases de granada que llevas** (vuelta 88), en el orden en que se
+     * ciclan. `slots.throwable` es **cuál de ellas** está elegida, que es lo
+     * que la ranura significaba ya.
+     *
+     * Fuera de red es una sola —la que diga la armería—; en el duelo la manda
+     * el servidor, que desde esta vuelta guarda varias. El motor no sabe cuál
+     * de los dos casos es: lee una lista y la tecla la recorre.
+     */
+    this._granadas = this.slots.throwable ? [this.slots.throwable] : []
     this.slot = 'primary'
     /**
      * **El arma que dejas se queda como estaba.** Aquí se guarda el cargador de
@@ -831,8 +845,22 @@ export class Engine {
      * versión silenciosa del mismo fallo.
      */
     const granadaAntes = this.slots.throwable
-    this.slots.throwable = inv.granada ?? null
-    if (granadaAntes && granadaAntes !== this.slots.throwable) delete this._stowed[granadaAntes]
+    /**
+     * **Y desde la vuelta 88 son varias.** Lo que elige cuál queda en la ranura
+     * es **seguir con la que llevabas si sigue en la lista**: comprar una Blind
+     * teniendo una KO elegida no puede cambiarte de granada por detrás, que es
+     * la misma regla por la que comprar una granada no te arranca el rifle de
+     * la mano.
+     */
+    this._granadas = [...(inv.granadas ?? [])]
+    this.slots.throwable = this._granadas.includes(granadaAntes)
+      ? granadaAntes
+      : (this._granadas[0] ?? null)
+    // Lo que ya no se lleva no guarda cargador: volver a comprarla es volver a
+    // sacarla llena, como cualquier arma que sale por primera vez.
+    for (const clave of Object.keys(this._stowed)) {
+      if (THROWABLE_WEAPONS[clave] && !this._granadas.includes(clave)) delete this._stowed[clave]
+    }
     if (this.slot === 'throwable' && !this.slots.throwable) {
       this.slot = 'secondary'
       this.weaponKey = this.slots.secondary
@@ -1107,6 +1135,7 @@ export class Engine {
       delete this._stowed[settings.throwable]
       delete this._reserva[this.slots.throwable]
       this.slots.throwable = settings.throwable
+      this._granadas = settings.throwable ? [settings.throwable] : []
       if (this.slot === 'throwable') {
         this.weaponKey = settings.throwable
         this._releaseTrigger()
@@ -1208,6 +1237,48 @@ export class Engine {
    * Suelta el gatillo y pone el patrón de retroceso a cero: cambiar de arma no
    * puede heredar la ráfaga de la anterior, que es de otra arma.
    */
+  /**
+   * **La tecla de granada: la saca, y si ya la llevas, pasa a la siguiente**
+   * (vuelta 88).
+   *
+   * Es lo que la ranura prometía y no hacía: hasta aquí el servidor guardaba
+   * **una sola clase**, así que la tecla no tenía entre qué ciclar y comprar
+   * una segunda sustituía a la primera en silencio. Medido jugando: «comprado
+   * 1 KO + 2 Blind, la tecla de granadas no cicla entre ellas».
+   *
+   * Dos reglas de forma, y las dos salen de qué gesto es cada pulsación:
+   *
+   * - **La primera saca, las siguientes ciclan.** Con la pistola en la mano, G
+   *   es «saca la granada» y tiene que dar la que ya llevabas elegida; sólo con
+   *   una granada ya empuñada significa «la otra». Ciclando siempre, sacar una
+   *   concreta sería cuestión de contar pulsaciones.
+   * - **Y ciclar con una sola clase no es un `return` mudo**: es sacar la que
+   *   hay, que es lo que la tecla hace el 90% del tiempo.
+   */
+  _granadaSiguiente() {
+    const llevo = this._granadas
+    if (llevo.length === 0) {
+      // **Una tecla que no responde sin explicar por qué parece rota** (vuelta
+      // 86). En el duelo se compran; entrenando se eligen en la armería.
+      this._showHelp(
+        this.enRed
+          ? 'No llevas granadas: cómpralas en la tienda'
+          : 'No llevas granadas: elígelas en la armería',
+      )
+      return
+    }
+    if (this.slot !== 'throwable') {
+      // Sacar la que estuviera elegida; si el inventario la quitó, la primera.
+      if (!llevo.includes(this.slots.throwable)) this.slots.throwable = llevo[0]
+      this._equipSlot('throwable')
+      return
+    }
+    if (llevo.length === 1) return
+    const i = llevo.indexOf(this.weaponKey)
+    this.slots.throwable = llevo[(i + 1) % llevo.length]
+    this._equipSlot('throwable')
+  }
+
   _equipSlot(slot) {
     const key = this.slots[slot]
     if (!key || key === this.weaponKey) return
@@ -1466,10 +1537,50 @@ export class Engine {
    */
   get currentSpreadDeg() {
     const movement = this.movement
-    if (movement.airborne || movement.horizontalSpeed > ACCURACY.speedThreshold) {
+    // **El aire tiene su número** (vuelta 88): saltar no es correr deprisa, es
+    // haberse quitado el suelo, y lo que cuesta es más. Va primero porque en el
+    // aire la marcha también supera el umbral, así que con el orden al revés el
+    // desvío del aire no se aplicaría nunca.
+    if (movement.airborne) return ACCURACY.airSpreadDeg
+    if (movement.horizontalSpeed > ACCURACY.speedThreshold) {
       return ACCURACY.movementSpreadDeg
     }
     return 0
+  }
+
+  /**
+   * **El rumbo y el cabeceo con los que sale una bala en red**, o sea los de la
+   * cámara con el desvío ya sorteado encima.
+   *
+   * Existe porque hasta la vuelta 88 **el duelo no tenía dispersión en
+   * absoluto**: `_shoot` mandaba `camera.rotation.y/x` crudos y `applySpread`
+   * sólo corría por la rama del entrenamiento. O sea que el ajuste existía, el
+   * panel lo daba por bueno y el modo donde de verdad importa no lo aplicaba —
+   * el fallo de la vuelta 67 por la puerta de la red.
+   *
+   * Se desvía **el vector y no los dos ángulos por separado**, y luego se
+   * vuelve: un cono en yaw/pitch se estrecha con el cabeceo, así que apuntando
+   * a los pies el desvío sería otro. `direccionDeMira` es la conversión de ida
+   * y la usan los dos extremos (`net/disparo.js`), así que la vuelta es su
+   * inversa y no una segunda idea de hacia dónde mira alguien.
+   *
+   * Y lo sortea **el cliente**, que es lo correcto aquí: lo que viaja es el
+   * rumbo con el que salió la bala, uno solo, y los dos extremos resuelven ese
+   * mismo rayo. Sortearlo en el servidor sería un tirador que ve su bala ir a
+   * un sitio y recibe un veredicto de otro.
+   */
+  _miraConDesvio(out) {
+    const yaw = this.camera.rotation.y
+    const pitch = this.camera.rotation.x
+    const spread = this.currentSpreadDeg
+    out.yaw = yaw
+    out.pitch = pitch
+    if (!(spread > 0)) return out
+    direccionDeMira(yaw, pitch, _miraDir)
+    applySpread(_miraDir, spread)
+    out.pitch = Math.asin(Math.max(-1, Math.min(1, _miraDir.y)))
+    out.yaw = Math.atan2(-_miraDir.x, -_miraDir.z)
+    return out
   }
 
   _setPhase(phase) {
@@ -1579,7 +1690,18 @@ export class Engine {
     // Es lo que convierte la ronda en una ronda —se acaban— en vez de en una
     // fuente infinita mientras corre la cuenta atrás. Se decide **antes** de
     // sembrar, porque la primera diana sale dentro de `beginSession`.
-    const conExplosivo = this.mode === 'timed' && this.objective.available
+    /**
+     * **Y sin límite no hay explosivo** (vuelta 88). La bomba **es** el reloj de
+     * su sesión —45 s y se acabó—, así que armarla con «sin límite» puesto era
+     * el mismo fallo que la vuelta 78 vino a cerrar por la otra punta: un
+     * control que promete lo que el juego ignora. Y era peor de leer que aquél,
+     * porque aquí lo que ignoraba el ajuste no era el cronómetro sino **un
+     * objetivo entero**, con su pitido y su cuenta atrás, cerrando a los 45 s
+     * una partida que decía no acabarse. Se mira `endless`, que es el mismo
+     * campo del que cuelgan el HUD y el resumen: una segunda condición sería
+     * una segunda idea de qué significa «sin límite».
+     */
+    const conExplosivo = this.mode === 'timed' && !this.endless && this.objective.available
     this.targets.setRoundBudget(conExplosivo ? this.targets.maxAlive : 0)
     // La primera diana la siembra `beginSession` por su cuenta, así que un
     // mundo sin dianas tampoco puede pasar por aquí.
@@ -2597,8 +2719,7 @@ export class Engine {
       event.preventDefault()
       // **Y si no llevas ninguna, se dice.** Una tecla que no responde sin
       // explicar por qué es una tecla que parece rota (vuelta 86).
-      if (!this.slots.throwable) this._showHelp('No llevas granadas: cómpralas en la tienda')
-      else this._equipSlot('throwable')
+      this._granadaSiguiente()
       return
     }
 
@@ -3175,7 +3296,10 @@ export class Engine {
      */
     if (this.enRed) {
       this.camera.updateMatrixWorld()
-      this.net.disparar(instanteReal, this.camera.rotation.y, this.camera.rotation.x)
+      // **Con el desvío puesto** (vuelta 88): hasta aquí el duelo mandaba los
+      // ángulos crudos y era el único modo del juego sin dispersión ninguna.
+      const mira = this._miraConDesvio(_mira)
+      this.net.disparar(instanteReal, mira.yaw, mira.pitch)
       playWeaponShot(this.weaponKey, this.suppressorEnabled)
       this.callbacks.onShot?.(false)
       // La marca en la pared no se pone aquí: se pone cuando el cliente resuelve

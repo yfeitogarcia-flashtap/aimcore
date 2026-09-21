@@ -103,6 +103,14 @@
               <h2>Identidad</h2>
               <label>Clave <input id="clave" type="text" spellcheck="false" /></label>
               <label>Nombre <input id="label" type="text" /></label>
+              <!-- **Publicado** (vuelta 88): guardar sigue escribiendo el
+                   fichero, pero un mapa sin publicar no se le ofrece a nadie.
+                   Son dos cosas distintas y hasta aquí eran una: el mapa salía
+                   en el selector del juego desde el primer guardado, a medio
+                   dibujar. -->
+              <label class="checkline"><input id="publicado" type="checkbox" />
+                Publicado (sale en el juego)</label>
+              <p id="publicado-nota" class="nota"></p>
             </section>
 
             <section>

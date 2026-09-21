@@ -133,7 +133,7 @@ export class ClienteRed {
      * que la cadencia del arma. `techo` es la lista de tipos comprables en la
      * ronda 1, o `null` si no hay techo.
      */
-    this.economia = { dinero: 0, inv: { primaria: null, supresor: {}, escudo: 0, casco: false }, techo: null, compra: 0 }
+    this.economia = { dinero: 0, inv: { primaria: null, granadas: [], supresor: {}, escudo: 0, casco: false }, techo: null, compra: 0 }
     /** ¿La partida tiene economía? Lo dice la bienvenida. */
     this.conEconomia = false
     /** Aviso de que la economía ha cambiado: lo escuchan el panel y el motor. */

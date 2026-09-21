@@ -1130,12 +1130,20 @@ export const WEAPONS = {
      */
     mode: 'carga',
     /**
-     * 55 «RPM» = 1090 ms entre flechas, y eso **no es la carga**: es lo que
-     * cuesta encajar la siguiente. Cargar del todo son 750, así que un tiro a
-     * tope sale cada 1.1 s y uno instantáneo también — el arco no premia
-     * disparar flojo y rápido, que es lo que lo convertiría en una pistola.
+     * 80 «RPM» = 750 ms entre flechas, y eso **no es la carga**: es lo que
+     * cuesta encajar la siguiente. Cargar del todo son otros 750, así que un
+     * tiro a tope sale cada 1.5 s y uno instantáneo cada 0.75 — el arco sigue
+     * sin premiar disparar flojo y rápido, que es lo que lo convertiría en una
+     * pistola, pero **a corta distancia ya se puede apuntar y soltar**.
+     *
+     * Eran 55 (1090 ms) hasta la vuelta 88, y jugándolo salió que a bocajarro
+     * el arco no tenía respuesta: el gesto rápido existía —soltar sin cargar da
+     * 45— y llegaba un segundo tarde. Lo que se pidió fue «un poquito más
+     * rápidos, no disparos sin enfriamiento», y 750 ms es exactamente eso: **lo
+     * mismo que cuesta cargar del todo**, así que encajar una flecha nunca es
+     * más rápido que tensarla y el arma sigue teniendo un ritmo propio.
      */
-    rpm: 55,
+    rpm: 80,
     /** Un carcaj, no un cargador. Y sacar doce flechas cuesta lo suyo. */
     magazine: 12,
     reloadMs: 2200,
@@ -1207,8 +1215,20 @@ export const WEAPONS = {
        * vale 100 de 100 y **lo que ya vale una vida entera no se escala**
        * (vuelta 70). Con casco hacen falta dos, que es la regla de siempre.
        */
+      /**
+       * **45 sin cargar se confirmó jugando** (vuelta 88) y no se toca: es la
+       * referencia con la que se aprende el arma. Lo que sube es el techo, de
+       * 110 a 130, porque a 110 la flecha llena valía **exactamente lo que una
+       * bala de Scout** —el mismo 110 al torso— y costaba 750 ms de tensar, un
+       * arco de vuelo y adelantar a quien se mueve. Dos precios distintos por
+       * el mismo resultado no es una elección, es un arma peor.
+       *
+       * Con 130: sigue matando de una al torso sin chaleco —eso ya pasaba— y
+       * ahora **con chaleco deja en 22** (la flecha absorbe 0.4), o sea que el
+       * remate es cualquier cosa. A las piernas, 88.4 contra los 74.8 de antes.
+       */
       danoMin: 45,
-      danoMax: 110,
+      danoMax: 130,
     },
   },
   /**
@@ -1508,17 +1528,25 @@ export const WEAPONS = {
       danoMin: 0,
       danoMax: 0,
       /**
-       * **Lo que revienta** (misma caída que el U2: `caidaDeArea`). 110 en el
-       * núcleo mata a vida llena **lleves lo que lleves**, que es lo que una
-       * granada de fragmentación tiene que prometer; a mitad de radio quedan 66
-       * —dos tercios de una vida— y en el borde, cero.
+       * **Lo que revienta** (misma caída que el U2: `caidaDeArea`), y lo que
+       * sube en la vuelta 88 no es el radio: es **dónde mata**.
        *
-       * Y **a ti también te toca**: `propio` 0.8 son 88 de pleno, o sea que
-       * tirártela a los pies a vida llena no mata pero te deja en 12. Es el
-       * mismo argumento del U2 — no es piedad, es que un arma que se suicida al
-       * primer despiste es un arma que nadie saca.
+       * Con 110 y un núcleo de 1 u sólo mataba cayendo encima —a 2 u dejaba en
+       * 12 y a 3 u en 34—, y eso jugándolo se lee como una granada que no hace
+       * nada: la diferencia entre un lanzamiento excelente y uno bueno era la
+       * diferencia entre matar y no despeinar. Con **140 y núcleo de 1.4** el
+       * escalón se mueve a donde cae una granada bien tirada: mata a vida llena
+       * hasta 2 u, deja en 9 a 3 u y en 39 a 4 u; en el borde, cero. El radio
+       * sigue siendo 6, así que **a quién alcanza no ha cambiado**.
+       *
+       * Y **a ti también te toca**, con `propio` bajado de 0.8 a 0.7 justo para
+       * que el número nuevo no se lleve por delante la regla vieja: 98 de
+       * pleno, o sea que tirártela a los pies a vida llena te deja en 2 y no te
+       * mata. Es el argumento del U2 — no es piedad, es que un arma que se
+       * suicida al primer despiste es un arma que nadie saca. Con 0.8 habrían
+       * sido 112 y la regla se habría caído sin que nadie la tocara.
        */
-      explosion: { radioU: 6, nucleoU: 1, dano: 110, propio: 0.8 },
+      explosion: { radioU: 6, nucleoU: 1.4, dano: 140, propio: 0.7 },
       /**
        * **Dos, y ninguna más.** Una en la mano y una en el cinturón, sin forma
        * de reponerlas: `porBaja` es cero, al revés que el U2, porque el U2 se
@@ -2151,6 +2179,34 @@ export const MOVEMENT = {
    */
   airVector: true,
   /**
+   * **Con una tecla de estrafe pulsada, en el aire W no cuenta** (vuelta 88).
+   *
+   * No es tuning y no toca el modelo: lo único que cambia es **qué dirección se
+   * pide**, y la pide `_readWish`, que la corren los dos extremos de una partida
+   * con las mismas máscaras — así que no viaja ningún número y no hay nada en lo
+   * que puedan discrepar.
+   *
+   * El porqué está medido (`aire88`). El modelo vectorial funciona: estrafe puro
+   * a 40°/s gira el rumbo **−27.5° en un vuelo** y sube de 6.500 a 6.760 u/s,
+   * clavado en lo que la vuelta 32 dejó escrito. Lo que no funciona es **con W
+   * pulsada**: ahí la dirección pedida cae a 45° de la marcha, la proyección
+   * vale 4.6 —muy por encima de los 0.78 de `wishSpeed`— y no se gana nada.
+   * Medido: **0.0° de giro y 6.500 planos**, que es exactamente «se mueve sobre
+   * raíles, con sólo un roce sutil de giro ocasional».
+   *
+   * Y eso es lo que hace cualquiera que venga de otro juego: se mantiene W. La
+   * nota de `airWishFactor` decía que la condición «W suelta» del modelo escalar
+   * «sale sola de la geometría», y es verdad — lo que sale sola es que **no
+   * pase nada**, no que el jugador se entere de por qué. Una mecánica que sólo
+   * existe si sueltas una tecla que nadie suelta es una mecánica que no existe.
+   *
+   * Lo que **no** cambia: W sola en el aire sigue volando de frente igual que
+   * siempre, porque sin tecla de estrafe aquí no hay nada que quitar. Y el techo
+   * sigue siendo `airStrafeMaxSpeed`: esto no regala velocidad, abre la puerta a
+   * ganarla.
+   */
+  airStrafeIgnoraFrente: true,
+  /**
    * **Aceleración aérea** del modelo vectorial, el `sv_airaccelerate` de
    * siempre. Multiplica a `airWishFactor · speed · dt` para dar la ganancia
    * por frame, y el resultado se acota además por lo que falte para llegar a la
@@ -2277,6 +2333,25 @@ export const ACCURACY = {
    * dirección al azar y una magnitud entre 0 y este valor.
    */
   movementSpreadDeg: 1.2,
+  /**
+   * **Lo que se abre un disparo en el aire** (vuelta 88), y es un número
+   * aparte y no el de arriba por una razón que no es de gusto: correr y saltar
+   * no son el mismo gesto. Correr es una marcha que se puede soltar; saltar es
+   * una decisión que **quita el suelo**, y lo que un shooter cobra por ella es
+   * la puntería.
+   *
+   * Hasta aquí el aire pagaba **lo mismo que correr, 1.2°**, y eso a quince
+   * unidades son 31 cm: menos de lo que mide de ancho el cuerpo del rival
+   * (0.586 u de diámetro en la cintura), o sea un desvío que no se puede notar.
+   * Jugando salió como lo que era —«disparar saltando se comporta igual que en
+   * el suelo, línea recta perfecta»—. Con 3.0° son 79 cm, que son dos cuerpos y
+   * medio: saltar deja de ser gratis sin volverse lotería.
+   *
+   * Punto de partida, a calibrar jugando. Y **no toca a los proyectiles**: una
+   * flecha no se desvía por saltar, que es la regla escrita en
+   * `_lanzarProyectil`.
+   */
+  airSpreadDeg: 3,
 }
 
 /** Reglas de aparición del modo Gridshot. */
@@ -4162,8 +4237,23 @@ const ESCENARIOS_INTEGRADOS = {
  */
 export const SCENARIOS = { ...ESCENARIOS_INTEGRADOS, ...MAPAS_DE_FICHERO }
 
+/**
+ * **Y un mapa sin publicar no sale en ninguna lista** (vuelta 88).
+ *
+ * Es la única puerta: las dos listas derivadas de abajo son de donde salen el
+ * selector de escenarios y el desplegable del duelo, así que filtrar aquí es
+ * filtrar en los dos sitios sin escribirlo dos veces. `SCENARIOS` **no** se
+ * filtra a propósito —el editor tiene que poder abrir un borrador, y una sala
+ * creada con su clave tiene que poder montarlo—: lo que se decide aquí es qué
+ * se **ofrece**, no qué existe.
+ *
+ * `undefined` es publicado, que es lo que hace que esto no mueva ni un mapa de
+ * los que ya hay: ver `sanearMapa` en `src/maps/formato.js`.
+ */
+const publicado = (def) => def.publicado !== false
+
 export const TRAINER_SCENARIOS = Object.fromEntries(
-  Object.entries(SCENARIOS).filter(([, definition]) => !definition.soloDuelo),
+  Object.entries(SCENARIOS).filter(([, definition]) => !definition.soloDuelo && publicado(definition)),
 )
 
 /**
@@ -4173,7 +4263,7 @@ export const TRAINER_SCENARIOS = Object.fromEntries(
  * del duelo era un solo nombre en `NET.escenario`.
  */
 export const DUEL_SCENARIOS = Object.fromEntries(
-  Object.entries(SCENARIOS).filter(([, def]) => def.soloDuelo),
+  Object.entries(SCENARIOS).filter(([, def]) => def.soloDuelo && publicado(def)),
 )
 
 /**
@@ -5542,6 +5632,20 @@ export const ECONOMY = {
   techoRonda1: ['equipo', 'utilidad'],
   /** Lo que da un chaleco, en puntos de escudo. Un segmento de los de siempre. */
   escudoPorChaleco: PLAYER.shield.segment,
+  /**
+   * **Cuántas clases de granada se llevan a la vez** (vuelta 88).
+   *
+   * Clases y no unidades: cada una llega llena con lo suyo —una en la mano y
+   * su reserva—, así que dos clases son cuatro granadas, que es el orden de
+   * magnitud de cualquier shooter de rondas.
+   *
+   * Hasta aquí la ranura guardaba **una sola clave** y comprar otra sustituía a
+   * la anterior sin devolver el dinero ni decir nada: se compraba una KO y dos
+   * Blind y se salía a la ronda con Blind y sin forma de enterarse de dónde
+   * había ido la KO. Con un tope declarado, la tercera **se rechaza y el panel
+   * dice por qué**, que es la diferencia entre un límite y un agujero.
+   */
+  granadasMax: 2,
 }
 
 /**

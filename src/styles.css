@@ -480,6 +480,38 @@ body {
 /* Marca de opciones, justo debajo del contador y alineada con él por la
    derecha. Mismo gris apagado y mismo trazo sin relleno que la estrella vacía:
    es una indicación de tecla, no un elemento con el que se pueda interactuar. */
+/**
+ * **El dinero** (vuelta 88), en el tercio superior derecho y bajo el contador
+ * de FPS y el engranaje, que son los dos rótulos pequeños de esa esquina.
+ *
+ * Grande a propósito: es lo único de esta esquina que se lee **de reojo en
+ * mitad de una ronda**, y lo de encima son cosas que se miran a posta. Va en el
+ * verde de acción, que es el color con el que la tienda ya marca lo que se
+ * puede comprar — mirar el saldo y mirar la tienda son la misma conversación.
+ */
+.hud__dinero {
+  z-index: 2;
+  position: absolute;
+  top: 76px;
+  right: 28px;
+  display: flex;
+  align-items: baseline;
+  gap: 2px;
+  color: var(--action-color);
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.hud__dinero-signo {
+  font-size: 15px;
+  opacity: 0.7;
+}
+
+.hud__dinero-valor {
+  font-size: 26px;
+  letter-spacing: 0.01em;
+}
+
 .hud__options {
   z-index: 2;
   position: absolute;

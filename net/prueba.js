@@ -1114,6 +1114,18 @@ function porQueNo(item, eco, fase) {
   if (item.clave === 'chaleco' && eco.inv.escudo >= ECONOMY.escudoPorChaleco) return 'puesto'
   if (item.clave === 'casco' && eco.inv.casco) return 'puesto'
   if (item.clave === eco.inv.primaria) return 'equipada'
+  /**
+   * **Y el tope de granadas lo dice el panel antes de cobrar** (vuelta 88).
+   * Mira el mismo inventario que el servidor, así que no hay una segunda idea
+   * de si cabe otra — la regla sigue siendo suya (`ECONOMY.granadasMax`), esto
+   * sólo la enseña. Comprar una que ya llevas **sí** vale: rellena.
+   */
+  if (item.ranura === 'throwable') {
+    const llevo = eco.inv.granadas ?? []
+    if (!llevo.includes(item.clave) && llevo.length >= ECONOMY.granadasMax) {
+      return `sólo ${ECONOMY.granadasMax} clases`
+    }
+  }
   if (eco.dinero < item.precio) return 'sin saldo'
   return null
 }
@@ -1138,6 +1150,7 @@ function pintarTienda() {
     boton.classList.toggle('puedo', razon === null)
     const puesto =
       item.clave === eco.inv.primaria ||
+      (eco.inv.granadas ?? []).includes(item.clave) ||
       (item.clave === 'chaleco' && eco.inv.escudo > 0) ||
       (item.clave === 'casco' && eco.inv.casco)
     boton.classList.toggle('puesto', !!puesto)
@@ -1229,11 +1242,18 @@ montarTienda()
 let invAnterior = null
 function sonarLoComprado(inv) {
   const antes = invAnterior
-  invAnterior = { primaria: inv.primaria, escudo: inv.escudo, casco: inv.casco }
+  const granadas = [...(inv.granadas ?? [])]
+  invAnterior = { primaria: inv.primaria, escudo: inv.escudo, casco: inv.casco, granadas }
   if (!antes) return
   if (inv.primaria && inv.primaria !== antes.primaria) playEquip('arma')
   else if (inv.escudo > antes.escudo) playEquip('chaleco')
   else if (inv.casco && !antes.casco) playEquip('casco')
+  // **Y una granada nueva suena a utilidad** (vuelta 88), que es la cuarta voz
+  // de `playEquip` y llevaba desde la 73 sin nadie que la sacara: la ranura
+  // guardaba una sola clase, así que «llevo una más» no era un estado que
+  // existiera. Se mira **la lista**, no el saldo — la ausencia de cambio sigue
+  // siendo la respuesta a si se pudo pagar.
+  else if (granadas.some((g) => !antes.granadas.includes(g))) playEquip('utilidad')
 }
 
 const ecoDelMotor = cliente.onEconomia
@@ -1241,6 +1261,16 @@ cliente.onEconomia = (eco) => {
   ecoDelMotor?.(eco)
   sonarLoComprado(eco.inv)
   pintarTienda()
+  /**
+   * **Y el dinero al HUD** (vuelta 88), que hasta aquí sólo se veía abriendo la
+   * tienda — o sea justo cuando ya es tarde para pensarlo.
+   *
+   * `conEconomia` y no «¿llega este mensaje?»: en un mapa que reparte (vuelta
+   * 72) el inventario también viaja por aquí, y ahí un `$0` en pantalla diría
+   * que estás arruinado en vez de que no hay tienda. Es la regla de la 64 —que
+   * hay economía lo dice la bienvenida, no el silencio— aplicada a un rótulo.
+   */
+  capa.dinero(cliente.conEconomia ? eco.dinero : null)
 }
 
 /**

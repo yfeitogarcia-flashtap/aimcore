@@ -58,6 +58,18 @@ import '../styles.css'
  */
 function CapaDuelo({ api, alCerrarPanel }) {
   const [arma, setArma] = useState({ weaponKey: 'pulse', suppressed: false })
+  /**
+   * **El dinero, que se enseña siempre** (vuelta 88). Vive aquí y no en `stats`
+   * porque **no es un valor por frame**: cambia unas pocas veces por ronda —al
+   * comprar y al cobrar— y llega por `MSG.ECONOMIA`, no en la foto. Es la misma
+   * excepción que el arma desde la vuelta 39: lo que es una pulsación puede ser
+   * estado de React sin saltarse la regla de no repintar por frame.
+   *
+   * `null` es «aquí no hay economía», y eso no es lo mismo que cero: en un mapa
+   * que reparte (vuelta 72) o entrenando, un `$0` en pantalla diría que estás
+   * arruinado en vez de que no hay tienda.
+   */
+  const [dinero, setDinero] = useState(null)
   const [jugando, setJugando] = useState(false)
   const [apuntando, setApuntando] = useState(false)
   const [aCuchillo, setACuchillo] = useState({ dentro: false, espalda: false })
@@ -84,6 +96,7 @@ function CapaDuelo({ api, alCerrarPanel }) {
     api.hud = hudRef
     api.mira = miraRef
     api.setArma = setArma
+    api.setDinero = setDinero
     api.setJugando = setJugando
     api.setApuntando = setApuntando
     api.setACuchillo = setACuchillo
@@ -99,7 +112,13 @@ function CapaDuelo({ api, alCerrarPanel }) {
         * porque el 1v1 no tiene puntuación (vuelta 45) y lleva su propio
         * marcador de ronda. Todo lo demás es exactamente el del entrenamiento.
         */}
-      <Hud ref={hudRef} weaponKey={arma.weaponKey} suppressed={arma.suppressed} duelo />
+      <Hud
+        ref={hudRef}
+        weaponKey={arma.weaponKey}
+        suppressed={arma.suppressed}
+        dinero={dinero}
+        duelo
+      />
       {jugando && <Crosshair ref={miraRef} hidden={apuntando} melee={aCuchillo.dentro} backstab={aCuchillo.espalda} />}
 
       {panel && (
@@ -162,6 +181,8 @@ export function montarCapaDeDuelo(contenedor, { alCerrarPanel } = {}) {
     },
     ayuda: (texto, ms) => api.hud?.current?.showHelp(texto, ms),
     arma: (weaponKey, suppressed) => api.setArma?.({ weaponKey, suppressed }),
+    /** Cuánto dinero lleva, o `null` si en esta partida no hay tienda. */
+    dinero: (valor) => api.setDinero?.(valor),
     jugando: (valor) => api.setJugando?.(valor),
     apuntando: (valor) => api.setApuntando?.(valor),
     aCuchillo: (dentro, espalda) => api.setACuchillo?.({ dentro, espalda: Boolean(espalda) }),

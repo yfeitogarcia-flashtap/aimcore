@@ -374,7 +374,7 @@ export class Partida {
        */
       dinero: ECONOMY.inicial,
       /** Lo comprado: el arma principal y los supresores montados. */
-      inventario: { primaria: null, granada: null, supresor: {}, reserva: {} },
+      inventario: { primaria: null, granadas: [], supresor: {}, reserva: {} },
       /** Escudo y casco, que ahora existen también en red. */
       escudo: 0,
       casco: false,
@@ -1593,13 +1593,30 @@ export class Partida {
       jugador.casco = true
     } else if (item.tipo === 'utilidad' && item.ranura === 'throwable') {
       /**
-       * **Las granadas** (vuelta 87). Se llevan **una clase a la vez**, como la
-       * principal y por la misma razón: la ranura es una, y comprar otra
-       * sustituye a la que hubiera sin devolver lo pagado. Y llega **llena**,
-       * con su reserva, por el mismo camino que el U2 — que es lo que hace que
-       * no haya una segunda forma de entregar munición.
+       * **Las granadas, y se llevan varias clases** (vuelta 88; la 87 guardaba
+       * una sola).
+       *
+       * Lo de la 87 decía «la ranura es una, así que comprar otra sustituye», y
+       * eso es un razonamiento sobre la implementación, no sobre el juego: la
+       * ranura es **la tecla**, y una tecla puede ciclar. Lo que producía era
+       * una tienda que cobra dos artículos y entrega uno, sin decirlo. Medido
+       * jugando: una KO y dos Blind compradas, y a la ronda sólo salió la Blind.
+       *
+       * Ahora es una lista con tope (`ECONOMY.granadasMax`), y las tres reglas
+       * que la hacen honesta:
+       *
+       * - **Comprar la que ya llevas la rellena**, no la duplica: es lo que ya
+       *   hacía y es lo que deja gastarse el dinero sobrante en munición.
+       * - **Pasado el tope se rechaza**, y el panel lo dice antes de cobrar —
+       *   `porQueNo` mira el mismo inventario, así que no hay una segunda idea
+       *   de si cabe.
+       * - **Y llega llena**, con su reserva, por el mismo camino que el U2: una
+       *   segunda forma de entregar munición serían dos.
        */
-      jugador.inventario.granada = item.clave
+      const llevo = jugador.inventario.granadas ?? []
+      if (!llevo.includes(item.clave) && llevo.length >= ECONOMY.granadasMax) return
+      if (!llevo.includes(item.clave)) llevo.push(item.clave)
+      jugador.inventario.granadas = llevo
       const r = WEAPONS[item.clave]?.tiro?.reserva
       if (r) {
         if (!jugador.inventario.reserva) jugador.inventario.reserva = {}
@@ -1626,7 +1643,7 @@ export class Partida {
         dinero: jugador.dinero,
         inv: {
           primaria: jugador.inventario.primaria,
-          granada: jugador.inventario.granada ?? null,
+          granadas: [...(jugador.inventario.granadas ?? [])],
           supresor: { ...jugador.inventario.supresor },
           escudo: jugador.escudo,
           casco: jugador.casco,
@@ -1677,8 +1694,8 @@ export class Partida {
    */
   _perderEquipo(jugador) {
     jugador.inventario.primaria = null
-    // Y la granada, que es equipo como todo lo demás.
-    jugador.inventario.granada = null
+    // Y las granadas, que son equipo como todo lo demás.
+    jugador.inventario.granadas = []
     jugador.escudo = 0
     jugador.casco = false
     /**
@@ -1807,16 +1824,30 @@ export class Partida {
      */
     this.proyectiles.apagarTodos()
     /**
-     * **Y la reserva vuelve a lo de fábrica** (vuelta 86): lo que se gana
-     * matando es de esa ronda, no del partido. Quien conserve el arma la
-     * conserva llena; quien la haya perdido al morir no tiene nada que llenar.
+     * **Y la reserva se rellena hasta lo de fábrica, sin bajar de lo que
+     * traigas** (vuelta 88; la 86 la ponía en `inicial` a secas).
+     *
+     * Lo de la 86 era «lo que se gana matando es de esa ronda, no del partido»,
+     * y jugándolo se vio que eso dejaba la regla del U2 **inalcanzable**: la
+     * única baja que repone un cohete es la que se hace con un cohete, y en un
+     * 1v1 **esa baja cierra la ronda**. Así que el premio se cobraba y lo
+     * borraba `_empezarRonda` un instante después, sin un aviso en ninguna
+     * pantalla. Medido jugando: «impactó en el pecho del rival y no se repuso
+     * el misil extra» — y sí se había repuesto.
+     *
+     * Con `max(inicial, lo que tenga)` la promesa del arma se cumple donde se
+     * hizo —matar con un cohete te deja con uno más la ronda siguiente, hasta
+     * `maxima`— y lo que la 86 quería proteger sigue protegido, porque **morir
+     * te quita el arma** y con ella su reserva (`_perderEquipo`): el que pierde
+     * no acumula nada.
      */
     for (const jugador of this.jugadores.values()) {
       const clave = jugador.inventario?.primaria
       const r = clave ? WEAPONS[clave]?.tiro?.reserva : null
       if (!r) continue
       if (!jugador.inventario.reserva) jugador.inventario.reserva = {}
-      jugador.inventario.reserva[clave] = r.inicial
+      const tiene = jugador.inventario.reserva[clave] ?? 0
+      jugador.inventario.reserva[clave] = Math.min(r.maxima, Math.max(r.inicial, tiene))
       this._enviarEconomia(jugador)
     }
     this.rondas.fase = 'ronda'

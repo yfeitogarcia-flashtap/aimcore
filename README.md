@@ -74,8 +74,9 @@ Sólo con la variante de movimiento activa (`MOVEMENT.enabled`):
   usando lo ganado. Y sólo cuenta si aciertas el tiempo: dejar la tecla apoyada
   no encadena, porque no vuelve a saltar.
 - **A o D en el aire, girando el ratón hacia ese mismo lado**: **air-strafe**.
-  Ganas velocidad por encima de tu carrera mientras estrafeas sin avanzar. Ver
-  la sección propia más abajo.
+  Ganas velocidad por encima de tu carrera. **Puedes dejar W pulsada**: en el
+  aire, con A o D apretada, el frente deja de contar solo. Ver la sección propia
+  más abajo.
 - **Corriendo, pulsar C**: **deslizamiento**. Te tiras al suelo conservando la
   marcha —y de entrada mejorándola: 9.4 u/s contra los 6.5 de carrera— y frenas
   en línea recta hasta la marcha de agachado, unos 4.2 metros de recorrido. Se
@@ -645,6 +646,13 @@ npm run editor     # abre /editor/ directamente
 
 **Sólo existe en desarrollo.** No entra en lo que se despliega: es una
 herramienta de autor, no una pantalla del juego.
+
+**Y un mapa se publica aparte de guardarse.** En la hoja de **Mapa** hay una
+casilla, **Publicado**: sin marcarla el mapa se guarda, se abre y se prueba aquí
+igual, pero **no aparece en el juego** — ni en el selector de escenarios ni en el
+desplegable del duelo. Un mapa nuevo nace en borrador, y la barra de arriba lo
+dice al lado de su nombre. Los mapas que ya tenías siguen publicados: la casilla
+sólo guarda el «no».
 
 ### El panel
 
@@ -1418,6 +1426,12 @@ En el aire tienes una velocidad de verdad, con dirección. Lo que cambia:
   debajo de tu carrera. Justo al revés que el otro modelo.
 - **Mirar a donde vas no acelera**, y no hace falta prohibirlo: con la vista en
   la dirección de la marcha ya no cabe ganancia. Sale de la geometría.
+- **No hace falta soltar W.** En el aire, con A o D apretada, el frente deja de
+  contar; en el suelo y volando de frente no cambia nada. Hasta aquí W+D no
+  giraba **nada** —el aire se sentía «sobre raíles»— porque con las dos teclas la
+  dirección que pides se queda demasiado cerca de la que llevas y no cabe
+  ganancia. Ahora W+D es exactamente lo mismo que D: −27.5° de giro y 6.76 u/s en
+  un vuelo, contra 0° y 6.50 antes.
 - **El techo sigue siendo duro:** `MOVEMENT.airStrafeMaxSpeed`, 9.5 u/s.
 
 Rozar la cara de un cajón bajo mientras subes **no** te quita la marcha —vas a
@@ -1492,7 +1506,8 @@ Es sólo sensación: no toca la gravedad ni la fuerza del salto.
 Botón **Opciones** en la pantalla de inicio y en la de pausa. Los cambios se
 aplican al momento y se guardan en `localStorage`, así que sobreviven a una
 recarga. **Restablecer**, al final del panel, vuelve a los valores de
-`config.js` de golpe.
+`config.js` de golpe. **Se cierra con Escape**, como la armería — y si estás
+reasignando una tecla, Escape cancela esa captura y el panel se queda.
 
 **Y si tu navegador no deja guardarlos, el panel te lo dice** en vez de callarse:
 suele ser una ventana privada, las cookies de terceros bloqueadas o el navegador
@@ -1519,7 +1534,7 @@ vieja.
 | Distancia de aparición | distancia base del cono respecto al jugador |
 | Cadencia | milisegundos entre apariciones. Menos es más difícil |
 | Dianas simultáneas | x1 · x2 · x3 · x5 · x8 — cuántas a la vez; con explosivo, **cuántas en toda la ronda** |
-| Duración de la sesión | La del modo · Sin límite · 30 s · 1 · 3 · 5 · 10 minutos — **vale para los dos modos** |
+| Duración de la sesión | La del modo · Sin límite · 30 s · 1 · 3 · 5 · 10 minutos — **vale para los dos modos**, y con «Sin límite» **no sale el explosivo**: su cuenta atrás *es* el reloj de la sesión |
 | Ancho del cono de aparición | 6° a 110°, con el cono dibujado delante mientras lo mueves |
 | Dificultad de los muñecos | Fácil · Normal · Difícil — cono y reacción a la vez |
 | Modo dinámico | las dianas vivas se desplazan mientras están en pantalla |
@@ -1544,7 +1559,7 @@ se traduce al nuevo en vez de caer al valor de fábrica.
 | **Rift** | principal (**1**) | auto | 600 | 30 | 2.3 s | sí | 3.6 kg | 5.88 u/s | rifle: subida vertical marcada los primeros ocho disparos, luego deriva a la izquierda |
 | **Volt** | principal (**1**) | auto | 800 | 25 | 1.8 s | sí | 2.6 kg | 6.14 u/s | SMG: patada más inmediata pero la mitad de techo vertical, y más bamboleo lateral que vertical |
 | **Scout** | principal (**1**) | semi | 48 | 10 | 2.6 s | **no** | 3.2 kg | 5.98 u/s | francotirador: una patada sola y grande, 2.4° de golpe |
-| **Bow** | principal (**1**) | **carga** | 55 | 12 | 2.2 s | **no** | 2.8 kg | 6.03 u/s | arco: un empujón corto hacia arriba, lo que sacude una cuerda |
+| **Bow** | principal (**1**) | **carga** | 80 | 12 | 2.2 s | **no** | 2.8 kg | 6.03 u/s | arco: un empujón corto hacia arriba, lo que sacude una cuerda |
 | **U2** | principal (**1**) | semi | 40 | 1 + reserva | 2.0 s | **no** | 5.4 kg | 5.41 u/s | lanzacohetes: una patada sola y grande, más que la Scout |
 | **Vanta** | cuchillo (**3**) | — | — | — | — | no | 0.6 kg | 6.50 u/s | cada golpe empuja la cámara: el flojo poco, el fuerte el doble |
 | **Core** | granada (**G**) | **carga** | 50 | 1 + 1 | 1.2 s | **no** | 0.5 kg | 6.50 u/s | el empujón de tirar algo: pequeño y hacia arriba |
@@ -1594,7 +1609,9 @@ adelantar a quien se mueve — y a quien la ve venir le da tiempo a apartarse.
 **Se dispara por carga: mantén el botón para tensar y suelta para tirar.**
 Cuanto más tenses, más rápido sale y más lejos llega; soltar al instante da un
 tiro corto y flojo (45 de daño al cuerpo), y a tope mata de un tiro a quien no
-lleve chaleco (110, lo mismo que la Scout). **A la cabeza mata siempre**, cargada
+lleve chaleco y **deja en 22 a quien sí** (130). Entre flecha y flecha pasan
+**0.75 s**, lo mismo que cuesta tensar del todo: a bocajarro se puede apuntar y
+soltar, pero encajar una flecha nunca es más rápido que tensarla. **A la cabeza mata siempre**, cargada
 o no — salvo con casco, que se lleva la primera flecha. Tensar del todo cuesta
 **0.75 s**, y ahí se acaba: aguantar más no aporta nada.
 
@@ -1636,7 +1653,12 @@ rebajado — tirarlo a tus pies es exactamente lo que suena.
 contada: al comprarla trae **dos**, el tope son **cuatro**, y los otros dos se
 ganan de una sola forma — **cada cohete que mata repone uno**. Así que llegar a
 cuatro pide dos cohetes con baja; matar a dos de un solo cohete sigue valiendo
-uno. La reserva vuelve a dos al empezar cada ronda y al morir con él en la mano.
+uno. **Y lo que ganas te lo llevas a la ronda siguiente**: al empezar una ronda
+la reserva se rellena hasta dos, pero nunca baja de lo que traigas. Hasta la
+vuelta 88 volvía a dos a secas, y como en un 1v1 la baja que repone un cohete es
+justo la que cierra la ronda, el cohete extra se borraba un instante después de
+ganarlo. Lo que sí te lo quita entero es **morir**: ahí pierdes el arma, y con
+ella su reserva.
 
 Si te quedas sin reserva, la R no hace nada y el HUD lo dice. No está roto: no
 tienes cohetes.
@@ -1681,7 +1703,7 @@ que es lo único que te dice que hay una detrás de ti.
 
 | | color | qué hace |
 |---|---|---|
-| **Core** | rojo | 110 de daño en el centro, nada pasadas 6 u. El chaleco no para una onda. |
+| **Core** | rojo | 140 de daño en el centro y hasta 2 u, 91 a 3 u, nada pasadas 6 u. El chaleco no para una onda. |
 | **Blind** | blanco | tapa la pantalla 2.8 s, hasta 9 u. **Apartar la vista la reduce**, y una pared la corta del todo. |
 | **KO** | azul eléctrico | te quita el 55% de la marcha durante 2.4 s, hasta 6.5 u. |
 
@@ -1692,6 +1714,11 @@ arma.
 **Llevas dos por vida y no se reponen.** Una en la mano y otra en el cinturón. En
 la tienda del duelo van en *Utilidad* —300 el Core, 250 las otras dos— y **caben
 en la ronda 1**, que es donde una granada decide más.
+
+**Y se llevan dos clases a la vez.** Compra una KO y una Blind y las tienes las
+dos: la **G** saca la que llevaras elegida y, con una granada ya en la mano,
+**pasa a la otra**. Una tercera clase no entra —la tienda lo dice en su artículo
+antes de cobrarte— y comprar otra vez la que ya llevas te la rellena.
 
 ### La Scout, y la mirilla
 
@@ -1975,6 +2002,13 @@ ti sigue donde estaba. Y es la misma mira en los dos modos.
 Arriba a la izquierda, la **marca de Vektor**: un icono discreto, sin texto, en
 el mismo gris apagado que el contador de FPS de la esquina de enfrente. Es una
 firma, no información — ver *Logotipo*.
+
+**Arriba a la derecha va el dinero**, grande y en el verde de acción, debajo de
+los FPS y del engranaje. Hasta ahora sólo se veía abriendo la tienda, o sea justo
+cuando ya es tarde para pensarlo: lo que se compra en una ronda se decide durante
+la anterior. **Sólo sale donde hay tienda** — entrenando, y en un mapa que
+reparte el equipo, no se monta: un `$0` fijo diría que estás arruinado en vez de
+que ahí no se compra.
 
 Arriba a la derecha, bajo el contador de FPS, un **engranaje con la palabra
 ESC**: la marca de dónde están las opciones ahora que no hay tablero en la sala.
@@ -2575,7 +2609,11 @@ cuesta ~0.1 ms por frame en p99, frente a los 4.17 ms de presupuesto a 240 Hz.
 - **La dispersión desvía la bala, no la mira.** Un temblor aleatorio del
   crosshair sería insufrible y además impediría apuntar; desviando el rayo, el
   jugador ve exactamente dónde apunta y lo que pierde es certeza sobre dónde
-  irá el disparo.
+  irá el disparo. **Saltar cuesta más que correr** (3° contra 1.2): correr es una
+  marcha que puedes soltar, saltar es una decisión que te quita el suelo. Y
+  **también en el duelo**, que hasta ahora era el único modo sin dispersión
+  ninguna. No toca al cuchillo ni a las flechas: una flecha no se desvía por
+  saltar.
 - **La marcha más lenta manda.** SHIFT y C a la vez dan agachado porque el
   motor se queda con la menor de las velocidades pedidas, no por un orden de
   prioridad escrito a mano — seguiría siendo cierto si un día se retocan las

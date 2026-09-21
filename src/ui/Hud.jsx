@@ -66,7 +66,7 @@ function modoDelArma(weaponKey) {
   return WEAPON_MODES[WEAPONS[weaponKey]?.mode]?.corto ?? ''
 }
 
-const Hud = forwardRef(function Hud({ weaponKey, suppressed, duelo = false }, ref) {
+const Hud = forwardRef(function Hud({ weaponKey, suppressed, dinero = null, duelo = false }, ref) {
   const fpsRef = useRef(null)
   const timeRef = useRef(null)
   const timeLabelRef = useRef(null)
@@ -455,6 +455,27 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed, duelo = false }, re
           </div>
         </div>
       </div>
+      )}
+
+      {/**
+        * **El dinero, arriba a la derecha y siempre puesto** (vuelta 88).
+        *
+        * Hasta aquí sólo se veía **abriendo la tienda**, o sea justo cuando ya
+        * es tarde para pensarlo: la economía de una ronda se decide durante la
+        * anterior —si esta bala vale la pena, si conviene guardar para el
+        * rifle— y eso pide tener el número delante mientras se juega. En CS2
+        * vive en el tercio superior de la pantalla por la misma razón, y ahí es
+        * donde la busca cualquiera que venga de ahí.
+        *
+        * `null` no es cero: es «en esta partida no hay tienda» —entrenando, o
+        * en un mapa que reparte (vuelta 72)— y entonces no se monta nada. Un
+        * `$0` fijo diría que estás arruinado.
+        */}
+      {dinero !== null && (
+        <div className="hud__dinero">
+          <span className="hud__dinero-signo">$</span>
+          <span className="hud__dinero-valor">{dinero}</span>
+        </div>
       )}
 
       <div className="hud__fps">

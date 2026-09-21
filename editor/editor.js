@@ -1892,6 +1892,16 @@ function anunciarLimites() {
 function pintarPanel() {
   $('clave').value = mapa.clave ?? ''
   $('label').value = mapa.label ?? ''
+  /**
+   * **Publicado** (vuelta 88). `undefined` es publicado, que es lo que hace que
+   * los mapas que ya existen no cambien de estado al abrirlos: sólo se guarda
+   * el `false` (ver `sanearMapa`).
+   */
+  const estaPublicado = mapa.publicado !== false
+  $('publicado').checked = estaPublicado
+  $('publicado-nota').textContent = estaPublicado
+    ? 'Sale en el selector del juego. Desmárcalo para dejarlo en borrador sin borrar nada.'
+    : 'Borrador: se guarda y se puede probar aquí, pero no aparece en el juego.'
   // **La sala sale del mapa, no del escenario montado.** Remontar va con
   // bandera y ocurre en el frame siguiente, así que preguntarle al escenario
   // enseñaba la sala del mapa *anterior*: abrir Los Pilares decía 40×40.
@@ -1913,7 +1923,14 @@ function pintarPanel() {
   // En el panel la palabra ya está en el rótulo de la sección: repetirla daba
   // «PIEZAS · 17 piezas».
   $('cuenta-panel').textContent = mapa.boxes.length
-  $('barra-mapa').textContent = mapa.label || mapa.clave || '(mapa nuevo)'
+  /**
+   * **Y si es un borrador, lo dice la barra** (vuelta 88). La regla de la 77 es
+   * que la barra dice el estado y el panel guarda los mandos: «este mapa no lo
+   * ve nadie» es estado, y enterarse abriendo una hoja es enterarse tarde —
+   * justo lo que pasa cuando se guarda cuatro veces y no aparece en el juego.
+   */
+  $('barra-mapa').textContent =
+    (mapa.label || mapa.clave || '(mapa nuevo)') + (mapa.publicado === false ? ' · borrador' : '')
 
   $('lista').innerHTML = mapa.boxes
     .map((p, i) => `<li data-i="${i}" class="${i === seleccion ? 'puesta' : ''}">${String(i).padStart(2, '0')} · ${p.kind} · ${p.w}×${p.d} @ ${p.x},${p.z}</li>`)
@@ -2267,6 +2284,15 @@ campo('clave', (v) => {
   anotarEnLaBarra(mapa.clave)
 })
 campo('label', (v) => { mapa.label = v })
+/**
+ * **La casilla de publicar** (vuelta 88). Escribe `false` o **borra el campo**,
+ * no `true`: lo que vale su valor de fábrica no se guarda (vuelta 83), y aquí
+ * eso además es lo que deja los mapas de siempre exactamente como estaban.
+ */
+campo('publicado', () => {
+  mapa.publicado = $('publicado').checked ? undefined : false
+  anotarEnLaBarra(mapa.clave)
+})
 campo('sala-w', (v) => { mapa.room = { ...mapa.room, width: Number(v) } })
 campo('sala-d', (v) => { mapa.room = { ...mapa.room, depth: Number(v) } })
 campo('sala-h', (v) => { mapa.room = { ...mapa.room, height: Number(v) } })

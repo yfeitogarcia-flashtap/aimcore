@@ -21,7 +21,7 @@ import { COVER, FANS, FONDOS, PRIMARY_WEAPONS, PRISMAS, ROOM, ROUNDS, SURFACES, 
  * campo a un escenario, va aquí y en `sanearMapa`.
  */
 export const CAMPOS = [
-  'clave', 'label', 'card', 'soloDuelo', 'fondo', 'room', 'spawn', 'fisica', 'duelo',
+  'clave', 'label', 'card', 'publicado', 'soloDuelo', 'fondo', 'room', 'spawn', 'fisica', 'duelo',
   'boxes', 'prismas', 'ramps', 'tubos', 'ventiladores', 'tirolinas', 'teletransportes', 'spawnZone', 'objectiveSites', 'pickups', 'routes',
   'anchors',
 ]
@@ -43,6 +43,16 @@ export function mapaNuevo(clave = 'mapa-nuevo') {
   return {
     clave,
     label: 'Mapa nuevo',
+    /**
+     * **Un mapa nace sin publicar** (vuelta 88). Es lo único que hace falta
+     * para que la casilla signifique algo: si naciera publicado, publicar no
+     * sería una decisión sino un descuido que hay que deshacer. Va aquí y en
+     * este orden porque `sanearMapa` lo emite entre `card` y `soloDuelo`, y el
+     * saneado es un punto fijo **también en el orden de las claves** (vuelta
+     * 83) — un objeto con las claves en otro orden rompe el deshacer/rehacer
+     * sin cambiar ni un dato.
+     */
+    publicado: false,
     room: { width: 40, depth: 40, height: 10 },
     spawn: { x: 0, z: 16 },
     boxes: [],
@@ -377,6 +387,21 @@ export function sanearMapa(bruto) {
   if (typeof bruto.clave === 'string' && bruto.clave) mapa.clave = bruto.clave
   mapa.label = typeof bruto.label === 'string' && bruto.label ? bruto.label : 'Sin nombre'
   if (bruto.card) mapa.card = bruto.card
+  /**
+   * **Publicado, o sea: sale en el juego** (vuelta 88).
+   *
+   * Se guarda **sólo cuando vale `false`**, que es la disciplina de siempre —lo
+   * que vale su valor de fábrica no se escribe (vuelta 83)— y aquí compra algo
+   * concreto: los cuatro mapas de `config.js` y **todos los que ya están en
+   * disco** no declaran nada, así que siguen saliendo exactamente como salían.
+   * Un campo cuyo valor por defecto fuera «no publicado» habría hecho
+   * desaparecer del selector los mapas de quien ya tenía mapas, al abrirlos.
+   *
+   * Lo que cambia es de dónde nace uno nuevo: el editor los crea **sin
+   * publicar**, que es lo que se pidió — un mapa a medio dibujar no tiene por
+   * qué salir en la lista de nadie —, y publicar es marcar la casilla.
+   */
+  if (bruto.publicado === false) mapa.publicado = false
   if (bruto.soloDuelo) mapa.soloDuelo = true
   /**
    * **El fondo es una clave del catálogo o una foto de `public/fondos/`.**

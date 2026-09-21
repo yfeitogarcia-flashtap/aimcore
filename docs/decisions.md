@@ -11613,3 +11613,293 @@ es lo que el arma ofrece a quien lo ve venir (vuelta 85)— y el arma que empuñ
 en su ficha flotante, desde tu primer disparo (vuelta 56). El día que se quiera
 darle además una señal de «está tensando», eso es una decisión de diseño con su
 precio, no un detalle: hoy la promesa es la contraria.
+
+---
+
+## §88 — La primera sesión de verdad con el arsenal entero
+
+Vuelta de feedback, no de mecánica: Yago jugó la noche anterior con las once
+armas montadas y salieron cuatro fallos, tres números mal calibrados y tres
+huecos de interfaz. Lo que sigue es por qué cada uno estaba ahí, porque tres de
+los cuatro fallos **no eran de la vuelta anterior** y el patrón se repite: *una
+mecánica nueva es lo que enseña los agujeros de la anterior* (§87), y **una
+sesión de juego de verdad es lo que enseña los agujeros de todas**.
+
+### §88.1 — El air-strafe no estaba roto: era inalcanzable
+
+El síntoma, literal: «el jugador no gira en el aire moviendo cámara+WASD, se
+mueve *sobre raíles* en línea recta, con solo un roce sutil de giro ocasional».
+Venía marcado como prioritario y con una hipótesis razonable —que algo reciente
+lo hubiera roto sin que ningún banco lo cazara—, porque contradecía medidas ya
+dadas por buenas en las vueltas 32, 44 y 82.
+
+**Lo primero fue medirlo, y el modelo estaba intacto** (`aire88`, sin
+navegador). Estrafe puro a 40°/s: el rumbo gira **−27.5° en un vuelo** y la
+marcha sube de 6.500 a **6.760 u/s**, clavado en los −29° y los 8.32 tras seis
+saltos que la vuelta 32 dejó escritos. La curva de ritmo de giro también sale
+igual: 20°/s da 6.670, 80°/s baja a 6.229 y 140°/s a 5.007, o sea que girar
+demasiado rápido sigue frenando.
+
+Lo que no funciona es **con W pulsada**:
+
+| teclas en el aire | giro del rumbo | marcha final |
+|---|---|---|
+| D puro, 40°/s | −27.5° | 6.760 |
+| W+D, 40°/s | **0.0°** | **6.500** |
+| W+D, 80°/s | −5.1° | 6.560 |
+
+Esa fila de en medio **es** el informe: cero grados de giro y la marcha plana.
+Y la de abajo es el «roce sutil de giro ocasional», al pie de la letra.
+
+**Por qué pasa, y por qué estaba escrito que pasara.** La nota de
+`airWishFactor` dice desde la vuelta 32 que la condición «W suelta» del modelo
+escalar «aquí no hace falta porque sale sola de la geometría»: con la vista
+puesta donde vas, la proyección de tu velocidad sobre la dirección pedida ya
+vale 6.5 —muy por encima de los 0.78 de `wishSpeed`— y no cabe ganancia. Con
+W+D la dirección pedida cae a 45° de la marcha, la proyección vale 4.6 y
+tampoco cabe nada. Todo correcto, y todo exactamente lo que hace el género.
+
+El error estaba en la conclusión, no en la medida. Lo que «sale solo de la
+geometría» es **que no pase nada**; lo que no sale solo es que el jugador se
+entere de por qué. Y lo que hace cualquiera que venga de otro shooter es
+mantener W. **Una mecánica que sólo existe si sueltas una tecla que nadie
+suelta es una mecánica que no existe**, y eso no se arregla documentándola.
+
+**El arreglo es una línea, y va en `_readWish`.** En el aire, con una tecla de
+estrafe pulsada, W deja de contar para la dirección pedida. Está donde estaba el
+problema —no en `_updateAirAccel`, que es correcta y está medida— y por eso no
+toca el modelo: la aceleración, el techo, la forma cerrada de la parábola y la
+dispersión entre refrescos se quedan como estaban. Con el interruptor puesto,
+W+D **es** D.
+
+Tres cosas que son el mecanismo y no tuning:
+
+- **Es seguro en red sin añadir nada.** `_readWish` la corren los dos extremos
+  con las mismas máscaras y el mismo yaw, así que derivan la misma dirección;
+  no viaja ningún número, exactamente como la física de la vuelta 72. Medido en
+  una sala de verdad, ocho saltos con W+D girando el ratón: **0 correcciones en
+  1113 fotos** y error de reconciliación **0.00e+0 u** (`aire88red`).
+- **Sólo con estrafe puro de un lado.** Con A y D a la vez `x` vale cero y no
+  hay a dónde girar, así que ahí W sigue mandando: si no, el jugador se quedaría
+  sin dirección en el aire.
+- **Y `_seedAirVelocity` corre antes de que `airborne` se ponga a true**, así
+  que el despegue sigue sembrando con la dirección entera —W+D despega en
+  diagonal, como siempre— y lo que cambia es lo que se pide **ya en el aire**.
+  Si algún día se invierte ese orden en `_takeOff`, esto se rompe en silencio.
+
+**Y dos llamantes de `_readWish` hay que excluir a mano**, que es lo que costó
+más que la línea. El **vuelo del editor** (`_volar`) fuerza `airborne` y resuelve
+el paso como el de a pie, así que sin la guarda volar con W+D por el mapa saldría
+de lado — es la trampa de la vuelta 78 otra vez: lo que fuerza `airborne` hereda
+las reglas del aire sin haberlas pedido. Y el **modelo escalar** tiene su «W
+suelta» escrita como un `if` explícito en `_updateAirStrafe`: quitarle la W por
+debajo cambiaría lo que ese interruptor sirve para comparar.
+
+**La puerta está cerrada por construcción**, medido como manda la vuelta 83: un
+paseo con saltos **sin** W+estrafe en el aire acaba en
+`-0.944798276, -7.031114058, 0.511333333` con el interruptor apagado y
+encendido, idéntico hasta el último decimal; uno **con** W+estrafe cambia, que es
+lo que tiene que hacer.
+
+`MOVEMENT.airStrafeIgnoraFrente` se queda como ventana hacia atrás, igual que
+`airVector` y `slide.enabled`: no sale en el panel, porque no es un ajuste del
+jugador.
+
+### §88.2 — El duelo no tenía dispersión, ninguna
+
+El punto siguiente del feedback —«disparar saltando se comporta igual que en el
+suelo, línea recta perfecta»— parecía calibración y eran dos fallos, uno encima
+del otro.
+
+**El primero: en red no se aplicaba.** `_shoot` mandaba
+`this.camera.rotation.y/x` **crudos** a `net.disparar`, y `applySpread` sólo
+corría por la rama del entrenamiento. O sea que el ajuste existía desde siempre,
+el panel lo daba por bueno y **el modo donde de verdad importa no lo aplicaba**:
+el fallo de la vuelta 67 por la puerta de la red. No lo cazó nadie porque los
+bancos de netcode miden reconciliación y compensación de retraso, no cuánto se
+abre una bala.
+
+**El segundo: 1.2° en el aire no se puede notar.** `currentSpreadDeg` devolvía
+`movementSpreadDeg` para correr **y** para volar, y 1.2° a quince unidades son
+**31 cm** — menos de lo que mide de ancho el cuerpo del rival (0.586 u en la
+cintura). Un desvío más pequeño que el blanco no es un desvío, es ruido.
+
+El arreglo son dos cosas. `ACCURACY.airSpreadDeg` (3°) es un número aparte
+porque **correr y saltar no son el mismo gesto**: correr es una marcha que se
+puede soltar, saltar es una decisión que quita el suelo, y lo que un shooter
+cobra por ella es la puntería. A quince unidades son 79 cm, dos cuerpos y medio.
+Y la condición del aire va **primero**, porque en el aire la marcha también
+supera el umbral y con el orden al revés el número nuevo no se aplicaría nunca.
+
+`_miraConDesvio` desvía **el vector y no los dos ángulos por separado**, y luego
+vuelve a rumbo y cabeceo: un cono en yaw/pitch se estrecha con el cabeceo, así
+que apuntando a los pies el desvío sería otro. `direccionDeMira` —la conversión
+de ida, la que usan los dos extremos en `net/disparo.js`— hace de inversa, así
+que no hay una segunda idea de hacia dónde mira alguien. Medido (`desvio88`,
+200.000 disparos por fila): el cono del duelo y el del entrenamiento dan
+**1.4973 contra 1.4998 de media y 3.0000 de máximo los dos**, a 0°, −20°, −45° y
+−70° de cabeceo.
+
+Lo sortea **el cliente**, y eso es lo correcto aquí: lo que viaja es el rumbo con
+el que salió la bala, uno solo, y los dos extremos resuelven ese mismo rayo.
+Sortearlo en el servidor sería un tirador que ve su bala ir a un sitio y recibe
+un veredicto de otro. Y **no toca al cuchillo ni a los proyectiles**: una flecha
+no se desvía por saltar, que ya estaba escrito en `_lanzarProyectil`.
+
+### §88.3 — Tres cosas que la ranura prometía y no cumplía
+
+**Las granadas.** El síntoma: «comprado 1 KO + 2 Blind, la tecla de granadas no
+cicla entre ellas». El servidor guardaba **una sola clave**
+(`inventario.granada = item.clave`) y la vuelta 87 lo justificaba así: «la ranura
+es una, y comprar otra sustituye a la que hubiera sin devolver lo pagado». Eso es
+un razonamiento sobre la implementación, no sobre el juego: **la ranura es la
+tecla, y una tecla puede ciclar**. Lo que producía era una tienda que cobra dos
+artículos y entrega uno, sin decirlo.
+
+Ahora es una lista con tope (`ECONOMY.granadasMax`, 2 clases = 4 granadas), y
+tres reglas la hacen honesta: comprar la que ya llevas **la rellena**, pasado el
+tope **se rechaza y el panel lo dice antes de cobrar** —`porQueNo` mira el mismo
+inventario, así que no hay una segunda idea de si cabe— y cada clase llega llena
+por el mismo camino que el U2. La tecla saca la que estuviera elegida y, con una
+granada ya en la mano, pasa a la siguiente: ciclar siempre haría que sacar una
+concreta fuera cuestión de contar pulsaciones.
+
+Y salió gratis una cuarta voz de `playEquip` que llevaba sin usarse desde la
+vuelta 73: **`utilidad`**. No era un olvido — con una sola clase en la ranura,
+«llevo una más» no era un estado que existiera.
+
+Medido: en servidor (`granadas88`, sin navegador) las dos clases entran, la
+tercera se rechaza y no se cobra, y comprar una repetida rellena su reserva; en
+una sala de verdad con dos navegadores (`duelo88`) el dinero baja de **$800 a
+$300** con KO y Blind, la tercera deja el saldo **clavado en $300** con «sólo 2
+clases» escrito en su artículo, y la mano va **PULSE → KO → BLIND → KO**.
+
+**El cohete que mata y no repone.** «Un cohete impactó en el pecho del rival y no
+se repuso el misil extra.» Investigado: **sí mató y sí se repuso**. Lo que pasa
+es que en un 1v1 **esa baja cierra la ronda**, y `_empezarRonda` ponía la reserva
+en `r.inicial` a secas (vuelta 86, «lo que se gana matando es de esa ronda, no
+del partido»). O sea que el premio se cobraba y se borraba un instante después,
+sin un aviso en ninguna pantalla: **`porBaja` era inalcanzable en el duelo desde
+que existe**, porque la única baja que repone un cohete es la que se hace con un
+cohete.
+
+Pasa a `max(inicial, lo que tengas)` con tope en `maxima`. La promesa del arma se
+cumple donde se hizo, y lo que la 86 quería proteger sigue protegido por otra
+puerta: **morir cuesta el arma y con ella su reserva** (`_perderEquipo`), así que
+el que pierde no acumula nada.
+
+**Y ESC no cerraba las opciones.** La armería tiene ese manejador desde que
+existe y el panel de opciones no, así que la única salida era encontrar «Volver»
+al final de una lista de veinte ajustes — y en el duelo, donde a opciones se
+llega desde el menú de ESC (vuelta 73), la tecla con la que acabas de entrar no
+servía para salir. Va en **burbuja** y no en captura a propósito: reasignando una
+tecla, `Controls` escucha en captura y para el evento ahí, que es lo que deja que
+Escape cancele la captura sin cerrar el panel de debajo. El orden de las dos
+fases **es** la regla.
+
+### §88.4 — Calibración: el arco y el Core
+
+**El arco valía lo mismo que una Scout y costaba mucho más.** A tope hacía 110 al
+torso, que es exactamente lo que hace una bala de Scout, y pedía 750 ms de
+tensar, un arco de vuelo y adelantar a quien se mueve. **Dos precios distintos
+por el mismo resultado no es una elección, es un arma peor.** Sube a 130 —mata de
+una al torso sin chaleco, como ya hacía, y **con chaleco deja en 22**, o sea que
+el remate es cualquier cosa— y los 45 sin cargar se quedan donde estaban, porque
+se confirmaron jugando y son la referencia con la que se aprende el arma.
+
+La cadencia pasa de 55 a **80 RPM**, o sea de 1090 a **750 ms**. El número no es
+redondo por casualidad: es **lo mismo que cuesta cargar del todo**, así que
+encajar una flecha nunca es más rápido que tensarla y el arma conserva su ritmo,
+que era la condición («no disparos sin enfriamiento, pero un poquito más
+rápidos»).
+
+**El Core mataba sólo cayendo encima.** 110 con núcleo de 1 u: a 2 u dejaba en
+12, a 3 u en 34. Jugándolo eso se lee como una granada que no hace nada, porque
+la diferencia entre un lanzamiento excelente y uno bueno era la diferencia entre
+matar y no despeinar. Sube a **140 con núcleo de 1.4**, y lo que se mueve **no es
+el radio** —sigue en 6, así que a quién alcanza no ha cambiado— sino dónde está
+el escalón: mata a vida llena hasta 2 u, deja en 9 a 3 u y en 39 a 4 u.
+
+Y `propio` baja de 0.8 a **0.7** justo para que el número nuevo no se lleve por
+delante la regla vieja: con 0.8 habrían sido 112 de pleno, o sea suicidio, y la
+regla del U2 —«un arma que se suicida al primer despiste es un arma que nadie
+saca»— se habría caído sin que nadie la tocara. Con 0.7 son 98: te deja en 2.
+
+### §88.5 — Tres huecos de interfaz, y el que más costaba era el más barato
+
+**El dinero sólo se veía abriendo la tienda**, o sea justo cuando ya es tarde
+para pensarlo: la economía de una ronda se decide durante la anterior —si esta
+bala vale la pena, si conviene guardar para el rifle— y eso pide tener el número
+delante mientras se juega. Va arriba a la derecha, bajo los FPS y el engranaje,
+en el verde de acción —el mismo con el que la tienda marca lo que se puede
+comprar: mirar el saldo y mirar la tienda son la misma conversación—.
+
+Vive como estado de React y no en `stats` porque **no es un valor por frame**:
+cambia unas pocas veces por ronda y llega por `MSG.ECONOMIA`, no en la foto. Es
+la excepción del arma desde la vuelta 39. Y `null` no es cero: es «aquí no hay
+economía» —entrenando, o en un mapa que reparte (vuelta 72)— y entonces no se
+monta nada, porque un `$0` fijo diría que estás arruinado en vez de que no hay
+tienda. Quién lo decide es `cliente.conEconomia`, o sea **la bienvenida**, no que
+llegue o no un mensaje: la regla de la 64 aplicada a un rótulo.
+
+**«Sin límite» armaba la bomba.** Desde la vuelta 78 la duración es del jugador y
+vale para los dos modos, y nadie miró qué pasaba al cruzarla con el explosivo: su
+cuenta atrás **es** el reloj de esa sesión, así que poner «sin límite» y salir
+con dianas clásicas cerraba a los 45 s una partida que acababa de prometer no
+acabarse. Es el fallo que la 78 vino a cerrar, por la otra punta, y peor de leer,
+porque lo que ignoraba el ajuste no era un cronómetro sino **un objetivo entero**
+con su pitido. Se mira `endless`, que es el mismo campo del que cuelgan el HUD y
+el resumen — una segunda condición sería una segunda idea de qué significa «sin
+límite». Y se dice **en el propio ajuste**: enterarse al empezar la ronda es
+enterarse tarde.
+
+**Y un mapa se publica, que no es lo mismo que guardarlo.** Desde la vuelta 74
+«guardar y publicar son la misma acción», y eso era correcto cuando el editor lo
+usaba una persona en su propio PC. En cuanto un mapa a medio dibujar aparece en
+el selector del juego deja de serlo: son dos decisiones y hay que poder tomarlas
+por separado.
+
+`publicado` se guarda **sólo cuando vale `false`**, que es la disciplina de la
+vuelta 83 —lo que vale su valor de fábrica no se escribe— y aquí compra algo
+concreto: los cuatro mapas de `config.js` y **todos los que ya están en disco** no
+declaran nada, así que siguen saliendo exactamente como salían. Un campo cuyo
+defecto fuera «no publicado» habría hecho desaparecer del selector los mapas de
+quien ya tenía mapas, al abrirlos. Lo que cambia es de dónde nace uno nuevo: el
+editor los crea sin publicar.
+
+El filtro va en **un solo sitio**, las dos listas derivadas (`TRAINER_SCENARIOS`
+y `DUEL_SCENARIOS`), que es de donde salen el selector de escenarios y el
+desplegable del duelo. `SCENARIOS` **no** se filtra a propósito: el editor tiene
+que poder abrir un borrador y una sala creada con su clave tiene que poder
+montarlo — lo que se decide es qué se **ofrece**, no qué existe. Y la barra de
+arriba del editor dice «· borrador», porque la regla de la vuelta 77 es que la
+barra dice el estado y enterarse abriendo una hoja es enterarse después de haber
+guardado cuatro veces.
+
+### §88.6 — Lo que se aplazó, y por qué
+
+Del feedback quedaron fuera seis cosas, y las seis por la misma razón: **no son
+calibración ni un hueco, son sistemas**, y meterlos a medias es peor que no
+meterlos.
+
+- **Efectos de tercera persona para Blind, KO y Core** (que se vea desde fuera a
+  quien está cegado, aturdido o quemándose). No es difícil, es que hoy **el rival
+  no tiene ni un campo de estado visual en la foto**: la Blind no existe en el
+  servidor a propósito (§87) y la KO viaja en `movement.snapshot()` como tres
+  números del movimiento, no como «está aturdido». Añadirlo es decidir qué de eso
+  pasa a ser del protocolo, y eso tiene el precio que la §87 ya dejó escrito para
+  la carga del arco.
+- **Tabla de estadísticas con HS, KN, U2 y BOW por jugador.** El marcador de hoy
+  tiene una fila —la tuya— porque no hay identidades (vuelta 41), y las columnas
+  que se piden son **contadores por arma y por zona que nadie lleva**: el
+  servidor cuenta bajas, no con qué. Es una vuelta suya.
+- **FAQ dentro del juego** y **traducción al inglés con interruptor**. Los dos
+  son trabajo de contenido, no de motor, y el segundo además obliga a decidir
+  dónde vive el texto — hoy está escrito a mano en el JSX.
+- **Lista pública de partidas.** Infraestructura nueva de verdad: hoy no hay
+  registro de salas a propósito (`idFromName(código)` **es** el encaminado, vuelta
+  47) y un buscador es exactamente el registro que no existe. Va al roadmap.
+- **Rangos y experiencia.** Piden cuentas persistentes, que es la línea que
+  `roadmap.md` ya tiene anotada como «modo invitado vs. logueado».
+- **Banner de instalar como PWA** y **revancha al terminar la partida**. Los dos
+  caben y los dos son suyos; van los primeros de la lista siguiente.

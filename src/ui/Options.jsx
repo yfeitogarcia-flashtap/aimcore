@@ -178,7 +178,15 @@ function durationHint(settings) {
   }
   return elegida.seconds > 0
     ? `Los dos modos acaban a los ${elegida.label}. ${bomba}`
-    : `Ningún modo acaba solo; lo cierras tú. ${bomba}`
+    /**
+     * **Y sin límite la bomba no sale** (vuelta 88), que es lo contrario de lo
+     * que decía esta pista: la cuenta atrás del explosivo *es* el reloj de su
+     * sesión, así que armarla aquí sería cerrar a los 45 s una partida que
+     * acaba de prometer no acabarse. Se dice en el propio ajuste porque es
+     * donde se toma la decisión — enterarse al empezar la ronda es enterarse
+     * tarde.
+     */
+    : 'Ningún modo acaba solo; lo cierras tú. Y no sale el explosivo: su cuenta atrás es el reloj de la sesión.'
 }
 
 /** Qué se ve del abanico de aparición, y dónde deja de significar algo. */
@@ -348,6 +356,31 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
     panel.scrollTop = 0
     panel.focus({ preventScroll: true })
   }, [])
+
+  /**
+   * **Y Escape lo cierra** (vuelta 88).
+   *
+   * No lo cerraba nadie: la armería tiene este mismo manejador desde que
+   * existe y este panel no, así que la única salida era encontrar «Volver» al
+   * final de una lista de veinte ajustes — y en el duelo, donde se llega a
+   * opciones desde el menú de ESC, la tecla con la que se acababa de entrar no
+   * servía para salir.
+   *
+   * Va en **burbuja** y no en captura a propósito: reasignando una tecla,
+   * `Controls` escucha en captura y para el evento ahí, que es lo que deja que
+   * Escape cancele la captura sin cerrar el panel de debajo. El orden de las
+   * dos fases **es** la regla; invertirlo deja sin forma de abortar un bind.
+   */
+  useEffect(() => {
+    const onKey = (event) => {
+      if (event.key !== 'Escape') return
+      event.preventDefault()
+      event.stopPropagation()
+      onClose()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [onClose])
 
   return (
     <div

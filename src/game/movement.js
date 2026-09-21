@@ -601,7 +601,48 @@ export class MovementController {
   _readWish() {
     const keys = this.keys
     const x = (keys.right ? 1 : 0) - (keys.left ? 1 : 0)
-    const z = (keys.forward ? 1 : 0) - (keys.back ? 1 : 0)
+    let z = (keys.forward ? 1 : 0) - (keys.back ? 1 : 0)
+    /**
+     * **En el aire, con estrafe pulsado, el frente no cuenta** (vuelta 88).
+     *
+     * Es la única línea del arreglo del air-strafe, y va aquí y no en
+     * `_updateAirAccel` a propósito: lo que estaba mal no era la aceleración
+     * —medida y correcta— sino **la dirección que se pedía**. Con W+D el vector
+     * pedido cae a 45° de la marcha, la proyección vale 4.6 contra los 0.78 de
+     * `wishSpeed` y no cabe ganancia: 0.0° de giro en un vuelo entero. Sin la
+     * W, 27.5°.
+     *
+     * Y por estar aquí es seguro en red sin añadir nada: `_readWish` la corren
+     * los dos extremos con las mismas máscaras y el mismo yaw, así que derivan
+     * la misma dirección — no viaja ningún número, como la física de la 72.
+     *
+     * Sólo con **estrafe puro de un lado**: con A y D a la vez `x` vale cero y
+     * no hay a dónde girar, así que ahí W sigue mandando o el jugador se
+     * quedaría sin dirección en el aire.
+     *
+     * Y dos exclusiones que no son detalle, porque `_readWish` la llaman siete
+     * sitios y sólo uno es éste:
+     *
+     * - **El vuelo del editor no es el aire** (vuelta 78). `_volar` fuerza
+     *   `airborne` y resuelve el paso como el de a pie, así que sin esta guarda
+     *   volar con W+D por el mapa saldría de lado. Es la misma trampa que
+     *   aquella vuelta: lo que fuerza `airborne` hereda las reglas del aire sin
+     *   haberlas pedido.
+     * - **Y el modelo escalar tiene la suya escrita.** Ahí la condición «W
+     *   suelta» es un `if` explícito en `_updateAirStrafe`, no geometría;
+     *   quitarle la W por debajo cambiaría lo que ese interruptor sirve para
+     *   comparar.
+     *
+     * Lo que **sí** entra y conviene saber: `_seedAirVelocity` corre en
+     * `_takeOff` **antes** de que `airborne` se ponga a true, así que el
+     * despegue sigue sembrando con la dirección entera —W+D despega en
+     * diagonal, como siempre— y lo que cambia es lo que se pide **ya en el
+     * aire**. Si algún día se invierte ese orden, esto se rompe en silencio.
+     */
+    if (
+      z > 0 && x !== 0 && this.airborne && !this.volando &&
+      MOVEMENT.airVector && MOVEMENT.airStrafeIgnoraFrente
+    ) z = 0
     if (x === 0 && z === 0) return false
     const yaw = this.camera.rotation.y
     const sin = Math.sin(yaw)
