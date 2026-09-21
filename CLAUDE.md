@@ -444,6 +444,50 @@ presupuesto. Dos reglas de forma:
   **no** podía ser es ámbar (hay una bomba), rojo (te disparan), amarillo (te
   han visto) ni naranja (eso es una diana).
 
+**Un dispositivo se ve por su marca, y su marca es amarilla** (vuelta 84). Tres
+reglas que salieron de jugarlo, y ninguna cambia el modelo de nada:
+
+- **La losa no se dibuja.** Un dispositivo **no es una pieza del mapa**: es una
+  marca en el suelo que hace algo, y la caja gris de debajo no decía nada que la
+  marca no dijera mejor — encima competía con ella, porque un galón sobre una
+  tapa clara se lee la mitad. La regla no es «todos los dispositivos» sino **los
+  que son suelo**, y el corte es `COVER.stepHeight`: por debajo se entra andando
+  (vuelta 80), o sea que es suelo pintado; por encima es una pieza con la que se
+  choca, y **con lo que se choca tiene que verse**. `superficie.invisible` se
+  queda para eso, con su aviso de siempre (las balas lo atraviesan).
+- **El color es `COLORS.dispositivo`**, no el azul eléctrico. El argumento de la
+  80 miraba la paleta y le faltaba la mitad: el azul no competía con otro
+  **significado**, competía con el **fondo** — un mapa de Vektor es gris y negro
+  entero, así que un cian sobre gris es un tono frío sobre otro. Es el tercer
+  color que significa dos cosas y se admite por lo de siempre: el `?` de `alert`
+  flota sobre un muñeco y sólo en entrenamiento, esto está bajo los pies y en los
+  dos modos, y lo que de verdad los separa es la forma (vuelta 67).
+- **El cable de una tirolina se queda azul**, y no es una excepción: es la única
+  marca que no está en el suelo. Cruza el aire contra el cielo o contra el fondo,
+  donde el gris no compite. Son dos materiales, y los dos salen a la vez.
+
+**Y la plataforma de velocidad se queda sin destello** (vuelta 84), la única de
+las cuatro. Lo tuvo desde la 82 y lo quita haberlo jugado: el lanzamiento ya se
+siente entero, es el único gesto que le pasa al jugador *en el cuerpo*, y el aro
+corría hacia delante tapando justo lo que hay que mirar al salir despedido. **La
+norma de la 82 sigue en pie**: un dispositivo *nace* con su voz y su destello.
+Lo que esta vuelta añade es que jugarlo puede quitarle uno — y el que se queda no
+es casual: **el sonido, que no hay que apuntarlo a ninguna parte** (vuelta 73).
+
+**Y lo que caduca hay que hacer que caduque** (vuelta 84). `_landingVelX/Z`
+llevaba escrito desde la vuelta 32 que «fuera de la ventana esto no lo lee
+nadie», y la 83 le puso un segundo lector —la siembra del hielo— sin darse
+cuenta de que el campo **no se borra nunca**. Resultado: entrar andando en una
+pista te sembraba hacia donde aterrizaste la última vez, y como en hielo manda la
+velocidad del suelo y no las teclas, si aquel rumbo apuntaba hacia fuera te
+sacaba en cuanto entrabas. Medido, **0 de 36 rumbos** entraban tras un salto
+cualquiera. La ventana que lo arregla no es un número nuevo:
+`MOVEMENT.chainJumpWindowMs` es la que ya significa «todavía llevas la marcha con
+la que aterrizaste», y `_landedAt` ya viaja en `snapshot()`, así que los dos
+extremos lo deciden igual. Si le das un lector nuevo a un campo viejo, **lee su
+comentario**: puede estar prometiendo algo que sólo era verdad para quien lo
+leía antes.
+
 **El lanzamiento no tiene techo, y un dispositivo nace con voz y con
 destello** (vuelta 82). Son cuatro reglas y la última es permanente.
 

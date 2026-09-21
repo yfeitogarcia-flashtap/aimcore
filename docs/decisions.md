@@ -10869,3 +10869,132 @@ montón que las cajas de su altura —para eso está el montón, para que todo u
 y el mismo índice. Faltaban `uv` e índice, y la fusión fallaba **entera**: el
 montón de esa altura no se dibujaba. Lo único que lo delató fue una línea en la
 consola del navegador, que es lo que `ed76` cuenta.
+
+---
+
+## §84 — El hielo no dejaba entrar, y los dispositivos se ven distinto
+
+Vuelta corta y de arreglo: un bug que se notaba jugando y cuatro cosas de
+apariencia que pidió quien lo juega. Nada de esto cambia el modelo de nada.
+
+### 84.1 «Un escalón que no deja entrar desde ciertos ángulos»
+
+Así llegó contado, y era exacto. Lo primero que hubo que descartar es lo obvio:
+la losa de un dispositivo mide 0.2 y `COVER.stepHeight` es 0.25, así que
+`resolveAxis` la salta por la primera condición de su bucle y **no puede
+bloquear a nadie**. La colisión no era.
+
+Lo que era está en la siembra del hielo, y es una promesa que caducó sin que
+nadie se enterara. `_landingVelX/Z` guarda la velocidad horizontal del último
+aterrizaje, y su propio comentario decía, desde la vuelta 32:
+
+> Fuera de la ventana esto no lo lee nadie: el salto siguiente vuelve a sembrar
+> desde el suelo.
+
+Era verdad hasta la vuelta 83, que le puso un segundo lector: **entrar en el
+hielo se siembra con lo que venías haciendo**, y «lo que venías haciendo», si
+vienes por el aire, es esa velocidad. El campo nunca se borra —sólo en
+`reset()`— así que un salto cualquiera deja escrito un rumbo que sigue ahí un
+minuto más tarde. Entrar andando en una pista te sembraba **hacia donde
+aterrizaste la última vez**; y como en hielo manda la velocidad del suelo y no
+las teclas (vuelta 83), si aquel rumbo apuntaba hacia fuera, entrabas, te
+sacaba, volvías a entrar y te volvía a sacar.
+
+De ahí las dos mitades del síntoma: se sentía como un tope, y dependía del
+ángulo porque dependía de **dónde apuntaba un salto anterior**.
+
+Medido antes (`hielo84`, entrar caminando hacia el centro desde 36 rumbos):
+
+| | entran |
+|---|---|
+| recién aparecido | **36 / 36** |
+| tras un salto en otra dirección | **0 / 36** |
+
+Los 36 fallos se quedaban entre 5.67 y 5.96 u del centro, o sea clavados en el
+borde de la pista (6 u).
+
+**El arreglo es una ventana, y no un número nuevo.** La velocidad de aterrizaje
+sólo cuenta como «lo que traías» si el aterrizaje es reciente, y la medida de
+«reciente» ya existe: `MOVEMENT.chainJumpWindowMs`, que es exactamente la que
+decide si un salto encadena, o sea **la que ya significa «todavía llevas la
+marcha con la que aterrizaste»**. `_landedAt` viaja en `snapshot()` desde que
+existe, así que los dos extremos de una partida deciden esto igual sin un campo
+más en el protocolo.
+
+Medido después: **36 / 36 en los dos casos**. Y lo que la siembra de vuelo
+existía para dar sigue estando —caer dentro de una pista con marcha mete
+deslizando 10.27 u sin tocar una tecla—, el hielo sigue siendo hielo —22.18 u de
+deriva al soltar con rozamiento 1.6, contra los 22.14 medidos en la 83— y un
+mapa sin hielo acaba dígito a dígito donde acababa.
+
+### 84.2 La losa de un dispositivo no se dibuja
+
+Lo pidió quien lo juega —«que sólo se vea el icono, sin el bloque debajo»— y
+está bien pedido por una razón que no es de gusto: **un dispositivo no es una
+pieza del mapa**. Es una marca en el suelo que hace algo. La caja gris de debajo
+no decía nada que la marca no dijera mejor, y encima competía con ella: un galón
+dibujado sobre una tapa clara se lee la mitad.
+
+**La regla no es «todos los dispositivos», es «los que son suelo»**, y el corte
+no es un número inventado: `COVER.stepHeight` (0.25) es la altura por debajo de
+la cual se entra andando, o sea justo la que separa una losa pintada en el suelo
+de una pieza contra la que se choca. **Una pieza con la que el jugador se va a
+tropezar tiene que verse**, así que de ahí arriba se sigue dibujando. Con los
+0.2 con que nacen todos desde la vuelta 81, eso cubre el botón entero.
+
+La casilla `invisible` de la vuelta 82 no se va: pasa a ser lo que de verdad
+queda por decidir —esconder un dispositivo **alto**— y la ficha del editor lo
+dice así, con su aviso de siempre (las balas lo atraviesan).
+
+### 84.3 Amarillo, y por qué el argumento de la vuelta 80 estaba mal planteado
+
+Las marcas iban en azul eléctrico, y la 80 lo justificó mirando la **paleta**:
+no podía ser ámbar (hay una bomba), ni rojo (te disparan), ni amarillo (te han
+visto), ni naranja (eso es una diana). Todo eso sigue siendo cierto y aun así
+faltaba la mitad, porque el azul no competía con otro **significado**: competía
+con el **fondo**. Un mapa de Vektor no tiene ni texturas ni luces, así que es
+gris y negro entero, y un cian apagado sobre gris es un tono frío sobre otro
+tono frío — a diez unidades la marca se leía como una raya más de la rejilla.
+
+`COLORS.dispositivo` (#FFC21E) es el tercer color de la paleta que significa dos
+cosas, y se admite por lo mismo que el verde de la brújula y el azul de la
+carga: **no coinciden nunca**. `alert` es el `?` de «te ha visto», un billboard
+que flota sobre un muñeco y sólo existe en el entrenamiento; esto está pintado
+en el suelo, bajo los pies, y existe en los dos modos. Y lo que de verdad los
+separa es la forma, que es la regla de la vuelta 67: un signo de interrogación
+no se confunde con un galón. Va más ámbar que el limón de `alert` justo para
+que, en el único sitio donde podrían salir a la vez, no sean el mismo amarillo.
+
+**El cable de una tirolina se queda azul**, y no es una excepción: es la única
+marca que no está pintada en el suelo. Cruza el aire, contra el cielo o contra
+el fondo del mapa, donde el gris no compite con nada. Son dos materiales, no
+uno, y el banco comprueba que los dos colores salen a la vez.
+
+### 84.4 Una tirolina se lee de un vistazo, no recorriéndola
+
+Los anclajes eran tres rayas en los ejes del mundo, y desde lejos tres rayas son
+tres rayas: lo que se veía era el cable engordando un poco en las puntas. Ahora
+es un **rombo alrededor del cable** —un anillo de cuatro lados en su plano
+perpendicular, con sus cuatro radios— que se lee como una pieza enganchada ahí,
+que es lo que es. Sigue sin tener cara buena, que era la gracia de la cruz.
+
+Y las flechas repartidas dicen el sentido **mientras recorres el cable con la
+vista**; lo que faltaba era decirlo sin recorrerlo. Va una grande en el extremo
+de llegada, `ZIPLINES.marca.flechaFinal` (2.2) veces lo que las otras, que es lo
+que la separa de ser una más de la fila.
+
+### 84.5 La plataforma de velocidad se queda sin destello
+
+Y es la única de las cuatro. Lo tuvo desde la vuelta 82 —un aro de pie que salía
+disparado hacia donde lanza— y lo que lo quita es haberlo jugado: **el
+lanzamiento ya se siente entero**. Es el único de los gestos que le pasa al
+jugador *en el cuerpo* —los otros tres son un empujón corto, un empujón
+sostenido o un salto de sitio— así que el aro no contaba nada que la pantalla no
+estuviera contando ya a 60 u/s, y encima corría hacia delante tapando justo lo
+que hay que mirar al salir despedido.
+
+**La norma de la vuelta 82 sigue en pie y no se contradice**: un dispositivo
+nace con su voz y su destello. Lo que esta vuelta añade es que jugarlo puede
+quitarle uno de los dos — y cuál se queda no es casual: **el sonido, porque el
+oído no hay que apuntarlo a ninguna parte** (vuelta 73). Quien pasa cerca sigue
+enterándose de que alguien acaba de salir lanzado; quien lo usa ya lo sabía.

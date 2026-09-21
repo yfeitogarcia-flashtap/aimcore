@@ -913,7 +913,7 @@ export class MovementController {
     // Antes que la horizontal: lo que se gane este frame ya mueve este frame.
     if (MOVEMENT.airVector) this._updateAirAccel(dt)
     else this._updateAirStrafe(dt)
-    this._updateHorizontal(dt)
+    this._updateHorizontal(dt, now)
     // La marcha del vuelo se mira **antes** de la vertical, que es donde se
     // aterriza: si no, el frame del aterrizaje se mediría con el vuelo ya
     // cerrado y todos los saltos parecerían parados.
@@ -1251,7 +1251,7 @@ export class MovementController {
    * único que cambia entre los dos modelos— y deja que el mismo bloque de
    * colisión resuelva a dónde se llega.
    */
-  _updateHorizontal(dt) {
+  _updateHorizontal(dt, now) {
     const position = this.camera.position
     const fromX = position.x
     const fromZ = position.z
@@ -1277,7 +1277,7 @@ export class MovementController {
       const step = this._avanceDeDeslizamiento(dt)
       wantedX = fromX + this._slideDirX * step
       wantedZ = fromZ + this._slideDirZ * step
-    } else if (this._gobiernaElHielo(dt)) {
+    } else if (this._gobiernaElHielo(dt, now)) {
       // **En hielo manda la velocidad del suelo, no las teclas** (vuelta 83).
       // Es la misma forma que el aire con vector: el input ya se ha gastado
       // acelerándola, y lo que mueve el paso es ella.
@@ -1330,7 +1330,7 @@ export class MovementController {
    * fijos** desde la 44, así que los dos extremos de una partida dan los
    * mismos pasos con las mismas máscaras y no hay nada que reconciliar.
    */
-  _gobiernaElHielo(dt) {
+  _gobiernaElHielo(dt, now) {
     const cfg = MOVEMENT.hielo
     const enHielo = this._superficieDeSuelo?.tipo === 'hielo' && !this.airborne
     /**
@@ -1341,7 +1341,26 @@ export class MovementController {
      * aire, y lo que pedían las teclas si vienes andando.
      */
     if (enHielo && !this._enHieloAntes) {
-      if (this._landingVelX !== 0 || this._landingVelZ !== 0) {
+      /**
+       * **Y «lo que venías haciendo» caduca** (vuelta 84). `_landingVelX/Z` se
+       * escribe en cada aterrizaje y **no se borra nunca** —su comentario decía
+       * «fuera de la ventana esto no lo lee nadie», y desde la vuelta 83 lo lee
+       * esto—, así que un salto cualquiera dejaba escrito un rumbo que seguía
+       * ahí un minuto después. Entrar andando en una pista te sembraba **hacia
+       * donde aterrizaste la última vez**, y en hielo manda la velocidad del
+       * suelo y no las teclas: si aquel rumbo apuntaba hacia fuera, entrabas,
+       * te sacaba, volvías a entrar y te volvía a sacar. Se sentía exactamente
+       * como lo que contó quien lo jugó —«un escalón que no deja entrar desde
+       * ciertos ángulos»— y medido eran **0 de 36 rumbos**.
+       *
+       * La ventana es la del encadenado, y no un número nuevo: es la que ya
+       * significa «todavía llevas la marcha con la que aterrizaste», la misma
+       * que decide si un salto encadena. `_landedAt` ya viaja en `snapshot()`,
+       * así que los dos extremos deciden esto igual sin un campo más.
+       */
+      const deVuelo =
+        Number.isFinite(this._landedAt) && now - this._landedAt <= MOVEMENT.chainJumpWindowMs
+      if (deVuelo && (this._landingVelX !== 0 || this._landingVelZ !== 0)) {
         this._sembrarVelocidadDeSuelo(this._landingVelX, this._landingVelZ)
       } else if (this._readWish()) {
         this._sembrarVelocidadDeSuelo(this._wishX * this.currentSpeed, this._wishZ * this.currentSpeed)

@@ -408,6 +408,27 @@ export class Scenario {
        */
       if (box.superficie?.invisible) continue
 
+      /**
+       * **Y la losa de un dispositivo no se dibuja** (vuelta 84). Lo pidió
+       * quien lo juega —«que sólo se vea el icono, sin el bloque debajo»— y
+       * está bien pedido: un dispositivo **no es una pieza del mapa**, es una
+       * marca en el suelo que hace algo, y la caja gris de debajo no dice nada
+       * que la marca no diga mejor. Encima competía con ella: un galón
+       * dibujado sobre una tapa clara se lee la mitad.
+       *
+       * **La regla no es «todos los dispositivos», es «los que son suelo»**, y
+       * el corte no es un número inventado: `COVER.stepHeight` es exactamente
+       * la altura por debajo de la cual se entra andando (vuelta 80), o sea la
+       * que separa una losa pintada en el suelo de una pieza contra la que se
+       * choca. Una pieza con la que el jugador se va a tropezar **tiene que
+       * verse**, y por eso de ahí arriba se dibuja como siempre — lo que se
+       * paga por esconder algo alto está escrito en `invisible`, y es que las
+       * balas lo atraviesan.
+       *
+       * Con la losa de 0.2 con la que nacen todos, eso cubre el botón entero.
+       */
+      if (box.superficie && thickness <= COVER.stepHeight) continue
+
       const geometry = new THREE.BoxGeometry(box.w, thickness, box.d)
       geometry.translate(box.x + box.w / 2, bottom + thickness / 2, box.z + box.d / 2)
       if (!byKind.has(box.kind)) byKind.set(box.kind, [])
@@ -626,17 +647,27 @@ export class Scenario {
    *   flecha vertical lanza hacia arriba, una horizontal lanza hacia donde
    *   apunta, y un anillo es una puerta. Y el largo de las dos flechas **sale
    *   de la fuerza**, así que mirando el mapa se ve cuánto empuja cada una.
-   * - **El color es el azul eléctrico** (`COLORS.electric`), que ya significa
-   *   «energía» —el escudo, sus cargas, el visor—. Es la segunda vez que un
-   *   color de la paleta significa dos cosas, y se admite por lo mismo que la
-   *   primera: no coinciden nunca. Un escudo es un icono del HUD y un objeto a
-   *   la altura de la cintura; esto está pintado en el suelo, bajo los pies. Lo
-   *   que **no** podía ser es ámbar (hay una bomba), rojo (te disparan),
-   *   amarillo (te han visto) ni naranja (eso es una diana).
+   * - **El color es el amarillo de dispositivo** (`COLORS.dispositivo`, vuelta
+   *   84). Era el azul eléctrico, y lo que lo cambió es mirar dónde se dibuja:
+   *   **un mapa de Vektor es gris y negro entero** —no hay texturas ni luces—
+   *   así que un cian sobre gris es un tono frío sobre otro tono frío, y a diez
+   *   unidades la marca se leía como una raya más de la rejilla. Un amarillo
+   *   cálido es lo único que este fondo no tiene, y por eso lo pidió quien lo
+   *   juega. El cable de una tirolina se queda azul, y no es una excepción: es
+   *   la única marca que no está pintada en el suelo — cruza el aire, contra el
+   *   cielo o contra el fondo, donde el gris no compite con nada.
    */
   _pintarSuperficies() {
     /** Líneas: la hélice del muelle y los anillos de las puertas. */
     const lineas = []
+    /**
+     * **Y las de una tirolina aparte, porque el cable se queda azul** (vuelta
+     * 84). Es la única marca de dispositivo que no está pintada en el suelo:
+     * un cable cruza el aire a la altura de la cabeza y lo que tiene detrás es
+     * el fondo del mapa o el cielo, no el gris de una losa. Ahí el amarillo no
+     * compra nada y el azul eléctrico sigue diciendo «esto es energía».
+     */
+    const cable = []
     /** Triángulos: las franjas gruesas, que una línea no puede serlo en WebGL. */
     const caras = []
 
@@ -851,52 +882,83 @@ export class Scenario {
      * **desde lejos y contra el cielo**, y un trazo de dos triángulos visto de
      * canto desaparece — el grosor de una franja vive en el plano del suelo.
      */
+    const lineaDeCable = (x1, y1, z1, x2, y2, z2) => cable.push(x1, y1, z1, x2, y2, z2)
     for (const t of this.tirolinas) {
       const m = ZIPLINES.marca
       const { x: x1, y: y1, z: z1 } = t.desde
       const { x: x2, y: y2, z: z2 } = t.hasta
-      linea(x1, y1, z1, x2, y2, z2)
-      // Los dos anclajes: una cruz en tres ejes, que se lee desde cualquier
-      // ángulo sin ser una esfera de treinta triángulos.
-      for (const p of [t.desde, t.hasta]) {
-        const r = m.anclaje
-        linea(p.x - r, p.y, p.z, p.x + r, p.y, p.z)
-        linea(p.x, p.y - r, p.z, p.x, p.y + r, p.z)
-        linea(p.x, p.y, p.z - r, p.x, p.y, p.z + r)
-      }
+      lineaDeCable(x1, y1, z1, x2, y2, z2)
+
       /**
-       * **Y el sentido, repartido por el cable.** Una sola flecha en el medio
-       * no se ve desde el extremo del que se sale, que es justo el sitio desde
-       * el que hay que poder leerla.
-       *
-       * Los barbos salen del **plano perpendicular al cable**, no de los ejes
-       * del mundo: un cable en diagonal con barbos en X daría una flecha
-       * torcida. La perpendicular se saca contra el eje vertical, y contra el
-       * X si el cable **es** vertical, que es el único caso degenerado.
+       * **Los dos ejes perpendiculares al cable**, que es de lo que se
+       * cuelgan el anclaje y las flechas. Salen del plano perpendicular y no
+       * de los ejes del mundo: un cable en diagonal con barbos en X daría una
+       * flecha torcida. La perpendicular se saca contra el eje vertical, y
+       * contra el X si el cable **es** vertical, que es el único caso
+       * degenerado.
        */
       let px = -t.dirZ, py = 0, pz = t.dirX
       let n = Math.hypot(px, pz)
       if (n < 1e-4) { px = 1; py = 0; pz = 0; n = 1 }
       px /= n; pz /= n
-      // La otra perpendicular, para que la flecha tenga dos planos y no sea
-      // una raya vista de canto.
       const qx = t.dirY * pz - t.dirZ * py
       const qy = t.dirZ * px - t.dirX * pz
       const qz = t.dirX * py - t.dirY * px
+
+      /**
+       * **El anclaje es un cuerpo, no una cruz** (vuelta 84). Eran tres rayas
+       * en los ejes del mundo y desde lejos son tres rayas: lo que se veía era
+       * el cable engordando un poco en las puntas. Ahora es un **rombo
+       * alrededor del cable** —un anillo de cuatro lados en su plano
+       * perpendicular, con sus cuatro radios— que se lee como una pieza
+       * enganchada ahí, que es lo que es. Se ve igual desde cualquier ángulo
+       * por la misma razón que la cruz: no tiene cara buena.
+       */
+      for (const p of [t.desde, t.hasta]) {
+        const r = m.anclaje
+        const anillo = [
+          [px * r, py * r, pz * r],
+          [qx * r, qy * r, qz * r],
+          [-px * r, -py * r, -pz * r],
+          [-qx * r, -qy * r, -qz * r],
+        ]
+        for (let i = 0; i < 4; i++) {
+          const a = anillo[i]
+          const b = anillo[(i + 1) % 4]
+          lineaDeCable(p.x + a[0], p.y + a[1], p.z + a[2], p.x + b[0], p.y + b[1], p.z + b[2])
+          // Y el radio, que es lo que lo ata al cable en vez de dejarlo
+          // flotando como un aro suelto.
+          lineaDeCable(p.x, p.y, p.z, p.x + a[0], p.y + a[1], p.z + a[2])
+        }
+      }
+
+      /**
+       * **Y el sentido, repartido por el cable.** Una sola flecha en el medio
+       * no se ve desde el extremo del que se sale, que es justo el sitio desde
+       * el que hay que poder leerla.
+       */
+      const barbos = (cx, cy, cz, largo) => {
+        const bx = cx - t.dirX * largo
+        const by = cy - t.dirY * largo
+        const bz = cz - t.dirZ * largo
+        const a = largo * 0.45
+        lineaDeCable(cx, cy, cz, bx + px * a, by + py * a, bz + pz * a)
+        lineaDeCable(cx, cy, cz, bx - px * a, by - py * a, bz - pz * a)
+        lineaDeCable(cx, cy, cz, bx + qx * a, by + qy * a, bz + qz * a)
+        lineaDeCable(cx, cy, cz, bx - qx * a, by - qy * a, bz - qz * a)
+      }
       for (let i = 1; i <= m.flechas; i++) {
         const d = (t.largo * i) / (m.flechas + 1)
-        const cx = x1 + t.dirX * d
-        const cy = y1 + t.dirY * d
-        const cz = z1 + t.dirZ * d
-        const bx = cx - t.dirX * m.flecha
-        const by = cy - t.dirY * m.flecha
-        const bz = cz - t.dirZ * m.flecha
-        const a = m.flecha * 0.45
-        linea(cx, cy, cz, bx + px * a, by + py * a, bz + pz * a)
-        linea(cx, cy, cz, bx - px * a, by - py * a, bz - pz * a)
-        linea(cx, cy, cz, bx + qx * a, by + qy * a, bz + qz * a)
-        linea(cx, cy, cz, bx - qx * a, by - qy * a, bz - qz * a)
+        barbos(x1 + t.dirX * d, y1 + t.dirY * d, z1 + t.dirZ * d, m.flecha)
       }
+      /**
+       * **Y una grande en la punta** (vuelta 84). Las repartidas dicen el
+       * sentido mientras recorres el cable con la vista; lo que faltaba era
+       * decirlo **de un vistazo**, sin seguirlo. Va en el extremo de llegada y
+       * mide `flechaFinal` veces lo que las otras, que es lo que la separa de
+       * ser una más de la fila.
+       */
+      barbos(x2, y2, z2, m.flecha * m.flechaFinal)
     }
 
     // **Un anillo es una puerta.** Se pinta en el área de entrada y otro en el
@@ -907,20 +969,23 @@ export class Scenario {
       this._pintarAnillo(lineas, tp.destino.x, tp.destino.z, 0.9)
     }
 
-    if (lineas.length > 0) {
+    const trazar = (puntos, color) => {
+      if (puntos.length === 0) return
       const geometry = new THREE.BufferGeometry()
-      geometry.setAttribute('position', new THREE.Float32BufferAttribute(lineas, 3))
-      const material = new THREE.LineBasicMaterial({ color: COLORS.electric })
+      geometry.setAttribute('position', new THREE.Float32BufferAttribute(puntos, 3))
+      const material = new THREE.LineBasicMaterial({ color })
       this.group.add(new THREE.LineSegments(geometry, material))
       this.geometries.push(geometry)
       this.materials.push(material)
     }
+    trazar(lineas, COLORS.dispositivo)
+    trazar(cable, COLORS.electric)
 
     if (caras.length > 0) {
       const geometry = new THREE.BufferGeometry()
       geometry.setAttribute('position', new THREE.Float32BufferAttribute(caras, 3))
       const material = new THREE.MeshBasicMaterial({
-        color: COLORS.electric,
+        color: COLORS.dispositivo,
         side: THREE.DoubleSide,
         transparent: true,
         opacity: 0.92,

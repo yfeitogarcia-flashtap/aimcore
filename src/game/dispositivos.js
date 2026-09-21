@@ -55,7 +55,24 @@ const _mira = new THREE.Vector3()
 /** Los cuatro gestos, por su nombre. El quinto sería una entrada más aquí. */
 const GESTOS = {
   rebote: { clave: 'rebote', dePie: false },
-  velocidad: { clave: 'velocidad', dePie: true, alza: 0.9 },
+  /**
+   * **La plataforma de velocidad no lleva destello** (vuelta 84), y es la
+   * única. Lo tuvo desde la 82 —un aro de pie que salía disparado hacia donde
+   * lanza— y lo que lo quita es haberlo jugado: **el lanzamiento ya se siente
+   * entero**. Es el único de los cuatro gestos que le pasa al jugador *en el
+   * cuerpo* —los otros tres son un empujón corto, un empujón sostenido o un
+   * salto de sitio—, así que el aro no estaba contando nada que la pantalla no
+   * estuviera contando ya a 60 u/s, y encima corría hacia delante tapando
+   * justo lo que hay que mirar al salir despedido.
+   *
+   * La norma de la 82 sigue en pie y no se contradice: un dispositivo **nace**
+   * con su voz y su destello. Lo que esta vuelta dice es que jugarlo puede
+   * quitarle uno de los dos, y el que se queda no es casual — **el sonido, que
+   * no hay que apuntarlo a ninguna parte** (vuelta 73). Quien pasa cerca sigue
+   * enterándose de que alguien acaba de salir lanzado; quien lo usa ya lo
+   * sabía.
+   */
+  velocidad: null,
   ventilador: { clave: 'ventilador', dePie: false },
   hielo: { clave: 'hielo', dePie: false },
   // `alza` cero: el punto que manda la tirolina **es** el del cable, que ya
@@ -80,7 +97,8 @@ export class Dispositivos {
     /** Origen y dirección de cada una, en tres arrays planos para no alocar. */
     this.origen = new Float32Array(pool * 3)
     this.direccion = new Float32Array(pool * 3)
-    this._gestos = Object.values(GESTOS)
+    // Los que de verdad dibujan algo: `velocidad` vale `null` a propósito.
+    this._gestos = Object.values(GESTOS).filter(Boolean)
     this._next = 0
     this.vivas = 0
     /** Cuántos destellos se han encendido. Lo miran los bancos. */

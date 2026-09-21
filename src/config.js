@@ -85,6 +85,27 @@ export const COLORS = {
    */
   alert: '#FFD23F',
   /**
+   * **Lo que un mapa te hace al pisarlo** (vuelta 84). Las marcas de los
+   * dispositivos —galones, muelles, cristales, anillos de puerta y la rejilla
+   * de un ventilador— iban en azul eléctrico desde la vuelta 80, y jugándolo
+   * se vio que ahí el argumento estaba mal planteado: no competía con otro
+   * **significado**, competía con el **fondo**. Un mapa de Vektor no tiene ni
+   * texturas ni luces, así que es gris y negro entero, y un cian apagado sobre
+   * gris es un tono frío sobre otro tono frío.
+   *
+   * Es el tercer color de la paleta que significa dos cosas, y se admite por lo
+   * mismo que los dos anteriores —el verde de la brújula y el azul de la
+   * carga—: **no coinciden nunca**. `alert` (#FFD23F) es el `?` de «te ha
+   * visto», un billboard que flota sobre un muñeco y sólo existe en el
+   * entrenamiento; esto está pintado en el suelo, bajo los pies, y existe en
+   * los dos modos. Y lo que de verdad los separa es la forma, que es la regla
+   * de la vuelta 67: un signo de interrogación no se confunde con un galón.
+   *
+   * Va más ámbar que el limón de `alert` justo para que, en el único sitio
+   * donde podrían salir a la vez, no sean el mismo amarillo.
+   */
+  dispositivo: '#FFC21E',
+  /**
    * **Te está disparando.** Rojo puro, y **no** el naranja de las dianas
    * (`target`, #E4462B): el icono sale justo encima de un muñeco naranja, y un
    * aviso del color de aquello sobre lo que se dibuja no es un aviso.
@@ -2421,7 +2442,12 @@ export const ZIPLINES = {
    */
   pulsoMs: 190,
   /** Lo que se dibuja: el cable, sus dos anclajes y la flecha del sentido. */
-  marca: { grosor: 0.05, anclaje: 0.34, flechas: 5, flecha: 0.5 },
+  /**
+   * `flechaFinal` es el múltiplo de la flecha grande de la punta (vuelta 84):
+   * las repartidas se leen recorriendo el cable con la vista, y ésta dice
+   * hacia dónde lleva **de un vistazo**, sin seguirlo.
+   */
+  marca: { grosor: 0.05, anclaje: 0.42, flechas: 5, flecha: 0.5, flechaFinal: 2.2 },
 }
 
 /**

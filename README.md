@@ -802,20 +802,30 @@ la fuerza a la vez.
   **muelles**. Se repiten con el tamaño, así que un mapa entero de velocidad se
   ve como un mapa entero de velocidad y no como un garabato en medio.
 - **Se ven y se oyen al usarse.** Un rebote suelta un anillo que se abre y
-  sube; una de velocidad, un anillo de pie que sale disparado hacia donde
-  lanza; una puerta, un anillo que **se cierra** donde entras y **se abre**
-  donde sales. Cada uno con su voz. Y la puerta de un rival se oye a **treinta
-  unidades**, así que cruzar por una delante de alguien ya no es gratis.
+  sube; una puerta, un anillo que **se cierra** donde entras y **se abre** donde
+  sales. Cada uno con su voz. Y la puerta de un rival se oye a **treinta
+  unidades**, así que cruzar por una delante de alguien ya no es gratis. La
+  plataforma de velocidad es la única sin anillo: el lanzamiento ya se siente
+  entero y el aro tapaba justo lo que hay que mirar al salir despedido. Sonar,
+  suena.
+- **En partida se ve la marca, no el bloque.** La losa de un dispositivo **no se
+  dibuja**: lo que queda en el suelo es su icono. Si le subes el alto por encima
+  de un escalón deja de ser suelo y pasa a ser una pieza con la que te chocas,
+  así que ahí sí se dibuja — con lo que te chocas tienes que verlo.
+- **Y las marcas van en amarillo.** Un mapa de Vektor es gris y negro entero, así
+  que un color cálido es lo único que se lee sin buscarlo. El cable de una
+  tirolina se queda azul: cruza el aire, contra el cielo, donde el gris no
+  compite. Sus anclajes son ahora un rombo alrededor del cable y en la punta hay
+  una flecha grande, para saber hacia dónde lleva sin recorrerlo con la vista.
 - **Tamaño, de 0.25 a la sala entera.** En «Tamaño» hay presets de 0.25, 0.5,
   0.75, 1 y 4, más **Suelo** (toda la sala). Cambian el dispositivo elegido
   **sin moverle el centro**. Por encima de eso, se estira por su esquina como
   cualquier pieza: no hay tope.
-- **Y puede ser invisible.** La casilla «Plataforma invisible» le quita la caja
-  gris y le deja la colisión y la marca: se sigue pisando y se sigue viendo lo
-  que es. Sirve para un mapa donde el dispositivo *es* el suelo. Lo que se
+- **Y uno alto también se puede esconder.** La casilla «Ocultar también en alto»
+  le quita la caja gris a un dispositivo que sea más alto que un escalón —los
+  bajos ya no se dibujan nunca— y le deja la colisión y la marca. Lo que se
   paga: **las balas la atraviesan**, porque los disparos van contra lo que está
-  dibujado. Con una losa al ras son 20 cm de diferencia en dónde cae la marca;
-  con una pieza alta sería una pared invisible que no para balas, y por eso el
+  dibujado, así que queda una pieza con la que te chocas y que no se ve. El
   editor lo avisa.
 
 ### Muro girado y Columna: piezas que se chocan giradas
