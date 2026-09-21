@@ -13,7 +13,7 @@ import {
   FEEDBACK,
   MOVEMENT,
   NET,
-  SESSION_DURATION_S,
+  RESUME_KEY_DELAY_MS,
   SESSION_MODES,
   scenarioHasCover,
 } from './config.js'
@@ -268,6 +268,43 @@ export default function App() {
   /** Con cualquier panel abierto el overlay deja de capturar el ratón. */
   const panelOpen = optionsOpen || armouryOpen
 
+  /**
+   * **Y ESC reanuda** (vuelta 89). La 88 le enseñó a cerrar el panel de
+   * opciones y ahí se quedó: con el panel ya cerrado, la única salida de la
+   * pausa era encontrar «Reanudar» con el ratón, que es lo contrario de lo que
+   * promete una tecla que ya hace lo de al lado.
+   *
+   * Tres guardas, y ninguna es de adorno:
+   *
+   * - **Con un panel abierto, no.** Ese ESC es suyo —lo cierra— y `panelOpen`
+   *   todavía vale `true` en el manejador de esa misma pulsación, porque el
+   *   estado de React no se ha confirmado aún. Así que cerrar y reanudar nunca
+   *   caen en la misma tecla, y no hace falta pelearse por el orden de dos
+   *   escuchas de `window` (`stopPropagation` no para a las hermanas).
+   * - **Y sólo estando en pausa de verdad**, con el ratón ya suelto.
+   * - **Y no antes de `RESUME_KEY_DELAY_MS`**, que es lo que impide que el ESC
+   *   que *provoca* la pausa la levante de rebote, y de paso espera a que el
+   *   navegador vuelva a admitir la captura. Ver el porqué en `config.js`.
+   */
+  const pausadoDesde = useRef(0)
+  useEffect(() => {
+    if (phase !== PHASE.PAUSED) return undefined
+    pausadoDesde.current = performance.now()
+    return undefined
+  }, [phase])
+
+  useEffect(() => {
+    if (phase !== PHASE.PAUSED || panelOpen) return undefined
+    const onKey = (event) => {
+      if (event.key !== 'Escape') return
+      if (performance.now() - pausadoDesde.current < RESUME_KEY_DELAY_MS) return
+      event.preventDefault()
+      lock()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [phase, panelOpen, lock])
+
   return (
     <div className="app">
       <canvas ref={canvasRef} className="app__canvas" />
@@ -310,12 +347,27 @@ export default function App() {
                 <VektorLogo />
               </h1>
               <p className="panel__byline">by FlickLAB</p>
-              {/* Qué se juega al pulsar el primer botón, que depende del
-                  escenario: con cobertura es la ronda del explosivo y con la
-                  sala vacía, el gridshot de siempre. */}
-              <p className="panel__eyebrow">
-                {deathmatch ? 'ronda con explosivo' : `gridshot · ${SESSION_DURATION_S}s`}
-              </p>
+              {/**
+                * **Bajo el logo no va ningún rótulo destacado** (vuelta 89).
+                *
+                * Había uno —«RONDA CON EXPLOSIVO», en versalitas— que decía qué
+                * se juega al pulsar el primer botón. Dos cosas mal, y la segunda
+                * es la que lo quita para siempre:
+                *
+                * - **Mentía desde la vuelta 88.** Con la duración en «sin
+                *   límite» el explosivo ya no se arma, así que el rótulo
+                *   anunciaba un objetivo que no iba a salir. Es el fallo de la
+                *   67 —un control que promete lo que el juego ignora— en un
+                *   sitio donde ni siquiera hay control que tocar.
+                * - **Y ese sitio no es para eso.** Debajo de la marca van las
+                *   instrucciones —cómo se captura el ratón y cuáles son los
+                *   controles— y nada más: lo que se juega al pulsar un botón lo
+                *   dice el botón, que para eso lleva su nombre y su duración
+                *   justo debajo.
+                *
+                * `panel__eyebrow` sigue viva: es de donde cuelga el veredicto
+                * del resumen (`panel__eyebrow--fail`), que ahí sí es un rótulo.
+                */}
               <p className="panel__body">
                 Click para capturar el ratón y empezar. Click izquierdo para disparar.
               </p>

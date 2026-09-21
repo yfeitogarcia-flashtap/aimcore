@@ -458,7 +458,9 @@ body {
 .hud__fps {
   z-index: 2;
   position: absolute;
-  top: 26px;
+  /* **Debajo del dinero desde la vuelta 89.** Los FPS son telemetría y el
+     dinero es del juego, así que lo del juego va delante — ver `.hud__dinero`. */
+  top: 96px;
   right: 28px;
   display: flex;
   align-items: baseline;
@@ -492,30 +494,40 @@ body {
 .hud__dinero {
   z-index: 2;
   position: absolute;
-  top: 76px;
+  /* **Arriba del todo, y delante de los FPS** (vuelta 89).
+     La vuelta 88 lo puso debajo del contador y del engranaje, y jugando una
+     noche entera **no se vio**: un número de 26 px metido bajo dos rótulos
+     grises de 14 y 9 se lee como una tercera línea de telemetría, no como tu
+     cartera. El código estaba bien —medido en un duelo real contra el build
+     desplegado: $800, y $300 tras comprar, visible en las cuatro fases y sin
+     nada encima— y aun así el jugador no lo encontró, que para un HUD es el
+     mismo fallo.
+     Así que lo que cambia es la jerarquía: el dinero es **del juego** y los FPS
+     son telemetría, así que va primero y grande, y lo demás baja. */
+  top: 22px;
   right: 28px;
   display: flex;
   align-items: baseline;
-  gap: 2px;
+  gap: 3px;
   color: var(--action-color);
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
 
 .hud__dinero-signo {
-  font-size: 15px;
-  opacity: 0.7;
+  font-size: 22px;
+  opacity: 0.75;
 }
 
 .hud__dinero-valor {
-  font-size: 26px;
+  font-size: 42px;
   letter-spacing: 0.01em;
 }
 
 .hud__options {
   z-index: 2;
   position: absolute;
-  top: 50px;
+  top: 120px;
   right: 28px;
   display: flex;
   align-items: center;
@@ -1732,21 +1744,26 @@ body {
 .armoury__grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
-  /* Seis filas de ficha **más las cinco estadísticas** (vuelta 71). Hasta aquí
-     `subgrid` alineaba los seis bloques y las estadísticas de dentro iban en
-     flujo normal: con las cuatro armas de fuego cuadraba de casualidad —el
-     mismo texto ocupa las mismas líneas— y con el cuchillo dejó de cuadrar, que
-     es lo que pasa siempre que algo cuadra por casualidad. Ahora las filas de
-     estadística **son filas de la rejilla**, así que un valor que ocupe dos
-     líneas empuja el suyo en las cinco fichas y no sólo en la suya. */
-  grid-template-rows: repeat(11, auto);
+  /* Seis filas de ficha **más las seis de estadística** (vuelta 89; eran cinco
+     desde la 71). Las filas de estadística **son filas de la rejilla**, así que
+     un valor que ocupe dos líneas empuja el suyo en las once fichas y no sólo
+     en la suya.
+
+     **Y el número sale de un sitio, no de tres** (vuelta 89). Estaba escrito a
+     mano aquí, en `.armoury__card` y en `.armoury__stats`, y cuando el arco
+     estrenó filas propias en la 85 se actualizó ninguno de los tres: lo que
+     sobra de un `subgrid` no crece, se amontona en la última pista, así que
+     desde entonces el arco, el U2 y las tres granadas dibujaban cuatro filas
+     una encima de otra. Ahora lo declara `Armoury.jsx` —que es quien sabe
+     cuántas emite— y esto lo lee. */
+  grid-template-rows: repeat(var(--armoury-filas), auto);
   gap: 12px;
 }
 
 .armoury__card {
   display: grid;
   grid-template-rows: subgrid;
-  grid-row: span 11;
+  grid-row: span var(--armoury-filas);
   row-gap: 8px;
   justify-items: center;
   align-content: start;
@@ -1881,16 +1898,32 @@ body {
 }
 
 .armoury__stats {
-  /* Subrejilla dentro de la subrejilla: las cinco estadísticas ocupan cinco
-     filas de la rejilla de arriba, que es lo que las alinea entre fichas por
-     mucho que una ocupe dos líneas. */
+  /* Subrejilla dentro de la subrejilla: las estadísticas ocupan filas de la
+     rejilla de arriba, que es lo que las alinea entre fichas por mucho que una
+     ocupe dos líneas. Son las cuatro que tienen todas, **la fila de las que no**
+     y la de escudo · precisión. */
   display: grid;
   grid-template-rows: subgrid;
-  grid-row: span 5;
+  grid-row: span var(--armoury-stats);
   row-gap: 7px;
   width: 100%;
   padding-top: 8px;
   border-top: 1px solid var(--panel-border);
+}
+
+/**
+ * **Lo que sólo tienen algunas armas, en UNA fila y en flujo normal** (vuelta
+ * 89). Aquí no hay pistas de rejilla que agotar, así que por muchas que sean no
+ * pueden amontonarse — que es exactamente lo que llevaban haciendo desde la 85.
+ * Y su alto lo pone la ficha que más tenga, así que la fila de escudo ·
+ * precisión sigue cayendo a la misma altura en todas.
+ */
+.armoury__extras {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  width: 100%;
+  align-self: start;
 }
 
 .armoury__stat {

@@ -565,6 +565,80 @@ cargando el arco, el tiro largo y el tiro corto, el que apunta ve su curva
 (353 / 393 / 29 px del láser) y **el rival ve exactamente cero en los tres, y en
 todo momento de la carga**.
 
+**Un `subgrid` no crece cuando le sobran hijos: los amontona** (vuelta 89). La
+armería declaraba cuántas filas ocupa una ficha en **tres reglas de
+`styles.css`** —`repeat(11, auto)`, `span 11` y `span 5`— y eran ciertas cuando
+todas las armas tenían cinco estadísticas. El arco estrenó dos filas propias en
+la 85, el U2 tres en la 86 y cada granada cuatro en la 87, y **no se tocó
+ninguna de las tres**: lo que sobra de un `subgrid` va a pistas implícitas que
+la rejilla de arriba no dimensiona, así que se dibujaban **unas encima de
+otras**. Medido antes de tocar nada (`arm89`): Bow 2 solapes, U2 3,
+Core/Blind/KO 4, las cuatro últimas filas de una granada compartiendo el mismo
+`top`. Sin un error en ninguna pantalla. Tres reglas:
+
+- **Lo que tienen todas se alinea; lo que no, no puede.** Cadencia, cargador,
+  peso, daño y escudo · precisión siguen siendo filas de la rejilla, que es lo
+  que hace que comparar sea mirar (vueltas 43 y 71). Las específicas —cargado,
+  carga, mecha, ceguera, aturdimiento, explosión, reserva— se van a **una sola
+  fila en flujo normal** (`.armoury__extras`): ahí no hay pistas que agotar, así
+  que añadir mañana una fila a un arma **no puede pisar nada**. El arreglo no es
+  un número mayor, es que no pueda haber un número que se quede corto.
+- **Y el número que queda lo declara quien lo produce.** `Armoury.jsx` publica
+  `--armoury-filas` y `--armoury-stats`; el CSS los lee. **Un número que hay que
+  acordarse de subir en otro fichero es un número que no se sube** — tres
+  vueltas seguidas añadieron filas y ninguna lo vio.
+- **El alto de la fila de las específicas lo pone la ficha que más tenga**, así
+  que escudo · precisión sigue cayendo a la misma altura en las once.
+
+**«Está en pantalla» y «se ve» son dos medidas distintas** (vuelta 89). El
+dinero del HUD se reportó como no visible jugando una noche entera, y **no era
+una regresión**: medido contra el build que sirve el despliegue, en un duelo real
+con dos navegadores, el bloque estaba en las cinco fases con `$800` → `$300` tras
+comprar, sin nada encima y con opacidad 1 (`dinero89`). Y aun así el jugador no
+lo encontró, que para un HUD es el mismo fallo.
+
+Lo que fallaba era **la jerarquía**: la vuelta 88 lo puso a 26 px **debajo** del
+contador de FPS y del engranaje de ESC, y un número pequeño colgado de dos
+rótulos grises se lee como una tercera línea de telemetría. Ahora va primero y a
+42 px, y los FPS y el engranaje bajan — **el dinero es del juego y los FPS son
+telemetría, así que lo del juego va delante**. La regla que se queda vale para
+cualquier cosa que se añada a un HUD: un banco puede afirmar que el elemento
+existe, mide, no tiene nada encima y es opaco —lo afirmó cinco veces— y el
+jugador seguir sin verlo. Eso se comprueba **mirando la captura y preguntándose
+contra qué compite**.
+
+**ESC cierra y también vuelve** (vuelta 89). La 88 le enseñó a cerrar el panel de
+opciones y se quedó a mitad: con el panel cerrado, la única salida de la pausa
+era buscar «Reanudar» con el ratón. Ahora reanuda, en el entrenamiento y en el
+duelo, y lo que tiene de mecanismo es **por qué es una espera y no una
+condición** (`RESUME_KEY_DELAY_MS`, 1300 ms):
+
+- **Quien suelta el ratón al pulsar ESC es el navegador**, y el orden entre su
+  `pointerlockchange` y el `keydown` no está garantizado: sin espera, una sola
+  pulsación podría pausar y reanudar a la vez y ESC dejaría de abrir el menú.
+  Deducirlo del estado no vale — el estado es justo lo que puede haber cambiado.
+- **Y Chrome rechaza `requestPointerLock`** durante algo más de un segundo tras
+  una salida provocada por el usuario, **sin error visible**: no pasa nada, que
+  es el fallo que se está arreglando.
+- **Y el panel abierto se gatea con `panelOpen`, no con el evento.** En la
+  pulsación que cierra el panel ese estado todavía vale `true` porque React no
+  lo ha confirmado, así que cerrar y reanudar nunca caen en la misma tecla — y
+  no hace falta pelearse por el orden de dos escuchas del mismo `window`, donde
+  `stopPropagation` no para a las hermanas.
+
+Medido (`esc89b`): dentro de la espera no reanuda, pasada sí; con opciones
+abiertas las cierra y no reanuda, y el siguiente ESC sí.
+
+**Y bajo el logo no va ningún rótulo destacado** (vuelta 89). Había uno —«RONDA
+CON EXPLOSIVO»— que decía qué se juega al pulsar el primer botón, y **mentía
+desde la 88**: con la duración en «sin límite» el explosivo ya no se arma, así
+que quitar la bomba y dejar la etiqueta anunciaba un objetivo que no iba a
+salir. Es el fallo de la 67 en un sitio donde ni siquiera hay control que tocar.
+Debajo de la marca van **las instrucciones y nada más**; lo que se juega al
+pulsar un botón lo dice el botón, que lleva su nombre y su duración justo
+debajo. `panel__eyebrow` sigue viva porque de ella cuelga el veredicto del
+resumen.
+
 **El air-strafe no estaba roto: era inalcanzable, y eso es lo mismo** (vuelta
 88). El modelo vectorial está medido y correcto —estrafe puro a 40°/s gira el
 rumbo **−27.5° en un vuelo** y sube de 6.500 a 6.760 u/s, clavado en lo que dejó
@@ -3117,8 +3191,20 @@ cuánto—, porque dos cuentas separadas es como acabas con un panel que promete
   movimiento se miden **con la pistola equipada**: la referencia del modelo es el
   jugador sin carga.
 
-Hoy: Pulse 1.1 kg → 6.50 u/s, Volt 2.6 → 6.14, Rift 3.6 → 5.88. **Se calibra
-jugando.**
+Hoy: Pulse 1.1 kg → 6.50 u/s, Volt 2.6 → 5.86, Scout 3.2 → 5.59, Rift 3.6 →
+5.41, U2 5.4 → 4.88 (suelo). **Se calibra jugando**, y en la vuelta 89 se
+calibró: `perKg` sube de 0.04 a **0.07** porque con 0.04 el arsenal entero cabía
+en un 10% y elegir arma no se sentía en las piernas, que es lo único que el peso
+viene a hacer. **Lo que no se toca al calibrar es `free`**: «la pistola no cuesta
+velocidad» es una decisión, así que el peso se sube por lo que pagan los pesados
+y nunca bajando lo que es gratis.
+
+Y conviene saber **lo que esto no arregla**: la sensación de ligereza con la
+pistola en la mano no sale de aquí —la pistola no paga— sino de la marcha base
+(6.5), de la gravedad y el salto (30 y 8.67, de donde sale qué cobertura es
+saltable) y del control en el aire, que **subió en la vuelta 88**. Mover
+cualquiera de los tres invalida medidas que llevan cuarenta vueltas en pie, así
+que eso se calibra con alguien jugando delante y no de oficio.
 
 **El arma principal se equipa en la armería, no en opciones.** Elegir arma no es
 un ajuste entre la sensibilidad y el tamaño de diana: es la decisión de la
@@ -4927,11 +5013,11 @@ con sonido propio.
 | Arma | Ranura | Modo | RPM | Cargador | Recarga | Supresor | Peso | Marcha |
 |---|---|---|---|---|---|---|---|---|
 | Pulse | secundaria (tecla **2**, siempre) | semi | 500 | 18 | 1200 ms | sí | 1.1 kg | 6.50 u/s |
-| Rift | principal (tecla **1**) | auto | 600 | 30 | 2300 ms | sí | 3.6 kg | 5.88 u/s |
-| Volt | principal (tecla **1**) | auto | 800 | 25 | 1800 ms | sí | 2.6 kg | 6.14 u/s |
-| Scout | principal (tecla **1**) | semi | 48 | 10 | 2600 ms | **no** | 3.2 kg | 5.98 u/s |
-| Bow | principal (tecla **1**) | **carga** | 80 | 12 | 2200 ms | **no** | 2.8 kg | 6.03 u/s |
-| U2 | principal (tecla **1**) | semi | 40 | 1 (+reserva) | 2000 ms | **no** | 5.4 kg | 5.41 u/s |
+| Rift | principal (tecla **1**) | auto | 600 | 30 | 2300 ms | sí | 3.6 kg | 5.41 u/s |
+| Volt | principal (tecla **1**) | auto | 800 | 25 | 1800 ms | sí | 2.6 kg | 5.86 u/s |
+| Scout | principal (tecla **1**) | semi | 48 | 10 | 2600 ms | **no** | 3.2 kg | 5.59 u/s |
+| Bow | principal (tecla **1**) | **carga** | 80 | 12 | 2200 ms | **no** | 2.8 kg | 5.77 u/s |
+| U2 | principal (tecla **1**) | semi | 40 | 1 (+reserva) | 2000 ms | **no** | 5.4 kg | 4.88 u/s |
 | Vanta | cuerpo a cuerpo (tecla **3**, siempre) | cuchillo | — | — | — | no | 0.6 kg | 6.50 u/s |
 | Core | granada (tecla **G**) | **carga** | 50 | 1 (+1) | 1200 ms | **no** | 0.5 kg | 6.50 u/s |
 | Blind | granada (tecla **G**) | **carga** | 50 | 1 (+1) | 1200 ms | **no** | 0.5 kg | 6.50 u/s |
@@ -5012,9 +5098,11 @@ de las armas, que faltaban. Lo que no sale son los tres bloques del
 entrenamiento —aciertos y fallos, estrellas y marcador de sesión—, que en un
 duelo no miden nada.
 
-**HUD:** **arriba a la derecha**, bajo los FPS y el engranaje, **el dinero**
-(vuelta 88) en el verde de acción, y sólo donde hay economía — entrenando y en un
-mapa que reparte no se monta, porque un `$0` fijo diría que estás arruinado.
+**HUD:** **arriba a la derecha y lo primero de esa esquina**, **el dinero** en
+el verde de acción y a 42 px, con los FPS y el engranaje debajo (vuelta 89: la
+88 lo puso al revés y jugando una noche entera no se vio, aunque el bloque
+estaba ahí y medido). Sólo donde hay economía — entrenando y en un mapa que
+reparte no se monta, porque un `$0` fijo diría que estás arruinado.
 **Abajo a la derecha** el bloque de arma —silueta grande (208 px), el
 nombre con su ficha corta (`AUTO`/`SEMI` y `SIL` si lleva supresor) y la munición
 en grande—, **el mismo en el duelo desde la vuelta 67**, que hasta entonces no
@@ -5164,7 +5252,8 @@ con su ficha y sin botón de equipar: se lleva siempre, y el cuchillo igual.
 ranura: «Equipar» en una de ellas escribe `settings.throwable`, no
 `settings.weapon`. Sus filas dicen lo suyo —la mecha, el radio y qué hace al
 estallar— en vez de repetir un daño por zonas que una granada no tiene. Se cierra con **Escape**,
-con **B** o con su botón, y abrirla **pausa** la sesión igual que Escape. Sin
+con **B** o con su botón, y abrirla **pausa** la sesión igual que Escape. Y desde
+la vuelta 89 **el Escape siguiente reanuda**, sin tener que ir a «Reanudar». Sin
 precios y sin comprar: no hay economía todavía.
 
 **Opciones** (accesibles antes de empezar y desde la pausa, persistidas):

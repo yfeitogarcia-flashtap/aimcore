@@ -11903,3 +11903,229 @@ meterlos.
   `roadmap.md` ya tiene anotada como «modo invitado vs. logueado».
 - **Banner de instalar como PWA** y **revancha al terminar la partida**. Los dos
   caben y los dos son suyos; van los primeros de la lista siguiente.
+
+---
+
+## §89 — La noche de los duelos con dinero
+
+Segunda vuelta de feedback seguida, y el reparto es distinto al de la 88: de las
+seis cosas, **dos eran fallos de verdad, una era un rótulo que sobraba, una era
+código correcto que nadie encontraba, una era calibración y una no era nada**.
+Separarlas es la mitad del trabajo, porque las cinco llegaron con la misma
+forma —«esto está mal»— y sólo dos lo estaban.
+
+### §89.1 — Un `subgrid` no crece: amontona
+
+El síntoma: en las fichas del Core, la Blind, la KO «y parece que también en las
+armas de arriba», el texto se solapaba y quedaba ilegible en la zona de «ESCUDO
+· PRECISIÓN».
+
+Lo era, y medirlo antes de tocar nada (`arm89`) dio el mapa entero:
+
+| ficha | filas que emite | solapes |
+|---|---|---|
+| Pulse, Rift, Volt, Scout, Vanta | 5 | 0 |
+| Bow | 7 | **2** |
+| U2 | 8 | **3** |
+| Core, Blind, KO | 9 | **4** |
+
+Las cuatro últimas filas de una granada compartían el **mismo `top`** al píxel.
+
+**La causa es un número escrito tres veces y subido ninguna.** La rejilla de la
+armería alinea las fichas con `subgrid` desde la vuelta 43 y las estadísticas de
+dentro desde la 71, y para eso hacía falta declarar cuántas filas ocupa una
+ficha: `repeat(11, auto)` en `.armoury__grid`, `span 11` en `.armoury__card` y
+`span 5` en `.armoury__stats`. Once y cinco eran ciertos cuando todas las armas
+tenían cinco estadísticas. Entonces llegó el arco con dos filas propias (vuelta
+85), el U2 con tres (86) y cada granada con cuatro (87), y **no se tocó ninguna
+de las tres reglas** — estaban en otro fichero.
+
+Y lo que hace un `subgrid` cuando le sobran hijos no es crecer: los mete en
+pistas implícitas que la rejilla de arriba no dimensiona, así que se dibujan
+unos encima de otros. **No dio ni un error**, que es la firma de esta clase de
+fallo: no hay excepción, hay píxeles.
+
+**El arreglo no es un número mayor: es que no pueda haber un número que se
+quede corto.** Las estadísticas se parten en dos:
+
+- **Las que tienen todas** —cadencia, cargador, peso, daño y escudo ·
+  precisión— siguen siendo filas de la rejilla, que es lo que las alinea entre
+  fichas y lo único que hace que comparar sea mirar y no leer.
+- **Las que sólo tiene alguna** —cargado, carga, mecha, ceguera, aturdimiento,
+  explosión, reserva— se van a **una sola fila**, en flujo normal
+  (`.armoury__extras`). Ahí no hay pistas que agotar, así que añadir mañana una
+  fila a un arma **no puede pisar nada**, y el alto de esa fila lo pone la ficha
+  que más tenga, de modo que «escudo · precisión» sigue cayendo a la misma
+  altura en las once.
+
+Y lo que queda de número lo declara **quien lo produce**: `Armoury.jsx` publica
+`--armoury-filas` y `--armoury-stats` y el CSS los lee. Es la regla de siempre
+—una sola fuente de verdad— aplicada a una constante de maquetación, que es
+justo donde no se había aplicado. Medido después: **0 solapes en las diez
+fichas**, y las cinco filas comunes alineadas.
+
+La lección, que no es del CSS: **un número que hay que acordarse de subir en
+otro fichero es un número que no se sube.** Tres vueltas seguidas añadieron
+filas y ninguna lo vio.
+
+### §89.2 — El dinero funcionaba, y nadie lo encontró
+
+«El dinero sigue sin verse en el HUD, jugando un duelo real con economía — se
+reportó arreglado la vuelta pasada, así que parece una regresión.»
+
+**No lo era, y lo primero fue comprobarlo en vez de creerlo.** Contra el build
+que sirve el despliegue —el mismo hash que reporta `/salud`—, en un duelo de
+verdad con dos navegadores y comprando (`dinero89`):
+
+| momento | bloque | encima | opacidad |
+|---|---|---|---|
+| antes del rival | `$800` | nada | 1 |
+| con rival, fase de compra | `$800` | nada | 1 |
+| jugando, ratón capturado | `$800` | nada | 1 |
+| tras comprar el chaleco | `$300` | nada | 1 |
+| en ronda | `$300` | nada | 1 |
+
+Cero errores de página, y el despliegue de la 88 salió correcto (la acción de
+GitHub terminó en `success` sobre `cd1440b`). El código estaba bien, el enlace
+de callbacks estaba bien, y aun así el jugador no vio el dinero en toda una
+noche.
+
+**Y eso es un fallo igual, sólo que de otra clase.** Mirando la captura se ve
+por qué: la vuelta 88 lo puso **debajo** del contador de FPS y del engranaje de
+ESC, en 26 px. Un número pequeño colgado de dos rótulos grises se lee como una
+tercera línea de telemetría, no como tu cartera — y la petición original decía
+«en una posición prominente», que es exactamente lo que no era.
+
+Lo que cambia no es dónde está: es **la jerarquía de esa esquina**. El dinero es
+del juego y los FPS son telemetría, así que el dinero va primero y a 42 px, y
+los FPS y el engranaje bajan. Es la misma esquina que pedía el encargo y ahora
+sí es lo primero que se ve.
+
+Queda la regla, que vale para cualquier cosa que se añada a un HUD: **«está en
+pantalla» y «se ve» son dos medidas distintas, y la segunda no se comprueba con
+un `locator`.** Un banco puede decir que el elemento existe, tiene tamaño, no
+tiene nada encima y opacidad 1 —lo dijo, cinco veces— y el jugador seguir sin
+encontrarlo. Para eso hay que mirar la captura y preguntarse contra qué compite.
+
+### §89.3 — ESC cerraba y no volvía
+
+La vuelta 88 le enseñó a ESC a cerrar el panel de opciones y se quedó a mitad:
+con el panel ya cerrado, la única salida de la pausa era ir a buscar «Reanudar»
+con el ratón. Una tecla que hace lo de al lado y no lo obvio es peor que una que
+no hace nada.
+
+Ahora ESC reanuda, en el entrenamiento y en el duelo. Lo que tiene de
+interesante es **por qué hay una espera y no una condición**
+(`RESUME_KEY_DELAY_MS`, 1300 ms):
+
+- **Quien suelta el ratón al pulsar ESC es el navegador, no la página**, y el
+  orden entre su `pointerlockchange` y el `keydown` no está garantizado. Sin
+  espera, una sola pulsación podría pausar y reanudar a la vez, y entonces ESC
+  dejaría de servir para abrir el menú. Deducirlo del estado no vale: el estado
+  es justo lo que puede haber cambiado ya.
+- **Y el navegador tampoco deja.** Tras una salida de captura provocada por el
+  usuario, Chrome rechaza `requestPointerLock` durante algo más de un segundo, y
+  ese rechazo **no da error visible**: no pasa nada, que es el fallo que se está
+  arreglando, otra vez.
+
+Un humano que lee el menú y vuelve a pulsar tarda mucho más que 1300 ms.
+
+Y el panel abierto se resuelve **sin pelearse por el orden de dos escuchas**:
+el manejador se gatea con `panelOpen`, que en la pulsación que cierra el panel
+todavía vale `true` porque React no ha confirmado el estado. Así, cerrar y
+reanudar nunca caen en la misma tecla — y no hace falta `stopImmediatePropagation`,
+que es lo que haría falta si se intentara por eventos (`stopPropagation` no para
+a las escuchas hermanas del mismo `window`).
+
+Medido (`esc89b`): un ESC dentro de la espera no reanuda; pasada la espera sí;
+con opciones abiertas, ESC las cierra y no reanuda, y el siguiente sí.
+
+Y una nota de instrumentación que ya costó una vuelta antes (§48): **una tecla
+sintética no suelta la captura**, porque eso lo hace el navegador. El banco sale
+con `document.exitPointerLock()`, que es lo que llega al mismo
+`pointerlockchange`. Medido de paso (`esc89`): el `keydown` de un ESC sintético
+**sí** llega a la página con la captura todavía puesta, así que la guarda de
+«jugando, no» tiene que existir aunque en un navegador de verdad ese evento
+probablemente no se entregue.
+
+### §89.4 — El peso, y lo que el peso no arregla
+
+«El movimiento se siente demasiado ligero — con Pulse equipada da la sensación
+de volar. Sería bueno revisar el peso aplicado por arma.»
+
+Son dos cosas y sólo una está en el peso. El arsenal entero cabía en un **10%**
+—pistola 6.50 u/s, rifle 5.88— y eso jugando no se nota: elegir arma no se
+sentía en las piernas, que es lo único que el peso viene a hacer.
+`MOVEMENT.load.perKg` sube de 0.04 a **0.07** y la escalera se abre:
+
+| arma | kg | antes | ahora |
+|---|---|---|---|
+| Pulse, Vanta, granadas | ≤1.1 | 6.50 | **6.50** |
+| Volt | 2.6 | 6.14 | **5.86** |
+| Bow | 2.8 | 6.08 | **5.77** |
+| Scout | 3.2 | 5.98 | **5.59** |
+| Rift | 3.6 | 5.88 | **5.41** |
+| U2 | 5.4 | 5.41 | **4.88** (suelo) |
+
+**Lo que no se toca es `free`**, y no por pereza: «la pistola no cuesta
+velocidad» es una decisión escrita —la que se lleva siempre no puede costar, o
+el coste estaría en no haber elegido— así que el peso se calibra subiendo lo que
+pagan los pesados, nunca bajando lo que es gratis.
+
+**Y por eso esto no arregla la sensación de volar con la pistola en la mano**,
+que es lo otro que decía el informe: la pistola no paga nada ni antes ni ahora.
+Eso sale de tres sitios, y los tres son decisiones grandes que no se tocan sin
+que alguien juegue delante:
+
+- **La marcha base** (`MOVEMENT.speed`, 6.5), que es la referencia contra la que
+  está medido el resto del proyecto — pisadas, deslizamiento, techo del aire,
+  peso de cada arma.
+- **La gravedad y el salto** (30 y 8.67), de donde salen el ápice de 1.2528 u y,
+  con él, **qué cobertura es saltable**: la tabla de `COVER` es una consecuencia
+  de esos dos números, no una lista independiente.
+- **Y el control en el aire**, que **acaba de subir** en la vuelta 88: con W
+  pulsada el air-strafe ahora gira y acelera, o sea que hay más gobierno en el
+  vuelo del que había la semana pasada. Que la ligereza se note justo ahora
+  encaja con eso, y no es un fallo: es la mecánica funcionando.
+
+Se queda anotado como calibración pendiente **con el jugador delante**, porque
+mover cualquiera de los tres invalida medidas que llevan cuarenta vueltas en
+pie.
+
+### §89.5 — El rótulo bajo el logo
+
+«En el menú principal, bajo el logo, aparece "RONDA CON EXPLOSIVO" — no debe
+aparecer ningún texto destacado de ese tipo ahí, nunca.»
+
+Correcto, y la sospecha también: era un resto. `panel__eyebrow` decía qué se
+juega al pulsar el primer botón, y la vuelta 88 —que quitó el explosivo del modo
+sin límite— **quitó la bomba y no la etiqueta**, así que con esa duración puesta
+el menú anunciaba un objetivo que ya no iba a salir. El fallo de la 67 —un
+control que promete lo que el juego ignora— en un sitio donde ni siquiera hay
+control que tocar.
+
+Se va, y la regla se queda: **debajo de la marca van las instrucciones y nada
+más.** Lo que se juega al pulsar un botón lo dice el botón, que para eso lleva su
+nombre y su duración justo debajo. `panel__eyebrow` sigue viva porque de ella
+cuelga el veredicto del resumen, que ahí sí es un rótulo.
+
+### §89.6 — El air-strafe: lo que se pidió comprobar
+
+El informe pedía una comprobación rápida de que el cambio de la 88 se aplicó de
+verdad. Se aplicó, y por dos caminos independientes:
+
+- **Está en el build que se sirve**: dos accesos a `airStrafeIgnoraFrente` en el
+  bundle principal, con el mismo hash que reporta `/salud` (y sólo valen los
+  accesos a propiedad, que es la cautela de la vuelta 61).
+- **Y se comporta**: W+D a 40°/s gira el rumbo **−27.5°** y sube de 6.500 a
+  **6.760 u/s**, idéntico a D puro; seis saltos encadenados llevan de 6.500 a
+  **7.789**. Sin el interruptor, 0.0° y 6.500 planos. Cero correcciones en 1127
+  fotos de un duelo real.
+
+Lo que sí dicen esos números, y conviene decirlo antes de que se pruebe a fondo:
+**la ganancia por vuelo es de 0.26 u/s**, un 4%, y el techo está en 9.5. O sea
+que la mecánica funciona y **es cara**: hacen falta muchos saltos bien
+encadenados para notarla. Si al probarla despacio sigue pareciendo poca, lo que
+hay que mover no es el arreglo sino el precio — `airAccel` (10) y
+`airWishFactor` (0.12), que son los dos números que deciden cuánto se gana por
+grado girado. Eso es tuning y se calibra jugando, no midiendo.

@@ -2000,10 +2000,29 @@ export const MOVEMENT = {
    * orden de magnitud de un rifle en un shooter táctico—.
    */
   load: {
-    /** Kilos que no frenan. Una pistola pesa menos que esto. */
+    /**
+     * Kilos que no frenan. Una pistola pesa menos que esto, **y eso es una
+     * decisión y no tuning**: la que se lleva siempre no puede costar, o el
+     * coste estaría en no haber elegido. Por eso el peso se calibra subiendo
+     * `perKg` y no bajando esto.
+     */
     free: 1.2,
-    /** Cuánta marcha se pierde por kilo por encima de `free`, en tanto por uno. */
-    perKg: 0.04,
+    /**
+     * Cuánta marcha se pierde por kilo por encima de `free`, en tanto por uno.
+     *
+     * **0.07 desde la vuelta 89; eran 0.04.** Con 0.04 el arsenal entero cabía
+     * en un 10% —pistola 6.50, rifle 5.88— y jugando eso no se nota: elegir
+     * arma no se sentía en las piernas, que es justo lo que el peso viene a
+     * hacer. Ahora la Rift cuesta un 17%, la Scout un 14% y el U2 llega al
+     * suelo, así que sacar el arma pesada **se paga andando** y la pistola pasa
+     * a ser de verdad la opción rápida.
+     *
+     * Ojo con lo que esto **no** arregla: la sensación de ligereza con la
+     * pistola en la mano no sale de aquí —la pistola no paga— sino de la marcha
+     * base, de la gravedad y del control en el aire. Eso es otra calibración y
+     * mueve la referencia con la que está medido todo lo demás.
+     */
+    perKg: 0.07,
     /** Suelo: por debajo de esto no baja por mucho que pese. */
     minFactor: 0.75,
   },
@@ -4327,6 +4346,28 @@ export const SESSION_MODES = {
  *
  * `seconds: null` es «la del modo»; `seconds: 0`, sin límite.
  */
+/**
+ * **Cuánto hay que esperar para que ESC reanude** (vuelta 89), en milisegundos.
+ *
+ * ESC cierra el panel de opciones desde la vuelta 88, y jugando salió lo que le
+ * faltaba: pulsarlo otra vez tenía que devolverte a la partida, y no lo hacía —
+ * había que buscar «Reanudar» con el ratón. Esta espera es lo que hace que el
+ * gesto sea seguro, y cubre dos cosas a la vez:
+ *
+ * - **El ESC que pausa no puede reanudar.** Quien suelta el ratón al pulsar ESC
+ *   es el navegador, no la página, y el orden entre su `pointerlockchange` y el
+ *   `keydown` no está garantizado: sin espera, una pulsación podría pausar y
+ *   reanudar a la vez y ESC no serviría para abrir el menú. No se deduce del
+ *   estado —se espera, que es lo único que no depende de ese orden—.
+ * - **Y el navegador tampoco deja.** Tras una salida de captura provocada por
+ *   el usuario, Chrome rechaza `requestPointerLock` durante algo más de un
+ *   segundo. Pedirla antes no da error visible: no pasa nada, que es justo el
+ *   fallo que se está arreglando.
+ *
+ * Un humano que lee el menú y vuelve a pulsar tarda mucho más que esto.
+ */
+export const RESUME_KEY_DELAY_MS = 1300
+
 export const SESSION_DURATIONS = {
   mode: { label: 'La del modo', seconds: null },
   none: { label: 'Sin límite', seconds: 0 },

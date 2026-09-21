@@ -151,6 +151,22 @@ function SuppressorToggle({ on, onToggle }) {
   )
 }
 
+/**
+ * **Cuántas filas de la rejilla ocupa una ficha**, y viven aquí porque aquí es
+ * donde se emiten (vuelta 89).
+ *
+ * Estaban escritos a mano en tres reglas de `styles.css`, y cuando el arco
+ * estrenó filas propias en la vuelta 85 no se tocó ninguna: un `subgrid` no
+ * crece cuando le sobran hijos, los amontona en la última pista, así que el
+ * arco, el U2 y las tres granadas llevaban desde entonces dibujando hasta
+ * cuatro filas **una encima de otra**. Un número que hay que acordarse de subir
+ * en otro fichero es un número que no se sube.
+ */
+const BLOQUES_DE_FICHA = 6
+/** Cadencia, cargador, peso, daño, la fila de las específicas, y escudo · precisión. */
+const FILAS_DE_STATS = 6
+const FILAS_DE_FICHA = BLOQUES_DE_FICHA + FILAS_DE_STATS
+
 /** Con qué tecla sale cada ranura. La lista de teclas de equipo, en un sitio. */
 const SLOT_KEYS = { primary: '1', secondary: '2', melee: '3', throwable: 'G' }
 
@@ -232,6 +248,11 @@ function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip,
       </div>
 
       <div className="armoury__stats">
+        {/**
+          * **Las cuatro que tienen todas van en su fila de la rejilla**, que es
+          * lo que las alinea entre fichas por mucho que una ocupe dos líneas
+          * (vueltas 43 y 71). Comparar armas es mirar la misma fila en todas.
+          */}
         <Stat
           label={weapon.melee ? 'Golpes' : 'Cadencia'}
           value={weapon.melee
@@ -270,62 +291,86 @@ function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip,
                 ? `sin cargar · ${damageLine(weaponKey, weapon.tiro.danoMin)}`
                 : damageLine(weaponKey)}
         />
-        {/* **Y un arma de carga dice las dos puntas** (vuelta 85). Una sola
-            fila diría el daño de un arma que no existe: el arco **no pega un
-            número**, pega entre dos según cuánto lo tenses, y ésa es la
-            decisión que se toma con él en la mano. Sale de `zoneDamage`
-            también, que es la función que lo resuelve. */}
-        {weapon.tiro && !weapon.tiro.granada ? (
-          <Stat label="Cargado" value={damageLine(weaponKey, weapon.tiro.danoMax)} />
-        ) : null}
-        {weapon.tiro?.cargaMs ? (
-          <Stat
-            label={weapon.tiro.granada ? 'Lanzamiento' : 'Carga'}
-            value={weapon.tiro.granada
-              ? `${(weapon.tiro.cargaMs / 1000).toFixed(2)} s al máximo · clic izquierdo lejos, clic derecho corto y a ras de suelo`
-              : `${(weapon.tiro.cargaMs / 1000).toFixed(2)} s al máximo · mantén para tensar, suelta para tirar`}
-          />
-        ) : null}
-        {/* **Y una granada dice su mecha** (vuelta 87), que es lo único suyo
-            que hay que entender antes de tirar la primera: el reloj arranca al
-            empezar a cargar, no al soltar. Los dos números salen de `GRENADES`,
-            que es de donde los saca el juego. */}
-        {weapon.tiro?.granada ? (
-          <Stat
-            label="Mecha"
-            value={`${GRENADES.mecha.totalS} s desde que empiezas a cargar · nunca menos de ${GRENADES.mecha.minimoS} s tras soltarla`}
-          />
-        ) : null}
-        {weapon.tiro?.ceguera ? (
-          <Stat
-            label="Ceguera"
-            value={`${(weapon.tiro.ceguera.duracionMs / 1000).toFixed(1)} s en ${weapon.tiro.ceguera.nucleoU} u · nada pasadas ${weapon.tiro.ceguera.radioU} u · apartar la vista la reduce, y una pared la corta`}
-          />
-        ) : null}
-        {weapon.tiro?.aturdimiento ? (
-          <Stat
-            label="Aturdimiento"
-            value={`−${Math.round(weapon.tiro.aturdimiento.frenoMax * 100)}% de marcha durante ${(weapon.tiro.aturdimiento.duracionMs / 1000).toFixed(1)} s en ${weapon.tiro.aturdimiento.nucleoU} u · nada pasadas ${weapon.tiro.aturdimiento.radioU} u`}
-          />
-        ) : null}
-        {/* **Y un arma de área dice hasta dónde llega** (vuelta 86). El radio
-            es el número que decide cómo se usa —si cubre un pasillo o una
-            esquina— y no se puede deducir del daño. El chaleco va aquí y no en
-            su fila porque aquí es donde significa algo: una onda no la para. */}
-        {weapon.tiro?.explosion ? (
-          <Stat
-            label="Explosión"
-            value={`${weapon.tiro.explosion.dano} en ${weapon.tiro.explosion.nucleoU} u · nada pasadas ${weapon.tiro.explosion.radioU} u · el chaleco no la para`}
-          />
-        ) : null}
-        {weapon.tiro?.reserva ? (
-          <Stat
-            label={weapon.tiro.granada ? 'Cuántas llevas' : 'Cohetes'}
-            value={weapon.tiro.granada
-              ? `${weapon.tiro.reserva.inicial + weapon.magazine} por vida · no se reponen`
-              : `${weapon.tiro.reserva.inicial} al comprar · hasta ${weapon.tiro.reserva.maxima} · cada cohete que mata repone uno`}
-          />
-        ) : null}
+
+        {/**
+          * **Y lo que sólo tienen algunas va en UNA fila, en flujo normal**
+          * (vuelta 89), no en una fila de la rejilla cada una.
+          *
+          * Esto era un fallo de verdad y llevaba desde la vuelta 85 en pantalla:
+          * `.armoury__stats` declaraba `grid-row: span 5` —las cinco de cuando
+          * todas las armas tenían cinco— y el arco emite 7, el U2 8 y cada
+          * granada 9. Lo que sobra de un `subgrid` no crece: se amontona en la
+          * última pista, así que **cuatro filas se dibujaban una encima de
+          * otra** justo donde acaba la ficha. Medido antes de tocar nada
+          * (`arm89`): Bow 2 solapes, U2 3, Core/Blind/KO 4, las tres con
+          * «Explosión», «Cuántas llevas» y «Escudo · precisión» compartiendo el
+          * mismo `top`.
+          *
+          * Meterlas en flujo normal lo cierra **por construcción** y no por un
+          * número mayor: aquí no hay pistas que agotar, así que añadir mañana
+          * una fila a un arma no puede volver a pisar nada. Y no se pierde la
+          * alineación que importa — las cuatro de arriba y la de abajo siguen
+          * siendo filas de la rejilla, así que CADENCIA, PESO y ESCUDO caen a la
+          * misma altura en las once fichas; lo que no se alinea es justo lo que
+          * no se puede comparar, porque una pistola no tiene mecha.
+          */}
+        <div className="armoury__extras">
+          {/* **Un arma de carga dice las dos puntas** (vuelta 85). Una sola
+              fila diría el daño de un arma que no existe: el arco no pega un
+              número, pega entre dos según cuánto lo tenses. */}
+          {weapon.tiro && !weapon.tiro.granada ? (
+            <Stat label="Cargado" value={damageLine(weaponKey, weapon.tiro.danoMax)} />
+          ) : null}
+          {weapon.tiro?.cargaMs ? (
+            <Stat
+              label={weapon.tiro.granada ? 'Lanzamiento' : 'Carga'}
+              value={weapon.tiro.granada
+                ? `${(weapon.tiro.cargaMs / 1000).toFixed(2)} s al máximo · clic izquierdo lejos, clic derecho corto y a ras de suelo`
+                : `${(weapon.tiro.cargaMs / 1000).toFixed(2)} s al máximo · mantén para tensar, suelta para tirar`}
+            />
+          ) : null}
+          {/* **Y una granada dice su mecha** (vuelta 87), que es lo único suyo
+              que hay que entender antes de tirar la primera: el reloj arranca
+              al empezar a cargar, no al soltar. */}
+          {weapon.tiro?.granada ? (
+            <Stat
+              label="Mecha"
+              value={`${GRENADES.mecha.totalS} s desde que empiezas a cargar · nunca menos de ${GRENADES.mecha.minimoS} s tras soltarla`}
+            />
+          ) : null}
+          {weapon.tiro?.ceguera ? (
+            <Stat
+              label="Ceguera"
+              value={`${(weapon.tiro.ceguera.duracionMs / 1000).toFixed(1)} s en ${weapon.tiro.ceguera.nucleoU} u · nada pasadas ${weapon.tiro.ceguera.radioU} u · apartar la vista la reduce, y una pared la corta`}
+            />
+          ) : null}
+          {weapon.tiro?.aturdimiento ? (
+            <Stat
+              label="Aturdimiento"
+              value={`−${Math.round(weapon.tiro.aturdimiento.frenoMax * 100)}% de marcha durante ${(weapon.tiro.aturdimiento.duracionMs / 1000).toFixed(1)} s en ${weapon.tiro.aturdimiento.nucleoU} u · nada pasadas ${weapon.tiro.aturdimiento.radioU} u`}
+            />
+          ) : null}
+          {/* **Y un arma de área dice hasta dónde llega** (vuelta 86). El radio
+              es el número que decide cómo se usa —si cubre un pasillo o una
+              esquina— y no se puede deducir del daño. El chaleco va aquí y no
+              en su fila porque aquí es donde significa algo: una onda no la
+              para. */}
+          {weapon.tiro?.explosion ? (
+            <Stat
+              label="Explosión"
+              value={`${weapon.tiro.explosion.dano} en ${weapon.tiro.explosion.nucleoU} u · nada pasadas ${weapon.tiro.explosion.radioU} u · el chaleco no la para`}
+            />
+          ) : null}
+          {weapon.tiro?.reserva ? (
+            <Stat
+              label={weapon.tiro.granada ? 'Cuántas llevas' : 'Cohetes'}
+              value={weapon.tiro.granada
+                ? `${weapon.tiro.reserva.inicial + weapon.magazine} por vida · no se reponen`
+                : `${weapon.tiro.reserva.inicial} al comprar · hasta ${weapon.tiro.reserva.maxima} · cada cohete que mata repone uno`}
+            />
+          ) : null}
+        </div>
+
         <Stat
           label="Escudo · precisión"
           value={`absorbe ${Math.round(weapon.shieldAbsorb * 100)}% · objetivo ${Math.round(weapon.precisionTarget * 100)}%`}
@@ -392,7 +437,10 @@ export default function Armoury({ settings, equipped, onChange, onClose, soloFic
               y a ras de suelo.</>}
       </p>
 
-      <div className="armoury__grid">
+      <div
+        className="armoury__grid"
+        style={{ '--armoury-filas': FILAS_DE_FICHA, '--armoury-stats': FILAS_DE_STATS }}
+      >
         {order.map((key) => (
           <WeaponCard
             key={key}

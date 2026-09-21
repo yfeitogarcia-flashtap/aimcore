@@ -1507,7 +1507,9 @@ Botón **Opciones** en la pantalla de inicio y en la de pausa. Los cambios se
 aplican al momento y se guardan en `localStorage`, así que sobreviven a una
 recarga. **Restablecer**, al final del panel, vuelve a los valores de
 `config.js` de golpe. **Se cierra con Escape**, como la armería — y si estás
-reasignando una tecla, Escape cancela esa captura y el panel se queda.
+reasignando una tecla, Escape cancela esa captura y el panel se queda. **Y el
+Escape siguiente te devuelve a la partida**, sin tener que ir a buscar
+«Reanudar» con el ratón.
 
 **Y si tu navegador no deja guardarlos, el panel te lo dice** en vez de callarse:
 suele ser una ventana privada, las cookies de terceros bloqueadas o el navegador
@@ -1556,11 +1558,11 @@ se traduce al nuevo en vez de caer al valor de fábrica.
 | arma | ranura | modo | RPM | cargador | recarga | silenciador | peso | marcha | carácter del retroceso |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | **Pulse** | pistola (**2**) | semi | 500 | 18 | 1.2 s | sí | 1.1 kg | 6.50 u/s | ninguno — se dispara como antes de que hubiera armas |
-| **Rift** | principal (**1**) | auto | 600 | 30 | 2.3 s | sí | 3.6 kg | 5.88 u/s | rifle: subida vertical marcada los primeros ocho disparos, luego deriva a la izquierda |
-| **Volt** | principal (**1**) | auto | 800 | 25 | 1.8 s | sí | 2.6 kg | 6.14 u/s | SMG: patada más inmediata pero la mitad de techo vertical, y más bamboleo lateral que vertical |
-| **Scout** | principal (**1**) | semi | 48 | 10 | 2.6 s | **no** | 3.2 kg | 5.98 u/s | francotirador: una patada sola y grande, 2.4° de golpe |
-| **Bow** | principal (**1**) | **carga** | 80 | 12 | 2.2 s | **no** | 2.8 kg | 6.03 u/s | arco: un empujón corto hacia arriba, lo que sacude una cuerda |
-| **U2** | principal (**1**) | semi | 40 | 1 + reserva | 2.0 s | **no** | 5.4 kg | 5.41 u/s | lanzacohetes: una patada sola y grande, más que la Scout |
+| **Rift** | principal (**1**) | auto | 600 | 30 | 2.3 s | sí | 3.6 kg | 5.41 u/s | rifle: subida vertical marcada los primeros ocho disparos, luego deriva a la izquierda |
+| **Volt** | principal (**1**) | auto | 800 | 25 | 1.8 s | sí | 2.6 kg | 5.86 u/s | SMG: patada más inmediata pero la mitad de techo vertical, y más bamboleo lateral que vertical |
+| **Scout** | principal (**1**) | semi | 48 | 10 | 2.6 s | **no** | 3.2 kg | 5.59 u/s | francotirador: una patada sola y grande, 2.4° de golpe |
+| **Bow** | principal (**1**) | **carga** | 80 | 12 | 2.2 s | **no** | 2.8 kg | 5.77 u/s | arco: un empujón corto hacia arriba, lo que sacude una cuerda |
+| **U2** | principal (**1**) | semi | 40 | 1 + reserva | 2.0 s | **no** | 5.4 kg | 4.88 u/s | lanzacohetes: una patada sola y grande, más que la Scout |
 | **Vanta** | cuchillo (**3**) | — | — | — | — | no | 0.6 kg | 6.50 u/s | cada golpe empuja la cámara: el flojo poco, el fuerte el doble |
 | **Core** | granada (**G**) | **carga** | 50 | 1 + 1 | 1.2 s | **no** | 0.5 kg | 6.50 u/s | el empujón de tirar algo: pequeño y hacia arriba |
 | **Blind** | granada (**G**) | **carga** | 50 | 1 + 1 | 1.2 s | **no** | 0.5 kg | 6.50 u/s | el mismo |
@@ -1742,9 +1744,14 @@ de **ESC** sin salir de la partida.
 ### El peso: lo que cuesta llevar el arma
 
 Desde la vuelta 42 un arma **pesa**, y el peso frena. Hay peso gratis —hasta 1.2
-kg no cuesta nada, y la pistola cae por debajo— y por encima se pierde un 4% de
-marcha por kilo, con un suelo del 75%. Con el rifle vas un 10% más lento que
-quien sólo lleva pistola.
+kg no cuesta nada, y la pistola cae por debajo— y por encima se pierde un **7%**
+de marcha por kilo, con un suelo del 75%. Con el rifle vas un **17%** más lento
+que quien sólo lleva pistola.
+
+**Eran un 4% por kilo hasta la vuelta 89**, y así el arsenal entero cabía en un
+10%: elegir arma no se sentía en las piernas, que es lo único que el peso viene
+a hacer. Hoy la Volt cuesta un 10%, el arco un 11%, la Scout un 14%, la Rift un
+17% y el U2 un 25% — sacar el arma pesada **se paga andando**.
 
 Tres cosas del peso que conviene saber:
 
@@ -1755,7 +1762,11 @@ Tres cosas del peso que conviene saber:
 - **La pistola no cuesta velocidad**, a propósito: la que se lleva siempre no
   puede cobrarte por llevarla. Lo paga la principal, que es la que eliges.
 
-Los números son de partida y se calibran jugando.
+Los números son de partida y se calibran jugando. Lo que **no** se calibra
+bajando el peso gratis es la sensación de ligereza con la pistola en la mano: la
+pistola no paga nada, así que eso sale de la marcha base, de la gravedad y del
+control en el aire, y mover cualquiera de los tres cambia además qué cobertura
+es saltable.
 
 ### La armería (tecla B)
 
@@ -2003,8 +2014,10 @@ Arriba a la izquierda, la **marca de Vektor**: un icono discreto, sin texto, en
 el mismo gris apagado que el contador de FPS de la esquina de enfrente. Es una
 firma, no información — ver *Logotipo*.
 
-**Arriba a la derecha va el dinero**, grande y en el verde de acción, debajo de
-los FPS y del engranaje. Hasta ahora sólo se veía abriendo la tienda, o sea justo
+**Arriba a la derecha va el dinero**, grande y en el verde de acción, y desde la
+vuelta 89 es **lo primero de esa esquina**: los FPS y el engranaje bajan debajo.
+Estaba al revés y jugando una noche entera no se vio — un número pequeño colgado
+de dos rótulos grises se lee como telemetría, no como tu cartera. Hasta ahora sólo se veía abriendo la tienda, o sea justo
 cuando ya es tarde para pensarlo: lo que se compra en una ronda se decide durante
 la anterior. **Sólo sale donde hay tienda** — entrenando, y en un mapa que
 reparte el equipo, no se monta: un `$0` fijo diría que estás arruinado en vez de

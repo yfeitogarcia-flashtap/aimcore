@@ -21,7 +21,7 @@
  * avisos de conexión, las pausas y los números de F3.
  */
 import { masterGain, playEquip, playRoundTick } from '../src/audio/sfx.js'
-import { COLORS, CROSSHAIR, DUEL_SCENARIOS, ECONOMY, NET, ROUNDS, TARGET, TEAMS, WEAPONS, catalogoDeTienda } from '../src/config.js'
+import { COLORS, CROSSHAIR, DUEL_SCENARIOS, ECONOMY, NET, RESUME_KEY_DELAY_MS, ROUNDS, TARGET, TEAMS, WEAPONS, catalogoDeTienda } from '../src/config.js'
 import { Engine } from '../src/game/engine.js'
 import { Avatar } from '../src/game/avatar.js'
 import { hasLineOfSight } from '../src/game/sight.js'
@@ -665,14 +665,46 @@ addEventListener('blur', () => {
  * mando de depuración se hacen con el ratón suelto, y capturarlo al tocarlos
  * dejaría el enlace a medias y la partida empezada.
  */
+/** Cuándo se soltó el ratón por última vez. Ver el manejador de ESC de abajo. */
+let soltadoEn = 0
+
 addEventListener('click', (e) => {
   if (document.pointerLockElement === lienzo) return
   if (e.target.closest('.control')) return
+  soltadoEn = 0
   // **Capturar es cosa del motor** desde la vuelta 56: además del `pointerLock`
   // arranca el contexto de audio —que no existe sin un gesto y éste es el único
   // que hay seguro—, pide las muestras de disparo y engancha el listener
   // espacial a la cámara. Es idempotente, y Chrome puede rechazar la captura
   // justo después de un Escape: no es un error del que haya que enterarse.
+  motor.requestLock()
+})
+
+/**
+ * **Y ESC devuelve a la partida** (vuelta 89), que es la otra mitad de lo que
+ * la 88 dejó a medias: aprendió a cerrar el panel de opciones y ahí se paró,
+ * así que con el menú delante la única forma de volver era ir a buscar el
+ * lienzo con el ratón.
+ *
+ * Aquí no hay pausa que levantar —en el duelo el mundo sigue corriendo con el
+ * menú puesto (vuelta 60)—, así que «reanudar» es exactamente lo que hace el
+ * clic: volver a capturar. Cuatro guardas, y cada una tapa un sitio donde esa
+ * tecla ya significa algo:
+ *
+ * - **Jugando, no**: ahí ESC es del navegador y es cómo se abre el menú.
+ * - **Con la tienda abierta, no**: ESC la cierra (su manejador está más abajo).
+ * - **Con un panel del juego abierto, no**: ESC lo cierra (`Options`).
+ * - **Y no antes de `RESUME_KEY_DELAY_MS`** desde que se soltó el ratón, que es
+ *   lo que impide que el ESC que abre el menú lo cierre de rebote —el orden
+ *   entre el `pointerlockchange` del navegador y este `keydown` no está
+ *   garantizado— y de paso espera a que Chrome vuelva a admitir la captura.
+ */
+addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return
+  if (document.pointerLockElement === lienzo) return
+  if (!tienda.hidden || capa.hayPanel()) return
+  if (performance.now() - soltadoEn < RESUME_KEY_DELAY_MS) return
+  e.preventDefault()
   motor.requestLock()
 })
 
@@ -692,6 +724,7 @@ addEventListener('keydown', (e) => {
 // con su instante real. Esta página ya no toca el gatillo.
 document.addEventListener('pointerlockchange', () => {
   const capturado = document.pointerLockElement === lienzo
+  if (!capturado) soltadoEn = performance.now()
   // **Soltar el ratón ya no pide pausa** (vuelta 60). Lo hizo desde la 53, y la
   // idea era buena —que el mundo no siguiera corriendo con el menú puesto— pero
   // el precio se veía jugando: abrir el menú para mirar el código, copiar el
