@@ -5,6 +5,7 @@ export default {
   card: {"trains":"Sostener y cruzar un carril largo, pre-apuntar un paso obligado y pasar de largo a corto en la misma sesión.","risk":"El más cargado de geometría: hay mucho que leer antes de moverse con soltura.","replay":"Alta. Tres zonas que se pueden entrenar por separado."},
   room: {"width":40,"depth":40,"height":10},
   spawn: {"x":0,"z":17.5},
+  fisica: {"gravity":30,"jumpSpeed":8.67,"airStrafeMaxSpeed":9.5},
   boxes: [
     {"x":-8,"z":-10.5,"w":1.2,"d":9,"kind":"alta"},
     {"x":-8,"z":0.5,"w":1.2,"d":10.5,"kind":"alta"},
@@ -31,6 +32,7 @@ export default {
     {"x":16,"z":-12,"w":3,"d":6,"fromZ":-6,"toZ":-12,"top":"plataforma"},
     {"x":-19,"z":-12,"w":3,"d":6,"fromZ":-6,"toZ":-12,"top":"plataforma"},
   ],
+  teletransportes: [],
   spawnZone: [
     {"x":-20,"z":15.5,"w":40,"d":4.5},
   ],
