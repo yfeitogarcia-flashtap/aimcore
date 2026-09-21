@@ -15,10 +15,12 @@
  */
 
 import mapa_largoYPuerta from './largoYPuerta.js'
+import mapa_mapa_nuevo from './mapa-nuevo.js'
 import mapa_test_map_190926 from './test-map-190926.js'
 
 /** @type {Record<string, object>} */
 export const MAPAS_DE_FICHERO = {
   'largoYPuerta': mapa_largoYPuerta,
+  'mapa-nuevo': mapa_mapa_nuevo,
   'test-map-190926': mapa_test_map_190926,
 }

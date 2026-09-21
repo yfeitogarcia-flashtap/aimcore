@@ -1,0 +1,6 @@
+{
+  "clave": "mapa-nuevo",
+  "versiones": [
+    {"instante":"2026-09-21T05:35:05.548Z","comentario":"prueba dispositivos 21/09 - 7:35am","mapa":{"clave":"mapa-nuevo","label":"Mapa nuevo","room":{"width":40,"depth":40,"height":10},"spawn":{"x":0,"z":16},"boxes":[{"x":-8.5,"z":-9,"w":4,"d":4,"kind":0.2,"superficie":{"tipo":"rebote","fuerza":14}},{"x":-0.5,"z":-7.5,"w":4,"d":4,"kind":0.2,"superficie":{"tipo":"velocidad","fuerza":12,"rumbo":0,"salto":4}},{"x":-1,"z":0.5,"w":4,"d":4,"kind":0.2,"superficie":{"tipo":"hielo","fuerza":1.6}}],"ramps":[],"prismas":[],"tubos":[],"ventiladores":[{"x":-10.5,"z":-1.5,"w":6,"d":6,"base":0,"alto":10,"fuerza":42}],"tirolinas":[{"desde":{"x":-6.5,"y":7,"z":-10},"hasta":{"x":9.5,"y":2.5,"z":-10},"velocidad":14}],"spawnZone":[],"teletransportes":[{"x":9,"z":5,"w":4,"d":4,"destino":{"x":9.5,"z":-2,"yaw":0}}],"objectiveSites":[],"pickups":[],"routes":[]}}
+  ]
+}
