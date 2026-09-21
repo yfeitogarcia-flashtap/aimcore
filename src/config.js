@@ -189,6 +189,140 @@ export const SCOPE = {
 }
 
 /**
+ * **Los proyectiles: lo primero de Vektor que tarda en llegar** (vuelta 85).
+ *
+ * Hasta aquí **todo el juego era impacto instantáneo**. Una bala se resuelve
+ * con un rayo en el mismo paso en que sale: por eso el netcode del duelo pudo
+ * construirse alrededor de «rebobino al instante que el tirador tenía en
+ * pantalla y contesto» (vuelta 46), y por eso no había nada en el mundo que
+ * durase entre dos pasos. Un arco y un cohete rompen eso, y por eso esto es
+ * una pieza de ingeniería nueva y no una ficha más del catálogo.
+ *
+ * Tres reglas, y las tres salen de lo que el juego ya es:
+ *
+ * - **La trayectoria está en forma cerrada**, `p(t) = p0 + v0·t + ½·a·t²`, y
+ *   no se integra paso a paso. Es la misma decisión que la parábola del salto
+ *   (vuelta 27) y por la misma razón: integrar por Euler acumula error y ese
+ *   error va con el tamaño del paso. Aquí además es lo que permite **dibujar
+ *   la curva antes de disparar** sin simularla — el láser del arco evalúa la
+ *   misma fórmula en veinte puntos, así que lo que se ve y lo que pasa no
+ *   pueden discrepar.
+ * - **La gravedad de un proyectil la declara el arma, no el mapa.** Es la
+ *   excepción deliberada a la física de la vuelta 72, y no es un olvido: un
+ *   mapa decide cuánto pesas tú, y eso es una decisión sobre tu cuerpo. Si
+ *   decidiera además cómo cae tu flecha, **aprender el arco en un mapa no
+ *   serviría en otro**, y la curva de un arco es exactamente lo que hay que
+ *   aprender.
+ * - **Y nada de esto viaja por la red.** Lo que viaja es el lanzamiento —de
+ *   dónde, hacia dónde y con cuánta fuerza—, y de ahí los dos extremos derivan
+ *   la misma trayectoria porque dan los mismos pasos de 60 Hz contra el mismo
+ *   mapa. Es el patrón de la física de la vuelta 72 aplicado a algo que se
+ *   mueve solo.
+ */
+export const PROJECTILES = {
+  /**
+   * Cuántos pueden estar volando a la vez **por jugador**. Un arco dispara uno
+   * cada 1.1 s y el más lento tarda 1.3 s en cruzar el mapa, así que con ocho
+   * no se llena ni disparando a ciegas; el tope existe para que un fichero roto
+   * o un cliente que mienta no pueda sembrar el mundo.
+   */
+  pool: 8,
+  /**
+   * **Cuánto vive uno que no da en nada.** No puede pasar —la sala es una caja
+   * cerrada y `cortarSegmento` siempre encuentra su pared— pero un tope es lo
+   * que separa un fallo de una fuga: sin él, un proyectil con velocidad cero se
+   * quedaría en el pool para siempre.
+   */
+  vidaMaxMs: 9000,
+  /**
+   * **El radio con el que un proyectil toca un cuerpo**, en unidades. No es el
+   * tamaño del dibujo: es cuánto perdona. A cero habría que acertar con una
+   * recta de grosor nulo contra una silueta que en la cabeza mide 0.137
+   * (vuelta 65), y eso con una parábola y tiempo de vuelo no es puntería, es
+   * lotería. 0.10 es la mitad del ancho de una muñeca.
+   */
+  radio: 0.1,
+  /**
+   * **Lo que se dibuja de uno que vuela.**
+   *
+   * `largo` es el de un proyectil flojo y `porFuerza` lo que crece con la
+   * carga: una flecha a tope se ve **casi el doble de larga**, y eso no es
+   * decoración — es la mitad de que un arma con tiempo de vuelo sea justa.
+   * Quien la ve venir tiene que poder distinguir de un vistazo la que le va a
+   * quitar media vida de la que lo mata, y a veinte unidades el único canal que
+   * queda es la silueta (que es la regla de la vuelta 38: sin luces, lo único
+   * que distingue una cosa de otra es su forma).
+   */
+  estela: { largo: 0.9, radio: 0.04, porFuerza: 0.8 },
+}
+
+/**
+ * **El láser que dibuja la curva antes de soltarla** (vuelta 85).
+ *
+ * Es la convención de la vuelta 78 —«todo lo configurable se coloca viendo el
+ * efecto»— aplicada por primera vez **dentro de la partida** y no en el editor.
+ * Un arma de tiro curvo sin la curva delante es un arma que se aprende
+ * fallando, y el mismo argumento que hizo que una salida de duelo se arrastre
+ * en vez de escribirse vale aquí: el número —45 grados, 32 u/s— no dice *dónde
+ * cae* hasta que se prueba.
+ *
+ * **Sale de la misma fórmula que el vuelo**, evaluada en `puntos` instantes. No
+ * es una aproximación de la trayectoria: es la trayectoria, muestreada — así
+ * que el láser no puede mentir por mucho que se toque el arma.
+ */
+export const TRAJECTORY = {
+  /**
+   * Cuántos puntos tiene la curva. Veinticuatro segmentos es lo que hace falta
+   * para que una parábola larga no se vea como una línea quebrada; por encima
+   * no se nota y es geometría que se reescribe sesenta veces por segundo.
+   */
+  puntos: 24,
+  /**
+   * **Hasta dónde se dibuja**: la curva se corta donde el proyectil chocaría,
+   * y este es el tope por si no choca con nada dentro de la sala. En segundos
+   * de vuelo, no en unidades: lo que importa es cuánto de la trayectoria se
+   * enseña, y eso es tiempo.
+   */
+  segundosMax: 2.6,
+  /** Grosor del punto de caída, en unidades. Es donde va a aterrizar. */
+  radioDeCaida: 0.22,
+  /**
+   * **De dónde parece salir la curva, y en cuántos puntos deja de importar**
+   * (vuelta 85).
+   *
+   * El problema: una curva que nace exactamente en el punto de vista **se
+   * proyecta de punta**. En pantalla no es una curva, es un segmento vertical
+   * de treinta píxeles bajo la cruz de la mira, porque está entera en el plano
+   * que contiene la dirección de la vista. Se vio mirando una captura, que es
+   * lo único que lo enseña.
+   *
+   * Lo que **no** se hizo, habiéndolo probado: sacar el **proyectil** de donde
+   * estaría el arma. Con él desplazado 22 cm a la derecha, apuntar al centro de
+   * un cuerpo a doce unidades **falla** —la cabeza mide 0.137 de radio (vuelta
+   * 65), o sea la mitad del desplazamiento— y lo cazó `red85` con el rival a la
+   * vista y la flecha pasando de largo. Un arma que no acierta donde apunta la
+   * mira es un fallo mayor que un dibujo que arranca torcido.
+   *
+   * Y lo que **sí**: el proyectil sale del ojo, como el rayo de cualquier
+   * disparo, y **la curva arranca en la boca del arma y converge a la de
+   * verdad** en `convergeEn` puntos. Así el arranque se ve —sale de abajo a la
+   * derecha, que es de donde saldría— y de ahí en adelante, incluido **el punto
+   * de caída, que es lo que de verdad se apunta**, lo que se dibuja es la
+   * trayectoria exacta. Es la regla del fogonazo de la vuelta 40 —mover el
+   * dibujo, no la bala— con la mitad que allí no hizo falta: volver.
+   */
+  desdeArma: { lado: 0.26, abajo: 0.22, delante: 0.1 },
+  convergeEn: 7,
+  /**
+   * **La luz que sube por el láser mientras se carga.** Es lo que convierte el
+   * láser en un indicador de potencia sin añadir una barra al HUD: sube desde
+   * el jugador hasta la punta, y llegar arriba **es** la señal de carga
+   * completa. `colaPuntos` es lo largo que es el trazo encendido.
+   */
+  colaPuntos: 5,
+}
+
+/**
  * **El destello de un golpe de cuchillo** (vuelta 71). Lo dibuja
  * `src/game/slash.js`; aquí están los números.
  *
@@ -828,6 +962,125 @@ export const WEAPONS = {
      * la ventana, el segundo empuja como el primero.
      */
     recoilLoopFrom: 2,
+  },
+  /**
+   * **Bow: el arco** (vuelta 85). La primera arma de Vektor con **proyectil de
+   * verdad**, y por eso su bloque propio es `tiro` y no `melee` ni `scope`:
+   * lo que convierte un arma en arma de proyectil es tenerlo, igual que lo que
+   * convierte un arma en cuerpo a cuerpo es tener `melee` (vuelta 71). El
+   * motor mira el dato, no el nombre.
+   *
+   * **Se dispara por carga**: se mantiene el gatillo y se suelta. Y las dos
+   * decisiones que había que tomar están tomadas así:
+   *
+   * **Apuntar es la dirección y cargar es la velocidad de salida.** Las dos
+   * cosas hacen la misma parábola y ninguna es un modificador de la otra:
+   * mirando más arriba la flecha llega más lejos (hasta los 45°, que es lo que
+   * dice la física y no una regla), y cargando más se estira y se aplana. Se
+   * eligió así porque es lo único que deja que **el láser no mienta**: si la
+   * carga cambiara el daño y no la curva, el dibujo sería el mismo para un tiro
+   * flojo y uno fuerte, y entonces lo que enseña no sería lo que va a pasar.
+   * El daño sube con la carga **porque sube la velocidad**, que es lo que
+   * pasaría de verdad.
+   *
+   * **Y sí hay techo de carga** (`cargaMs`). Sin él no habría forma de saber
+   * cuándo se ha terminado de tensar, y mantener el botón un segundo de más
+   * sería una ventaja sin coste. Con techo, llenarse **es** una señal: la luz
+   * que sube por el láser llega a la punta y ahí se queda, y el destello de
+   * salida a carga máxima confirma lo que ya se había visto.
+   */
+  'bow': {
+    label: 'Bow',
+    character: 'arco',
+    slot: 'primary',
+    /**
+     * **El cuarto modo.** `auto` suelta mientras se aprieta, `semi` uno por
+     * clic, `melee` es el cuchillo, y `carga` es éste: **el disparo ocurre al
+     * soltar**. No es `semi` con un adorno — en `semi` la pulsación *es* el
+     * disparo, y aquí la pulsación es el principio de otra cosa.
+     */
+    mode: 'carga',
+    /**
+     * 55 «RPM» = 1090 ms entre flechas, y eso **no es la carga**: es lo que
+     * cuesta encajar la siguiente. Cargar del todo son 750, así que un tiro a
+     * tope sale cada 1.1 s y uno instantáneo también — el arco no premia
+     * disparar flojo y rápido, que es lo que lo convertiría en una pistola.
+     */
+    rpm: 55,
+    /** Un carcaj, no un cargador. Y sacar doce flechas cuesta lo suyo. */
+    magazine: 12,
+    reloadMs: 2200,
+    /**
+     * **No admite silenciador, y no por falta de arte.** Un arco ya es el arma
+     * silenciosa: ponerle un tubo sería quitarle lo que es. Eso además le deja
+     * el clic derecho libre, como a la Scout.
+     */
+    supportsSuppressor: false,
+    /** Acertar con una parábola y tiempo de vuelo es otra cosa: el listón baja. */
+    precisionTarget: 0.45,
+    /** Un chaleco contra una flecha: la mitad larga. */
+    shieldAbsorb: 0.4,
+    /**
+     * 2.8 kg → 6.03 u/s. Entre la Volt y la Scout: es un arma de moverse y
+     * buscar el ángulo, no de aguantar un pasillo.
+     */
+    weight: 2.8,
+    /**
+     * El empuje de la cámara al soltar la cuerda. Pequeño y hacia arriba: lo
+     * que sacude un arco es la cuerda, no una explosión.
+     */
+    recoil: [
+      [0.7, 0.1],
+      [0.6, -0.08],
+    ],
+    recoilLoopFrom: 1,
+    /**
+     * **Lo que hace el arco.** Que exista este bloque es lo que dice que esta
+     * arma lanza algo en vez de resolver un rayo.
+     */
+    tiro: {
+      /** El proyectil que sale, como clase: lo que decide qué se dibuja y qué suena. */
+      proyectil: 'flecha',
+      /**
+       * **Cuánto se tarda en tensar del todo**, en ms de **mundo**. Un arco
+       * real se tensa rápido; 750 ms es lo que hace falta para que la decisión
+       * de soltar ya o esperar sea una decisión, y no tanto como para que
+       * cargar sea comprometerse a morir.
+       */
+      cargaMs: 750,
+      /**
+       * **La velocidad de salida, de vacío a lleno.** Los dos números salen de
+       * una cuenta con la gravedad de abajo, disparando **horizontal** desde la
+       * altura de ojos (1.7): sin cargar, la flecha recorre **15.2 u** antes de
+       * tocar el suelo; cargada del todo, **30.3 u**, que es cruzar el Plano A
+       * de punta a punta. O sea: el tiro rápido es de cerca y el cargado es de
+       * mapa entero, sin que haya que escribir esa regla en ninguna parte.
+       */
+      vMin: 26,
+      vMax: 52,
+      /**
+       * **La gravedad de la flecha, y la declara el arma** (ver `PROJECTILES`).
+       * Es un tercio de la del jugador a propósito: con los 30 de `MOVEMENT` la
+       * curva es un desplome y el arco se convierte en un arma de tres metros;
+       * con 10 la caída se ve, se aprende y se compensa mirando más arriba, que
+       * es lo que tiene que ser una curva.
+       */
+      gravedad: 10,
+      /**
+       * **Lo que vale una flecha al torso**, de vacío a lleno. 45 es lo que se
+       * pidió para el tiro instantáneo —dos y media para una vida— y 110 es lo
+       * mismo que la Scout: **mata de un tiro a quien no lleve chaleco**, dos
+       * con él. Que el máximo iguale al rifle de francotirador no es casualidad:
+       * son las dos armas que matan de una, y la diferencia es que a ésta hay
+       * que cargarla y adelantar a un blanco que se mueve.
+       *
+       * A la **cabeza** mata siempre, cargada o no, y eso sale solo: la cabeza
+       * vale 100 de 100 y **lo que ya vale una vida entera no se escala**
+       * (vuelta 70). Con casco hacen falta dos, que es la regla de siempre.
+       */
+      danoMin: 45,
+      danoMax: 110,
+    },
   },
   /**
    * **Vanta: el cuchillo** (vuelta 71). La tercera ranura, la que llevaba
@@ -2335,6 +2588,23 @@ export const SURFACES = {
      *  plataforma de velocidad pero más estrecho — ahí se lanza al vacío y aquí
      *  se va por un raíl. */
     tirolina: { r0: 1.2, r1: 0.5, avanza: 4.5 },
+    /**
+     * **La cuerda de un arco soltada a tope** (vuelta 85). Se pidió «especial
+     * pero sutil», y sutil aquí quiere decir **pequeño y corto**: sale delante
+     * del arma, se abre un palmo y se apaga. Los otros gestos dicen «el mapa te
+     * ha hecho algo» y se ven desde lejos; éste dice «esa flecha iba llena», y
+     * eso sólo tiene que leerlo quien la tira. Lo que lo lee desde fuera es
+     * **la propia flecha**, que va más larga y más clara.
+     *
+     * Y `adelanteU` es lo que lo hace sutil de verdad: **no sale pegado a la
+     * cara**. Medio metro de radio a treinta centímetros del ojo ocupa la
+     * pantalla entera —se vio mirando una captura, no leyendo el código— así
+     * que sale a dos metros y pico, que es donde medio metro **mide** medio
+     * metro. Es la lección de la vuelta 40 con el fogonazo del muñeco, por la
+     * otra punta: allí el problema era que estaba dentro de algo, aquí que
+     * estaba dentro del ojo.
+     */
+    arcoLleno: { r0: 0.1, r1: 0.5, avanza: 1.4, adelanteU: 2.4 },
   },
 }
 

@@ -65,10 +65,10 @@ function speedCost(weight) {
  * `zoneDamage`, que es **la misma función que resuelve el disparo**. Un segundo
  * cálculo aquí es un panel que promete un número y unas balas que quitan otro.
  */
-function damageLine(weaponKey) {
+function damageLine(weaponKey, danoDeTorso = 0) {
   return TARGET_TYPES.hitbox.parts
     .map((part) => {
-      const d = zoneDamage(part.zone, weaponKey)
+      const d = zoneDamage(part.zone, weaponKey, danoDeTorso)
       // Sin decimales cuando son redondos: «torso 110», no «torso 110.0».
       const n = Math.round(d * 10) / 10
       return `${ZONE_LABELS[part.zone] ?? part.zone} ${n}`
@@ -262,8 +262,24 @@ function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip,
           label="Daño"
           value={weapon.melee
             ? `flojo ${weapon.melee.luz.dano} · fuerte ${weapon.melee.fuerte.dano} · espalda: mata`
-            : damageLine(weaponKey)}
+            : weapon.tiro
+              ? `sin cargar · ${damageLine(weaponKey, weapon.tiro.danoMin)}`
+              : damageLine(weaponKey)}
         />
+        {/* **Y un arma de carga dice las dos puntas** (vuelta 85). Una sola
+            fila diría el daño de un arma que no existe: el arco **no pega un
+            número**, pega entre dos según cuánto lo tenses, y ésa es la
+            decisión que se toma con él en la mano. Sale de `zoneDamage`
+            también, que es la función que lo resuelve. */}
+        {weapon.tiro ? (
+          <Stat label="Cargado" value={damageLine(weaponKey, weapon.tiro.danoMax)} />
+        ) : null}
+        {weapon.tiro ? (
+          <Stat
+            label="Carga"
+            value={`${(weapon.tiro.cargaMs / 1000).toFixed(2)} s al máximo · mantén para tensar, suelta para tirar`}
+          />
+        ) : null}
         <Stat
           label="Escudo · precisión"
           value={`absorbe ${Math.round(weapon.shieldAbsorb * 100)}% · objetivo ${Math.round(weapon.precisionTarget * 100)}%`}

@@ -566,8 +566,23 @@ export function aimPoint(body, factor, out = _toPlayer) {
  * Sin `weaponKey`, o con un arma que no declara el campo, vale 1: las tres de
  * siempre no cambian ni un punto.
  */
-export function zoneDamage(zone, weaponKey = null) {
+export function zoneDamage(zone, weaponKey = null, danoDeTorso = 0) {
   const base = ZONES[zone]?.damage ?? 0
   if (base >= TARGET.maxHealth) return base
-  return base * (WEAPONS[weaponKey]?.damageScale ?? 1)
+  /**
+   * **Y desde la vuelta 85 el número puede venir del proyectil y no del arma.**
+   * `damageScale` es fijo por arma, y eso vale mientras una bala de un arma
+   * valga siempre lo mismo. Un arco no: una flecha a medio cargar y otra a tope
+   * salen de la misma arma y no pesan igual, así que **el número viaja con lo
+   * que se lanzó** y aquí sólo se convierte a la escala de siempre.
+   *
+   * Lo que no cambia es la **forma** del daño: la zona sigue mandando, así que
+   * una flecha floja a las piernas sigue valiendo dos tercios de una al torso.
+   * Y la cabeza sigue sin escalarse, que es la línea de arriba: **lo que ya
+   * vale una vida entera no se escala**, venga de donde venga el número.
+   */
+  const escala = danoDeTorso > 0
+    ? danoDeTorso / (ZONES.torso?.damage || 1)
+    : (WEAPONS[weaponKey]?.damageScale ?? 1)
+  return base * escala
 }

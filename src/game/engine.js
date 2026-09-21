@@ -13,7 +13,7 @@
 
 import * as THREE from 'three'
 import { CSS3DRenderer } from 'three/examples/jsm/renderers/CSS3DRenderer.js'
-import { ACCURACY, ACTION_PANEL, AVATAR, CAMERA, COVER, EDITOR, FOOTSTEPS, FRAME_LIMITS, HELP, IMPACTS, LOOK, MELEE_WEAPON, MOVEMENT, NET, OBJECTIVE, PLAYER, RECOIL_RESET_MS, RENDER, SCOPE, SECONDARY_WEAPON, SESSION_DURATION_S, SESSION_DURATIONS, SESSION_MODES, SIM, SIM_STEP_MS, SURFACES, TARGET, TEAMS, WEAPONS, weaponSpeedFactor } from '../config.js'
+import { ACCURACY, ACTION_PANEL, AVATAR, CAMERA, COVER, EDITOR, FOOTSTEPS, FRAME_LIMITS, HELP, IMPACTS, LOOK, MELEE_WEAPON, MOVEMENT, NET, OBJECTIVE, PLAYER, PROJECTILES, RECOIL_RESET_MS, RENDER, SCOPE, SECONDARY_WEAPON, SESSION_DURATION_S, SESSION_DURATIONS, SESSION_MODES, SIM, SIM_STEP_MS, SURFACES, TARGET, TEAMS, TRAJECTORY, WEAPONS, weaponSpeedFactor } from '../config.js'
 import { createScene } from './scene.js'
 import { Scenario } from './scenario.js'
 import { Scope } from './scope.js'
@@ -24,7 +24,7 @@ import { createSceneTransition } from './transition.js'
 import { LookControls } from './lookControls.js'
 import { MovementController } from './movement.js'
 import { TargetManager } from './targets.js'
-import { initAudio, playDamage, playDevice, playFootstep, playHeal, playHelmetCrack, playHit, playKill, playLanding, playMelee, playObjectiveDefused, playObjectiveExplosion, playShieldCharge, playUiConfirm } from '../audio/sfx.js'
+import { initAudio, playBow, playDamage, playDevice, playFootstep, playHeal, playHelmetCrack, playHit, playKill, playLanding, playMelee, playObjectiveDefused, playObjectiveExplosion, playShieldCharge, playUiConfirm } from '../audio/sfx.js'
 import { loadWeaponSamples, playDrySound, playWeaponReload, playWeaponShot } from '../audio/samples.js'
 import { attachListener, createEmitter, detachListener, setSpatialEnabled } from '../audio/spatial.js'
 import { ActionPanel } from './actionPanel.js'
@@ -34,6 +34,9 @@ import { DummyMarkers, facingDesdeCamara } from './markers.js'
 import { MuzzleFlash } from './muzzleFlash.js'
 import { Dispositivos } from './dispositivos.js'
 import { Impacts } from './impacts.js'
+import { Proyectiles, lanzamientoDeArma } from './proyectiles.js'
+import { Trayectoria } from './trayectoria.js'
+import { VueloDeProyectiles } from './vuelo.js'
 import { SpawnCone } from './spawnCone.js'
 import { PickupField } from './pickups.js'
 import { PlayerStatus, esPorLaEspalda, hitPlayer, playerBody } from './player.js'
@@ -68,6 +71,14 @@ const _bearingForward = new THREE.Vector3()
 const _impacto = { punto: new THREE.Vector3(), normal: new THREE.Vector3(), distancia: 0 }
 const _normales = new THREE.Matrix3()
 const _dir = new THREE.Vector3()
+/** Temporales del vuelo de un proyectil: el bucle caliente no asigna. */
+const _punto = new THREE.Vector3()
+const _origenRayo = new THREE.Vector3()
+const _dirRayo = new THREE.Vector3()
+const _golpeDeProyectil = { t: 0, victima: null, zona: null }
+const _velSalida = { x: 0, y: 0, z: 0 }
+const _desvio = { x: 0, y: 0, z: 0 }
+const _lanzamiento = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, g: 0, tipo: null, fuerza: 0, intensidad: 0 }
 
 /**
  * **La fase de un rival real, que hoy no existe** (vuelta 56). `markers.js`
@@ -279,6 +290,22 @@ export class Engine {
      * que sale igual entrenando y en el duelo — la convención de la 63.
      */
     this.dispositivos = new Dispositivos(this.scene)
+    /**
+     * **Lo que vuela y tarda en llegar** (vuelta 85). El modelo va aquí y no en
+     * el arma: un proyectil sobrevive al arma que lo lanzó —y al jugador, que
+     * es la mitad de lo que hace interesante un cohete— así que su dueño es el
+     * mundo. Las dos piezas de dibujo son suyas y salen en los dos modos, que
+     * es la convención de la vuelta 63.
+     */
+    this.proyectiles = new Proyectiles()
+    this.vuelo = new VueloDeProyectiles(this.scene)
+    this.trayectoria = new Trayectoria(this.scene)
+    /**
+     * **La carga del arma de tiro curvo**, en tiempo de **mundo**: en pausa un
+     * arco a medio tensar se queda a medio tensar. `-Infinity` es «no se está
+     * cargando», como `_jumpPressedAt` en el movimiento (vuelta 68).
+     */
+    this._cargaDesde = -Infinity
     /**
      * Emisor para la voz de un dispositivo, **con su propia curva**. Se coloca
      * por uso, así que sirve para el tuyo y para el que use un rival a doce
@@ -597,6 +624,34 @@ export class Engine {
      * página ya hubiera puesto —por eso se asigna después de ella—, que es la
      * forma de no pelearse por un callback que usan los dos.
      */
+    /**
+     * **Y un proyectil del rival se pone a volar aquí** (vuelta 85). Se
+     * encadena con lo que la página hubiera puesto, que es la forma de no
+     * pelearse por un callback que usan dos (vuelta 67).
+     *
+     * `adelantoS` es lo que el mensaje ha tardado en llegar, y se gasta
+     * **avanzando el vuelo** en vez de arrancándolo desde cero: si no, un
+     * cohete se dibujaría saliendo de donde el rival estaba hace 25 ms e iría
+     * por detrás de la realidad todo el trayecto. Es la misma cuenta que hace
+     * `poseDelRival` con el reloj de las fotos.
+     */
+    const suyoProyectil = cliente.onProyectil
+    cliente.onProyectil = (m, adelantoS) => {
+      suyoProyectil?.(m, adelantoS)
+      const i = this.proyectiles.lanzar({
+        tipo: m.k,
+        dueno: m.de ?? 'rival',
+        x: m.x, y: m.y, z: m.z,
+        vx: m.vx, vy: m.vy, vz: m.vz,
+        g: m.g,
+        // **El daño no viaja**, y eso no es un olvido: quién recibe cuánto lo
+        // decide el servidor (vuelta 56). Esto es un dibujo.
+        fuerza: 0,
+        intensidad: m.i ?? 1,
+      })
+      if (i && adelantoS > 0) this.proyectiles.adelantar(i, adelantoS)
+    }
+
     const suyo = cliente.onBienvenida
     cliente.onBienvenida = (m) => {
       suyo?.(m)
@@ -793,6 +848,8 @@ export class Engine {
     this.muzzleFlash.dispose()
     this.impacts.dispose()
     this.dispositivos.dispose()
+    this.vuelo.dispose()
+    this.trayectoria.dispose()
     this.spawnCone.dispose()
     this.pickups.dispose()
     this.actionPanel.dispose()
@@ -1542,11 +1599,25 @@ export class Engine {
       if (!this.reloading) this._showHelp('Pulsa R para recargar')
       return
     }
+    /**
+     * **Con un arma de tiro curvo la pulsación no dispara: empieza a tensar**
+     * (vuelta 85). Es lo que hace de `carga` un modo y no un `semi` con un
+     * adorno: en `semi` la pulsación **es** el disparo, y aquí es el principio
+     * de otra cosa que puede durar tres cuartos de segundo y que se puede
+     * abortar. Lo que dispara es soltar, en `_releaseTrigger`.
+     */
+    if (this.armaDeTiro) {
+      this._empezarCarga(now)
+      return
+    }
     this._tryShoot(now, ts)
   }
 
   _onMouseUp(event) {
     if (!this._isBind('shoot', event)) return
+    // **Soltar el botón es lo que dispara un arma de carga** (vuelta 85), y va
+    // antes de `_releaseTrigger`, que es quien aborta lo que quede tensado.
+    if (this.cargando && !this._triggerConsumedByPanel) this._soltarCarga(this.gameTime)
     this._releaseTrigger()
   }
 
@@ -2390,6 +2461,16 @@ export class Engine {
 
   /** Suelta el gatillo y deja el patrón de retroceso listo para otra ráfaga. */
   _releaseTrigger() {
+    /**
+     * **Y aquí una carga se aborta, nunca se dispara** (vuelta 85). Por este
+     * método pasan **todas** las formas de soltar el gatillo que no son soltar
+     * el botón —perder el foco, pausar, morir, cambiar de arma— y en las cuatro
+     * lo correcto es que la flecha no salga: soltar el ratón para abrir el menú
+     * no puede disparar, y guardarse un arco tensado y sacarlo después sería
+     * una flecha que sale sola. Disparar es cosa de `_onMouseUp`, que es el
+     * único que sabe que el gesto ha terminado de verdad.
+     */
+    this._cargaDesde = -Infinity
     this._triggerHeld = false
     this._triggerConsumedByPanel = false
     this._sprayIndex = 0
@@ -2875,6 +2956,219 @@ export class Engine {
     this.callbacks.onShot?.(hit !== null)
   }
 
+
+  /**
+   * **El arma que llevas, ¿lanza algo?** (vuelta 85). Lo dice el dato y no el
+   * nombre ni la ranura, igual que `melee` decide que un arma es un cuchillo.
+   */
+  get armaDeTiro() {
+    return this.weapon?.tiro ?? null
+  }
+
+  /** ¿Se está tensando ahora mismo? */
+  get cargando() {
+    return Number.isFinite(this._cargaDesde)
+  }
+
+  /**
+   * **Cuánto lleva cargado, de 0 a 1.** Va con el **reloj del mundo**
+   * (`gameTime`), como todo lo temporizado del motor desde la vuelta 42: en
+   * pausa no sube, que es lo que impide cargar un arco desde el menú.
+   */
+  get cargaActual() {
+    const tiro = this.armaDeTiro
+    if (!tiro || !this.cargando) return 0
+    const k = (this.gameTime - this._cargaDesde) / tiro.cargaMs
+    return k < 0 ? 0 : k > 1 ? 1 : k
+  }
+
+  /** Empieza a tensar. Una sola vez por pulsación: es un flanco. */
+  _empezarCarga(now) {
+    if (this.cargando) return
+    /**
+     * **No se tensa antes de que el arma esté lista**, y eso es lo que hace que
+     * soltar dispare **siempre**. La alternativa —dejar tensar durante el
+     * enfriamiento y comerse la flecha al soltar— es un arma que a veces no
+     * hace nada sin decir por qué. Encajar otra flecha cuesta lo que dice la
+     * cadencia, y tensar viene después: es el orden de los dos gestos.
+     */
+    if (now < this._nextShotAt || this.reloading || this.ammo <= 0) return
+    this._cargaDesde = now
+    playBow('tensar')
+  }
+
+  /**
+   * **Suelta lo que hubiera cargado.** Devuelve si ha salido algo.
+   *
+   * Lo que sale **no depende de cuánto se haya tardado en apretar el botón**
+   * sino de `cargaActual`, que está acotada a 1: pasado el techo, seguir
+   * aguantando no aporta nada y eso es deliberado (ver `WEAPONS.bow`).
+   */
+  _soltarCarga(now, instanteReal = this._simTime) {
+    if (!this.cargando) return false
+    const carga = this.cargaActual
+    this._cargaDesde = -Infinity
+    const tiro = this.armaDeTiro
+    if (!tiro) return false
+    // La cadencia se comprueba **al soltar**, que es cuando sale la flecha.
+    if (now < this._nextShotAt) return false
+    if (this.reloading || this.ammo <= 0) return false
+    if (this.enRed ? this.net.vida <= 0 : !this.status.alive) return false
+    this._nextShotAt = now + 60000 / this.weapon.rpm
+    this._lanzarProyectil(tiro, carga, instanteReal)
+    this._applyRecoil(this.weapon)
+    this._sprayIndex += 1
+    this._consumeAmmo(this.weapon, now)
+    return true
+  }
+
+  /**
+   * **Lanza el proyectil del arma que llevas.**
+   *
+   * Sale de los ojos y hacia donde mira la cámara **con el retroceso ya
+   * aplicado**, que es de donde sale el rayo de cualquier disparo. Lo que no
+   * lleva es dispersión: una flecha no se desvía por correr, y eso no es un
+   * olvido — `ACCURACY` describe lo que le pasa a una bala en el cañón de un
+   * arma que sacude, y tensar un arco corriendo lo que hace es que el láser se
+   * mueva, que ya es el castigo.
+   */
+  _lanzarProyectil(tiro, carga, instanteReal = this._simTime) {
+    this.camera.updateMatrixWorld()
+    const yaw = this.camera.rotation.y
+    const pitch = this.camera.rotation.x
+    /**
+     * **De dónde sale y con qué velocidad lo dice `lanzamientoDeArma`**, que es
+     * la misma función que llama el servidor (vuelta 85). Es lo que permite que
+     * en red no viaje la trayectoria: los dos extremos la derivan de los mismos
+     * cinco números. Escrita dos veces sería una flecha que el tirador ve dar y
+     * el servidor ve fallar.
+     */
+    const l = lanzamientoDeArma(this.weapon, carga, this.camera.position, yaw, pitch, _lanzamiento)
+    if (!l) return
+    /**
+     * **En red el lanzamiento se manda; el vuelo lo derivan los dos.** Es el
+     * patrón de la vuelta 72 con una pieza más: lo único que viaja es de dónde,
+     * hacia dónde y con cuánta carga, y de ahí los dos extremos dan los mismos
+     * pasos de 60 Hz contra el mismo mapa y sacan la misma parábola. Un campo
+     * con la posición del proyectil en la foto sería sesenta correcciones por
+     * segundo de algo que no necesita ninguna.
+     */
+    if (this.enRed) this.net.disparar(instanteReal, yaw, pitch, 0, carga)
+    this.proyectiles.lanzar({
+      tipo: l.tipo,
+      dueno: this.enRed ? this.net.id : 'yo',
+      x: l.x, y: l.y, z: l.z,
+      vx: l.vx, vy: l.vy, vz: l.vz,
+      g: l.g,
+      fuerza: l.fuerza,
+      intensidad: l.intensidad,
+    })
+    this.shots += 1
+    playBow('soltar', carga)
+    /**
+     * **Y a carga llena, un destello sutil** (lo pidió quien lo juega). Es el
+     * anillo de `dispositivos.js`, que ya es un pool aditivo del motor: un
+     * efecto nuevo para esto habría sido un segundo sistema de anillos. Sale
+     * **sólo a tope**, que es lo que lo convierte en información —«ha salido
+     * cargada del todo»— en vez de en adorno, y **no pegado a la cara**: medio
+     * metro de radio a treinta centímetros del ojo tapa la pantalla entera.
+     */
+    if (carga >= 1) {
+      const d = SURFACES.destello.arcoLleno.adelanteU
+      const n = Math.hypot(l.vx, l.vy, l.vz) || 1
+      this.dispositivos.emitir(
+        'arcoLleno',
+        l.x + (l.vx / n) * d, l.y + (l.vy / n) * d, l.z + (l.vz / n) * d,
+        yaw, this.gameTime,
+      )
+    }
+    this.callbacks.onShot?.(false)
+  }
+
+  /**
+   * **Un paso de los proyectiles que hay volando.**
+   *
+   * Contra qué chocan lo decide el mapa; a quién hieren, quien esté jugando —el
+   * entrenamiento pregunta a los muñecos y en red el veredicto lo da el
+   * servidor, que es la regla de la vuelta 56—. Por eso el modelo recibe las
+   * dos cosas como funciones y no se guarda ni el escenario ni las dianas.
+   */
+  _pasoDeProyectiles(dt) {
+    if (this.proyectiles.vivos === 0) return
+    const escenario = this.scenario
+    if (!escenario) return
+    const cuantos = this.proyectiles.paso(dt, this._cortarSegmento, this._proyectilContraCuerpos)
+    for (let i = 0; i < cuantos; i++) {
+      const im = this.proyectiles.impactos[i]
+      this._impactoDeProyectil(im)
+    }
+  }
+
+  /** Lo que le pasa a un proyectil que ha chocado. */
+  _impactoDeProyectil(im) {
+    // La marca: la misma de una bala, que es lo correcto — lo que dice es
+    // «aquí acabó un tiro», y de qué arma venía no lo cambia.
+    if (!im.porMecha) {
+      _dir.set(im.nx, im.ny, im.nz)
+      _punto.set(im.x, im.y, im.z)
+      this.impacts.spawn(_punto, _dir, this.gameTime)
+    }
+    this._emisorDispositivo.setPosition(im.x, im.y, im.z)
+    playBow('clavar', 1)
+    if (!im.victima) return
+    this.hits += 1
+    /**
+     * **El daño de un proyectil sale de su fuerza, no de su arma.** Una flecha
+     * a medio cargar y una a tope son la misma arma y valen distinto, así que
+     * el número viaja **con el proyectil** — es lo que `damageScale` no puede
+     * hacer, porque es fijo por arma (vuelta 70). Lo que no cambia es la
+     * **forma** del daño: la zona sigue mandando, y la cabeza sigue valiendo
+     * una vida entera y sin escalar.
+     */
+    const { killed } = this.targets.applyHit(im.victima, this.gameTime, this.weaponKey, im.fuerza)
+    if (killed) {
+      this.kills += 1
+      this.status.onKill()
+    }
+    playHit()
+  }
+
+  /**
+   * **Contra qué choca un proyectil en el escenario.** Va enlazada porque el
+   * modelo la recibe como función y no como escenario: así el servidor le pasa
+   * el suyo sin que `proyectiles.js` sepa que existen dos.
+   */
+  _cortarSegmento = (x0, y0, z0, x1, y1, z1) =>
+    this.scenario ? this.scenario.cortarSegmento(x0, y0, z0, x1, y1, z1) : null
+
+  /**
+   * **A quién le da un proyectil en el entrenamiento**: a un muñeco, con el
+   * mismo `raycast` que resuelve una bala. Es el mismo corte contra las mismas
+   * mallas, así que una flecha y un disparo aciertan lo mismo — que es la
+   * convención de siempre: dos formas de decidir un impacto son dos juegos.
+   *
+   * En red esto no corre: quién ha recibido el tiro lo decide el servidor
+   * (vuelta 56), y por eso devuelve `null` con `enRed`.
+   */
+  _proyectilContraCuerpos = (p) => {
+    if (this.enRed || !this.targets?.hasActive) return null
+    this.targets.updateMatrices()
+    _origenRayo.set(p.x0, p.y0, p.z0)
+    _dirRayo.set(p.dx, p.dy, p.dz)
+    this.raycaster.set(_origenRayo, _dirRayo)
+    this.raycaster.near = 0
+    // **Y el alcance es el trozo de este paso, más el radio del proyectil.**
+    // Sin el `far` acotado, una flecha «acertaría» a un muñeco que está diez
+    // unidades por delante de donde ha llegado.
+    this.raycaster.far = p.largo + PROJECTILES.radio
+    const golpe = this.targets.raycast(this.raycaster)
+    if (!golpe) return null
+    _golpeDeProyectil.t = golpe.distance
+    _golpeDeProyectil.victima = golpe
+    _golpeDeProyectil.zona = golpe.part?.zone ?? null
+    return _golpeDeProyectil
+  }
+
   /**
    * **Contra qué superficie acaba el rayo que hay puesto en `this.raycaster`**:
    * una pieza de cobertura, o el suelo y las paredes de la sala. Devuelve el
@@ -3089,6 +3383,14 @@ export class Engine {
     // El fondo panorámico va con la cámara en posición (vuelta 77): se coloca
     // con la pose ya interpolada y antes de dibujar, como todo lo demás.
     this.scenario.seguirConFondo(this.camera)
+    /**
+     * **Y el láser de la curva y los proyectiles se dibujan con la pose
+     * interpolada** (vuelta 85), que es por lo que van aquí dentro y no en el
+     * paso de mundo: la curva sale **de los ojos**, y con la pose autoritativa
+     * se quedaría a tirones de 60 Hz colgando de una cámara que va a 240.
+     */
+    this._dibujarTrayectoria()
+    this.vuelo.update(this.proyectiles)
     this._actualizarCono()
     this._publishStats()
     this.renderer.render(this.scene, this.camera)
@@ -3284,6 +3586,14 @@ export class Engine {
     // En pausa una marca se queda quieta en vez de apagarse a tus espaldas.
     this.impacts.update(this.gameTime)
     this.dispositivos.update(this.gameTime)
+    /**
+     * **Y los proyectiles vuelan en el paso de mundo, no en el frame** (vuelta
+     * 85). Es lo que hace que una flecha llegue al mismo sitio en cualquier
+     * monitor y lo que permite que en red los dos extremos deriven la misma
+     * parábola sin que viaje un número. En pausa se quedan quietos en el aire,
+     * como todo lo que cuelga de `gameTime`.
+     */
+    this._pasoDeProyectiles(stepMs / 1000)
 
     // Dianas y explosivo son del entrenamiento: en red no hay ni una cosa ni
     // otra, y el combate lo sustituye el estado que llega del servidor.
@@ -3348,6 +3658,47 @@ export class Engine {
       alpha < 0 ? 0 : alpha > 1 ? 1 : alpha,
     )
     this._interpolating = true
+  }
+
+  /**
+   * **La curva de lo que vas a lanzar, si es que estás tensando algo.**
+   *
+   * Se dibuja **sólo mientras se carga** y no siempre que lleves el arma
+   * puesta. Es una decisión, no un ahorro: un láser permanente convierte el
+   * arco en un arma de apuntar con una línea en vez de con la mira, y lo que se
+   * quiere es que tensar **sea** el gesto de apuntar. De paso es lo que hace
+   * que el rival vea venir a alguien que ya ha decidido disparar.
+   */
+  _dibujarTrayectoria() {
+    const tiro = this.armaDeTiro
+    if (!tiro || !this.cargando || this.phase !== PHASE.RUNNING || !this.scenario) {
+      this.trayectoria.ocultar()
+      return
+    }
+    const carga = this.cargaActual
+    const v = tiro.vMin + (tiro.vMax - tiro.vMin) * carga
+    const yaw = this.camera.rotation.y
+    const pitch = this.camera.rotation.x
+    const cp = Math.cos(pitch)
+    const fx = -Math.sin(yaw) * cp
+    const fy = Math.sin(pitch)
+    const fz = -Math.cos(yaw) * cp
+    _velSalida.x = fx * v
+    _velSalida.y = fy * v
+    _velSalida.z = fz * v
+    /**
+     * **De cuánto se separa el dibujo del arranque de verdad.** La boca del
+     * arma: a la derecha, abajo y un poco por delante. El porqué —y por qué el
+     * proyectil **no** sale de ahí— está en `TRAJECTORY.desdeArma`. Frente y
+     * derecha como dos vectores, y se suman (vuelta 77).
+     */
+    const { lado, abajo, delante } = TRAJECTORY.desdeArma
+    _desvio.x = Math.cos(yaw) * lado + fx * delante
+    _desvio.y = -abajo + fy * delante
+    _desvio.z = -Math.sin(yaw) * lado + fz * delante
+    this.trayectoria.dibujar(
+      this.camera.position, _velSalida, tiro.gravedad, carga, this._cortarSegmento, _desvio,
+    )
   }
 
   /** Devuelve la cámara a la pose autoritativa en cuanto se ha dibujado. */

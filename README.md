@@ -1531,7 +1531,7 @@ cambiar de tipo o de tamaño nunca cae dentro del bucle de render.
 
 ## Armas
 
-Tres arquetipos, en el bloque `WEAPONS` de `config.js`. Se llamaban **Scalar-2,
+Cinco armas, en el bloque `WEAPONS` de `config.js`. Se llamaban **Scalar-2,
 Axis-7 y Vertex-9** hasta la vuelta 41: el renombrado no tocó ni una estadística,
 y si tenías una elegida, sigue elegida — el ajuste guardado con el nombre viejo
 se traduce al nuevo en vez de caer al valor de fábrica.
@@ -1542,6 +1542,7 @@ se traduce al nuevo en vez de caer al valor de fábrica.
 | **Rift** | principal (**1**) | auto | 600 | 30 | 2.3 s | sí | 3.6 kg | 5.88 u/s | rifle: subida vertical marcada los primeros ocho disparos, luego deriva a la izquierda |
 | **Volt** | principal (**1**) | auto | 800 | 25 | 1.8 s | sí | 2.6 kg | 6.14 u/s | SMG: patada más inmediata pero la mitad de techo vertical, y más bamboleo lateral que vertical |
 | **Scout** | principal (**1**) | semi | 48 | 10 | 2.6 s | **no** | 3.2 kg | 5.98 u/s | francotirador: una patada sola y grande, 2.4° de golpe |
+| **Bow** | principal (**1**) | **carga** | 55 | 12 | 2.2 s | **no** | 2.8 kg | 6.03 u/s | arco: un empujón corto hacia arriba, lo que sacude una cuerda |
 | **Vanta** | cuchillo (**3**) | — | — | — | — | no | 0.6 kg | 6.50 u/s | cada golpe empuja la cámara: el flojo poco, el fuerte el doble |
 
 ### Vanta, el cuchillo
@@ -1577,6 +1578,42 @@ avisos, y cada uno dice algo distinto:
 **Y ya tiene su silueta**, trazada de `Reference/Weapons/vanta.png` como las de
 las demás. No lleva variante con silenciador, por lo mismo que la Scout: un
 cuchillo no la admite.
+
+### Bow, el arco
+
+**La primera arma de Vektor que lanza algo de verdad.** Todo lo demás pega en el
+instante en que disparas; una flecha **tarda en llegar**, así que hay que
+adelantar a quien se mueve — y a quien la ve venir le da tiempo a apartarse.
+
+**Se dispara por carga: mantén el botón para tensar y suelta para tirar.**
+Cuanto más tenses, más rápido sale y más lejos llega; soltar al instante da un
+tiro corto y flojo (45 de daño al cuerpo), y a tope mata de un tiro a quien no
+lleve chaleco (110, lo mismo que la Scout). **A la cabeza mata siempre**, cargada
+o no — salvo con casco, que se lleva la primera flecha. Tensar del todo cuesta
+**0.75 s**, y ahí se acaba: aguantar más no aporta nada.
+
+**Y mientras tensas, ves la curva.** Un láser dibuja exactamente por dónde va a
+ir la flecha, con un anillo donde va a caer, y **se corta contra las paredes**:
+lo que ves es lo que va a pasar, no una aproximación. Mirando más arriba llegas
+más lejos, más abajo más cerca, y a los lados libremente.
+
+**La potencia se lee en el propio láser**: una luz sube por la curva desde ti
+hasta la punta según vas tensando. Cuando llega arriba, estás al máximo — no hay
+barra que mirar, porque mirar una barra es dejar de mirar al rival. Y al soltar
+a tope sale un destello corto por delante del arco.
+
+Dos cosas que conviene saber:
+
+- **No se tensa hasta que el arco está listo.** Tras cada flecha hay un segundo
+  largo de encajar la siguiente, y hasta entonces apretar no hace nada. Así
+  soltar dispara **siempre**: no hay forma de perder una flecha por tensar en el
+  momento equivocado.
+- **Y soltar el ratón por cualquier otro motivo no dispara.** Abrir el menú,
+  perder el foco de la ventana o cambiar de arma cancelan la carga sin gastar
+  flecha.
+
+**No lleva silenciador**, y no por falta de arte: un arco ya es el arma
+silenciosa. Eso le deja el clic derecho libre, como a la Scout.
 
 ### La Scout, y la mirilla
 

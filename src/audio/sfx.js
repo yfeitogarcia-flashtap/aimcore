@@ -887,6 +887,93 @@ export function playMelee(tipo, conecta = false, espalda = false) {
   }
 }
 
+/**
+ * **El arco** (vuelta 85). Tres voces distintas para tres cosas distintas, y
+ * ninguna es otra con el volumen cambiado — que es la regla desde la vuelta 40.
+ *
+ * - `tensar`: el crujido de la cuerda mientras se carga. Suena **una vez, al
+ *   empezar**, y no en bucle: un sonido continuo mientras se apunta tapa
+ *   exactamente lo que el oído está haciendo, que es escuchar pasos.
+ * - `soltar`: el *twang*. Es lo más parecido a un arco real que se puede
+ *   sintetizar sin una muestra, y eso son **tres capas y ningún oscilador
+ *   grave**: el chasquido seco de la cuerda liberada, la cuerda vibrando —dos
+ *   parciales **inarmónicos** en relación 1.61, porque una cuerda con una
+ *   flecha encima no da una nota— y el roce de la flecha saliendo. Un arco
+ *   suena **a madera y a cuerda**, no a disparo: por eso aquí no hay ni crack
+ *   de banda ancha ni golpe grave, que son las dos capas que hacen que un arma
+ *   de fuego suene a arma de fuego.
+ * - `clavar`: el *thock* de la punta entrando. Corto, medio grave y sin cola.
+ *
+ * `carga` va de 0 a 1 y **no cambia el volumen: cambia el tono**. Una cuerda
+ * más tensa suena más aguda, así que soltar a tope sube los parciales un tercio
+ * — que es lo que hace que se oiga desde fuera si el que dispara iba cargado.
+ */
+export function playBow(tipo, carga = 1) {
+  if (!ctx || !master || !noiseBuffer) return
+  const t = ctx.currentTime
+  const level = AUDIO.shotVolume
+
+  /** Ruido por un filtro, que es el ladrillo de las tres. */
+  const roce = (tipoFiltro, hz0, hz1, q, pico, dur, retardo = 0) => {
+    const noise = ctx.createBufferSource()
+    noise.buffer = noiseBuffer
+    const f = ctx.createBiquadFilter()
+    f.type = tipoFiltro
+    f.Q.value = q
+    f.frequency.setValueAtTime(hz0, t + retardo)
+    f.frequency.exponentialRampToValueAtTime(hz1, t + retardo + dur)
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, t + retardo)
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, pico * level), t + retardo + 0.0015)
+    g.gain.exponentialRampToValueAtTime(0.0001, t + retardo + dur)
+    noise.connect(f).connect(g).connect(master)
+    noise.start(t + retardo)
+    noise.stop(t + retardo + dur + 0.02)
+    noise.onended = () => { noise.disconnect(); f.disconnect(); g.disconnect() }
+  }
+
+  /** Un parcial de cuerda: triangular, cayendo de tono. */
+  const cuerda = (hz, pico, dur, retardo = 0) => {
+    const osc = ctx.createOscillator()
+    osc.type = 'triangle'
+    osc.frequency.setValueAtTime(hz, t + retardo)
+    osc.frequency.exponentialRampToValueAtTime(hz * 0.72, t + retardo + dur)
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, t + retardo)
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, pico * level), t + retardo + 0.003)
+    g.gain.exponentialRampToValueAtTime(0.0001, t + retardo + dur)
+    osc.connect(g).connect(master)
+    osc.start(t + retardo)
+    osc.stop(t + retardo + dur + 0.02)
+    osc.onended = () => { osc.disconnect(); g.disconnect() }
+  }
+
+  if (tipo === 'tensar') {
+    // Madera que trabaja: ruido estrecho subiendo, flojo y corto. Es un aviso
+    // de que has empezado, no un acompañamiento.
+    roce('bandpass', 380, 760, 7, 0.11, 0.16)
+    return
+  }
+
+  if (tipo === 'clavar') {
+    roce('bandpass', 1500, 420, 2.2, 0.26, 0.055)
+    cuerda(190, 0.20, 0.09)
+    return
+  }
+
+  // `soltar`. El tono sube con la tensión: 1.0 sin cargar, 1.33 a tope.
+  const k = 1 + 0.33 * Math.max(0, Math.min(1, carga))
+  // 1. El chasquido de la cuerda al liberarse. Ataque de 1.5 ms, como la voz
+  // seca del disparo: medio milisegundo es lo que separa un golpe de un «pop».
+  roce('highpass', 1700 * k, 900 * k, 0.8, 0.30, 0.05)
+  // 2. La cuerda vibrando. Relación 1.61 —ni octava ni quinta— porque lo que
+  // suena no es una nota: es una cuerda cargada y amortiguada por una mano.
+  cuerda(300 * k, 0.26, 0.13)
+  cuerda(300 * k * 1.61, 0.15, 0.10, 0.004)
+  // 3. La flecha rozando el arco al salir, un pelo después.
+  roce('bandpass', 2600 * k, 5200 * k, 3, 0.13, 0.07, 0.012)
+}
+
 export function playKill() {
   if (!ctx || !master) return
   const t = ctx.currentTime

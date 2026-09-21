@@ -79,24 +79,41 @@ function geometriaDePrisma(prisma, bottom, thickness) {
   const top = bottom + thickness
   const n = puntos.length
   const tris = []
-  // Tapa: abanico desde el primer vértice, visto desde arriba.
+  /**
+   * **Y los triángulos miran hacia fuera** (vuelta 85). Iban al revés los
+   * tres bloques —tapa, fondo y costados—, porque `puntosDePrisma` recorre los
+   * vértices en el sentido contrario al que three llama «cara frontal», y sin
+   * luces en la escena eso **no se ve**: una malla con las normales del revés
+   * se dibuja exactamente igual.
+   *
+   * Lo que sí hacía era un bug de juego, y sólo salió a la luz cuando
+   * `cortarSegmento` empezó a contestar la misma pregunta por aritmética y las
+   * dos respuestas se compararon (`corte85`): con `side: FrontSide` un rayo que
+   * llega de fuera **atraviesa la cara de entrada** y corta en la de salida. O
+   * sea que un disparo contra una columna daba **tres unidades más allá**, la
+   * marca de bala salía en la cara de detrás, y un muñeco pegado al otro lado
+   * quedaba a menos distancia que el pilar — que es la comparación con la que
+   * `_shoot` decide si la cobertura se come el tiro. **Se mataba a través de la
+   * columna.**
+   */
+  // Tapa: abanico desde el primer vértice, mirando hacia arriba.
   for (let i = 1; i < n - 1; i++) {
     tris.push([puntos[0].x, top, puntos[0].z])
-    tris.push([puntos[i].x, top, puntos[i].z])
     tris.push([puntos[i + 1].x, top, puntos[i + 1].z])
+    tris.push([puntos[i].x, top, puntos[i].z])
   }
-  // Fondo: el mismo abanico al revés.
+  // Fondo: el mismo abanico al revés, mirando hacia abajo.
   for (let i = 1; i < n - 1; i++) {
     tris.push([puntos[0].x, bottom, puntos[0].z])
-    tris.push([puntos[i + 1].x, bottom, puntos[i + 1].z])
     tris.push([puntos[i].x, bottom, puntos[i].z])
+    tris.push([puntos[i + 1].x, bottom, puntos[i + 1].z])
   }
   // Costados.
   for (let i = 0; i < n; i++) {
     const p = puntos[i]
     const q = puntos[(i + 1) % n]
-    tris.push([p.x, bottom, p.z], [q.x, bottom, q.z], [q.x, top, q.z])
-    tris.push([p.x, bottom, p.z], [q.x, top, q.z], [p.x, top, p.z])
+    tris.push([p.x, bottom, p.z], [q.x, top, q.z], [q.x, bottom, q.z])
+    tris.push([p.x, bottom, p.z], [p.x, top, p.z], [q.x, top, q.z])
   }
   const positions = new Float32Array(tris.length * 3)
   for (let i = 0; i < tris.length; i++) {
@@ -155,6 +172,8 @@ function clampAgainstBand(to, from, lo, hi) {
  * prisma, y devolver un objeto sería basura para el recolector.
  */
 const _banda = { lo: 0, hi: 0 }
+/** El corte de `cortarSegmento`, reutilizado: el bucle caliente no asigna. */
+const _corte = { x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, t: 0, pieza: null }
 
 /**
  * Un escenario ya montado. Mientras `key` sea `empty` no hay geometría, no hay
@@ -998,6 +1017,235 @@ export class Scenario {
       this.geometries.push(geometry)
       this.materials.push(material)
     }
+  }
+
+
+  /**
+   * **Por dónde sale un segmento del mundo** (vuelta 85), o `null` si no toca
+   * nada. Es lo que un proyectil necesita en cada paso, y la primera pregunta
+   * del motor que **no se puede contestar con un raycast**.
+   *
+   * El motor ya tiene una función que contesta esto —`_superficieBajoElRayo`,
+   * de la vuelta 64— y resuelve las piezas con `intersectObjects` contra las
+   * mallas fundidas. Eso es correcto y es lo que tiene que hacer: da el punto y
+   * la normal exactos de un triángulo y **se paga una vez por disparo**. Un
+   * proyectil pregunta lo mismo **sesenta veces por segundo y por proyectil**,
+   * contra mallas de hasta dieciocho mil triángulos, y eso no cabe en 0.2 ms.
+   *
+   * Así que esto es el reparto de la vuelta 46 llevado a la geometría del mapa:
+   * **primero lo que es aritmética**. Las cajas se cortan por sus tres parejas
+   * de planos (el *slab test*), los prismas por los mismos semiplanos que ya
+   * usa `resolveAxis` y la sala por sus seis planos, que es lo que ya hacía el
+   * rayo de la vuelta 64. Cero raycasts, cero alocaciones, y **las mismas
+   * cajas y los mismos prismas que decide la colisión del jugador** — que es lo
+   * que evita un proyectil atravesando una pared contra la que el jugador se
+   * choca. Que dice lo mismo que el rayo no se supone: lo mide `curva85`.
+   *
+   * Lo que devuelve es **de módulo y se reutiliza**: quien lo reciba lo consume
+   * en el acto, como `superficieDelSuelo` (vuelta 80).
+   *
+   * @param {number} x0,y0,z0 de dónde sale el segmento
+   * @param {number} x1,y1,z1 a dónde iba
+   * @returns {{x,y,z,nx,ny,nz,t,pieza}|null} el punto de corte, su normal, la
+   *   fracción del segmento en que cae y la pieza tocada (o `null`, la sala).
+   */
+  cortarSegmento(x0, y0, z0, x1, y1, z1) {
+    const dx = x1 - x0
+    const dy = y1 - y0
+    const dz = z1 - z0
+    let mejor = Infinity
+    let nx = 0, ny = 1, nz = 0
+    let pieza = null
+
+    /** El *slab test*: contra qué cara entra un segmento en una caja. */
+    const contraCaja = (caja) => {
+      let entra = 0
+      let sale = 1
+      let eje = -1
+      let signo = 1
+      // Tres ejes, y en cada uno la pareja de planos de la caja.
+      const rebanada = (d, o, min, max, cual) => {
+        if (d === 0) return o >= min && o <= max
+        const inv = 1 / d
+        let t0 = (min - o) * inv
+        let t1 = (max - o) * inv
+        let s = -1
+        if (t0 > t1) { const tmp = t0; t0 = t1; t1 = tmp; s = 1 }
+        if (t0 > entra) { entra = t0; eje = cual; signo = s }
+        if (t1 < sale) sale = t1
+        return entra <= sale
+      }
+      if (!rebanada(dx, x0, caja.minX, caja.maxX, 0)) return
+      if (!rebanada(dy, y0, caja.bottom, caja.top, 1)) return
+      if (!rebanada(dz, z0, caja.minZ, caja.maxZ, 2)) return
+      if (entra >= mejor) return
+      mejor = entra
+      pieza = caja
+      // Arrancando ya dentro no hay cara de entrada: la normal es contra el
+      // sentido de la marcha, que es lo que hace una marca mirando al tirador.
+      if (eje < 0) {
+        const largo = Math.hypot(dx, dy, dz) || 1
+        nx = -dx / largo; ny = -dy / largo; nz = -dz / largo
+      } else {
+        nx = eje === 0 ? signo : 0
+        ny = eje === 1 ? signo : 0
+        nz = eje === 2 ? signo : 0
+      }
+    }
+
+    for (let i = 0; i < this.boxes.length; i++) contraCaja(this.boxes[i])
+
+    /**
+     * **Un prisma es la intersección de sus semiplanos**, así que cortarlo es
+     * lo mismo que cortar una caja con más de tres parejas: se recorta `[entra,
+     * sale]` cara a cara. Lo vertical sigue siendo su pareja de planos, que un
+     * prisma no está inclinado.
+     */
+    for (let i = 0; i < this.prismas.length; i++) {
+      const prisma = this.prismas[i]
+      let entra = 0
+      let sale = 1
+      let cara = null
+      let ejeV = 0
+      if (dy === 0) {
+        if (y0 < prisma.bottom || y0 > prisma.top) continue
+      } else {
+        const inv = 1 / dy
+        let t0 = (prisma.bottom - y0) * inv
+        let t1 = (prisma.top - y0) * inv
+        let s = -1
+        if (t0 > t1) { const tmp = t0; t0 = t1; t1 = tmp; s = 1 }
+        if (t0 > entra) { entra = t0; ejeV = s }
+        if (t1 < sale) sale = t1
+        if (entra > sale) continue
+      }
+      let fuera = false
+      for (let k = 0; k < prisma.caras.length; k++) {
+        const c = prisma.caras[k]
+        // La cara es `nx·x + nz·z <= c`. Distancia con signo en los extremos.
+        const d0 = c.nx * x0 + c.nz * z0 - c.c
+        const dv = c.nx * dx + c.nz * dz
+        if (dv === 0) {
+          if (d0 > 0) { fuera = true; break }
+          continue
+        }
+        const t = -d0 / dv
+        if (dv > 0) { if (t < sale) sale = t }
+        else if (t > entra) { entra = t; cara = c; ejeV = 0 }
+        if (entra > sale) { fuera = true; break }
+      }
+      if (fuera || entra >= mejor) continue
+      mejor = entra
+      pieza = prisma
+      if (cara) { nx = -cara.nx; ny = 0; nz = -cara.nz }
+      else if (ejeV) { nx = 0; ny = ejeV; nz = 0 }
+      else {
+        const largo = Math.hypot(dx, dy, dz) || 1
+        nx = -dx / largo; ny = -dy / largo; nz = -dz / largo
+      }
+    }
+
+    /**
+     * **Las rampas**, que son lo único del mapa que no es una caja ni un
+     * prisma: una cuña con su plano inclinado. Se corta su huella como una caja
+     * y dentro de ese tramo se busca dónde el segmento cruza la superficie —que
+     * es una recta en `z`, así que la ecuación es de primer grado y se despeja.
+     */
+    for (let i = 0; i < this.ramps.length; i++) {
+      const ramp = this.ramps[i]
+      let entra = 0
+      let sale = 1
+      const rebanada = (d, o, min, max) => {
+        if (d === 0) return o >= min && o <= max
+        const inv = 1 / d
+        let t0 = (min - o) * inv
+        let t1 = (max - o) * inv
+        if (t0 > t1) { const tmp = t0; t0 = t1; t1 = tmp }
+        if (t0 > entra) entra = t0
+        if (t1 < sale) sale = t1
+        return entra <= sale
+      }
+      if (!rebanada(dx, x0, ramp.minX, ramp.maxX)) continue
+      if (!rebanada(dz, z0, ramp.minZ, ramp.maxZ)) continue
+      if (!rebanada(dy, y0, 0, ramp.top)) continue
+      const span = ramp.toZ - ramp.fromZ
+      if (span === 0) continue
+      // Altura de la cuña en el punto `t`, acotada a su tramo: es una recta en
+      // `z` mientras no se salga, y una constante fuera.
+      const alturaEn = (t) => {
+        const z = z0 + dz * t
+        let u = (z - ramp.fromZ) / span
+        if (u < 0) u = 0
+        else if (u > 1) u = 1
+        return ramp.top * u
+      }
+      // `f(t) = y(t) − cuña(t)`: se entra cuando cambia de signo a negativo.
+      const f = (t) => y0 + dy * t - alturaEn(t)
+      if (f(entra) <= 0) {
+        // Ya se venía por debajo de la cuña: se está dentro desde el principio.
+        if (entra < mejor) {
+          mejor = entra
+          pieza = ramp
+          const largo = Math.hypot(dx, dy, dz) || 1
+          nx = -dx / largo; ny = -dy / largo; nz = -dz / largo
+        }
+        continue
+      }
+      if (f(sale) > 0) continue
+      // Bisección corta: la función es lineal a trozos y el tramo es de un
+      // paso, así que doce vueltas dan de sobra y cuestan lo mismo siempre.
+      let lo = entra
+      let hi = sale
+      for (let k = 0; k < 12; k++) {
+        const mid = (lo + hi) / 2
+        if (f(mid) > 0) lo = mid
+        else hi = mid
+      }
+      if (hi >= mejor) continue
+      mejor = hi
+      pieza = ramp
+      // La normal del plano de la cuña: sube `top` en `span` de fondo.
+      const pend = ramp.top / span
+      const n = Math.hypot(1, pend)
+      nx = 0
+      ny = 1 / n
+      nz = -pend / n
+    }
+
+    /**
+     * **Y la sala, que no se raycastea**: el segmento sale de dentro de la
+     * caja, así que lo que se busca es por dónde sale — el menor de los tres
+     * cortes contra la pareja de planos de cada eje. Es lo mismo que hace
+     * `_superficieBajoElRayo` desde la vuelta 64, y por la misma razón: las
+     * paredes y el suelo están dibujados con líneas, no con mallas.
+     */
+    const room = this.room
+    const mirar = (d, o, min, max, eje) => {
+      if (d === 0) return
+      const t = (d > 0 ? max - o : min - o) / d
+      if (t >= 0 && t < mejor) {
+        mejor = t
+        pieza = null
+        const s = d > 0 ? -1 : 1
+        nx = eje === 0 ? s : 0
+        ny = eje === 1 ? s : 0
+        nz = eje === 2 ? s : 0
+      }
+    }
+    mirar(dx, x0, -room.width / 2, room.width / 2, 0)
+    mirar(dy, y0, 0, room.height, 1)
+    mirar(dz, z0, -room.depth / 2, room.depth / 2, 2)
+
+    if (mejor > 1 || !Number.isFinite(mejor)) return null
+    _corte.x = x0 + dx * mejor
+    _corte.y = y0 + dy * mejor
+    _corte.z = z0 + dz * mejor
+    _corte.nx = nx
+    _corte.ny = ny
+    _corte.nz = nz
+    _corte.t = mejor
+    _corte.pieza = pieza
+    return _corte
   }
 
   /** Un anillo al ras del suelo, en segmentos. Sin malla: son líneas. */

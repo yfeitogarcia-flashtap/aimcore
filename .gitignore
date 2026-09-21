@@ -19,3 +19,4 @@ dist-ssr
 # como se coló media docena en la vuelta 65: el proyecto no tiene ni una imagen
 # suelta en la raíz —las de verdad están en `Reference/` y en `public/`—.
 /*.png
+scratchpad/

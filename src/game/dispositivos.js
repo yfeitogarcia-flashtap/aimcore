@@ -79,6 +79,13 @@ const GESTOS = {
   // está en el aire. Los 0.9 de la plataforma son para subir el aro desde el
   // suelo hasta la cintura, y aquí no hay suelo del que subir.
   tirolina: { clave: 'tirolina', dePie: true, alza: 0 },
+  /**
+   * **La cuerda de un arco a tope** (vuelta 85). De pie y encarado al rumbo,
+   * como la plataforma de velocidad: lo que sale disparado va hacia donde se
+   * apunta. Lo que lo separa de aquél es el tamaño — medio metro contra dos y
+   * medio— y por eso se admite aquí sin ser un segundo sistema de anillos.
+   */
+  arcoLleno: { clave: 'arcoLleno', dePie: true, alza: 0 },
   'tp-entrada': { clave: 'tpEntrada', dePie: false },
   'tp-salida': { clave: 'tpSalida', dePie: false },
 }

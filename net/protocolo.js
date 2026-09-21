@@ -139,6 +139,26 @@ export const MSG = {
    * perder.
    */
   PAUSA: 'p',
+  /**
+   * **Ha salido un proyectil** (vuelta 85). Del servidor a **el otro**, no a
+   * los dos: quien lo lanzó ya lo tiene volando en su pantalla desde el
+   * instante del clic, porque lo predijo — que es la misma regla que su propio
+   * movimiento desde la vuelta 45.
+   *
+   * Y lo que lleva es **el lanzamiento, no la posición**: de dónde salió, con
+   * qué velocidad, con qué gravedad, de qué clase y **en qué paso**. De ahí los
+   * dos extremos derivan la misma parábola, porque dan los mismos pasos de 60
+   * Hz contra el mismo mapa — que es el patrón de la física de la vuelta 72
+   * aplicado a algo que se mueve solo. Un campo con la posición del proyectil
+   * en la foto serían sesenta correcciones por segundo de algo que no necesita
+   * ninguna, y encima **un proyectil sobrevive a quien lo lanzó**: la foto es
+   * de los jugadores, y un cohete en el aire ya no es de nadie.
+   *
+   * El paso viaja porque el mensaje llega tarde: el cliente que lo recibe
+   * adelanta el vuelo lo que se haya perdido, en vez de arrancarlo desde cero
+   * y dibujar un cohete que sale de una pared.
+   */
+  PROYECTIL: 'pr',
 }
 
 /**

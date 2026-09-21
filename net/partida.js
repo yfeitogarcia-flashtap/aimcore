@@ -17,12 +17,20 @@
  * Y sigue sin tener código de juego: importa `movement.js`, `scenario.js`,
  * `hitPlayer` y `hasLineOfSight` tal cual.
  */
-import { ECONOMY, NET, PAUSE, ROUNDS, SIM, SIM_STEP_MS, WEAPONS, WEAPON_ORDER, catalogoDeTienda } from '../src/config.js'
+import { ECONOMY, NET, PAUSE, PROJECTILES, ROUNDS, SIM, SIM_STEP_MS, WEAPONS, WEAPON_ORDER, catalogoDeTienda } from '../src/config.js'
 import { MovementController } from '../src/game/movement.js'
-import { encajarImpacto } from '../src/game/player.js'
+import { encajarImpacto, hitPlayer, zoneDamage } from '../src/game/player.js'
+import { Proyectiles, lanzamientoDeArma } from '../src/game/proyectiles.js'
 import { crearPose, cuerpoDeJugador } from './pose.js'
 import { direccionDeMira, resolverCuchillada, resolverDisparo } from './disparo.js'
 import { MSG, compraAbierta, desempaquetarTeclas, instanteDePaso, instanteEnPaso } from './protocolo.js'
+
+/** Temporales del vuelo de un proyectil: el bucle del servidor no asigna. */
+const _ojos = { x: 0, y: 0, z: 0 }
+const _origen = { x: 0, y: 0, z: 0 }
+const _dirP = { x: 0, y: 0, z: 0 }
+const _golpeP = { t: 0, victima: null, zona: null }
+const _lanzamiento = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, g: 0, tipo: null, fuerza: 0, intensidad: 0 }
 
 /**
  * **Interpolación de rumbos, por el camino corto.** Entre 179° y −179° hay dos
@@ -81,6 +89,13 @@ export class Partida {
     compraSegundos = ROUNDS.compraSegundos,
   }) {
     this.escenario = escenario
+    /**
+     * **Lo que hay volando, y es del mundo y no de nadie** (vuelta 85). Un
+     * cohete sobrevive a quien lo lanzó —que es la mitad de lo que lo hace
+     * interesante— así que su dueño es la partida, no el jugador: una baja no
+     * lo apaga y abandonar tampoco.
+     */
+    this.proyectiles = new Proyectiles(PROJECTILES.pool * 2)
     /**
      * **La dotación del mapa, si no se compra en él** (vuelta 72). `null` es el
      * camino de siempre: hay economía y cada uno lleva lo que ha pagado. Con
@@ -759,6 +774,14 @@ export class Partida {
       for (let i = 0; i < cuantas; i++) this._ejecutar(jugador, jugador.cola.shift())
     }
 
+    /**
+     * **Y los proyectiles, con los jugadores ya movidos.** Va aquí y no antes
+     * porque contra lo que choca un proyectil es contra dónde está el rival
+     * **al final de este paso**: resolverlo antes sería juzgarlo contra el paso
+     * anterior, que es un rebobinado de uno que nadie ha pedido.
+     */
+    this._pasoDeProyectiles()
+
     // **Y dónde ha quedado cada uno.** Se anota siempre, incluso para quien no
     // avanzó por falta de entrada: no moverse también es una posición, y el
     // rebobinado tiene que encontrar algo en cada paso del anillo.
@@ -992,6 +1015,117 @@ export class Partida {
     if (entrada.d) this._resolverTiro(jugador, entrada)
   }
 
+/**
+   * **Un arma de proyectil no se resuelve: se lanza** (vuelta 85).
+   *
+   * Y con eso se cae **la compensación de retraso**, a propósito y no por
+   * olvido. Rebobinar al instante que el tirador tenía en pantalla (vuelta 46)
+   * es lo correcto para una bala, que llega en el mismo paso en que sale: lo
+   * que se corrige es el viaje del **mensaje**. Una flecha tarda medio segundo
+   * en llegar, y ese medio segundo es del **mundo**, no de la red — esquivarla
+   * es exactamente lo que el arma ofrece a quien la ve venir. Rebobinar aquí
+   * sería matar a alguien por donde estaba cuando el otro soltó la cuerda.
+   *
+   * Lo que **sí** se conserva es todo lo de alrededor: la cadencia se valida
+   * igual, el veredicto sale igual por su `seq` —el cliente espera uno y
+   * dejarle sin él sería dejarle esperando— y la fase manda igual. Es la misma
+   * idea que el cuchillo de la vuelta 71: una mecánica nueva no es un protocolo
+   * nuevo.
+   */
+  _lanzarProyectil(tirador, entrada, arma, salida) {
+    const d = entrada.d
+    const p = tirador.pose.position
+    _ojos.x = p.x; _ojos.y = p.y; _ojos.z = p.z
+    const carga = Number.isFinite(d.c) ? Math.max(0, Math.min(1, d.c)) : 0
+    const l = lanzamientoDeArma(arma, carga, _ojos, d.yaw, d.pitch, _lanzamiento)
+    if (!l) return
+    this.proyectiles.lanzar({
+      tipo: l.tipo,
+      dueno: tirador.id,
+      x: l.x, y: l.y, z: l.z,
+      vx: l.vx, vy: l.vy, vz: l.vz,
+      g: l.g,
+      fuerza: l.fuerza,
+      intensidad: l.intensidad,
+    })
+    /**
+     * **Y el lanzamiento se le cuenta al otro, no a los dos.** Quien lo tiró ya
+     * lo tiene volando desde el instante del clic porque lo predijo, igual que
+     * su propio movimiento: mandárselo sería pintarle una segunda flecha un
+     * viaje más tarde.
+     */
+    for (const otro of this.jugadores.values()) {
+      if (otro === tirador) continue
+      otro.enviar(JSON.stringify({
+        t: MSG.PROYECTIL,
+        n: this.paso,
+        k: l.tipo,
+        x: +l.x.toFixed(3), y: +l.y.toFixed(3), z: +l.z.toFixed(3),
+        vx: +l.vx.toFixed(3), vy: +l.vy.toFixed(3), vz: +l.vz.toFixed(3),
+        g: l.g,
+        i: +l.intensidad.toFixed(2),
+      }))
+    }
+  }
+
+  /**
+   * **Un paso de los proyectiles que hay volando**, y es **del mundo y no de
+   * nadie**: un cohete sobrevive a quien lo lanzó, que es la mitad de lo que lo
+   * hace interesante. Por eso el pool cuelga de la partida y no del jugador, y
+   * por eso una baja no lo apaga.
+   */
+  _pasoDeProyectiles() {
+    if (this.proyectiles.vivos === 0) return
+    const cuantos = this.proyectiles.paso(
+      SIM_STEP_MS / 1000, this._cortarSegmento, this._proyectilContraJugadores,
+    )
+    for (let i = 0; i < cuantos; i++) {
+      const im = this.proyectiles.impactos[i]
+      if (!im.victima) continue
+      const tirador = this.jugadores.get(im.dueno) ?? null
+      /**
+       * **El daño sale de la fuerza con la que salió, no del arma de ahora.**
+       * Una flecha a medio cargar vale 45 y una llena 110, y entre que sale y
+       * llega el tirador puede haber cambiado de arma. Lo que hirió es lo que
+       * voló.
+       */
+      const dano = zoneDamage(im.zona, null, im.fuerza)
+      this._aplicarDano(im.victima, dano, tirador, im.zona, false)
+    }
+  }
+
+  /**
+   * **A quién le da un proyectil.** Contra el cuerpo de **ahora**, no contra
+   * uno rebobinado: ver `_lanzarProyectil`.
+   */
+  _proyectilContraJugadores = (p) => {
+    let mejor = null
+    for (const jugador of this.jugadores.values()) {
+      // Nadie se mata con lo que acaba de tirar **mientras está saliendo**. Con
+      // un cohete esto dejará de valer —su explosión sí alcanza a quien la
+      // tiró— pero el proyectil en sí no se clava en su propio dueño.
+      if (jugador.id === p.dueno) continue
+      if (!jugador.vida) continue
+      const q = jugador.pose.position
+      const cuerpo = cuerpoDeJugador(q.x, q.z, jugador.movimiento.feetY, jugador.movimiento.eyeHeight)
+      _origen.x = p.x0; _origen.y = p.y0; _origen.z = p.z0
+      _dirP.x = p.dx; _dirP.y = p.dy; _dirP.z = p.dz
+      const golpe = hitPlayer(_origen, _dirP, cuerpo, p.largo + PROJECTILES.radio)
+      if (!golpe) continue
+      if (!mejor || golpe.distance < mejor.t) {
+        _golpeP.t = golpe.distance
+        _golpeP.victima = jugador
+        _golpeP.zona = golpe.zone
+        mejor = _golpeP
+      }
+    }
+    return mejor
+  }
+
+  /** Contra qué choca un proyectil: la geometría del mapa de esta sala. */
+  _cortarSegmento = (x0, y0, z0, x1, y1, z1) =>
+    this.escenario ? this.escenario.cortarSegmento(x0, y0, z0, x1, y1, z1) : null
+
   /**
    * **El disparo, juzgado contra lo que el tirador tenía en pantalla.**
    *
@@ -1029,7 +1163,24 @@ export class Partida {
       this._anotarVeredicto(tirador, salida)
       return
     }
-    if (!rival || !tirador.vida) {
+    if (!tirador.vida) {
+      this._anotarVeredicto(tirador, salida)
+      return
+    }
+    /**
+     * **Un arma de proyectil se desvía aquí** (vuelta 85), después de la
+     * cadencia y de la fase y antes del rebobinado. Lo que lanza **no necesita
+     * rival**: una flecha sale aunque no haya nadie delante y va a clavarse en
+     * una pared, que es lo que la distingue de un rayo. Y el veredicto sale
+     * igual —sin impacto, sin rechazo— porque el cliente espera uno por `seq`.
+     */
+    const armaDeTiro = WEAPONS[tirador.arma]?.tiro ? WEAPONS[tirador.arma] : null
+    if (armaDeTiro) {
+      this._lanzarProyectil(tirador, entrada, armaDeTiro, salida)
+      this._anotarVeredicto(tirador, salida)
+      return
+    }
+    if (!rival) {
       this._anotarVeredicto(tirador, salida)
       return
     }
@@ -1469,6 +1620,15 @@ export class Partida {
 
   /** Se abre la caja y empieza a contar la ronda. */
   _empezarRonda() {
+    /**
+     * **Y una ronda nueva no hereda lo que había volando** (vuelta 85). Un
+     * cohete lanzado en el último segundo de la anterior es del mundo anterior:
+     * con los dos jugadores ya teletransportados a sus salidas, lo que haría es
+     * reventar encima de alguien que acaba de aparecer. Es la misma razón por
+     * la que un cambio de fase tira la cola de entradas sin confirmar (vuelta
+     * 62).
+     */
+    this.proyectiles.apagarTodos()
     this.rondas.fase = 'ronda'
     this.rondas.hastaPaso = this.paso + this._pasosDe(ROUNDS.duracionSegundos)
     /**

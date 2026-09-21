@@ -10998,3 +10998,220 @@ nace con su voz y su destello. Lo que esta vuelta añade es que jugarlo puede
 quitarle uno de los dos — y cuál se queda no es casual: **el sonido, porque el
 oído no hay que apuntarlo a ninguna parte** (vuelta 73). Quien pasa cerca sigue
 enterándose de que alguien acaba de salir lanzado; quien lo usa ya lo sabía.
+
+---
+
+## §85 — Lo primero que tarda en llegar: proyectiles, y el arco
+
+Hasta esta vuelta **todo el juego era impacto instantáneo**. Una bala se
+resuelve con un rayo en el mismo paso en que sale, y de ahí cuelgan cosas que
+no son detalles: el netcode del duelo se construyó alrededor de «rebobino al
+instante que el tirador tenía en pantalla y contesto» (vuelta 46), y no había
+nada en el mundo que durase entre dos pasos. Un arco rompe las dos, y por eso
+esto se trató como una pieza de ingeniería y no como una ficha más.
+
+### 85.1 La trayectoria está en forma cerrada, como el salto
+
+`p(t) = p0 + v0·t + ½·a·t²` desde el lanzamiento, y un paso **no suma `v·dt`**:
+evalúa la fórmula en `t` y en `t − dt` y se queda con el segmento entre las dos.
+Es la decisión de la parábola del salto (vuelta 27) aplicada a otra cosa y por
+la misma razón — integrar por Euler acumula error y ese error va con el tamaño
+del paso— y aquí compra además dos cosas que allí no hacían falta:
+
+- **Se puede dibujar la curva antes de disparar sin simularla.** El láser
+  evalúa la misma función en veinticuatro instantes, así que lo que se ve y lo
+  que pasa no pueden discrepar por construcción.
+- **Y un proyectil que llega tarde se adelanta sumándole tiempo a su reloj.**
+  El del rival viaja por la red; ponerlo al día es `t += viaje`, no simular los
+  pasos perdidos.
+
+**El paso es un segmento, no un punto.** Un cohete a 60 u/s avanza una unidad
+por paso: comprobar sólo dónde acaba lo dejaría atravesando una pared de 0.6.
+Medido de 20 a 300 u/s contra un muro de 0.6: **0 se cuelan**.
+
+Medido (`vuelo85`): la misma flecha con pasos de 60, 144 y 240 Hz impacta con
+**0.0038%** de dispersión en la altura —lo que queda es que el punto de corte se
+interpola dentro del paso, y el mundo va a 60 fijos—; la curva dibujada cae a
+**0.000125 u** de donde acaba de verdad; y un paso con **ocho volando cuesta
+0.0016 ms** contra 0.2 de presupuesto.
+
+### 85.2 `cortarSegmento`: la primera pregunta que no se contesta con un raycast
+
+El motor ya tenía una función que dice contra qué acaba una recta:
+`_superficieBajoElRayo`, de la vuelta 64, que resuelve las piezas con
+`intersectObjects` contra las mallas fundidas. Eso es correcto y es lo que tiene
+que hacer —da el punto y la normal exactos de un triángulo— y **se paga una vez
+por disparo**. Un proyectil pregunta lo mismo **sesenta veces por segundo y por
+proyectil**, contra mallas de hasta dieciocho mil triángulos.
+
+Así que esto es el reparto de la vuelta 46 llevado a la geometría del mapa:
+**primero lo que es aritmética**. Las cajas por sus tres parejas de planos (el
+*slab test*), los prismas por los mismos semiplanos que ya usa `resolveAxis`,
+las rampas despejando dónde el segmento cruza su cuña, y la sala por sus seis
+planos —que es lo que ya hacía el rayo de la 64, porque sus paredes están
+dibujadas con líneas y no hay contra qué lanzar nada—.
+
+Lo que lo hace seguro no es que sea el mismo código: es que **está medido contra
+él**. `corte85` barre 5.544 segmentos por el Plano A desde siete puestos libres
+y compara dónde acaba cada uno:
+
+| | discrepancia máxima |
+|---|---|
+| Plano A (cajas y rampas) | **0.0013 u** (la bisección de la cuña) |
+| pilar de 12 caras y muro a 45° | **0.000000 u** |
+
+Y cuesta **0.62 µs** por paso contra los 12.8 µs del raycast: **veinte veces
+menos**.
+
+### 85.3 Y el rayo estaba mal con los prismas desde la vuelta 83
+
+Lo que salió de comparar los dos caminos no fue un fallo del camino nuevo. Con
+el pilar de doce caras, la aritmética decía 18.5 y el rayo 21.5 — exactamente el
+diámetro del pilar de diferencia. **La aritmética tenía razón.**
+
+`geometriaDePrisma` recorría los vértices en el sentido contrario al que three
+llama «cara frontal», en sus tres bloques: tapa, fondo y costados. Y sin luces
+en la escena eso **no se ve**: una malla con las normales del revés se dibuja
+exactamente igual. Lo que sí hacía era un bug de juego, y de los que importan:
+con `side: FrontSide` un rayo que llega de fuera **atraviesa la cara de entrada**
+y corta en la de salida. Consecuencias, todas reales desde la 83:
+
+- un disparo contra una columna daba **tres unidades más allá**, y la marca de
+  bala salía en su cara de detrás;
+- y como `_shoot` decide si la cobertura se come el tiro comparando esa
+  distancia con la del muñeco, **un muñeco pegado al otro lado de la columna
+  quedaba más cerca que la columna**: se mataba a través de ella.
+
+Arreglado invirtiendo el winding de los tres bloques. Después, `corte85` da
+**0.000000 u** con prismas.
+
+La lección, que vale para cualquier cosa parecida: **un segundo camino que
+contesta la misma pregunta no es duplicación si se compara con el primero**. Es
+lo que convierte dos implementaciones en una verificada — y aquí encontró un
+fallo que llevaba dos vueltas sin dar la cara porque el juego no tiene luces.
+
+### 85.4 El arco: apuntar es la dirección y cargar es la velocidad
+
+Las dos decisiones que quedaban abiertas, tomadas y con su razón.
+
+**Cómo se relacionan apuntar y cargar.** Apuntar pone la dirección y cargar pone
+la velocidad de salida; las dos hacen la misma parábola y ninguna es un
+modificador de la otra. Mirando más arriba se llega más lejos —hasta los 45°,
+que es lo que dice la física y no una regla— y cargando más la curva se estira y
+se aplana. Se eligió así porque es lo único que deja que **el láser no mienta**:
+si la carga cambiara el daño y no la curva, el dibujo sería idéntico para un
+tiro flojo y uno fuerte, y entonces lo que enseña no sería lo que va a pasar. El
+daño sube con la carga **porque sube la velocidad**.
+
+**Y sí hay techo** (`cargaMs`, 750 ms). Sin él no habría forma de saber cuándo
+se ha terminado de tensar, y aguantar un segundo de más sería una ventaja sin
+coste. Con techo, llenarse **es** una señal: la luz que sube por el láser llega
+a la punta y ahí se queda.
+
+Los números salen de una cuenta, no del gusto. Con la gravedad del arma (10) y
+disparando horizontal desde la altura de ojos: sin cargar la flecha recorre
+**15.2 u** antes de tocar el suelo, y cargada del todo **30.3 u**, que es cruzar
+el Plano A de punta a punta. El tiro rápido es de cerca y el cargado es de mapa
+entero **sin que haya que escribir esa regla en ninguna parte**. El daño va de
+45 —lo que se pidió— a 110, que es lo mismo que la Scout: mata de un tiro a
+quien no lleve chaleco. A la cabeza mata siempre y sale solo, porque **lo que ya
+vale una vida entera no se escala** (vuelta 70).
+
+**Y la gravedad de un proyectil la declara el arma, no el mapa.** Es la
+excepción deliberada a la física de la vuelta 72: un mapa decide cuánto pesas
+tú, que es una decisión sobre tu cuerpo. Si decidiera además cómo cae tu flecha,
+**aprender el arco en un mapa no serviría en otro**, y la curva de un arco es
+exactamente lo que hay que aprender.
+
+`mode: 'carga'` es el cuarto modo, y no es `semi` con un adorno: en `semi` la
+pulsación **es** el disparo, y aquí es el principio de otra cosa que dura tres
+cuartos de segundo y se puede abortar. Dos reglas que salieron construyéndolo:
+
+- **No se tensa antes de que el arma esté lista**, y eso es lo que hace que
+  soltar dispare **siempre**. La alternativa —dejar tensar durante el
+  enfriamiento y comerse la flecha al soltar— es un arma que a veces no hace
+  nada sin decir por qué.
+- **Una carga se aborta en todos los caminos menos en uno.** Por
+  `_releaseTrigger` pasan todas las formas de soltar el gatillo que no son
+  soltar el botón —perder el foco, pausar, morir, cambiar de arma— y en las
+  cuatro la flecha no puede salir: soltar el ratón para abrir el menú no
+  dispara, y guardarse un arco tensado y sacarlo después sería una flecha que
+  sale sola.
+
+### 85.5 La curva se ve porque arranca en la boca, y no miente porque converge
+
+Éste costó dos intentos y los dos los decidió mirar una captura.
+
+**Primero**: la curva salía del ojo. Geométricamente impecable y **ilegible** —
+está entera en el plano que contiene la dirección de la vista, así que en
+pantalla no es una curva, es un segmento vertical de treinta píxeles bajo la
+cruz de la mira.
+
+**Segundo**: sacar el **proyectil** de donde estaría el arma, que es la solución
+del fogonazo de la vuelta 40. Y ahí `red85` lo tumbó con el rival delante: con el
+proyectil desplazado 22 cm a la derecha, **apuntar al centro de un cuerpo a doce
+unidades falla** y la flecha pasa de largo, porque la cabeza mide 0.137 de radio
+(vuelta 65) — la mitad del desplazamiento. Un arma que no acierta donde apunta
+la mira es un fallo mayor que un dibujo torcido.
+
+**Lo que quedó**: el proyectil sale del ojo, como el rayo de cualquier disparo, y
+la curva **arranca en la boca del arma y converge a la de verdad** en siete
+puntos. El arranque se ve —sale de abajo a la derecha, que es de donde saldría—
+y de ahí en adelante, **incluido el punto de caída, que es lo que de verdad se
+apunta**, lo que se dibuja es la trayectoria exacta. Es la regla de la 40 —mover
+el dibujo, no la bala— con la mitad que allí no hizo falta: volver.
+
+### 85.6 En red viaja el lanzamiento, no la trayectoria
+
+El patrón de la física de la vuelta 72 aplicado a algo que se mueve solo: lo
+único que viaja es **de dónde, hacia dónde y con cuánta carga**, y de ahí los dos
+extremos derivan la misma parábola porque dan los mismos pasos de 60 Hz contra
+el mismo mapa. Un campo con la posición del proyectil en la foto serían sesenta
+correcciones por segundo de algo que no necesita ninguna — y encima **un
+proyectil sobrevive a quien lo lanzó**: la foto es de los jugadores, y un cohete
+en el aire ya no es de nadie.
+
+De ahí, cuatro piezas:
+
+- **`lanzamientoDeArma` la llaman los dos extremos.** Es la pieza que hace que
+  no tenga que viajar la trayectoria, y escrita dos veces sería una flecha que
+  el tirador ve dar y el servidor ve fallar — medio metro de diferencia, que es
+  el ancho de un cuerpo. Misma idea que `net/disparo.js` con el rayo.
+- **El aviso va al otro, no a los dos.** Quien lo tiró ya lo tiene volando desde
+  el instante del clic porque lo predijo, igual que su propio movimiento;
+  mandárselo sería pintarle una segunda flecha un viaje más tarde.
+- **Y con su número de paso**, que es lo que permite adelantarlo. Arrancar el
+  vuelo desde cero pintaría un cohete saliendo de donde el rival estaba hace
+  25 ms.
+- **Y se cae la compensación de retraso, a propósito.** Rebobinar al instante que
+  el tirador tenía en pantalla (vuelta 46) es lo correcto para una bala, que
+  llega en el mismo paso en que sale: lo que se corrige es el viaje del
+  **mensaje**. Una flecha tarda medio segundo en llegar, y ese medio segundo es
+  del **mundo** — esquivarla es exactamente lo que el arma ofrece a quien la ve
+  venir. Rebobinar aquí sería matar a alguien por donde estaba cuando el otro
+  soltó la cuerda.
+
+Lo que **sí** se conserva es todo lo de alrededor: la cadencia se valida igual,
+el veredicto sale igual por su `seq` y la fase manda igual. Una mecánica nueva
+no es un protocolo nuevo, que es la lección del cuchillo de la vuelta 71.
+
+Medido (`red85`, conduciendo `Partida` sin navegador): el arco lanza en vez de
+resolver un rayo; al rival se le avisa y al tirador no; la flecha tarda **13
+pasos (217 ms)** en cruzar doce unidades y **hace daño al llegar**; con carga 0
+quita **45** y con carga 1 **100**; y un cliente que manda `c: 99` se queda en
+**52.000 u/s**, que es el máximo del arma — acotado como el paso a rebobinar de
+la vuelta 46.
+
+### 85.7 Y una flecha se ve venir
+
+Es la mitad de que un arma con tiempo de vuelo sea justa, y sin luces en la
+escena lo único que lo puede contar es la silueta (vuelta 38). Un huso alargado
+**orientado a la velocidad**, en blanco roto y no en el gris del mapa, y
+**más largo cuanto más cargada salió** (`PROJECTILES.estela.porFuerza`): a veinte
+unidades eso es lo único que distingue la que quita media vida de la que mata.
+
+El destello de carga llena costó otra captura: medio metro de radio **a treinta
+centímetros del ojo ocupa la pantalla entera**. Sale a 2.4 u por delante, que es
+donde medio metro mide medio metro. Es la lección de la vuelta 40 por la otra
+punta — allí el problema era que el destello estaba dentro de algo, aquí que
+estaba dentro del ojo.

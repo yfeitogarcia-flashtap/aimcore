@@ -110,6 +110,12 @@ export class ClienteRed {
     this._saltoTs = null
     /** El clic de disparo pendiente de repartir: instante real y adónde apuntaba. */
     this._disparo = null
+    /**
+     * **Un proyectil que ha lanzado el rival.** Como `onTiroLocal` y
+     * `onBienvenida`, es un aviso y no un estado: el netcode no sabe dibujar.
+     * @type {null|((mensaje: object, adelantoS: number) => void)}
+     */
+    this.onProyectil = null
     /** Disparos mandados y todavía sin veredicto del servidor, por número. */
     this.disparosEnVuelo = new Map()
     this._seqDisparo = 0
@@ -374,6 +380,17 @@ export class ClienteRed {
       // 1 flojo, 2 fuerte; sin cuchillo no viaja. Un campo que no está es un
       // campo que no ocupa sesenta veces por segundo.
       if (this._disparo.golpe) d.m = this._disparo.golpe
+      /**
+       * **Y con cuánta carga, si es un arma de tiro curvo** (vuelta 85). Es lo
+       * único de la parábola que viaja: de dónde y hacia dónde ya van ahí
+       * arriba, y de los tres el servidor deriva la misma trayectoria porque da
+       * los mismos pasos contra el mismo mapa.
+       *
+       * Viaja **acotado en el servidor**, como el paso a rebobinar de la vuelta
+       * 46: un cliente puede mentir y lo que consigue es lo mismo que pedir un
+       * rebobinado de un minuto — que se le acote a lo que el arma da.
+       */
+      if (this._disparo.carga) d.c = +this._disparo.carga.toFixed(3)
       this._disparo = null
     }
 
@@ -454,7 +471,7 @@ export class ClienteRed {
    * de la entrada se muestrea al empezar el paso y el ratón se mueve entre
    * medias.
    */
-  disparar(ahoraMs, yaw, pitch, golpe = 0) {
+  disparar(ahoraMs, yaw, pitch, golpe = 0, carga = 0) {
     // **En pausa no se anota nada.** Como el disparo se consume en el paso
     // siguiente y en pausa no hay pasos, uno anotado ahora saldría al reanudar:
     // una bala guardada durante la pausa, apuntada a donde el rival estaba
@@ -471,7 +488,7 @@ export class ClienteRed {
     // mismo desde el punto de vista del protocolo: sellado en la entrada de su
     // paso, con su `seq` y con su veredicto. Lo único que cambia es cómo se
     // resuelve en el otro extremo.
-    this._disparo = { ts: ahoraMs, yaw, pitch, golpe }
+    this._disparo = { ts: ahoraMs, yaw, pitch, golpe, carga }
   }
 
   /**
@@ -601,6 +618,20 @@ export class ClienteRed {
   }
 
   _recibir(mensaje) {
+    /**
+     * **Ha salido un proyectil del rival** (vuelta 85). Lo que llega es el
+     * lanzamiento, no la posición, así que aquí no se corrige nada: se **avisa**
+     * y quien dibuja lo pone a volar con la misma parábola.
+     *
+     * Y va con su **número de paso**, que es lo que permite adelantarlo: el
+     * mensaje ha tardado un viaje en llegar, así que arrancar el vuelo desde
+     * cero pintaría un cohete saliendo de donde el rival estaba hace 25 ms y
+     * moviéndose por detrás de la realidad el resto del trayecto.
+     */
+    if (mensaje.t === MSG.PROYECTIL) {
+      this.onProyectil?.(mensaje, Math.max(0, (this.paso - mensaje.n) * SIM_STEP_MS / 1000))
+      return
+    }
     if (mensaje.t === MSG.ADIOS) {
       this._desconectar(mensaje.razon || 'el servidor ha cerrado la partida', true)
       return

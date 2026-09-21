@@ -82,6 +82,9 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Marcadores | `src/game/markers.js` | Brújula, iconos `?` / `!` y ficha arma+nick sobre cada muñeco. Sólo dibuja, y la brújula **sólo a quien se ve de verdad**. |
 | Fogonazo | `src/game/muzzleFlash.js` | El destello de cada disparo enemigo. Pool de estrellas aditivas; sólo dibuja. |
 | Destello de dispositivo | `src/game/dispositivos.js` | El anillo de usar un rebote, una plataforma de velocidad o una puerta. **Del motor**, así que sale en los dos modos; pool de anillos aditivos, sólo dibuja. |
+| Proyectiles | `src/game/proyectiles.js` | **Lo que vuela y tarda en llegar**: parábolas en forma cerrada y contra qué chocan. No sabe dibujar ni a quién hiere — eso cambia según quién lo llame. **Sin three**, así que lo montan el motor, el duelo y `net/partida.js` en Node. |
+| Curva de tiro | `src/game/trayectoria.js` | El láser que dibuja lo que va a pasar, de la **misma fórmula** que el vuelo. Del motor, así que sale en los dos modos. |
+| Proyectil (dibujo) | `src/game/vuelo.js` | Sólo dibuja: un `InstancedMesh` como `impacts.js`, con la estela orientada a la velocidad y **más larga cuanto más cargado salió**. |
 | Recogibles | `src/game/pickups.js` | Cruces de vida, cargas de escudo y casco por el suelo. |
 | Config | `src/config.js` | Todo el tuning, sin excepción. |
 | Tubo | `src/maps/tubo.js` | Despliega un pozo declarado como **un** objeto en las cajas AABB que el motor sabe chocar. **Lo llaman `Scenario` y el editor**, que es lo que evita que el fichero y el mundo digan cosas distintas. |
@@ -443,6 +446,91 @@ presupuesto. Dos reglas de forma:
   altura de la cintura; esto está pintado en el suelo, bajo los pies. Lo que
   **no** podía ser es ámbar (hay una bomba), rojo (te disparan), amarillo (te
   han visto) ni naranja (eso es una diana).
+
+**Lo primero del juego que tarda en llegar: los proyectiles** (vuelta 85). Hasta
+aquí **todo era impacto instantáneo** —una bala se resuelve con un rayo en el
+mismo paso en que sale— y de ahí colgaban dos cosas que no son detalles: el
+netcode del duelo se construyó alrededor de rebobinar al instante del clic
+(vuelta 46), y no había nada en el mundo que durase entre dos pasos. Seis reglas:
+
+- **La trayectoria está en forma cerrada**, `p(t) = p0 + v0·t + ½·a·t²` desde el
+  lanzamiento. Es la parábola del salto (vuelta 27) aplicada a otra cosa y por
+  la misma razón, y aquí compra además **dibujar la curva antes de disparar sin
+  simularla** —el láser evalúa la misma función, así que no puede mentir— y
+  **adelantar un vuelo que llegó tarde** sumándole tiempo a su reloj.
+- **Un paso es un segmento, no un punto.** Un cohete a 60 u/s avanza una unidad
+  por paso: mirar sólo dónde acaba lo dejaría atravesando una pared de 0.6.
+- **La gravedad de un proyectil la declara el arma, no el mapa.** Excepción
+  deliberada a la física de la vuelta 72: un mapa decide cuánto pesas **tú**, y
+  si decidiera cómo cae tu flecha, aprender el arco en un mapa no serviría en
+  otro.
+- **En red viaja el lanzamiento, no la trayectoria.** De dónde, hacia dónde y con
+  cuánta carga; los dos extremos derivan la misma parábola porque dan los mismos
+  pasos contra el mismo mapa. `lanzamientoDeArma` **la llaman los dos**, como
+  `net/disparo.js` con el rayo: escrita dos veces sería una flecha que el
+  tirador ve dar y el servidor ve fallar. El aviso va **al otro y no a los dos**
+  —quien la tiró ya la predijo— y con su **número de paso**, que es lo que
+  permite adelantarla.
+- **Y se cae la compensación de retraso, a propósito.** Rebobinar al instante del
+  clic corrige el viaje del **mensaje**, y eso vale para una bala que llega en su
+  mismo paso. El medio segundo de una flecha es del **mundo**: esquivarla es lo
+  que el arma ofrece a quien la ve venir. Se resuelve contra el cuerpo de
+  **ahora**. Todo lo demás —cadencia, veredicto por `seq`, fase— sigue igual: una
+  mecánica nueva no es un protocolo nuevo (vuelta 71).
+- **Y un proyectil es del mundo, no de quien lo lanzó.** Su pool cuelga de la
+  partida: una baja no lo apaga y abandonar tampoco. Lo que sí lo apaga es
+  empezar una ronda, por lo mismo que un cambio de fase tira la cola sin
+  confirmar (vuelta 62).
+
+**`cortarSegmento` es la primera pregunta del motor que no se contesta con un
+raycast** (vuelta 85). `_superficieBajoElRayo` (vuelta 64) contesta lo mismo con
+`intersectObjects` y eso es correcto: da el triángulo exacto y **se paga una vez
+por disparo**. Un proyectil lo pregunta **sesenta veces por segundo y por
+proyectil**. Así que esto es el reparto de la vuelta 46 llevado a la geometría:
+cajas por el *slab test*, prismas por los mismos semiplanos que `resolveAxis`,
+rampas despejando su cuña y la sala por sus seis planos. **0.62 µs contra 12.8**,
+y lo que lo hace seguro no es que sea el mismo código, es que **está medido
+contra él** — 5.544 segmentos por el Plano A con 0.0013 u de discrepancia máxima.
+
+**Y de ahí salió que el rayo estaba mal con los prismas desde la 83.** La malla
+de un prisma tenía el winding invertido en sus tres bloques, y **sin luces eso no
+se ve**: una malla con las normales del revés se dibuja igual. Lo que hacía era
+que un rayo de fuera **atravesara la cara de entrada** — un disparo contra una
+columna daba tres unidades más allá, y como `_shoot` compara esa distancia con la
+del muñeco, **se mataba a través de la columna**. La lección vale para cualquier
+cosa parecida: **un segundo camino que contesta la misma pregunta no es
+duplicación si se compara con el primero**.
+
+**El arco: apuntar es la dirección y cargar es la velocidad** (vuelta 85).
+`mode: 'carga'` es el cuarto modo y no es `semi` con un adorno —en `semi` la
+pulsación **es** el disparo, aquí es el principio de otra cosa que dura 750 ms y
+se puede abortar—. Lo que convierte un arma en arma de proyectil es tener bloque
+`tiro`, como `melee` hace con un cuchillo: el motor mira el dato. Cuatro reglas:
+
+- **Las dos cosas hacen la misma parábola y ninguna modifica a la otra**, y eso
+  es lo único que deja que el láser no mienta: si la carga cambiara el daño y no
+  la curva, el dibujo sería igual para un tiro flojo y uno fuerte. El daño sube
+  **porque sube la velocidad**.
+- **Hay techo de carga**, y llenarse **es** la señal: la luz sube por el láser,
+  llega a la punta y ahí se queda. Sin techo no habría forma de saber cuándo has
+  terminado de tensar.
+- **No se tensa antes de que el arma esté lista**, y eso es lo que hace que
+  soltar dispare **siempre**. Dejar tensar durante el enfriamiento y comerse la
+  flecha al soltar es un arma que a veces no hace nada sin decir por qué.
+- **Y una carga se aborta en todos los caminos menos en soltar el botón.** Por
+  `_releaseTrigger` pasan perder el foco, pausar, morir y cambiar de arma, y en
+  los cuatro la flecha no puede salir.
+
+**La curva se ve porque arranca en la boca del arma, y no miente porque
+converge** (vuelta 85). Salir del ojo es geométricamente impecable e **ilegible**
+—la curva está en el plano de la vista, así que en pantalla es un segmento
+vertical de treinta píxeles—. Y sacar el **proyectil** al arma, que es la
+solución del fogonazo de la vuelta 40, lo tumbó una medida: desplazado 22 cm,
+**apuntar al centro de un cuerpo a doce unidades falla**, porque la cabeza mide
+0.137 de radio. Lo que queda: el proyectil sale del ojo y **el dibujo** arranca
+en la boca y converge a la curva real en siete puntos, así que el punto de caída
+—que es lo que se apunta— no se mueve. Mover el dibujo y no la bala, con la mitad
+que en la 40 no hizo falta: volver.
 
 **Un dispositivo se ve por su marca, y su marca es amarilla** (vuelta 84). Tres
 reglas que salieron de jugarlo, y ninguna cambia el modelo de nada:
@@ -4539,6 +4627,7 @@ con sonido propio.
 | Rift | principal (tecla **1**) | auto | 600 | 30 | 2300 ms | sí | 3.6 kg | 5.88 u/s |
 | Volt | principal (tecla **1**) | auto | 800 | 25 | 1800 ms | sí | 2.6 kg | 6.14 u/s |
 | Scout | principal (tecla **1**) | semi | 48 | 10 | 2600 ms | **no** | 3.2 kg | 5.98 u/s |
+| Bow | principal (tecla **1**) | **carga** | 55 | 12 | 2200 ms | **no** | 2.8 kg | 6.03 u/s |
 | Vanta | cuerpo a cuerpo (tecla **3**, siempre) | cuchillo | — | — | — | no | 0.6 kg | 6.50 u/s |
 
 **Vanta** (vuelta 71) es el **cuchillo**, y ocupa la tercera ranura —la tecla 3,

@@ -422,8 +422,8 @@ export class TargetManager {
    *
    * @returns {{ killed: boolean, zone: string }}
    */
-  applyHit(hit, now, weaponKey = null) {
-    return this._restar(hit, now, zoneDamage(hit.part.zone, weaponKey))
+  applyHit(hit, now, weaponKey = null, danoDeTorso = 0) {
+    return this._restar(hit, now, zoneDamage(hit.part.zone, weaponKey, danoDeTorso))
   }
 
   /**
