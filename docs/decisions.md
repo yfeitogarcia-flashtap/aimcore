@@ -11337,3 +11337,213 @@ errores decían «linearRampToValueAtTime» y apuntaban a three. Lo que lo resol
 fue `git stash` —verde con el código viejo, rojo con el nuevo, y sólo con el U2 en
 la mano: el arco daba cero— y luego **una guarda con un aviso en el sitio por el
 que el valor pasa**, que nombró al culpable en la primera ejecución.
+
+---
+
+## §87 — Core, Blind y KO: tres granadas, y lo primero del juego que se queda en el suelo
+
+El encargo llegó en dos mensajes y con dos bocetos a mano: las tres granadas con
+la misma mecánica de carga que el arco, **cocinado** de cuatro segundos con suelo
+de uno, efecto en área con la caída del U2, **un objeto físico que rebota, rueda
+y se queda tirado hasta detonar**, **un color por tipo** para que el rival sepa de
+qué se aparta, y **un segundo lanzamiento con el clic derecho**, corto y a ras de
+suelo, «para que el jugador no necesite perder el campo de visión del horizonte
+por mirar hacia abajo para dejar caer una granada».
+
+### La ranura: la cuarta, y llevaba reservada desde la vuelta 27
+
+`slot: 'throwable'`, tecla **G**. No compiten por la ranura principal, y eso no es
+una comodidad de implementación: **una granada no es un arma, es algo que además
+se llevas**. La tecla lleva reservada con su bind y sin lógica desde la vuelta 27
+justo para esto — el mapa de controles tiene que ser el definitivo desde el
+principio, o cuando la mecánica llegue alguien ya habrá puesto ahí su atajo
+favorito. Es exactamente lo que hizo el cuchillo con la 3 en la vuelta 71.
+
+De ahí sale `THROWABLE_WEAPONS`, derivada de la ranura como `PRIMARY_WEAPONS`, y
+el ajuste `SETTINGS.throwable` con su catálogo. No hay una segunda lista en
+ninguna parte.
+
+Y las tres entran en la tienda del duelo **ocupando el hueco que ya tenían**: la
+`granada`, la `aturdidora` y la `cegadora` estaban ahí desde la vuelta 64
+**precintadas**, con su precio y su combinación a la vista y sin poder comprarse.
+Los códigos no se mueven, que es lo que el precinto prometía.
+
+### El cocinado: dos relojes, y ésa es la decisión
+
+La carga se llena en `cargaMs` (600 ms) y **la mecha sigue corriendo**. O sea que
+pasado el medio segundo, aguantar **ya no da alcance, sólo quita aviso**. Ésa es
+la decisión entera que el arma pide, y sale de tener dos relojes y no uno.
+
+El suelo de un segundo (`GRENADES.mecha.minimoS`) es lo que se pidió y lo que
+impide que cocinar se convierta en suicidarse. Consecuencia deliberada: **no se
+puede reventar con una en la mano**. Y otra, que viene de la regla del arco: por
+`_releaseTrigger` pasan pausar, morir, perder el foco y cambiar de arma, y en los
+cuatro la granada **no sale** — así que pausar con una cocinada no te mata, te la
+devuelve.
+
+Lo que viaja por la red es **cuánto se ha sostenido** (`d.h`) y no la mecha ya
+calculada: `mechaDeGranada` la deriva en los dos extremos con el suelo dentro, así
+que un cliente que pidiera cero se lleva el mismo segundo que todos. Mentir ahí
+sólo puede **alargarte** la tuya.
+
+### El rebote: una parábola que se vuelve a anclar
+
+Un choque ya no libera la ranura: re-ancla la forma cerrada en el punto del golpe
+con la velocidad reflejada y el reloj a cero. Es la técnica del ventilador de la
+vuelta 83 aplicada a un impacto, y compra lo mismo — **un bote no introduce ni una
+integración**, así que se comporta igual a 60 que a 240 Hz.
+
+El roce va **escalado por la componente normal**: con un roce fijo, un contacto de
+refilón pierde lo mismo que un botazo y la granada se clava en dos décimas.
+
+### Y rodar es lo que obligó a generalizar el modelo
+
+Lo primero que se probó fue seguir botando con rozamiento en cada contacto, y **se
+cayó midiéndolo**: en cuanto los botes se hacen más cortos que un paso, **el número
+de contactos por segundo lo pone el refresco y no el mundo**. Medido, 0.27% de
+dispersión entre 60 y 240 Hz en dónde acaba, creciendo con lo que ruede — que es
+exactamente lo que el paso fijo de la vuelta 44 vino a cerrar.
+
+Lo que quedó: rodando, lo que frena es una **aceleración constante contra la
+marcha**, o sea `p(t) = p0 + v0·t + ½·a·t²` con la `a` en horizontal. La cabecera
+de `proyectiles.js` decía esa fórmula desde la 85 y la `a` era sólo la gravedad;
+ahora es un vector de verdad, y es la misma curva partida en trozos — lo que un
+tramo quita de velocidad se lo encuentra el siguiente, y la suma de los trozos es
+**exactamente** la curva entera.
+
+**Y la gravedad sigue puesta mientras rueda**, que no es un detalle: es lo que hace
+que una granada que llega al borde de una caja se caiga por él en vez de seguir
+rodando por el aire.
+
+Queda un residuo, anotado y no escondido: cada anclaje pasa por `cortarSegmento`,
+que corta **el segmento del paso** y no la parábola, así que el punto de contacto
+lleva el error de la cuerda. Con `apoyoU` a 0.0025 —lo que tarda en caerse
+aproximadamente un paso de mundo— hay del orden de un contacto por paso en vez de
+cinco, y la dispersión baja de **0.072% a 0.0275%**, que es la banda del modelo del
+aire con paso fijo.
+
+### Las tres cosas que hacen, y quién las decide
+
+| | qué hace | quién la aplica |
+|---|---|---|
+| **Core** | daño de área, 110 en el núcleo | el servidor (vuelta 56) |
+| **KO** | −55% de marcha 2.4 s | el servidor, y viaja en `movement.snapshot()` |
+| **Blind** | tapa la pantalla 2.8 s | **cada cliente, contra su propio pool** |
+
+La Blind **no aparece en `net/partida.js` en absoluto**, y eso es la decisión, no
+un recorte: cegar es algo que le pasa a **una pantalla**, y las pantallas las
+tienen los clientes — que montan el mismo mapa, reciben el mismo lanzamiento y
+derivan la misma parábola. Un campo en la foto para decir «estás ciego» sería
+mandar un dato que el que lo recibe ya tiene.
+
+Y apartar la vista sirve, que es lo que se pidió con esas palabras: lo que llega se
+multiplica por cuánto la estabas mirando, con suelo en `mirandoMinimo` (0.15). Va
+por ángulo y en recta, no por un cono con borde: una cegadora que pasara de cegar
+del todo a no cegar nada por medio grado sería una lotería, no una decisión. Y
+**pide línea de visión**, con el mismo `hasLineOfSight` que decide dónde puede
+nacer un muñeco (vuelta 42).
+
+La KO es el único efecto de las tres que toca el movimiento, así que es el único
+que tiene que viajar: tres campos en `snapshot()` (`aturdidoHasta`,
+`aturdidoDuracion`, `aturdidoFreno`), **y los tres desaparecen del cable cuando
+valen lo de fábrica** (regla de la vuelta 83). Medido: la foto de un jugador sin
+aturdir pesa lo mismo que antes de esta vuelta.
+
+En el cliente **no se predice**: el movimiento en red lo decide el servidor y el
+campo llega en la foto. Predecirlo aquí sería una segunda idea de cuándo empieza,
+y la diferencia entre las dos serían correcciones. Lo que se pierde es el viaje de
+una foto sobre dos segundos y medio.
+
+### El tiro corto: dos números, la misma función
+
+`GRENADES.corto` son el cabeceo que se le baja al rumbo de la cámara (22°) y las
+dos velocidades. Nada más. Lo que resuelve está en el encargo: se apunta a donde
+se estaba mirando y **la granada sale con el ángulo ya bajado**, así que no hay que
+mirar al suelo.
+
+Y el láser pasó a salir de `lanzamientoDeArma` en vez de repetir su cuenta:
+mientras hubo un solo modo de lanzamiento una copia de la fórmula no se notaba, y
+con dos **una copia es un láser que enseña la parábola larga mientras el botón
+derecho tira la corta**. Es la regla de siempre aplicada a lo único que no puede
+permitirse discrepar: el dibujo de lo que va a pasar.
+
+Medido (`gran87`): el tiro largo toca a **6.1 / 11.3 u** apuntando plano y a **39.2**
+a 45°; el corto, a **2.4 / 3.3 u**, y rueda hasta **3.6 / 6.3**.
+
+### El color, y por qué no hay ninguno nuevo
+
+De todo lo demás las separa **la forma**: son octaedros que giran, y lo que vuela
+hasta ahora eran husos orientados a la velocidad. Así que el color sólo tiene que
+distinguirlas **entre sí**, y para eso los tres que ya hay en la paleta son los más
+separados que se puede: **rojo** la que hace daño, **blanco** la de luz, **azul
+eléctrico** la de aire.
+
+Que cada uno signifique ya otra cosa se admite por lo de siempre: no coinciden. El
+rojo de `threat` es un icono flotando sobre un muñeco y una cuña en el borde de la
+pantalla; el `electric` es el escudo y el cable de una tirolina.
+
+### Tres fallos que encontró construirlo, y ninguno era de esta vuelta
+
+**Un `mete` negativo regalaba munición** (desde la vuelta 86). `_refillMagazine`
+calculaba `magazine - this.ammo`, y `this.ammo` es el del arma **que acabas de
+dejar**: sacando el U2 (cargador 1) con el Rift en la mano y treinta balas dentro,
+`mete` salía **−29** y la línea de abajo se lo sumaba a la reserva. Treinta cohetes
+de la nada, sin un error en ninguna pantalla. Lo cazó `gran87nav` contando
+granadas: quedaba una de más después de tirar las dos.
+
+**`reiniciarReserva` no la llamaba nadie** (desde la vuelta 86). Estaba escrito que
+lo que se gana matando no se acumula entre vidas, y el método existía; lo que
+faltaba era llamarlo. Con las granadas habría sido peor, porque su reserva no se
+repone de ninguna otra manera.
+
+**Y el modo de un arma estaba escrito tres veces** (el HUD, la armería y
+opciones), y las tres listas conocían `auto` y `semi` y nada más: desde la vuelta
+85 el arco salía como **«SEMI»** en el HUD y como un hueco en la armería. Ahora es
+`WEAPON_MODES`, una sola lista.
+
+### Y uno que sí era de esta vuelta, con la lección de siempre
+
+Un `GRANADAS is not defined` en `vuelo.js` produjo **1228 errores en una tanda** y
+el juego siguió corriendo, porque `_loop` reprograma el frame siguiente antes de
+trabajar: es el «degrada en silencio» de la vuelta 60, otra vez. Lo que lo cazó fue
+que el banco de navegador **cuenta los `pageerror` y falla con ellos**. Sin esa
+línea, las tres granadas habrían llegado a probarse con el dibujo apagado.
+
+### Lo medido
+
+`gran87` (sin navegador, el modelo puro):
+
+- Tiro largo plano: toca en **6.08 / 11.30 u** y para en **8.00 / 15.13**.
+- Tiro largo a 45°: toca en **39.18 u**.
+- Tiro corto: toca en **2.39 / 3.32 u** y para en **3.57 / 6.31**.
+- **Dos botes** antes de ponerse a rodar, y se para a los 1.03 s.
+- Dispersión en dónde revienta entre 60, 144 y 240 Hz: **0.0275%**.
+- Cocinado: 0 s → 4 s · 1 → 3 · 2 → 2 · 3 → 1 · 3.5 → 1 · 10 → **1**.
+- Una flecha **no rebota** y revienta en la misma coordenada que antes de la
+  vuelta.
+
+`gran87red` (conduciendo `Partida`, sin una línea de red):
+
+- Sin cocinar revienta a los **4.00 s**; cocinada 3 s, a **1.00 s**; pidiendo mecha
+  cero, **1.00 s**.
+- El Core a 2.2 u: el rival a **0** y el que la tiró en **88.3**.
+- A 30 u no llega nada.
+- La KO: **6.500 → 2.925 u/s**, los tres campos en `snapshot()`, y vuelve a
+  6.500000 exacto.
+- Sin aturdimiento, **ni un campo `aturdido*` en la foto**.
+- La Blind no quita vida ni frena a nadie.
+
+`gran87nav` (conducido con el ratón, contra el producto): la G la saca, el clic
+izquierdo y el derecho lanzan, la reserva pone la segunda y la tercera no existe
+—y el HUD dice por qué—, la pantalla se pone blanca al **0.65** de opacidad y se
+pasa sola. **Cero errores de página.**
+
+`duelo87`: las tres salen en la tienda del 1v1, ninguna con precinto, cero errores.
+
+### Lo que no se hizo
+
+- **Una granada no choca contra un cuerpo.** No hace daño por tocarte, lo hace al
+  estallar, así que un impacto directo sería una segunda forma de repartir daño
+  que nadie ha decidido. Atraviesa a quien se cruce y sigue su camino.
+- **Y un lanzamiento no cuenta como disparo**, que es la regla del cuchillazo de
+  la vuelta 71: la precisión de la sesión es la de la puntería.

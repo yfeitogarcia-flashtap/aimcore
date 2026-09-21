@@ -430,11 +430,13 @@ la pistola y sin chaleco.
 
 El chaleco (500) y el casco (350) **paran balas de verdad**: el duelo usa la
 misma escalera de daño que el entrenamiento —el casco se come el primer tiro a la
-cabeza, el escudo cubre el cuerpo—. Las granadas salen en el panel con su precio
-y su combinación, **precintadas con «Próximamente»**: todavía no existen, y
-venderlas sería prometer algo que no hay. Lo que sí se puede comprar ahora mismo
-va marcado en verde, para que no haya que leer letra pequeña para saber cuál es
-cuál.
+cabeza, el escudo cubre el cuerpo—. **Y desde la vuelta 87 las tres granadas se compran de verdad**: Core (300),
+KO (250) y Blind (250), en *Utilidad*. Estaban ahí desde el primer día
+precintadas con «Próximamente», con su precio y su combinación a la vista justo
+para que se pudieran aprender — y los códigos no se han movido. Al ser utilidad
+**caben en la ronda 1**, que es donde una granada decide más. Lo que se puede
+comprar ahora mismo va marcado en verde, para que no haya que leer letra pequeña
+para saber cuál es cuál.
 
 Todos los números están en `ECONOMY` (`src/config.js`) y son de partida: se
 calibran jugando.
@@ -1545,6 +1547,9 @@ se traduce al nuevo en vez de caer al valor de fábrica.
 | **Bow** | principal (**1**) | **carga** | 55 | 12 | 2.2 s | **no** | 2.8 kg | 6.03 u/s | arco: un empujón corto hacia arriba, lo que sacude una cuerda |
 | **U2** | principal (**1**) | semi | 40 | 1 + reserva | 2.0 s | **no** | 5.4 kg | 5.41 u/s | lanzacohetes: una patada sola y grande, más que la Scout |
 | **Vanta** | cuchillo (**3**) | — | — | — | — | no | 0.6 kg | 6.50 u/s | cada golpe empuja la cámara: el flojo poco, el fuerte el doble |
+| **Core** | granada (**G**) | **carga** | 50 | 1 + 1 | 1.2 s | **no** | 0.5 kg | 6.50 u/s | el empujón de tirar algo: pequeño y hacia arriba |
+| **Blind** | granada (**G**) | **carga** | 50 | 1 + 1 | 1.2 s | **no** | 0.5 kg | 6.50 u/s | el mismo |
+| **KO** | granada (**G**) | **carga** | 50 | 1 + 1 | 1.2 s | **no** | 0.5 kg | 6.50 u/s | el mismo |
 
 ### Vanta, el cuchillo
 
@@ -1640,6 +1645,53 @@ tienes cohetes.
 que se sabe de qué lado llega— y el silbido se corta al estallar. La explosión
 pierde agudos con la distancia en vez de volumen, que es lo que hace el aire: de
 lejos se oye igual de fuerte y mucho más sorda.
+
+### Core, Blind y KO: las granadas
+
+Van en **su propia ranura** —la **G**—, así que no te quitan el rifle: la granada
+es algo que **además** llevas. Se lanzan cargando, como el arco.
+
+**Dos lanzamientos, uno por botón.**
+
+- **Clic izquierdo: lejos.** Apuntando plano cae a unas 6 unidades sin cargar y a
+  11 cargada; apuntando a 45°, a 39 — o sea el Plano A de esquina a esquina. El
+  alcance sale de **mirar más arriba**, no de otro botón, y el láser te lo dibuja
+  antes de soltar.
+- **Clic derecho: corto y a ras de suelo.** Cae a dos o tres unidades y rueda
+  hasta seis. Es para tirarla a tus pies o al doblar una esquina **sin tener que
+  mirar al suelo**, que es lo que te haría perder el horizonte justo cuando
+  alguien va a aparecer por ahí.
+
+**El cocinado: cuatro segundos desde que empiezas a cargar.** No desde que la
+sueltas. Así que aguantarla tres segundos y tirarla significa que revienta un
+segundo después, sin que al otro le dé tiempo a irse. Hay un **suelo de un
+segundo**: por mucho que la cocines nunca te estalla en la mano, y si pausas o
+cambias de arma con una a medias, **te la devuelve**.
+
+Y ojo con la otra mitad: la potencia se llena en **medio segundo**. Pasado eso,
+aguantar ya no la tira más lejos — sólo le quita aviso al otro.
+
+**Rebotan, ruedan y se quedan a la vista.** Dan dos botes, pierden fuerza en cada
+uno y acaban rodando por el suelo hasta pararse. No desaparecen al tocar tierra:
+se quedan ahí, quietas, hasta que les llega la hora — así que a una granada que
+te cae al lado **le puedes ver el color y decidir qué hacer**. Y se las oye botar,
+que es lo único que te dice que hay una detrás de ti.
+
+**Un color por tipo**, para saber de qué te tienes que apartar:
+
+| | color | qué hace |
+|---|---|---|
+| **Core** | rojo | 110 de daño en el centro, nada pasadas 6 u. El chaleco no para una onda. |
+| **Blind** | blanco | tapa la pantalla 2.8 s, hasta 9 u. **Apartar la vista la reduce**, y una pared la corta del todo. |
+| **KO** | azul eléctrico | te quita el 55% de la marcha durante 2.4 s, hasta 6.5 u. |
+
+**Y a ti también te llegan**, algo rebajado en el Core y en la KO y **entero en la
+Blind**: mirar tu propio destello te ciega igual que al otro. Es el riesgo del
+arma.
+
+**Llevas dos por vida y no se reponen.** Una en la mano y otra en el cinturón. En
+la tienda del duelo van en *Utilidad* —300 el Core, 250 las otras dos— y **caben
+en la ronda 1**, que es donde una granada decide más.
 
 ### La Scout, y la mirilla
 

@@ -13,18 +13,20 @@
 
 import * as THREE from 'three'
 import { CSS3DRenderer } from 'three/examples/jsm/renderers/CSS3DRenderer.js'
-import { ACCURACY, ACTION_PANEL, AVATAR, CAMERA, COVER, EDITOR, FOOTSTEPS, FRAME_LIMITS, HELP, IMPACTS, LOOK, MELEE_WEAPON, MOVEMENT, NET, OBJECTIVE, PLAYER, PROJECTILES, RECOIL_RESET_MS, RENDER, SCOPE, SECONDARY_WEAPON, SESSION_DURATION_S, SESSION_DURATIONS, SESSION_MODES, SIM, SIM_STEP_MS, SURFACES, TARGET, TEAMS, TRAJECTORY, WEAPONS, weaponSpeedFactor } from '../config.js'
+import { ACCURACY, ACTION_PANEL, AVATAR, CAMERA, COVER, EDITOR, FOOTSTEPS, FRAME_LIMITS, GRENADES, HELP, IMPACTS, LOOK, MELEE_WEAPON, MOVEMENT, NET, OBJECTIVE, PLAYER, PROJECTILES, RECOIL_RESET_MS, RENDER, SCOPE, SECONDARY_WEAPON, SESSION_DURATION_S, SESSION_DURATIONS, SESSION_MODES, SIM, SIM_STEP_MS, SURFACES, TARGET, TEAMS, THROWABLE_WEAPONS, TRAJECTORY, WEAPONS, weaponSpeedFactor } from '../config.js'
 import { createScene } from './scene.js'
 import { Scenario } from './scenario.js'
 import { Scope } from './scope.js'
 import { Slash } from './slash.js'
+import { Granadas } from './granadas.js'
+import { hasLineOfSight } from './sight.js'
 import { Objective, OUTCOME } from './objective.js'
 import { computeScore } from './scoring.js'
 import { createSceneTransition } from './transition.js'
 import { LookControls } from './lookControls.js'
 import { MovementController } from './movement.js'
 import { TargetManager } from './targets.js'
-import { initAudio, playBow, playDamage, playRocket, playDevice, playFootstep, playHeal, playHelmetCrack, playHit, playKill, playLanding, playMelee, playObjectiveDefused, playObjectiveExplosion, playShieldCharge, playUiConfirm } from '../audio/sfx.js'
+import { initAudio, playBow, playDamage, playGrenade, playRocket, playDevice, playFootstep, playHeal, playHelmetCrack, playHit, playKill, playLanding, playMelee, playObjectiveDefused, playObjectiveExplosion, playShieldCharge, playUiConfirm } from '../audio/sfx.js'
 import { loadWeaponSamples, playDrySound, playWeaponReload, playWeaponShot } from '../audio/samples.js'
 import { attachListener, createEmitter, detachListener, setSpatialEnabled } from '../audio/spatial.js'
 import { ActionPanel } from './actionPanel.js'
@@ -75,6 +77,8 @@ const _dir = new THREE.Vector3()
 const _punto = new THREE.Vector3()
 const _origenRayo = new THREE.Vector3()
 const _dirRayo = new THREE.Vector3()
+/** Hacia dónde mira la cámara. Lo pregunta la ceguera, una vez por estallido. */
+const _mirada = new THREE.Vector3()
 const _golpeDeProyectil = { t: 0, victima: null, zona: null }
 const _velSalida = { x: 0, y: 0, z: 0 }
 const _desvio = { x: 0, y: 0, z: 0 }
@@ -307,6 +311,13 @@ export class Engine {
      */
     this._cargaDesde = -Infinity
     /**
+     * **Si lo que se está tensando es un tiro corto** (vuelta 87), o sea si la
+     * carga empezó con el clic derecho. Es del gesto en curso y no del arma: la
+     * misma granada se lanza de las dos maneras, y lo que cambia es el ángulo
+     * de salida y la velocidad.
+     */
+    this._cargaCorta = false
+    /**
      * **La reserva de las armas que la tienen** (vuelta 86), por clave. Vacío
      * quiere decir «lo de fábrica»: `reservaDe` lo siembra al preguntarlo, que
      * es lo que hace que un arma sin reserva no pague nada por esto.
@@ -436,7 +447,17 @@ export class Engine {
      * tecla reservada desde la 27 y sin nada detrás; ahora tiene el cuchillo, y
      * se deriva del catálogo igual que la pistola — no hay una segunda lista.
      */
-    this.slots = { primary: getSettings().weapon, secondary: SECONDARY_WEAPON, melee: MELEE_WEAPON }
+    /**
+     * **Cuatro ranuras desde la vuelta 87.** La cuarta es la granada, y su
+     * tecla —la **G**— llevaba reservada sin lógica desde la vuelta 27,
+     * exactamente como la 3 hasta que llegó el cuchillo en la 71.
+     */
+    this.slots = {
+      primary: getSettings().weapon,
+      secondary: SECONDARY_WEAPON,
+      melee: MELEE_WEAPON,
+      throwable: getSettings().throwable,
+    }
     this.slot = 'primary'
     /**
      * **El arma que dejas se queda como estaba.** Aquí se guarda el cargador de
@@ -651,6 +672,7 @@ export class Engine {
     const suyoProyectil = cliente.onProyectil
     cliente.onProyectil = (m, adelantoS) => {
       suyoProyectil?.(m, adelantoS)
+      const esGranada = Boolean(this._tiroDe(m.k)?.granada)
       const i = this.proyectiles.lanzar({
         tipo: m.k,
         dueno: m.de ?? 'rival',
@@ -661,6 +683,17 @@ export class Engine {
         // decide el servidor (vuelta 56). Esto es un dibujo.
         fuerza: 0,
         intensidad: m.i ?? 1,
+        /**
+         * **Y una granada rebota igual en las dos pantallas** (vuelta 87).
+         * Los tres números del rebote salen de `GRENADES`, que los dos
+         * extremos leen del mismo módulo, así que no viajan. **La mecha sí**,
+         * y es la única excepción: la decide cuánto la ha tenido en la mano su
+         * dueño, y eso no está en ninguna entrada que este cliente ejecute.
+         */
+        rebote: esGranada ? GRENADES.rebote.restitucion : 0,
+        roce: esGranada ? GRENADES.rebote.roce : 0,
+        reposoU: esGranada ? GRENADES.rebote.reposoU : 0,
+        mechaS: Number.isFinite(m.m) ? m.m : Infinity,
       })
       if (i && adelantoS > 0) this.proyectiles.adelantar(i, adelantoS)
     }
@@ -785,6 +818,31 @@ export class Engine {
       this._cancelReload()
       this._refillMagazine()
     }
+    /**
+     * **Y la granada, igual** (vuelta 87), con una diferencia que **es** una
+     * decisión: comprar una **no** te la pone en la mano. Una principal sí,
+     * porque es con lo que vas a salir a la ronda; una granada es lo que sacas
+     * cuando toca, y arrancarte el rifle de las manos a mitad de una fase de
+     * compra por haber comprado una Blind sería un control que hace lo que
+     * nadie pidió.
+     *
+     * Lo que sí pasa es lo contrario: si te quedas sin ella y la llevabas en la
+     * mano, se vuelve a la pistola — empuñar un arma que ya no existe es la
+     * versión silenciosa del mismo fallo.
+     */
+    const granadaAntes = this.slots.throwable
+    this.slots.throwable = inv.granada ?? null
+    if (granadaAntes && granadaAntes !== this.slots.throwable) delete this._stowed[granadaAntes]
+    if (this.slot === 'throwable' && !this.slots.throwable) {
+      this.slot = 'secondary'
+      this.weaponKey = this.slots.secondary
+      this._cancelReload()
+      this._refillMagazine()
+    } else if (this.slot === 'throwable' && this.weaponKey !== this.slots.throwable) {
+      this.weaponKey = this.slots.throwable
+      this._cancelReload()
+      this._refillMagazine()
+    }
     this._publishWeapon(getSettings())
   }
 
@@ -834,6 +892,8 @@ export class Engine {
     this.scope = new Scope(parent || document.body)
     // Y el destello del cuchillo, por lo mismo: es del mundo, no del HUD.
     this.slash = new Slash(parent || document.body)
+    // **Del motor, como el tajo y la mirilla**, así que sale en los dos modos.
+    this.granadas = new Granadas(parent || document.body)
 
     this._resizeObserver = new ResizeObserver(this._onResize)
     this._resizeObserver.observe(this.canvas.parentElement || this.canvas)
@@ -850,6 +910,8 @@ export class Engine {
     this.scope = null
     this.slash?.dispose()
     this.slash = null
+    this.granadas?.dispose()
+    this.granadas = null
     this._running = false
     cancelAnimationFrame(this._rafId)
     this.canvas.removeEventListener('mousedown', this._onMouseDown)
@@ -1029,6 +1091,24 @@ export class Engine {
       this.slots.primary = settings.weapon
       if (this.slot === 'primary') {
         this.weaponKey = settings.weapon
+        this._releaseTrigger()
+        this._cancelReload()
+        this._refillMagazine()
+      }
+    }
+    /**
+     * **Y lo mismo con la granada** (vuelta 87), por lo mismo y con la misma
+     * condición: en red lo que llevas lo dice el inventario del servidor. Es la
+     * ranura la que cambia, no lo que tienes en la mano — si estabas empuñando
+     * una, la nueva sale llena por el camino de siempre.
+     */
+    if (!this.enRed && settings.throwable !== this.slots.throwable) {
+      delete this._stowed[this.slots.throwable]
+      delete this._stowed[settings.throwable]
+      delete this._reserva[this.slots.throwable]
+      this.slots.throwable = settings.throwable
+      if (this.slot === 'throwable') {
+        this.weaponKey = settings.throwable
         this._releaseTrigger()
         this._cancelReload()
         this._refillMagazine()
@@ -1253,13 +1333,24 @@ export class Engine {
       this._lowAmmoWarned = false
       return
     }
+    /**
+     * **Y lo que ya había se acota al cargador** (vuelta 87). Esto decía
+     * `magazine - this.ammo` a secas, y `this.ammo` es el del arma **que
+     * acabas de dejar**: sacando el U2 (cargador 1) con el Rift en la mano y
+     * treinta balas dentro, `mete` salía **−29** y la línea de abajo se lo
+     * sumaba a la reserva — treinta cohetes de la nada, sin un error en ninguna
+     * pantalla. Lo cazó `gran87nav` contando granadas: quedaba una de más
+     * después de tirar las dos.
+     *
+     * La regla que lo cierra es la de siempre: un número que viene de fuera se
+     * acota antes de usarlo, y aquí «fuera» es el arma anterior.
+     */
+    const tenia = Math.max(0, Math.min(this.ammo, this.weapon.magazine))
+    this.ammo = tenia
     const quedan = this.reservaDe(this.weaponKey)
-    if (quedan <= 0) {
-      this.ammo = 0
-      return
-    }
-    const mete = Math.min(this.weapon.magazine - this.ammo, quedan)
-    this.ammo += mete
+    if (quedan <= 0) return
+    const mete = Math.min(this.weapon.magazine - tenia, quedan)
+    this.ammo = tenia + mete
     this._reserva[this.weaponKey] = quedan - mete
     this._lowAmmoWarned = false
   }
@@ -1301,6 +1392,26 @@ export class Engine {
   }
 
   /**
+   * **Todas las reservas a lo de fábrica** (vuelta 87). Lo llaman empezar una
+   * sesión y reaparecer, que es lo que la vuelta 86 dejó escrito del U2 —«lo
+   * que se gana matando no se acumula entre vidas»— **y no llegó a llamar**:
+   * `reiniciarReserva` existía y no la usaba nadie, así que en el
+   * entrenamiento un jugador que muriese con dos cohetes ganados se los
+   * quedaba. Con las granadas eso sería peor todavía, porque su reserva no se
+   * repone de ninguna otra manera.
+   *
+   * Recorre el catálogo y no una lista: el día que un arma nueva tenga reserva,
+   * se reinicia sola.
+   */
+  _reiniciarReservas() {
+    // **En red no**: lo que tienes lo dice el inventario del servidor (vuelta
+    // 64), y pisarlo aquí sería devolverle cohetes a quien el servidor sabe
+    // que no los tiene.
+    if (this.enRed) return
+    for (const clave of Object.keys(WEAPONS)) this.reiniciarReserva(clave)
+  }
+
+  /**
    * Arranca una recarga. No hace nada si ya hay una en curso —pulsar R varias
    * veces ni la reinicia ni la acumula— ni con el cargador ya lleno.
    */
@@ -1310,7 +1421,10 @@ export class Engine {
     // **Sin reserva no hay recarga**, y se dice: un arma que no responde a la R
     // sin explicar por qué es un arma que parece rota (vuelta 86).
     if (this.armaDeTiro?.reserva && this.reservaDe(this.weaponKey) <= 0) {
-      this._showHelp('Sin cohetes: consigue una baja para recuperar uno')
+      // **Y lo dice el arma**, no esta línea: el U2 se repone matando y una
+      // granada no se repone de ninguna manera, así que un aviso escrito aquí
+      // mentiría en una de las dos.
+      this._showHelp(this.armaDeTiro.reserva.aviso ?? 'Sin munición de reserva')
       return
     }
     this.reloadStartedAt = now
@@ -1406,7 +1520,9 @@ export class Engine {
     this._releaseTrigger()
     this._cancelReload()
     this._resetLoadout()
+    this._reiniciarReservas()
     this._refillMagazine()
+    this.granadas?.limpiar()
     this._publishWeapon(getSettings())
     this._lastShotAt = -Infinity
     this._nextShotAt = -Infinity
@@ -1632,6 +1748,22 @@ export class Engine {
         this._tryMelee('fuerte', this.gameTime, ts)
         return
       }
+      /**
+       * **Y en una granada es el tiro corto** (vuelta 87), que es la cuarta
+       * cosa que puede haber detrás de este botón y sigue siendo la misma
+       * regla: *la segunda función del arma que llevas*, y lo dice el dato.
+       * Una granada no admite supresor ni tiene mirilla, así que el botón
+       * estaba libre.
+       *
+       * Lo que resuelve está en el encargo con todas las letras: para dejar
+       * caer una granada a tus pies hay que mirar al suelo, **y mirar al suelo
+       * es perder el horizonte**. Con esto se apunta a donde se estaba mirando
+       * y la granada sale con el ángulo ya bajado.
+       */
+      if (this.weapon.tiro?.granada) {
+        this._empezarCarga(this.gameTime, true)
+        return
+      }
       if (this.weapon.scope) this._alternarMirilla()
       else this._alternarSupresor()
       return
@@ -1712,10 +1844,22 @@ export class Engine {
   }
 
   _onMouseUp(event) {
+    /**
+     * **Y el clic derecho también suelta** (vuelta 87), porque con una granada
+     * es el otro lanzamiento. La condición es qué botón empezó la carga y no
+     * cuál se levanta: soltar el izquierdo no puede tirar el corto que estabas
+     * tensando con el derecho.
+     */
+    if (event.button === 2) {
+      if (this.cargando && this._cargaCorta) this._soltarCarga(this.gameTime)
+      return
+    }
     if (!this._isBind('shoot', event)) return
     // **Soltar el botón es lo que dispara un arma de carga** (vuelta 85), y va
     // antes de `_releaseTrigger`, que es quien aborta lo que quede tensado.
-    if (this.cargando && !this._triggerConsumedByPanel) this._soltarCarga(this.gameTime)
+    if (this.cargando && !this._cargaCorta && !this._triggerConsumedByPanel) {
+      this._soltarCarga(this.gameTime)
+    }
     this._releaseTrigger()
   }
 
@@ -2221,7 +2365,11 @@ export class Engine {
     // Las dos armas llenas, pero en la mano sigue la que llevabas: reaparecer
     // repone munición, no te cambia de arma.
     this._stowed = {}
+    this._reiniciarReservas()
     this._refillMagazine()
+    // **Y la pantalla se limpia**: heredar la ceguera de la vida anterior sería
+    // aparecer sin poder ver por algo que le pasó a un cuerpo que ya no existe.
+    this.granadas?.limpiar()
     this.camera.updateMatrixWorld()
   }
 
@@ -2444,6 +2592,16 @@ export class Engine {
       return
     }
 
+    // **Y la cuarta** (vuelta 87), que hasta aquí era una tecla sin efecto.
+    if (this._isBind('throwable', event)) {
+      event.preventDefault()
+      // **Y si no llevas ninguna, se dice.** Una tecla que no responde sin
+      // explicar por qué es una tecla que parece rota (vuelta 86).
+      if (!this.slots.throwable) this._showHelp('No llevas granadas: cómpralas en la tienda')
+      else this._equipSlot('throwable')
+      return
+    }
+
     if (this._isBind('cycleWeapon', event)) {
       event.preventDefault()
       this._runPanelAction('weapon')
@@ -2569,6 +2727,7 @@ export class Engine {
      * único que sabe que el gesto ha terminado de verdad.
      */
     this._cargaDesde = -Infinity
+    this._cargaCorta = false
     this._triggerHeld = false
     this._triggerConsumedByPanel = false
     this._sprayIndex = 0
@@ -3098,8 +3257,12 @@ export class Engine {
   }
 
   /** Empieza a tensar. Una sola vez por pulsación: es un flanco. */
-  _empezarCarga(now) {
+  _empezarCarga(now, corta = false) {
     if (this.cargando || this.weapon.mode !== 'carga' || !this.armaDeTiro?.cargaMs) return
+    // El tiro corto es de las granadas y de nadie más: con cualquier otra arma
+    // de carga el clic derecho sigue haciendo lo que hacía.
+    if (corta && !this.armaDeTiro.granada) return
+    if (!this.isLocked || this.phase !== PHASE.RUNNING) return
     /**
      * **No se tensa antes de que el arma esté lista**, y eso es lo que hace que
      * soltar dispare **siempre**. La alternativa —dejar tensar durante el
@@ -3109,6 +3272,7 @@ export class Engine {
      */
     if (now < this._nextShotAt || this.reloading || this.ammo <= 0) return
     this._cargaDesde = now
+    this._cargaCorta = corta
     playBow('tensar')
   }
 
@@ -3122,7 +3286,16 @@ export class Engine {
   _soltarCarga(now, instanteReal = this._simTime) {
     if (!this.cargando) return false
     const carga = this.cargaActual
+    /**
+     * **Cuánto la has tenido en la mano, sin techo** (vuelta 87), que es otra
+     * cosa que la carga: la carga se llena en `cargaMs` y **la mecha sigue
+     * corriendo**. De ahí sale la decisión entera del cocinado — pasado el
+     * medio segundo, aguantar ya no da alcance, sólo quita aviso.
+     */
+    const sostenidoS = Math.max(0, (now - this._cargaDesde) / 1000)
+    const corto = this._cargaCorta
     this._cargaDesde = -Infinity
+    this._cargaCorta = false
     const tiro = this.armaDeTiro
     if (!tiro) return false
     // La cadencia se comprueba **al soltar**, que es cuando sale la flecha.
@@ -3130,7 +3303,7 @@ export class Engine {
     if (this.reloading || this.ammo <= 0) return false
     if (this.enRed ? this.net.vida <= 0 : !this.status.alive) return false
     this._nextShotAt = now + 60000 / this.weapon.rpm
-    this._lanzarProyectil(tiro, carga, instanteReal)
+    this._lanzarProyectil(tiro, carga, instanteReal, { corto, sostenidoS })
     this._applyRecoil(this.weapon)
     this._sprayIndex += 1
     this._consumeAmmo(this.weapon, now)
@@ -3147,7 +3320,7 @@ export class Engine {
    * arma que sacude, y tensar un arco corriendo lo que hace es que el láser se
    * mueva, que ya es el castigo.
    */
-  _lanzarProyectil(tiro, carga, instanteReal = this._simTime) {
+  _lanzarProyectil(tiro, carga, instanteReal = this._simTime, opciones = null) {
     this.camera.updateMatrixWorld()
     const yaw = this.camera.rotation.y
     const pitch = this.camera.rotation.x
@@ -3158,7 +3331,7 @@ export class Engine {
      * cinco números. Escrita dos veces sería una flecha que el tirador ve dar y
      * el servidor ve fallar.
      */
-    const l = lanzamientoDeArma(this.weapon, carga, this.camera.position, yaw, pitch, _lanzamiento)
+    const l = lanzamientoDeArma(this.weapon, carga, this.camera.position, yaw, pitch, _lanzamiento, opciones)
     if (!l) return
     /**
      * **En red el lanzamiento se manda; el vuelo lo derivan los dos.** Es el
@@ -3168,7 +3341,15 @@ export class Engine {
      * con la posición del proyectil en la foto sería sesenta correcciones por
      * segundo de algo que no necesita ninguna.
      */
-    if (this.enRed) this.net.disparar(instanteReal, yaw, pitch, 0, carga)
+    /**
+     * **Y con una granada viajan dos cosas más**: cuánto se ha sostenido y si
+     * fue el tiro corto. No viaja la mecha ya calculada, que es lo que un
+     * cliente podría mentir: los dos extremos la **derivan** con
+     * `mechaDeGranada`, que tiene el suelo de un segundo dentro.
+     */
+    if (this.enRed) {
+      this.net.disparar(instanteReal, yaw, pitch, 0, carga, opciones ?? null)
+    }
     const serie = this.proyectiles.lanzar({
       tipo: l.tipo,
       dueno: this.enRed ? this.net.id : 'yo',
@@ -3177,8 +3358,18 @@ export class Engine {
       g: l.g,
       fuerza: l.fuerza,
       intensidad: l.intensidad,
+      rebote: l.rebote,
+      roce: l.roce,
+      reposoU: l.reposoU,
+      mechaS: l.mechaS,
     })
-    this.shots += 1
+    /**
+     * **Y un lanzamiento no cuenta como disparo** (vuelta 87). Es la regla del
+     * cuchillazo de la vuelta 71: la precisión de la sesión es la de la
+     * puntería, y meter ahí las granadas —que ni siquiera preguntan a los
+     * cuerpos por el camino— la convertiría en otra cosa.
+     */
+    if (!tiro.granada) this.shots += 1
     /**
      * **Cada proyectil suena como lo que es**, y lo decide su clase y no el
      * arma: un cohete no es un arco con otro volumen (la regla de la vuelta 40).
@@ -3189,6 +3380,8 @@ export class Engine {
       this._emisorDispositivo.setPosition(l.x, l.y, l.z)
       playRocket('salida', this._emisorDispositivo)
       this._encenderSilbido(serie)
+    } else if (tiro.granada) {
+      playGrenade('lanzar')
     } else {
       playBow('soltar', carga)
     }
@@ -3200,7 +3393,7 @@ export class Engine {
      * cargada del todo»— en vez de en adorno, y **no pegado a la cara**: medio
      * metro de radio a treinta centímetros del ojo tapa la pantalla entera.
      */
-    if (carga >= 1) {
+    if (carga >= 1 && !opciones?.corto) {
       const d = SURFACES.destello.arcoLleno.adelanteU
       const n = Math.hypot(l.vx, l.vy, l.vz) || 1
       this.dispositivos.emitir(
@@ -3268,16 +3461,20 @@ export class Engine {
    * (`explosion.propio`) no es piedad, es que un arma que se suicida al primer
    * despiste es un arma que nadie saca.
    */
-  _explotar(im, explosion) {
+  _explotar(im, explosion, conVozPropia = true) {
     const ahora = this.gameTime
     // Lo que se ve y lo que se oye, en el sitio y con su distancia: una
     // explosión lejana no suena más floja, suena **más sorda** (vuelta 86).
-    this.dispositivos.emitir('explosion', im.x, im.y, im.z, 0, ahora)
-    this._emisorDispositivo.setPosition(im.x, im.y, im.z)
     const d = Math.hypot(
       this.camera.position.x - im.x, this.camera.position.y - im.y, this.camera.position.z - im.z,
     )
-    playRocket('explosion', this._emisorDispositivo, Math.min(1, d / SURFACES.audio.maxDistanceU))
+    // Una granada llega aquí con su destello ya puesto y su voz ya sonada: el
+    // Core suena a granada y no a cohete, que es la regla de la vuelta 40.
+    if (conVozPropia) {
+      this.dispositivos.emitir('explosion', im.x, im.y, im.z, 0, ahora)
+      this._emisorDispositivo.setPosition(im.x, im.y, im.z)
+      playRocket('explosion', this._emisorDispositivo, Math.min(1, d / SURFACES.audio.maxDistanceU))
+    }
 
     if (this.enRed) return
 
@@ -3324,6 +3521,93 @@ export class Engine {
   }
 
   /**
+   * **Lo que hace una granada al estallar** (vuelta 87), y son tres cosas
+   * distintas con el mismo reparto: la caída de área de siempre
+   * (`caidaDeArea`, vuelta 85) decide **cuánto**, y lo que cambia es **qué**.
+   *
+   * Lo que no cambia es quién manda: el daño del Core, como el del cohete, lo
+   * decide el servidor en red (vuelta 56). Lo que sí sale en los dos modos es
+   * lo que le pasa a **tu** pantalla —una ceguera y un aturdimiento son cosas
+   * que ves tú— y por eso esa parte no pregunta por `enRed`: la calcula cada
+   * cliente contra su propio pool, que los dos extremos montan igual.
+   */
+  _estallarGranada(im, tiro) {
+    const ahora = this.gameTime
+    const clase = im.tipo
+    this.dispositivos.emitir('explosion', im.x, im.y, im.z, 0, ahora)
+    const ojos = this.camera.position
+    const d = Math.hypot(ojos.x - im.x, ojos.y - im.y, ojos.z - im.z)
+    this._emisorDispositivo.setPosition(im.x, im.y, im.z)
+    playGrenade(clase, this._emisorDispositivo, Math.min(1, d / SURFACES.audio.maxDistanceU))
+
+    const suyo = im.dueno === (this.enRed ? this.net.id : 'yo')
+
+    if (tiro.ceguera) {
+      const e = tiro.ceguera
+      let k = caidaDeArea(d, e.radioU, e.nucleoU) * (suyo ? e.propio : 1)
+      /**
+       * **Y apartar la vista sirve**, que es la mecánica entera de la Blind y
+       * lo que se pidió con esas palabras. Lo que llega se multiplica por
+       * cuánto la estabas mirando, con suelo en `mirandoMinimo`: de frente,
+       * entera; de espaldas, un parpadeo.
+       *
+       * **Y pide línea de visión**, con el mismo `hasLineOfSight` que decide
+       * dónde puede nacer un muñeco (vuelta 42): un destello detrás de una caja
+       * no ciega a nadie, y eso es justo lo que la separa de un daño de área.
+       */
+      if (k > 0) k *= this._mirandoHacia(im.x, im.y, im.z)
+      if (k > 0 && this.scenario && !this._veElPunto(im.x, im.y, im.z)) k = 0
+      this.granadas?.cegar(ahora, e.duracionMs, k)
+    }
+
+    if (tiro.aturdimiento) {
+      const e = tiro.aturdimiento
+      const k = caidaDeArea(d, e.radioU, e.nucleoU) * (suyo ? e.propio : 1)
+      if (k > 0) {
+        this.granadas?.aturdir(ahora, e.duracionMs, k)
+        /**
+         * **Y el freno de la marcha sólo fuera de la red.** En el duelo el
+         * movimiento lo decide el servidor (vuelta 56) y el aturdimiento viaja
+         * en `movement.snapshot()`: predecirlo aquí sería una segunda idea de
+         * cuándo empieza, y la diferencia entre las dos serían correcciones. Lo
+         * que se pierde es el viaje de una foto sobre dos segundos y medio.
+         */
+        if (!this.enRed) {
+          this.movement.aturdir(this._simTime + e.duracionMs, e.duracionMs, e.frenoMax * k)
+        }
+      }
+    }
+
+    if (tiro.explosion) this._explotar(im, tiro.explosion, false)
+  }
+
+  /**
+   * **Cuánto estás mirando a un punto**, entre `mirandoMinimo` y 1. Sale del
+   * ángulo entre hacia dónde miras y hacia dónde está, no de un cono con
+   * borde: una cegadora que pasara de cegar del todo a no cegar nada por medio
+   * grado sería una lotería, no una decisión.
+   */
+  _mirandoHacia(x, y, z) {
+    const ojos = this.camera.position
+    _dir.set(x - ojos.x, y - ojos.y, z - ojos.z)
+    if (_dir.lengthSq() < 1e-9) return 1
+    _dir.normalize()
+    this.camera.getWorldDirection(_mirada)
+    const cos = _dir.dot(_mirada)
+    // De frente (cos 1) llega entero y de lado o de espaldas (cos ≤ 0) el
+    // suelo. En medio, en recta.
+    const suelo = GRENADES.pantalla.ceguera.mirandoMinimo
+    const k = cos <= 0 ? 0 : cos
+    return suelo + (1 - suelo) * k
+  }
+
+  /** ¿Se ve ese punto desde los ojos? El mismo test que la aparición. */
+  _veElPunto(x, y, z) {
+    _punto.set(x, y, z)
+    return hasLineOfSight(this.camera.position, _punto, this.scenario.occluders)
+  }
+
+  /**
    * **Un paso de los proyectiles que hay volando.**
    *
    * Contra qué chocan lo decide el mapa; a quién hieren, quien esté jugando —el
@@ -3336,6 +3620,19 @@ export class Engine {
     const escenario = this.scenario
     if (!escenario) return
     const cuantos = this.proyectiles.paso(dt, this._cortarSegmento, this._proyectilContraCuerpos)
+    /**
+     * **Y una granada que bota se oye** (vuelta 87). Es el único aviso que da
+     * entre que sale y estalla, y lo da por el canal que no hay que apuntar a
+     * ninguna parte (vuelta 73): una que cae detrás de ti no se ve de ninguna
+     * manera. El volumen sale de **lo fuerte que pegó**, así que un botazo
+     * contra el suelo y un roce contra una pared no suenan igual.
+     */
+    const botes = this.proyectiles.cuantosBotes
+    for (let i = 0; i < botes; i++) {
+      const b = this.proyectiles.botes[i]
+      this._emisorDispositivo.setPosition(b.x, b.y, b.z)
+      playGrenade('bote', this._emisorDispositivo, 0, Math.min(1, b.fuerza / 12))
+    }
     for (let i = 0; i < cuantos; i++) {
       const im = this.proyectiles.impactos[i]
       this._impactoDeProyectil(im)
@@ -3343,13 +3640,17 @@ export class Engine {
   }
 
   /**
-   * **Con qué explota una clase de proyectil**, o `null` si no explota. Sale
-   * del catálogo de armas y no de una segunda tabla: el día que dos armas
-   * lancen la misma clase, las dos revientan igual.
+   * **La ficha de tiro de una clase de proyectil**, o `null`. Sale del
+   * catálogo de armas y no de una segunda tabla: el día que dos armas lancen
+   * la misma clase, las dos revientan igual.
+   *
+   * Se pregunta por la **clase** y no por el arma que tengas en la mano porque
+   * entre que sale y llega puedes haber cambiado — y eso con una granada de
+   * cuatro segundos pasa a menudo.
    */
-  _explosionDe(tipo) {
+  _tiroDe(tipo) {
     for (const arma of Object.values(WEAPONS)) {
-      if (arma.tiro?.proyectil === tipo) return arma.tiro.explosion ?? null
+      if (arma.tiro?.proyectil === tipo) return arma.tiro
     }
     return null
   }
@@ -3369,10 +3670,15 @@ export class Engine {
     /**
      * **Lo que explota, explota** (vuelta 86), y lo dice el proyectil y no el
      * arma que tengas ahora en la mano: entre que sale y llega puedes haber
-     * cambiado. `_explosionDe` lo saca de su clase, que es lo único que viaja
+     * cambiado. `_tiroDe` lo saca de su clase, que es lo único que viaja
      * con él.
      */
-    const explosion = this._explosionDe(im.tipo)
+    const tiro = this._tiroDe(im.tipo)
+    if (tiro?.granada) {
+      this._estallarGranada(im, tiro)
+      return
+    }
+    const explosion = tiro?.explosion ?? null
     if (explosion) {
       this._explotar(im, explosion)
       return
@@ -3656,6 +3962,9 @@ export class Engine {
     this._dibujarTrayectoria()
     this.vuelo.update(this.proyectiles)
     this._moverSilbidos()
+    // Con el reloj del mundo, como las marcas de bala (vuelta 64): en pausa una
+    // ceguera se queda quieta en vez de gastarse mirando el menú.
+    if (this.granadas?.activo) this.granadas.update(this.gameTime)
     this._actualizarCono()
     this._publishStats()
     this.renderer.render(this.scene, this.camera)
@@ -3941,16 +4250,26 @@ export class Engine {
       return
     }
     const carga = this.cargaActual
-    const v = tiro.vMin + (tiro.vMax - tiro.vMin) * carga
     const yaw = this.camera.rotation.y
     const pitch = this.camera.rotation.x
+    /**
+     * **La curva sale de `lanzamientoDeArma`, no de repetir su cuenta aquí**
+     * (vuelta 87). Lo era hasta el tiro corto, y con dos modos de lanzamiento
+     * una copia de la fórmula es un láser que enseña la parábola larga mientras
+     * el botón derecho tira la corta. Es la regla de siempre —una sola fuente
+     * de verdad para lógica compartida— aplicada a lo único que no podía
+     * permitirse discrepar: **el dibujo de lo que va a pasar**.
+     */
+    const l = lanzamientoDeArma(
+      this.weapon, carga, this.camera.position, yaw, pitch, _lanzamiento,
+      { corto: this._cargaCorta },
+    )
+    if (!l) { this.trayectoria.ocultar(); return }
+    _velSalida.x = l.vx; _velSalida.y = l.vy; _velSalida.z = l.vz
     const cp = Math.cos(pitch)
     const fx = -Math.sin(yaw) * cp
     const fy = Math.sin(pitch)
     const fz = -Math.cos(yaw) * cp
-    _velSalida.x = fx * v
-    _velSalida.y = fy * v
-    _velSalida.z = fz * v
     /**
      * **De cuánto se separa el dibujo del arranque de verdad.** La boca del
      * arma: a la derecha, abajo y un poco por delante. El porqué —y por qué el

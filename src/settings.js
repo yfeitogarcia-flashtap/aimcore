@@ -17,6 +17,7 @@ import {
   FRAME_LIMITS,
   TRAINER_SCENARIOS,
   PRIMARY_WEAPONS,
+  THROWABLE_WEAPONS,
   SETTINGS,
   SIMULTANEOUS_TARGETS,
   TARGET_TYPES,
@@ -45,6 +46,9 @@ const CATALOGS = {
   // antes de la vuelta 39 no es una opción válida y cae al valor de fábrica,
   // que es exactamente lo que hace el saneado con cualquier clave obsoleta.
   weapon: PRIMARY_WEAPONS,
+  // **Y el de la granada es el de su ranura** (vuelta 87), derivado igual y
+  // por lo mismo: una clave que no sea una de las tres cae a fábrica.
+  throwable: THROWABLE_WEAPONS,
   simultaneousTargets: SIMULTANEOUS_TARGETS,
   frameLimit: FRAME_LIMITS,
 }

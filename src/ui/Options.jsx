@@ -18,6 +18,7 @@ import {
   SESSION_DURATIONS,
   SECONDARY_WEAPON,
   WEAPONS,
+  WEAPON_MODES,
 } from '../config.js'
 
 /**
@@ -151,12 +152,11 @@ function SliderRow({ id, setting, value, onChange, suffix = '', editable = false
   )
 }
 
-const FIRE_MODES = { semi: 'Semiautomática', auto: 'Automática' }
 
 /** Ficha corta del arma: modo, cadencia y carácter del retroceso. */
 function weaponHint(weaponKey) {
   const weapon = WEAPONS[weaponKey]
-  return `${FIRE_MODES[weapon.mode]} · ${weapon.rpm} RPM · ${weapon.character}`
+  return `${WEAPON_MODES[weapon.mode]?.largo} · ${weapon.rpm} RPM · ${weapon.character}`
 }
 
 /**

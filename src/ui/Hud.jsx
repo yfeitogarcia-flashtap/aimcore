@@ -3,7 +3,7 @@ import { VektorMark } from './Logo.jsx'
 import WeaponSilhouette from './WeaponSilhouette.jsx'
 import { STAR_PATH } from './Stars.jsx'
 import { ICON_PATHS } from './iconPaths.js'
-import { FEEDBACK, PLAYER, WEAPONS } from '../config.js'
+import { FEEDBACK, PLAYER, WEAPONS, WEAPON_MODES } from '../config.js'
 import { ratio } from './Summary.jsx'
 
 /**
@@ -58,12 +58,12 @@ const SHIELD_BOX = (() => {
 
 /**
  * Cómo dispara, en una palabra. Un cuchillo no es «SEMI»: no dispara (vuelta
- * 71). Sale del modo del arma, que es el mismo campo que mira el motor.
+ * 71), y un arco tampoco (vuelta 85). Sale de `WEAPON_MODES`, que es la única
+ * lista de modos del juego desde la vuelta 87 — aquí había una copia que sólo
+ * conocía dos de los cuatro.
  */
 function modoDelArma(weaponKey) {
-  const modo = WEAPONS[weaponKey]?.mode
-  if (modo === 'melee') return 'CUERPO A CUERPO'
-  return modo === 'auto' ? 'AUTO' : 'SEMI'
+  return WEAPON_MODES[WEAPONS[weaponKey]?.mode]?.corto ?? ''
 }
 
 const Hud = forwardRef(function Hud({ weaponKey, suppressed, duelo = false }, ref) {

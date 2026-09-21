@@ -323,6 +323,135 @@ export const TRAJECTORY = {
 }
 
 /**
+ * **Lo que comparten las tres granadas** (vuelta 87): Core, Blind y KO.
+ *
+ * Aquí no hay nada de *qué hace* cada una —eso lo declara su arma, como el
+ * `explosion` del U2— sino **cómo se comporta un objeto que se tira**: cuánto
+ * rebota, cuándo se para, cuánto dura la mecha y cómo es el tiro corto. Son los
+ * números que las tres tienen iguales a propósito: tres granadas que rebotasen
+ * distinto serían tres físicas que aprender, y lo que hay que aprender es el
+ * efecto.
+ *
+ * **Y nada de esto viaja por la red**, como la física de la vuelta 72 y los
+ * dispositivos de la 80: los dos extremos montan el mismo mapa, derivan el
+ * mismo lanzamiento con `lanzamientoDeArma` y dan los mismos pasos de 60 Hz, así
+ * que rebotan igual sin que se mande un solo número.
+ */
+export const GRENADES = {
+  /**
+   * **La mecha, y es el corazón del cocinado.** Cuatro segundos desde que se
+   * activa —o sea desde que se empieza a cargar—, así que lo que le queda de
+   * vuelo es `total − lo que la hayas tenido en la mano`.
+   *
+   * `minimoS` es el suelo, y **es la regla que se pidió**: por mucho que se
+   * cocine, nunca queda menos de un segundo. No es una concesión de tuning — es
+   * lo que impide que el gesto de aguantar se convierta en suicidarse, que en
+   * un 1v1 donde las tres se hacen daño a uno mismo sería un arma que castiga
+   * justo al que la está usando bien.
+   *
+   * De ahí sale sola la decisión que la granada pide: soltar ya (cuatro
+   * segundos, y al rival le da tiempo a irse) o cocinar (misma potencia, menos
+   * aviso, y el riesgo de tenerla encima).
+   */
+  mecha: { totalS: 4, minimoS: 1 },
+  /**
+   * **El rebote.**
+   *
+   * `restitucion` es cuánto conserva de la componente **normal** —lo que rebota
+   * de verdad— y `roce`, cuánto pierde de la **tangencial**, que es lo que la
+   * hace rodar y pararse en vez de deslizarse para siempre. Los dos números
+   * salen de una cuenta, no del gusto: con 0.42, una granada que llega al suelo
+   * a 20 u/s rebota a 8.4, luego a 3.5 y el tercero ya cae por debajo de
+   * `reposoU`, así que se para en **tres botes**. Menos sería una piedra y más
+   * sería una pelota.
+   *
+   * `reposoU` es la marcha por debajo de la cual se queda quieta, y es lo que
+   * cierra la puerta al problema de Zenón: sin ella, una parábola que rebota
+   * con pérdida da infinitos botes en tiempo finito.
+   *
+   * `maxRebotesPorPaso` es el tope de choques que se resuelven dentro de un
+   * mismo paso de mundo. Pasado el tope **se para**, y eso no es un recorte: una
+   * granada que choca cuatro veces en 16.7 ms es una granada que ya ha dejado de
+   * moverse, y forzarlo ahí es lo que deja el coste del bucle acotado.
+   */
+  rebote: {
+    restitucion: 0.32,
+    roce: 0.6,
+    reposoU: 2.2,
+    /**
+     * **Lo que frena a una que rueda**, en u/s². Es una aceleración y no un
+     * factor por contacto a propósito: rodar tiene que ser forma cerrada, o lo
+     * que decide dónde para una granada es el refresco del monitor y no el
+     * mundo (ver `paso()` en `proyectiles.js`). Con 15, una que toca el suelo
+     * rodando a 11 u/s recorre **4 u** y se para en 0.7 s.
+     */
+    desaceleracionU: 15,
+    /**
+     * **A qué altura se apoya una que rueda**, en unidades, y es el número más
+     * pequeño de esta vuelta con la explicación más larga.
+     *
+     * Rodando, la granada se vuelve a anclar cada vez que toca el suelo, y cada
+     * anclaje pasa por `cortarSegmento`, que corta **el segmento del paso** y no
+     * la parábola: o sea que dice el punto de contacto con el error de la
+     * cuerda, y ese error va con el tamaño del paso. Un anclaje no se nota;
+     * cuatrocientos, sí — medido, **0.072%** de dispersión entre 60 y 240 Hz en
+     * dónde acaba.
+     *
+     * 0.0025 es lo que tarda en caerse **aproximadamente un paso de mundo** con
+     * la gravedad de una granada, así que hay del orden de un contacto por paso
+     * en vez de cinco. Medido después: **0.0275%**, que es la banda del modelo
+     * del aire con paso fijo (vuelta 44). Y dos milímetros y medio de apoyo no
+     * se ven desde ninguna distancia.
+     */
+    apoyoU: 0.0025,
+    maxRebotesPorPaso: 4,
+  },
+  /**
+   * **Lo que se ve tirado en el suelo.** Un octaedro, y la forma es lo que la
+   * separa de todo lo demás que vuela: la flecha y el cohete son husos
+   * orientados a la velocidad (vuelta 85), y esto es un cuerpo facetado que
+   * gira. Sin luces en la escena, la silueta es lo único que dice qué es una
+   * cosa (vuelta 38).
+   *
+   * `giroPorSegundo` son vueltas mientras vuela, y **se derivan de su reloj de
+   * vuelo**, no de un contador: un campo menos que guardar, y los dos extremos
+   * lo dibujan igual sin haberlo hablado. Parada no gira, que es la mitad de que
+   * «se ha parado» se lea de un vistazo.
+   */
+  dibujo: { radioU: 0.17, giroPorSegundo: 2.2 },
+  /**
+   * **El tiro corto, con el clic derecho** (lo pidió quien lo juega).
+   *
+   * El problema que resuelve está dicho en el encargo con todas las letras: para
+   * dejar caer una granada a tus pies hay que mirar al suelo, **y mirar al suelo
+   * es perder el horizonte** justo cuando hay alguien doblando la esquina. Así
+   * que el tiro corto no se apunta hacia abajo: se apunta a donde se estaba
+   * mirando y **la granada sale con el ángulo ya bajado**.
+   *
+   * `cabeceoGrados` es cuánto se le baja al rumbo de la cámara, y las dos
+   * velocidades son las de vacío y lleno. Medido desde la altura de ojos con la
+   * gravedad de una granada: cae a **2.8 u** sin cargar y a **4.1 u** cargada,
+   * y de ahí rueda. Es un tiro de esquina y de pies, no de distancia — para eso
+   * está el otro botón.
+   */
+  corto: { cabeceoGrados: 22, vMin: 9, vMax: 18 },
+  /**
+   * **Lo que le pasa a la pantalla de quien se come una Blind o una KO.**
+   *
+   * `ceguera` es el blanco que tapa, y `aturdimiento` la sacudida oscura de la
+   * KO. Los dos van en `src/game/granadas.js`, que es **del motor**, así que
+   * salen igual entrenando y en el duelo (vuelta 63).
+   *
+   * `mirandoMinimo` es lo que le llega a quien **no** está mirando el destello,
+   * y es la mecánica entera de la Blind: apartar la vista tiene que servir de
+   * algo o la granada no es una granada de luz, es un daño que no se puede
+   * esquivar. Con 0.15, mirar a otro lado deja el 15% — un parpadeo, no una
+   * ceguera.
+   */
+  pantalla: { ceguera: { mirandoMinimo: 0.15 }, aturdimiento: { vaivenGrados: 1.6 } },
+}
+
+/**
  * **El destello de un golpe de cuchillo** (vuelta 71). Lo dibuja
  * `src/game/slash.js`; aquí están los números.
  *
@@ -1198,7 +1327,7 @@ export const WEAPONS = {
        * Y **se reinicia al empezar una ronda y al morir con él equipado**: lo
        * que se gana matando no se acumula entre vidas.
        */
-      reserva: { inicial: 2, maxima: 4, porBaja: 1 },
+      reserva: { inicial: 2, maxima: 4, porBaja: 1, aviso: 'Sin cohetes: consigue una baja para recuperar uno' },
     },
   },
   /**
@@ -1270,6 +1399,231 @@ export const WEAPONS = {
       fuerte: { dano: 55, rpm: 70, kick: [1.4, 1.1] },
     },
   },
+  /**
+   * **Core, Blind y KO: las tres granadas** (vuelta 87), y son la primera
+   * ocupación de la **cuarta ranura** —`throwable`, la **G**, que llevaba
+   * reservada con su tecla y sin lógica desde la vuelta 27—. Es exactamente lo
+   * que hizo el cuchillo con la 3 en la vuelta 71: una tecla se reserva para
+   * que el mapa de controles sea el definitivo desde el principio, y el día que
+   * la mecánica existe se ocupa sin mover de los dedos nada de nadie.
+   *
+   * No compiten por la ranura principal, y eso no es un detalle de
+   * implementación: **una granada no es un arma, es algo que además se lleva**.
+   * Cuál de las tres se lleva se elige como el arma principal —de ahí sale
+   * `THROWABLE_WEAPONS`— y en el duelo lo decide lo que se haya comprado.
+   *
+   * Las tres comparten **todo menos lo que hacen al estallar**:
+   *
+   * - **Se lanzan cargando**, como el arco (`mode: 'carga'`), con el mismo
+   *   láser, la misma luz que sube y el mismo anillo del punto de caída. No
+   *   hubo que construir nada para eso, que es la convención de la vuelta 63
+   *   funcionando: lo que ya existe en el motor lo usan las cuatro armas.
+   * - **Cocinan.** La mecha empieza a correr **al empezar a cargar**, no al
+   *   soltar, así que aguantar no da más potencia —el techo de carga se alcanza
+   *   en `cargaMs`— pero sí menos aviso. Los números están en `GRENADES.mecha`.
+   * - **Rebotan y se paran**, con peso: `granada: true` es lo que dice que este
+   *   proyectil no se clava sino que bota, rueda y se queda tirado a la vista
+   *   hasta que le llega la hora.
+   * - **Y no cuentan como disparo.** Es la regla del cuchillo (vuelta 71): la
+   *   precisión de la sesión es la de la puntería, y meter ahí los lanzamientos
+   *   la convertiría en otra cosa. Por eso `danoMin`/`danoMax` valen **cero** —
+   *   una granada no hace daño por tocarte, lo hace por estallar— y por eso
+   *   ninguna de las tres pregunta a los cuerpos por el camino.
+   *
+   * **El color es lo único que las distingue entre sí, y la forma lo que las
+   * distingue de todo lo demás.** Las tres se dibujan como un octaedro que gira
+   * (`GRENADES.dibujo`), que no se parece al huso de una flecha ni al de un
+   * cohete; y dentro de esa forma, el tinte dice cuál es: **rojo** la que hace
+   * daño, **blanco** la de luz y **azul eléctrico** la de aire. Es la regla de
+   * la vuelta 67 —lo que separa dos cosas es la forma— con el color haciendo el
+   * trabajo que aquí sí le toca, que es contestar la pregunta del encargo:
+   * *«¿qué va a estallar ahí, y me aparto o miro para otro lado?»*.
+   */
+  'core': {
+    label: 'Core',
+    character: 'fragmentación',
+    slot: 'throwable',
+    mode: 'carga',
+    /** 50 «RPM» = 1200 ms: lo que cuesta sacar la siguiente del cinturón. */
+    rpm: 50,
+    /** Una en la mano y otra en el cinturón. No hay una tercera. */
+    magazine: 1,
+    reloadMs: 1200,
+    supportsSuppressor: false,
+    /**
+     * No se puntúa: una granada no cuenta como disparo (ver arriba). El campo
+     * está dicho en vez de ausente porque la armería lo lee, y un hueco en la
+     * ficha parece un fallo.
+     */
+    precisionTarget: 0.35,
+    /**
+     * **Un chaleco no para una onda**, y es cero por lo mismo que el U2 (vuelta
+     * 86): una placa delante del pecho para lo que llega por delante en línea
+     * recta, y una explosión llega de todas partes a la vez.
+     */
+    shieldAbsorb: 0,
+    /** 500 g: por debajo del peso gratis, así que con una granada se corre. */
+    weight: 0.5,
+    /** El empujón de tirar algo. Pequeño y arriba: no es un arma de fuego. */
+    recoil: [
+      [0.9, 0.15],
+      [0.7, -0.1],
+    ],
+    recoilLoopFrom: 1,
+    tiro: {
+      proyectil: 'core',
+      /** Lo que dice que esto bota, rueda y cocina en vez de clavarse. */
+      granada: true,
+      /**
+       * **El techo de carga, y es la mitad de lo que el cocinado significa.**
+       * 600 ms es tensar el brazo; la mecha son cuatro segundos. Así que pasado
+       * el medio segundo **aguantar ya no da alcance, sólo quita aviso** — que
+       * es exactamente la decisión que se pidió.
+       */
+      cargaMs: 600,
+      /**
+       * **De dónde a dónde llega el tiro largo.** Los dos números salen de una
+       * cuenta con la gravedad de abajo: apuntando **plano** desde la altura de
+       * ojos cae a 6.1 u sin cargar y a 14.8 cargada; apuntando **a 45°**, a
+       * 10.9 y a 37.6 — o sea el Plano A de esquina a esquina. Que el alcance
+       * salga de mirar más arriba y no de otro botón es lo que hace que el
+       * láser enseñe algo: la curva **es** el mando.
+       */
+      vMin: 14,
+      vMax: 26,
+      /**
+       * **Una granada pesa**, y eso es un número. 18 está entre los 10 de una
+       * flecha y los 30 del jugador: el arco es un arma de trazo tenso que se
+       * aprende compensando, y esto es un bulto que se lanza por encima de algo.
+       * Con la gravedad de la flecha el arco de una granada no se leería como
+       * un arco.
+       */
+      gravedad: 18,
+      /**
+       * **Cero, y no es un olvido.** Una granada no hace daño por tocarte: lo
+       * hace al estallar, y eso lo dice `explosion`. Poner aquí un número sería
+       * inventarse un golpe directo que además haría que un lanzamiento
+       * contara como acierto.
+       */
+      danoMin: 0,
+      danoMax: 0,
+      /**
+       * **Lo que revienta** (misma caída que el U2: `caidaDeArea`). 110 en el
+       * núcleo mata a vida llena **lleves lo que lleves**, que es lo que una
+       * granada de fragmentación tiene que prometer; a mitad de radio quedan 66
+       * —dos tercios de una vida— y en el borde, cero.
+       *
+       * Y **a ti también te toca**: `propio` 0.8 son 88 de pleno, o sea que
+       * tirártela a los pies a vida llena no mata pero te deja en 12. Es el
+       * mismo argumento del U2 — no es piedad, es que un arma que se suicida al
+       * primer despiste es un arma que nadie saca.
+       */
+      explosion: { radioU: 6, nucleoU: 1, dano: 110, propio: 0.8 },
+      /**
+       * **Dos, y ninguna más.** Una en la mano y una en el cinturón, sin forma
+       * de reponerlas: `porBaja` es cero, al revés que el U2, porque el U2 se
+       * gana los cohetes matando y aquí matar con la granada es ya el premio.
+       */
+      reserva: { inicial: 1, maxima: 1, porBaja: 0, aviso: 'No te quedan granadas' },
+    },
+  },
+  /**
+   * **Blind: la de luz.** No hace ni un punto de daño y es la que más puede
+   * decidir un cruce, porque lo que quita es la información.
+   */
+  'blind': {
+    label: 'Blind',
+    character: 'cegadora',
+    slot: 'throwable',
+    mode: 'carga',
+    rpm: 50,
+    magazine: 1,
+    reloadMs: 1200,
+    supportsSuppressor: false,
+    precisionTarget: 0.35,
+    shieldAbsorb: 0,
+    weight: 0.5,
+    recoil: [
+      [0.9, 0.15],
+      [0.7, -0.1],
+    ],
+    recoilLoopFrom: 1,
+    tiro: {
+      proyectil: 'blind',
+      granada: true,
+      cargaMs: 600,
+      vMin: 14,
+      vMax: 26,
+      gravedad: 18,
+      danoMin: 0,
+      danoMax: 0,
+      /**
+       * **Ciega, y apartar la vista sirve** (`GRENADES.pantalla.ceguera`). Es
+       * la mecánica entera y la pidió quien lo juega con esas palabras: un
+       * rival que la vea venir tiene que poder hacer algo, y lo que puede hacer
+       * es mirar a otro lado. Lo que le llega es la caída de siempre **por
+       * cuánto la esté mirando**, con suelo en `mirandoMinimo`.
+       *
+       * Y **pide línea de visión**: un destello detrás de una caja no ciega a
+       * nadie, que es lo que separa esto de un daño de área. El radio es el más
+       * grande de las tres (9 u) justo porque no quita vida: lo que hace es
+       * llegar.
+       *
+       * `propio` es **1 entero**, y ése es el riesgo del arma: mirar tu propio
+       * destello te ciega igual que al otro. Rebajarlo sería una cegadora que
+       * se puede tirar sin pensar.
+       */
+      ceguera: { radioU: 9, nucleoU: 2.5, duracionMs: 2800, propio: 1 },
+      reserva: { inicial: 1, maxima: 1, porBaja: 0, aviso: 'No te quedan cegadoras' },
+    },
+  },
+  /**
+   * **KO: la de aire.** Tampoco hace daño; lo que quita es la marcha.
+   */
+  'ko': {
+    label: 'KO',
+    character: 'aturdidora',
+    slot: 'throwable',
+    mode: 'carga',
+    rpm: 50,
+    magazine: 1,
+    reloadMs: 1200,
+    supportsSuppressor: false,
+    precisionTarget: 0.35,
+    shieldAbsorb: 0,
+    weight: 0.5,
+    recoil: [
+      [0.9, 0.15],
+      [0.7, -0.1],
+    ],
+    recoilLoopFrom: 1,
+    tiro: {
+      proyectil: 'ko',
+      granada: true,
+      cargaMs: 600,
+      vMin: 14,
+      vMax: 26,
+      gravedad: 18,
+      danoMin: 0,
+      danoMax: 0,
+      /**
+       * **Frena** (`movement.aturdir`), y eso es lo único que hace. `frenoMax`
+       * es cuánto se lleva de pleno: con 0.55, en el núcleo se anda al **45%**
+       * durante 2.4 s y de ahí se vuelve a la marcha normal en recta, así que
+       * no hay un instante en que se recupere de golpe.
+       *
+       * **Es el único efecto de las tres que toca el movimiento**, así que es
+       * el único que tiene que viajar: sus dos campos están en
+       * `movement.snapshot()`, como el deslizamiento y la tirolina, o la
+       * reconciliación reejecutaría entradas con un jugador que el servidor
+       * cree frenado y el cliente corriendo (vueltas 69 y 83).
+       *
+       * `propio` 0.7, como el Core: la tuya te frena, pero menos.
+       */
+      aturdimiento: { radioU: 6.5, nucleoU: 1.5, duracionMs: 2400, frenoMax: 0.55, propio: 0.7 },
+      reserva: { inicial: 1, maxima: 1, porBaja: 0, aviso: 'No te quedan aturdidoras' },
+    },
+  },
 }
 
 /**
@@ -1328,6 +1682,24 @@ export function fisicaDeEscenario(escenario) {
   }
 }
 
+/**
+ * **Cómo dispara un arma, dicho en palabras** (vuelta 87), corto para el HUD y
+ * largo para la armería.
+ *
+ * Estaba escrito **tres veces** —en el HUD, en la armería y en opciones— y las
+ * tres listas conocían `auto` y `semi` y nada más, así que desde la vuelta 85
+ * el arco salía como **«SEMI»** en el HUD y como un hueco en la armería, y
+ * desde la 71 el cuchillo tenía su caso a mano en un sitio y no en los otros.
+ * Es la convención de siempre por la puerta del vocabulario: donde hay una
+ * lista de lo que el juego puede ser, se escribe una vez.
+ */
+export const WEAPON_MODES = {
+  auto: { corto: 'AUTO', largo: 'Automática' },
+  semi: { corto: 'SEMI', largo: 'Semiautomática' },
+  carga: { corto: 'CARGA', largo: 'De carga' },
+  melee: { corto: 'CUERPO A CUERPO', largo: 'Cuerpo a cuerpo' },
+}
+
 export const PRIMARY_WEAPONS = Object.fromEntries(
   Object.entries(WEAPONS).filter(([, weapon]) => weapon.slot === 'primary'),
 )
@@ -1358,6 +1730,16 @@ export const SECONDARY_WEAPON = Object.keys(WEAPONS).find(
  */
 export const MELEE_WEAPON = Object.keys(WEAPONS).find(
   (key) => WEAPONS[key].slot === 'melee',
+)
+
+/**
+ * **Las tres granadas** (vuelta 87). Se deriva de la ranura, como
+ * `PRIMARY_WEAPONS`, y por la misma razón: el día que haya una cuarta, sale
+ * sola en el selector, en la armería y en el saneado sin que nadie tenga que
+ * acordarse de tres sitios. No hay una segunda lista en ninguna parte.
+ */
+export const THROWABLE_WEAPONS = Object.fromEntries(
+  Object.entries(WEAPONS).filter(([, weapon]) => weapon.slot === 'throwable'),
 )
 
 /**
@@ -1459,7 +1841,7 @@ export const KEYBINDS = {
   // `PLAYER.shield`). El artilugio y el arrojadizo siguen siendo sólo tecla.
   shield: { label: 'Escudo', default: 'Digit4', group: 'Equipo' },
   gadget: { label: 'Artilugio', default: 'Digit5', reserved: true, group: 'Equipo' },
-  throwable: { label: 'Arrojadizo', default: 'KeyG', reserved: true, group: 'Equipo' },
+  throwable: { label: 'Granada', default: 'KeyG', group: 'Equipo' },
 
   /**
    * **El marcador, mientras se mantenga pulsada.** Va en su propio grupo porque
@@ -2145,6 +2527,20 @@ export const SETTINGS = {
   weapon: {
     label: 'Arma principal',
     default: 'rift',
+  },
+  /**
+   * **Cuál de las tres granadas se lleva** (vuelta 87). Es el hermano de
+   * `weapon` y funciona igual: una ranura con catálogo, saneado contra
+   * `THROWABLE_WEAPONS` y elegible en la armería. No sale en el panel de
+   * opciones por lo mismo que el arma principal desde la vuelta 42 — elegir
+   * equipo no es un ajuste entre la sensibilidad y el tamaño de diana.
+   *
+   * **En el duelo no manda esto**: ahí lo que llevas lo dice el inventario del
+   * servidor (vuelta 64), como con el arma principal.
+   */
+  throwable: {
+    label: 'Granada',
+    default: 'core',
   },
   targetRadius: {
     label: 'Tamaño de diana',
@@ -5112,9 +5508,21 @@ export const ECONOMY = {
     { clave: 'u2', nombre: 'U2', tipo: 'arma', ranura: 'primary', categoria: 8, codigo: 2, precio: 4200, disponible: true },
     { clave: 'chaleco', nombre: 'Chaleco', tipo: 'equipo', categoria: 6, codigo: 1, precio: 500, disponible: true },
     { clave: 'casco', nombre: 'Casco', tipo: 'equipo', categoria: 6, codigo: 2, precio: 350, disponible: true },
-    { clave: 'granada', nombre: 'Granada', tipo: 'utilidad', categoria: 7, codigo: 1, precio: 300, disponible: false },
-    { clave: 'aturdidora', nombre: 'Aturdidora', tipo: 'utilidad', categoria: 7, codigo: 2, precio: 250, disponible: false },
-    { clave: 'cegadora', nombre: 'Cegadora', tipo: 'utilidad', categoria: 7, codigo: 3, precio: 250, disponible: false },
+    /**
+     * **Las tres granadas, que desde la vuelta 87 se compran de verdad.**
+     * Estaban aquí desde la 64 **precintadas** —con su precio y su combinación
+     * a la vista y sin poder comprarse— justo para esto: esconderlas habría
+     * sido no poder aprenderse la combinación, y los códigos no se mueven, que
+     * es lo que prometía el precinto.
+     *
+     * Los precios ordenan lo que cada una hace: la que mata cuesta más que las
+     * dos que no. Y las tres caben en la ronda 1, porque son `utilidad` y ése
+     * es el techo (`techoRonda1`) — la primera ronda sigue siendo una decisión
+     * de equipo y no una carrera de armas.
+     */
+    { clave: 'core', nombre: 'Core', tipo: 'utilidad', ranura: 'throwable', categoria: 7, codigo: 1, precio: 300, disponible: true },
+    { clave: 'ko', nombre: 'KO', tipo: 'utilidad', ranura: 'throwable', categoria: 7, codigo: 2, precio: 250, disponible: true },
+    { clave: 'blind', nombre: 'Blind', tipo: 'utilidad', ranura: 'throwable', categoria: 7, codigo: 3, precio: 250, disponible: true },
   ],
   /** Cómo se llama cada categoría en el panel. */
   categorias: {

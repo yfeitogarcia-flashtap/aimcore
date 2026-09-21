@@ -1081,6 +1081,119 @@ export function playRocket(tipo, emitter = null, distancia = 0) {
   return null
 }
 
+/**
+ * **Las tres granadas, y las tres tienen voz propia** (vuelta 87).
+ *
+ * Ninguna es otra con el volumen cambiado, que es la regla desde el silbido de
+ * la vuelta 40: lo que separa dos sonidos es **hacia dónde va el tono**.
+ *
+ * - **Core**: un crujido de banda ancha y un grave corto. Es la explosión del
+ *   cohete **partida y acelerada** —sin la cola que retumba— porque una granada
+ *   es una carga pequeña: lo que se oye es el reventón, no el eco.
+ * - **Blind**: el tono **sube** y no lleva ni un grave. Un destello no golpea,
+ *   deslumbra, y lo que se oye de él es el chasquido del fogonazo y un pitido
+ *   que se queda arriba — que es además lo que uno esperaría oír justo antes de
+ *   no ver nada.
+ * - **KO**: un cañón de aire comprimido, que es lo que se pidió. Ruido por un
+ *   pasa-banda que **cae** de 900 a 120 Hz con un clic neumático delante. Cae,
+ *   al revés que la Blind, y sin el crujido del Core: no revienta, descarga.
+ * - **Bote**: el aviso de que hay una en el suelo, y es información y no
+ *   adorno — **el oído no hay que apuntarlo a ninguna parte** (vuelta 73), así
+ *   que una granada que cae detrás de ti es la única forma de enterarte. Su
+ *   volumen sale de lo fuerte que pegó, no de un número fijo.
+ *
+ * @param {'core'|'blind'|'ko'|'bote'|'lanzar'} tipo
+ * @param {number} distancia 0..1, sólo para las explosiones: lo lejano pierde
+ *   agudos y no volumen, que es lo que hace el aire (vuelta 86).
+ */
+export function playGrenade(tipo, emitter = null, distancia = 0, fuerza = 1) {
+  if (!ctx || !master || !noiseBuffer) return null
+  const t = ctx.currentTime
+  const destino = emitter?.input ?? master
+  const level = AUDIO.shotVolume
+  const lejos = Math.max(0, Math.min(1, distancia))
+  const k = Math.max(0, Math.min(1, fuerza))
+
+  /** Ruido por un filtro que barre. El ladrillo de las cuatro voces. */
+  const capa = (tipoF, hz0, hz1, q, pico, dur, retardo = 0) => {
+    const noise = ctx.createBufferSource()
+    noise.buffer = noiseBuffer
+    const f = ctx.createBiquadFilter()
+    f.type = tipoF
+    f.Q.value = q
+    f.frequency.setValueAtTime(hz0, t + retardo)
+    f.frequency.exponentialRampToValueAtTime(hz1, t + retardo + dur)
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, t + retardo)
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, pico * level), t + retardo + 0.004)
+    g.gain.exponentialRampToValueAtTime(0.0001, t + retardo + dur)
+    noise.connect(f).connect(g).connect(destino)
+    noise.start(t + retardo)
+    noise.stop(t + retardo + dur + 0.05)
+    noise.onended = () => { noise.disconnect(); f.disconnect(); g.disconnect() }
+  }
+
+  /** Un parcial. Lo que pone tono donde el ruido sólo pone textura. */
+  const tono = (forma, hz0, hz1, pico, dur, retardo = 0) => {
+    const osc = ctx.createOscillator()
+    osc.type = forma
+    osc.frequency.setValueAtTime(hz0, t + retardo)
+    osc.frequency.exponentialRampToValueAtTime(hz1, t + retardo + dur)
+    const g = ctx.createGain()
+    g.gain.setValueAtTime(0.0001, t + retardo)
+    g.gain.exponentialRampToValueAtTime(Math.max(0.0002, pico * level), t + retardo + 0.003)
+    g.gain.exponentialRampToValueAtTime(0.0001, t + retardo + dur)
+    osc.connect(g).connect(destino)
+    osc.start(t + retardo)
+    osc.stop(t + retardo + dur + 0.05)
+    osc.onended = () => { osc.disconnect(); g.disconnect() }
+  }
+
+  if (tipo === 'lanzar') {
+    // Tirar algo: una tela que roza y nada más. Corto, y por debajo del disparo.
+    capa('bandpass', 2600, 900, 1.4, 0.10, 0.09)
+    return null
+  }
+
+  if (tipo === 'bote') {
+    /**
+     * **Metal contra hormigón.** Dos parciales **inarmónicos** en relación
+     * 1.83, que es lo mismo que hace la puerta de un teletransporte (vuelta 82)
+     * y por lo mismo: una relación armónica suena a nota musical, y una
+     * granada golpeando el suelo no es una nota.
+     */
+    const v = 0.05 + 0.22 * k
+    tono('triangle', 1450, 900, v, 0.055)
+    tono('triangle', 1450 * 1.83, 1600, v * 0.5, 0.04)
+    capa('highpass', 4200, 2600, 0.8, v * 0.5, 0.03)
+    return null
+  }
+
+  if (tipo === 'blind') {
+    // Sube y se queda arriba, sin nada por debajo de 1.2 kHz.
+    capa('highpass', 1800, 6500, 0.7, 0.55, 0.16)
+    tono('sawtooth', 1200, 3400, 0.22, 0.20, 0.004)
+    // Y el pitido que queda en el oído, que es lo que dice «te ha pillado».
+    tono('sine', 3900, 3600, 0.10, 0.85, 0.05)
+    return null
+  }
+
+  if (tipo === 'ko') {
+    // Descarga de aire: cae, y el clic neumático va delante.
+    capa('highpass', 5200, 3800, 0.9, 0.16, 0.02)
+    capa('bandpass', 900, 120, 1.1, 0.58, 0.34, 0.012)
+    capa('lowpass', 500, 90, 0.6, 0.30, 0.42, 0.02)
+    return null
+  }
+
+  // `core`. Lo que la separa del cohete es que no tiene cola.
+  const techo = 8000 - 6400 * lejos
+  capa('lowpass', techo, 220, 0.6, 0.60, 0.34)
+  capa('bandpass', 120, 55, 1.1, 0.50, 0.30, 0.005)
+  if (lejos < 0.7) capa('highpass', 5600, 2600, 0.8, 0.34 * (1 - lejos), 0.09)
+  return null
+}
+
 export function playKill() {
   if (!ctx || !master) return
   const t = ctx.currentTime

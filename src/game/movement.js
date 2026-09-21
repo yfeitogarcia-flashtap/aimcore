@@ -214,6 +214,22 @@ export class MovementController {
      * hace falta ni un campo más en el protocolo.
      */
     this._useWasDown = false
+    /**
+     * **Aturdimiento** (vuelta 87): lo que una KO le quita a la marcha, hasta
+     * cuándo y durante cuánto. Los tres viajan en `snapshot()` por la razón de
+     * siempre —sobreviven a un paso— y sin ellos la reconciliación reejecutaría
+     * entradas con un jugador que el servidor cree frenado y el cliente
+     * corriendo, que es una corrección por paso (vueltas 69 y 83).
+     *
+     * `_aturdidoHasta` va en **el reloj de las entradas**, el mismo que recibe
+     * `update()`: en red eso es `n · SIM_STEP_MS`, que los dos extremos
+     * comparten sin haberlo hablado (vuelta 45).
+     */
+    this._aturdidoHasta = -Infinity
+    this._aturdidoDuracion = 0
+    this._aturdidoFreno = 0
+    /** Lo que vale el freno en **este** paso. Derivado: no es estado. */
+    this._frenoAhora = 1
     /** Cuándo toca el próximo traqueteo de la polea. Cosmético: no viaja. */
     this._poleaAt = 0
     /** La superficie bajo los pies de este paso. La escribe `update`. */
@@ -479,7 +495,46 @@ export class MovementController {
     // El peso multiplica **las tres marchas**, no sólo la carrera: si sólo
     // frenase corriendo, andar con el rifle sería más rápido que correr con él
     // en cuanto el factor bajase de walkSpeed/speed.
-    return speed * this.loadFactor
+    /**
+     * **Y lo que le haya quitado una KO** (vuelta 87). Va aquí y no en
+     * `topSpeed` porque `topSpeed` es un techo —el del air-strafe y el de la
+     * siembra del vuelo— y esto es la marcha vigente. **En el aire la marcha se
+     * congela**, así que una aturdidora que estalle a media trayectoria no
+     * acorta el salto que ya iba por el aire: sale gratis, porque la rama del
+     * aire se sale unas líneas más arriba.
+     */
+    return speed * this.loadFactor * this._frenoAhora
+  }
+
+  /**
+   * **Cuánto le queda de aturdimiento a la marcha** (vuelta 87), entre
+   * `1 − freno` y 1. Baja en recta hasta 1, así que no hay un instante en el
+   * que se recupere de golpe.
+   */
+  frenoDeAturdimiento(now) {
+    if (!(this._aturdidoFreno > 0) || !(now < this._aturdidoHasta)) return 1
+    const d = this._aturdidoDuracion
+    let k = d > 0 ? (this._aturdidoHasta - now) / d : 1
+    if (k > 1) k = 1
+    return 1 - this._aturdidoFreno * k
+  }
+
+  /**
+   * **Aturde** (vuelta 87). Lo llaman la explosión de una KO en el
+   * entrenamiento y `net/partida.js` en el duelo, con el mismo reloj que recibe
+   * `update()`.
+   *
+   * **Manda la más fuerte, y la más larga no se acorta.** Dos aturdidoras
+   * seguidas no se suman —eso sería un jugador clavado en el suelo— pero la
+   * segunda tampoco puede dejar al que la recibe mejor de lo que estaba.
+   */
+  aturdir(hastaMs, duracionMs, freno) {
+    if (!(freno > 0) || !(duracionMs > 0) || !Number.isFinite(hastaMs)) return
+    if (freno > this._aturdidoFreno) {
+      this._aturdidoFreno = freno
+      this._aturdidoDuracion = duracionMs
+    }
+    if (hastaMs > this._aturdidoHasta) this._aturdidoHasta = hastaMs
   }
 
   /**
@@ -712,6 +767,11 @@ export class MovementController {
     out.tiroD0 = this._tiroD0 || undefined
     out.tiroTime = this._tiroTime || undefined
     out.useWasDown = this._useWasDown || undefined
+    // **Aturdimiento** (vuelta 87). Los tres valen lo de fábrica casi siempre,
+    // así que casi siempre no viajan (vuelta 83).
+    out.aturdidoHasta = this._aturdidoFreno > 0 ? this._aturdidoHasta : undefined
+    out.aturdidoDuracion = this._aturdidoFreno > 0 ? this._aturdidoDuracion : undefined
+    out.aturdidoFreno = this._aturdidoFreno || undefined
     return out
   }
 
@@ -769,6 +829,9 @@ export class MovementController {
     this._tiroD0 = Number.isFinite(state.tiroD0) ? state.tiroD0 : 0
     this._tiroTime = Number.isFinite(state.tiroTime) ? state.tiroTime : 0
     this._useWasDown = Boolean(state.useWasDown)
+    this._aturdidoHasta = Number.isFinite(state.aturdidoHasta) ? state.aturdidoHasta : -Infinity
+    this._aturdidoDuracion = Number.isFinite(state.aturdidoDuracion) ? state.aturdidoDuracion : 0
+    this._aturdidoFreno = Number.isFinite(state.aturdidoFreno) ? state.aturdidoFreno : 0
     p.y = this.feetY + this.eyeHeight - this.landingDip
   }
 
@@ -854,6 +917,14 @@ export class MovementController {
    */
   update(dt, now = performance.now()) {
     if (!this.enabled) return
+    /**
+     * **Lo que una KO le quita a la marcha en este paso** (vuelta 87). Se
+     * resuelve una vez arriba y no dentro de `currentSpeed`, que es un captador
+     * y no recibe el reloj: así todo lo que pregunte por la marcha durante el
+     * paso —el suelo, el hielo, la siembra del vuelo— ve el mismo número, que
+     * es la disciplina de la pose interpolada de la vuelta 44 en pequeño.
+     */
+    this._frenoAhora = this.frenoDeAturdimiento(now)
     /**
      * **Volar es una herramienta del editor, no una mecánica** (vuelta 77).
      *

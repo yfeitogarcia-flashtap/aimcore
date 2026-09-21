@@ -1,11 +1,14 @@
 import { useEffect } from 'react'
 import {
+  GRENADES,
   MOVEMENT,
   MELEE_WEAPON,
   PRIMARY_WEAPONS,
+  THROWABLE_WEAPONS,
   SECONDARY_WEAPON,
   TARGET_TYPES,
   WEAPONS,
+  WEAPON_MODES,
   weaponSpeedFactor,
 } from '../config.js'
 import { zoneDamage } from '../game/player.js'
@@ -44,7 +47,6 @@ import WeaponSilhouette from './WeaponSilhouette.jsx'
  *     interruptor no dice «activado», enseña el arma con el tubo puesto.
  */
 
-const FIRE_MODES = { semi: 'Semiautomática', auto: 'Automática' }
 const ZONE_LABELS = { head: 'cabeza', torso: 'torso', legs: 'piernas' }
 
 /** Formatea 0.904 como «−10%». Cero no se enseña como «−0%». */
@@ -150,7 +152,7 @@ function SuppressorToggle({ on, onToggle }) {
 }
 
 /** Con qué tecla sale cada ranura. La lista de teclas de equipo, en un sitio. */
-const SLOT_KEYS = { primary: '1', secondary: '2', melee: '3' }
+const SLOT_KEYS = { primary: '1', secondary: '2', melee: '3', throwable: 'G' }
 
 function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip, onSuppressor, soloFicha }) {
   const weapon = WEAPONS[weaponKey]
@@ -173,7 +175,7 @@ function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip,
         <span className="armoury__slot" title={`Sale con la tecla ${slotKey}`}>{slotKey}</span>
       </div>
       <div className="armoury__character">
-        {FIRE_MODES[weapon.mode]} · {weapon.character}
+        {WEAPON_MODES[weapon.mode]?.largo} · {weapon.character}
       </div>
 
       {/* Las tres zonas de abajo llevan hueco reservado aunque estén vacías: si
@@ -262,22 +264,48 @@ function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip,
           label="Daño"
           value={weapon.melee
             ? `flojo ${weapon.melee.luz.dano} · fuerte ${weapon.melee.fuerte.dano} · espalda: mata`
-            : weapon.tiro
-              ? `sin cargar · ${damageLine(weaponKey, weapon.tiro.danoMin)}`
-              : damageLine(weaponKey)}
+            : weapon.tiro?.granada
+              ? 'al estallar, no al tocar'
+              : weapon.tiro
+                ? `sin cargar · ${damageLine(weaponKey, weapon.tiro.danoMin)}`
+                : damageLine(weaponKey)}
         />
         {/* **Y un arma de carga dice las dos puntas** (vuelta 85). Una sola
             fila diría el daño de un arma que no existe: el arco **no pega un
             número**, pega entre dos según cuánto lo tenses, y ésa es la
             decisión que se toma con él en la mano. Sale de `zoneDamage`
             también, que es la función que lo resuelve. */}
-        {weapon.tiro ? (
+        {weapon.tiro && !weapon.tiro.granada ? (
           <Stat label="Cargado" value={damageLine(weaponKey, weapon.tiro.danoMax)} />
         ) : null}
         {weapon.tiro?.cargaMs ? (
           <Stat
-            label="Carga"
-            value={`${(weapon.tiro.cargaMs / 1000).toFixed(2)} s al máximo · mantén para tensar, suelta para tirar`}
+            label={weapon.tiro.granada ? 'Lanzamiento' : 'Carga'}
+            value={weapon.tiro.granada
+              ? `${(weapon.tiro.cargaMs / 1000).toFixed(2)} s al máximo · clic izquierdo lejos, clic derecho corto y a ras de suelo`
+              : `${(weapon.tiro.cargaMs / 1000).toFixed(2)} s al máximo · mantén para tensar, suelta para tirar`}
+          />
+        ) : null}
+        {/* **Y una granada dice su mecha** (vuelta 87), que es lo único suyo
+            que hay que entender antes de tirar la primera: el reloj arranca al
+            empezar a cargar, no al soltar. Los dos números salen de `GRENADES`,
+            que es de donde los saca el juego. */}
+        {weapon.tiro?.granada ? (
+          <Stat
+            label="Mecha"
+            value={`${GRENADES.mecha.totalS} s desde que empiezas a cargar · nunca menos de ${GRENADES.mecha.minimoS} s tras soltarla`}
+          />
+        ) : null}
+        {weapon.tiro?.ceguera ? (
+          <Stat
+            label="Ceguera"
+            value={`${(weapon.tiro.ceguera.duracionMs / 1000).toFixed(1)} s en ${weapon.tiro.ceguera.nucleoU} u · nada pasadas ${weapon.tiro.ceguera.radioU} u · apartar la vista la reduce, y una pared la corta`}
+          />
+        ) : null}
+        {weapon.tiro?.aturdimiento ? (
+          <Stat
+            label="Aturdimiento"
+            value={`−${Math.round(weapon.tiro.aturdimiento.frenoMax * 100)}% de marcha durante ${(weapon.tiro.aturdimiento.duracionMs / 1000).toFixed(1)} s en ${weapon.tiro.aturdimiento.nucleoU} u · nada pasadas ${weapon.tiro.aturdimiento.radioU} u`}
           />
         ) : null}
         {/* **Y un arma de área dice hasta dónde llega** (vuelta 86). El radio
@@ -292,8 +320,10 @@ function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip,
         ) : null}
         {weapon.tiro?.reserva ? (
           <Stat
-            label="Cohetes"
-            value={`${weapon.tiro.reserva.inicial} al comprar · hasta ${weapon.tiro.reserva.maxima} · cada cohete que mata repone uno`}
+            label={weapon.tiro.granada ? 'Cuántas llevas' : 'Cohetes'}
+            value={weapon.tiro.granada
+              ? `${weapon.tiro.reserva.inicial + weapon.magazine} por vida · no se reponen`
+              : `${weapon.tiro.reserva.inicial} al comprar · hasta ${weapon.tiro.reserva.maxima} · cada cohete que mata repone uno`}
           />
         ) : null}
         <Stat
@@ -320,7 +350,15 @@ export default function Armoury({ settings, equipped, onChange, onClose, soloFic
    * principal, pistola, cuerpo a cuerpo. Sale de `MELEE_WEAPON`, derivado de la
    * ranura como los otros dos — aquí no hay ninguna lista escrita a mano.
    */
-  const order = [...Object.keys(PRIMARY_WEAPONS), SECONDARY_WEAPON, MELEE_WEAPON].filter(Boolean)
+  const order = [
+    ...Object.keys(PRIMARY_WEAPONS),
+    SECONDARY_WEAPON,
+    MELEE_WEAPON,
+    // **Y las granadas al final** (vuelta 87), que es el orden en que se llevan
+    // y el mismo en que están las teclas. Sale de la ranura, como las otras
+    // tres: aquí no hay ninguna lista escrita a mano.
+    ...Object.keys(THROWABLE_WEAPONS),
+  ].filter(Boolean)
 
   // Escape cierra, como en cualquier panel del juego. La tecla de la armería ya
   // la conmuta el motor; ésta es la que espera quien no se sabe el bind.
@@ -349,7 +387,9 @@ export default function Armoury({ settings, equipped, onChange, onClose, soloFic
               {WEAPONS[SECONDARY_WEAPON].label} con la <strong>2</strong> y el{' '}
               {WEAPONS[MELEE_WEAPON].label} con la <strong>3</strong>.</>
           : <>La principal sale con la <strong>1</strong> y la {WEAPONS[SECONDARY_WEAPON].label} con la{' '}
-              <strong>2</strong>. Lo que pesa se nota al andar, y el silenciador es de cada arma.</>}
+              <strong>2</strong>. Lo que pesa se nota al andar, y el silenciador es de cada arma. La granada
+              sale con la <strong>G</strong>: clic izquierdo la lanza lejos y clic derecho, corto
+              y a ras de suelo.</>}
       </p>
 
       <div className="armoury__grid">
@@ -360,11 +400,15 @@ export default function Armoury({ settings, equipped, onChange, onClose, soloFic
             // En el modo de consulta **nada está «equipado»**: lo que llevas
             // no sale de este ajuste, sale del servidor. Marcar la que tienes
             // guardada en el juego sería señalar un arma que no llevas.
-            equipped={!soloFicha && key === settings.weapon}
+            equipped={!soloFicha && key === (
+              WEAPONS[key].slot === 'throwable' ? settings.throwable : settings.weapon
+            )}
             inHand={key === equipped?.weaponKey}
             suppressed={Boolean(settings.suppressor[key])}
             slotKey={SLOT_KEYS[WEAPONS[key].slot] ?? '1'}
-            onEquip={(next) => onChange({ weapon: next })}
+            onEquip={(next) => onChange(
+              WEAPONS[next].slot === 'throwable' ? { throwable: next } : { weapon: next },
+            )}
             onSuppressor={toggleSuppressor}
             soloFicha={soloFicha}
           />

@@ -34,6 +34,8 @@ for (const [clave, arma] of Object.entries(WEAPONS)) {
 }
 const claveDeProyectil = (tipo) => ARMA_DE_PROYECTIL.get(tipo) ?? null
 const explosionDeProyectil = (tipo) => WEAPONS[claveDeProyectil(tipo)]?.tiro?.explosion ?? null
+/** La ficha de tiro entera, que es lo que una granada necesita mirar. */
+const tiroDeProyectil = (tipo) => WEAPONS[claveDeProyectil(tipo)]?.tiro ?? null
 import { crearPose, cuerpoDeJugador } from './pose.js'
 import { direccionDeMira, resolverCuchillada, resolverDisparo } from './disparo.js'
 import { MSG, compraAbierta, desempaquetarTeclas, instanteDePaso, instanteEnPaso } from './protocolo.js'
@@ -372,7 +374,7 @@ export class Partida {
        */
       dinero: ECONOMY.inicial,
       /** Lo comprado: el arma principal y los supresores montados. */
-      inventario: { primaria: null, supresor: {}, reserva: {} },
+      inventario: { primaria: null, granada: null, supresor: {}, reserva: {} },
       /** Escudo y casco, que ahora existen también en red. */
       escudo: 0,
       casco: false,
@@ -1050,7 +1052,16 @@ export class Partida {
     const p = tirador.pose.position
     _ojos.x = p.x; _ojos.y = p.y; _ojos.z = p.z
     const carga = Number.isFinite(d.c) ? Math.max(0, Math.min(1, d.c)) : 0
-    const l = lanzamientoDeArma(arma, carga, _ojos, d.yaw, d.pitch, _lanzamiento)
+    /**
+     * **Y lo de una granada viaja acotado**, como la carga y como el paso a
+     * rebobinar de la vuelta 46. Lo que llega es **cuánto se ha sostenido**, no
+     * la mecha: `mechaDeGranada` la deriva con su suelo de un segundo dentro,
+     * así que un cliente que pidiera cero se lleva el suelo igual. Mentir aquí
+     * sólo puede **alargar** tu propia mecha, que es peor para quien miente.
+     */
+    const sostenidoS = Number.isFinite(d.h) ? Math.max(0, Math.min(60, d.h)) : 0
+    const corto = d.j === 1
+    const l = lanzamientoDeArma(arma, carga, _ojos, d.yaw, d.pitch, _lanzamiento, { corto, sostenidoS })
     if (!l) return
     this.proyectiles.lanzar({
       tipo: l.tipo,
@@ -1060,6 +1071,10 @@ export class Partida {
       g: l.g,
       fuerza: l.fuerza,
       intensidad: l.intensidad,
+      rebote: l.rebote,
+      roce: l.roce,
+      reposoU: l.reposoU,
+      mechaS: l.mechaS,
     })
     /**
      * **Y el lanzamiento se le cuenta al otro, no a los dos.** Quien lo tiró ya
@@ -1077,6 +1092,10 @@ export class Partida {
         vx: +l.vx.toFixed(3), vy: +l.vy.toFixed(3), vz: +l.vz.toFixed(3),
         g: l.g,
         i: +l.intensidad.toFixed(2),
+        // **Y con qué mecha sale**, porque el otro extremo no la puede derivar:
+        // lo que la decide es cuánto la ha tenido en la mano su dueño, y eso no
+        // está en ninguna entrada que el rival haya ejecutado.
+        m: Number.isFinite(l.mechaS) ? +l.mechaS.toFixed(3) : undefined,
       }))
     }
   }
@@ -1104,11 +1123,22 @@ export class Partida {
        * que el número que mata dependiera de si la onda pilló al cuerpo por
        * delante o por detrás.
        */
-      const explosion = explosionDeProyectil(im.tipo)
+      /**
+       * **Y una granada reparte lo suyo** (vuelta 87). El Core es la explosión
+       * de siempre; la KO frena y **eso sí es del servidor**, porque el
+       * movimiento lo decide él (vuelta 56) y el aturdimiento viaja en
+       * `movement.snapshot()`. La Blind no aparece aquí en absoluto: cegar es
+       * algo que le pasa a **una pantalla**, y las pantallas las tienen los
+       * clientes, que montan el mismo mapa y el mismo pool.
+       */
+      const tiro = tiroDeProyectil(im.tipo)
+      if (tiro?.aturdimiento) this._aturdir(im, tiro.aturdimiento, tirador)
+      const explosion = tiro?.explosion ?? null
       if (explosion) {
         this._explotar(im, explosion, tirador)
         continue
       }
+      if (tiro?.granada) continue
       if (!im.victima) continue
       /**
        * **El daño sale de la fuerza con la que salió, no del arma de ahora.**
@@ -1156,6 +1186,29 @@ export class Partida {
       if (baja && jugador !== tirador) mato = true
     }
     if (mato && tirador) this._reponerProyectil(tirador, im.tipo)
+  }
+
+  /**
+   * **Lo que una KO le quita a la marcha** (vuelta 87), con la misma caída de
+   * área que el daño (`caidaDeArea`) y aplicado por el mismo `movement.aturdir`
+   * que usa el entrenamiento: dos escaleras de aturdimiento serían dos juegos.
+   *
+   * **El reloj es el de las entradas** —`n · SIM_STEP_MS`, el mismo que recibe
+   * `update()`— y no el de pared ni el del servidor, que es la regla del
+   * protocolo desde la vuelta 45 y lo que hace que el campo que viaja en
+   * `snapshot()` signifique lo mismo en las dos pantallas.
+   */
+  _aturdir(im, e, tirador) {
+    const ahora = instanteDePaso(this.paso)
+    for (const jugador of this.jugadores.values()) {
+      if (!jugador.vida) continue
+      const p = jugador.pose.position
+      const cy = jugador.movimiento.feetY + jugador.movimiento.eyeHeight * 0.5
+      const d = Math.hypot(p.x - im.x, cy - im.y, p.z - im.z)
+      const k = caidaDeArea(d, e.radioU, e.nucleoU) * (jugador === tirador ? e.propio : 1)
+      if (k <= 0) continue
+      jugador.movimiento.aturdir(ahora + e.duracionMs, e.duracionMs, e.frenoMax * k)
+    }
   }
 
   /**
@@ -1538,6 +1591,20 @@ export class Partida {
     } else if (item.clave === 'casco') {
       if (jugador.casco) return
       jugador.casco = true
+    } else if (item.tipo === 'utilidad' && item.ranura === 'throwable') {
+      /**
+       * **Las granadas** (vuelta 87). Se llevan **una clase a la vez**, como la
+       * principal y por la misma razón: la ranura es una, y comprar otra
+       * sustituye a la que hubiera sin devolver lo pagado. Y llega **llena**,
+       * con su reserva, por el mismo camino que el U2 — que es lo que hace que
+       * no haya una segunda forma de entregar munición.
+       */
+      jugador.inventario.granada = item.clave
+      const r = WEAPONS[item.clave]?.tiro?.reserva
+      if (r) {
+        if (!jugador.inventario.reserva) jugador.inventario.reserva = {}
+        jugador.inventario.reserva[item.clave] = r.inicial
+      }
     } else {
       return
     }
@@ -1559,6 +1626,7 @@ export class Partida {
         dinero: jugador.dinero,
         inv: {
           primaria: jugador.inventario.primaria,
+          granada: jugador.inventario.granada ?? null,
           supresor: { ...jugador.inventario.supresor },
           escudo: jugador.escudo,
           casco: jugador.casco,
@@ -1609,6 +1677,8 @@ export class Partida {
    */
   _perderEquipo(jugador) {
     jugador.inventario.primaria = null
+    // Y la granada, que es equipo como todo lo demás.
+    jugador.inventario.granada = null
     jugador.escudo = 0
     jugador.casco = false
     /**

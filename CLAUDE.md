@@ -84,7 +84,8 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Destello de dispositivo | `src/game/dispositivos.js` | El anillo de usar un rebote, una plataforma de velocidad o una puerta. **Del motor**, así que sale en los dos modos; pool de anillos aditivos, sólo dibuja. |
 | Proyectiles | `src/game/proyectiles.js` | **Lo que vuela y tarda en llegar**: parábolas en forma cerrada y contra qué chocan. No sabe dibujar ni a quién hiere — eso cambia según quién lo llame. **Sin three**, así que lo montan el motor, el duelo y `net/partida.js` en Node. |
 | Curva de tiro | `src/game/trayectoria.js` | El láser que dibuja lo que va a pasar, de la **misma fórmula** que el vuelo. Del motor, así que sale en los dos modos. |
-| Proyectil (dibujo) | `src/game/vuelo.js` | Sólo dibuja: un `InstancedMesh` como `impacts.js`, con la estela orientada a la velocidad y **más larga cuanto más cargado salió**. |
+| Proyectil (dibujo) | `src/game/vuelo.js` | Sólo dibuja: dos `InstancedMesh` como `impacts.js` —el huso de lo que vuela y **el octaedro de una granada**—, con la estela orientada a la velocidad y **más larga cuanto más cargado salió**. |
+| Ceguera y aturdimiento | `src/game/granadas.js` | Lo que una Blind y una KO le hacen a **la pantalla**. **Del motor, con su propia hoja de estilos**, para que salga igual en los dos modos. |
 | Recogibles | `src/game/pickups.js` | Cruces de vida, cargas de escudo y casco por el suelo. |
 | Config | `src/config.js` | Todo el tuning, sin excepción. |
 | Tubo | `src/maps/tubo.js` | Despliega un pozo declarado como **un** objeto en las cajas AABB que el motor sabe chocar. **Lo llaman `Scenario` y el editor**, que es lo que evita que el fichero y el mundo digan cosas distintas. |
@@ -531,6 +532,82 @@ solución del fogonazo de la vuelta 40, lo tumbó una medida: desplazado 22 cm,
 en la boca y converge a la curva real en siete puntos, así que el punto de caída
 —que es lo que se apunta— no se mueve. Mover el dibujo y no la bala, con la mitad
 que en la 40 no hizo falta: volver.
+
+**Core, Blind y KO: lo primero del juego que se queda en el suelo** (vuelta 87).
+Las tres granadas ocupan **la cuarta ranura** —`throwable`, la **G**, que llevaba
+reservada con su bind y sin lógica desde la vuelta 27—, exactamente como el
+cuchillo ocupó la 3 en la 71. No compiten por la principal, y eso no es
+comodidad: **una granada no es un arma, es algo que además se lleva**. Siete
+reglas:
+
+- **El cocinado son dos relojes, y ahí está la decisión.** La carga se llena en
+  `cargaMs` (600 ms) y **la mecha sigue corriendo** desde que se empieza a
+  cargar. O sea que pasado el medio segundo, aguantar **ya no da alcance, sólo
+  quita aviso**. El suelo de un segundo es lo que impide que cocinar se convierta
+  en suicidarse — no se puede reventar con una en la mano. Y por `_releaseTrigger`
+  pasan pausar, morir y cambiar de arma, así que pausar con una cocinada **te la
+  devuelve**, no te mata.
+- **Lo que viaja es cuánto la has sostenido, no la mecha.** `mechaDeGranada` la
+  deriva en los dos extremos con el suelo dentro: un cliente que pidiera cero se
+  lleva el mismo segundo que todos. Es `lanzamientoDeArma` otra vez — viaja el
+  gesto, no su resultado.
+- **Un bote es una parábola que se vuelve a anclar**, que es la técnica del
+  ventilador de la vuelta 83 aplicada a un choque: la forma cerrada sigue siendo
+  forma cerrada y un rebote se comporta igual a 60 que a 240 Hz. El roce va
+  **escalado por la componente normal**, o un contacto de refilón perdería lo
+  mismo que un botazo.
+- **Y rodar obligó a que la `a` del modelo fuera un vector.** Lo primero que se
+  probó —seguir botando con rozamiento en cada contacto— **se cayó midiéndolo**:
+  en cuanto los botes son más cortos que un paso, el número de contactos por
+  segundo lo pone el refresco y no el mundo (0.27% de dispersión). Rodando, lo
+  que frena es una aceleración constante contra la marcha, y la suma de los
+  trozos es exactamente la curva entera. **La gravedad sigue puesta**, que es lo
+  que hace que una granada que llega al borde de una caja se caiga por él.
+  Residuo anotado: cada anclaje pasa por `cortarSegmento`, que corta el segmento
+  y no la parábola, así que `apoyoU` (0.0025, un paso de caída) existe para que
+  haya un contacto por paso y no cinco — **0.072% → 0.0275%**.
+- **La Blind no existe en el servidor, y eso es la decisión.** Cegar es algo que
+  le pasa a **una pantalla**, y las pantallas las tienen los clientes, que montan
+  el mismo mapa y derivan la misma parábola. Apartar la vista sirve —por ángulo y
+  en recta, con suelo en `mirandoMinimo`— y **pide línea de visión**, con el mismo
+  `hasLineOfSight` que decide dónde nace un muñeco. La **KO** sí es del servidor,
+  porque toca el movimiento: tres campos en `movement.snapshot()`, y los tres
+  desaparecen del cable cuando valen lo de fábrica (vuelta 83). En el cliente
+  **no se predice** — sería una segunda idea de cuándo empieza.
+- **El tiro corto son dos números y la misma función.** Clic derecho, con el
+  cabeceo ya bajado: se apunta a donde se estaba mirando, que es lo que el
+  encargo pedía —mirar al suelo es perder el horizonte—. Y el láser pasó a salir
+  de `lanzamientoDeArma` en vez de repetir su cuenta: con dos modos de
+  lanzamiento, una copia de la fórmula es **un láser que enseña la parábola larga
+  mientras el botón derecho tira la corta**.
+- **El color las separa entre sí; la forma, de todo lo demás.** Son octaedros que
+  giran —lo que volaba hasta ahora eran husos orientados a la velocidad—, así que
+  el tinte sólo tiene que contestar *qué va a estallar ahí*: **rojo** la que hace
+  daño, **blanco** la de luz, **azul eléctrico** la de aire. Ninguno es nuevo, y
+  que signifiquen ya otra cosa se admite por lo de siempre: no coinciden.
+
+Y dos cosas más que son suyas: **una granada no choca contra un cuerpo** —no hace
+daño por tocarte, lo hace al estallar, y un impacto directo sería una segunda
+forma de repartir daño que nadie decidió— y **un lanzamiento no cuenta como
+disparo**, que es la regla del cuchillazo de la vuelta 71.
+
+Medido (`gran87`, `gran87red`, `gran87nav`): tiro largo plano a **6.1 / 11.3 u** y
+a **39.2** apuntando a 45°; corto a **2.4 / 3.3** rodando hasta **3.6 / 6.3**; dos
+botes y parada en 1.03 s; **0.0275%** de dispersión entre 60 y 240 Hz; el Core a
+2.2 u deja al rival en 0 y al que la tiró en 88.3; la KO baja de **6.500 a 2.925
+u/s** y vuelve a 6.500000 exacto; y una flecha revienta en la misma coordenada que
+antes de la vuelta.
+
+**Y tres fallos que encontró construirlo, y ninguno era de esta vuelta** (87).
+`_refillMagazine` calculaba `magazine - this.ammo` con el `ammo` del arma **que
+acabas de dejar**, así que sacar el U2 (cargador 1) con el Rift y treinta balas
+dentro daba `mete = −29` y **le sumaba treinta cohetes a la reserva**, sin un
+error en ninguna pantalla. `reiniciarReserva` existía desde la 86 y **no la
+llamaba nadie**, así que lo que se gana matando sí se acumulaba entre vidas. Y el
+modo de un arma estaba escrito **tres veces** —HUD, armería y opciones—, las tres
+listas con `auto` y `semi` y nada más: desde la 85 el arco salía como «SEMI».
+Ahora es `WEAPON_MODES`, una sola lista. La lección es la de siempre: **una
+mecánica nueva es lo que enseña los agujeros de la anterior**.
 
 **El U2: un cohete que sigue volando cuando tú ya no estás** (vuelta 86). El
 nombre en clave del encargo —«yo muero, pero tú también»— ya funcionaba antes de
@@ -3231,9 +3308,10 @@ ajustes: cargar, sanear, avisar. Cuatro cosas que sostienen el sistema:
   ronda por un reflejo. El radio lo decide `objective.isPlayerInRange`, no una
   segunda cuenta en el motor.
 
-**Hay teclas reservadas sin lógica, y es a propósito.** 3 para el cuerpo a
-cuerpo, 5 para el artilugio y G para el arrojadizo —la 4 dejó de estarlo en la
-vuelta 34 con el escudo, y la 1 y la 2 en la 39 con las dos ranuras de arma—. El
+**Hay una tecla reservada sin lógica, y es a propósito.** La 5, el artilugio —la
+4 dejó de estarlo en la vuelta 34 con el escudo, la 1 y la 2 en la 39 con las dos
+ranuras de arma, la 3 en la 71 con el cuchillo y **la G en la 87 con las
+granadas**—. El
 mapa de controles tiene que ser el definitivo desde el principio: si se añaden
 cuando existan las mecánicas, alguien ya habrá puesto ahí su bind favorito. El
 panel las marca «sin efecto todavía».
@@ -3408,9 +3486,11 @@ comprar armas largas, ganar da 3200 y perder 2400 —con suelo que sube al que
 encadena derrotas—, morir cuesta el equipo, y el chaleco y el casco **paran
 balas de verdad** porque el duelo ya tiene la escalera de daño del
 entrenamiento. Y con la fase a cero —partida rápida— **la tienda no cierra**: se
-compra durante la ronda entera (vuelta 65). Lo que no hay todavía: granadas, y
-por eso salen en el panel **precintadas** con «Próximamente» y sin poder
-comprarse.
+compra durante la ronda entera (vuelta 65). Y desde la **87 las tres granadas se
+compran de verdad** —Core, KO y Blind, en *Utilidad*—, que es el hueco que
+llevaban ocupando precintadas desde la 64 con su precio y su código a la vista.
+Hoy no queda nada precintado en el panel; el mecanismo del precinto se queda para
+lo que venga.
 
 **Hay economía, y la manda el servidor** (vuelta 64). Dinero, inventario y qué se
 puede comprar viven en `net/partida.js`; el cliente dibuja el panel y **pide**
@@ -3587,10 +3667,11 @@ quita; al cerrarla vuelve, salvo que ya se haya recuperado el ratón.
 teclear su **combinación** (categoría + código), que va escrita en la esquina de
 cada uno. Los códigos **no son correlativos a propósito** —la Rift es `4 3`—:
 dejan sitio a las armas que faltan, porque el día que lleguen no pueden mover de
-sitio lo que la gente ya tiene en los dedos. Y lo que todavía no existe (granada,
-aturdidora, cegadora) **sale en el panel con su precio y su código y no se puede
-comprar**: esconderlo sería no poder aprenderse la combinación; venderlo sería
-prometer una mecánica que no hay.
+sitio lo que la gente ya tiene en los dedos. Y lo que todavía no exista **sale en el panel
+con su precio y su código y no se puede comprar**: esconderlo sería no poder
+aprenderse la combinación; venderlo sería prometer una mecánica que no hay. Las
+tres granadas estuvieron así de la vuelta 64 a la 87, y al construirse ocuparon
+**su mismo código**, que es lo que aquel precinto prometía.
 
 **Y lo que no existe lleva precinto; lo que sí, marca** (vuelta 65). Son dos
 cosas distintas y hasta la 65 se decían igual —una nota de diez píxeles al lado
@@ -4596,9 +4677,8 @@ quedan en su punto, porque un destino aleatorio las metería dentro de un muro.
 funcionan hoy —movimiento, salto, agachado, caminar, disparar, recargar, cambiar
 de arma, el silenciador en la **V** (era la B hasta la vuelta 42), la contextual
 **E**, el escudo en la **4**, **1** y **2** para equipar principal y pistola,
-**TAB** para el marcador y **B** para la armería— y las **reservadas sin
-lógica**: 3 para el cuerpo a cuerpo, 5 para el artilugio y **G** para el
-arrojadizo. Sección **Controles** en opciones: tecla actual, reasignar
+**TAB** para el marcador, **B** para la armería y **G** para la granada (vuelta
+87)— y la **reservada sin lógica**: la 5 del artilugio. Sección **Controles** en opciones: tecla actual, reasignar
 capturando la siguiente pulsación, botón por acción y por lo general.
 Persistido en `aimcore.keybinds.v1` con saneado. **Escape queda fuera del
 sistema** y el panel lo dice.
@@ -4674,6 +4754,21 @@ con sonido propio.
 | Bow | principal (tecla **1**) | **carga** | 55 | 12 | 2200 ms | **no** | 2.8 kg | 6.03 u/s |
 | U2 | principal (tecla **1**) | semi | 40 | 1 (+reserva) | 2000 ms | **no** | 5.4 kg | 5.41 u/s |
 | Vanta | cuerpo a cuerpo (tecla **3**, siempre) | cuchillo | — | — | — | no | 0.6 kg | 6.50 u/s |
+| Core | granada (tecla **G**) | **carga** | 50 | 1 (+1) | 1200 ms | **no** | 0.5 kg | 6.50 u/s |
+| Blind | granada (tecla **G**) | **carga** | 50 | 1 (+1) | 1200 ms | **no** | 0.5 kg | 6.50 u/s |
+| KO | granada (tecla **G**) | **carga** | 50 | 1 (+1) | 1200 ms | **no** | 0.5 kg | 6.50 u/s |
+
+**Core, Blind y KO** (vuelta 87) son las tres **granadas**, y ocupan la cuarta
+ranura —la **G**, reservada desde la vuelta 27—. Se lanzan cargando, como el arco,
+con dos botones: **clic izquierdo** lejos (toca a 6-11 u apuntando plano y a 39 a
+45°) y **clic derecho** corto y a ras de suelo (2.4-3.3 u, rodando hasta 6). La
+mecha son **4 s desde que se empieza a cargar**, con suelo de 1 s, así que
+aguantar no da más alcance: quita aviso. Rebotan, ruedan y **se quedan tiradas a
+la vista** hasta detonar, cada una de su color —rojo, blanco y azul eléctrico—.
+**Core** hace 110 de daño en el núcleo y 0 pasadas 6 u; **Blind** tapa la pantalla
+2.8 s y apartar la vista o una pared la reducen; **KO** quita el 55% de la marcha
+durante 2.4 s. Se llevan **dos por vida** y no se reponen. En la tienda del duelo
+van en *Utilidad*, a 300 / 250 / 250, y **caben en la ronda 1**.
 
 **Vanta** (vuelta 71) es el **cuchillo**, y ocupa la tercera ranura —la tecla 3,
 reservada desde la vuelta 27—. Se lleva siempre, como la pistola. Clic izquierdo
@@ -4872,7 +4967,11 @@ zonas, igual para las tres), cadencia, peso y lo que cuesta en velocidad,
 cargador y recarga, absorción de escudo y objetivo de precisión. **El daño ya no
 es el mismo en las cuatro** (vuelta 70): sale de `zoneDamage`, la misma función
 que resuelve el disparo. La pistola sale
-con su ficha y sin botón de equipar: se lleva siempre. Se cierra con **Escape**,
+con su ficha y sin botón de equipar: se lleva siempre, y el cuchillo igual.
+**Y desde la vuelta 87 también las tres granadas**, al final y con su propia
+ranura: «Equipar» en una de ellas escribe `settings.throwable`, no
+`settings.weapon`. Sus filas dicen lo suyo —la mecha, el radio y qué hace al
+estallar— en vez de repetir un daño por zonas que una granada no tiene. Se cierra con **Escape**,
 con **B** o con su botón, y abrirla **pausa** la sesión igual que Escape. Sin
 precios y sin comprar: no hay economía todavía.
 
@@ -5009,10 +5108,10 @@ muertes/reinicios se calculaban desde hacía vueltas con peso 0, y en la 34 se l
 dio peso. La fórmula no hubo que tocarla, que era justo lo que se buscaba al
 dejarles el hueco.
 
-**Lo que sí sigue reservado son dos teclas de equipo** (5 y G): tienen bind y no
-tienen lógica. La 4 dejó de estarlo al llegar el escudo, la 1 y la 2 al llegar
-las dos ranuras de arma, y **la 3 en la vuelta 71, con el cuchillo** — que es
-exactamente para lo que se reservaron.
+**Lo que sí sigue reservado es una tecla de equipo** (la 5, el artilugio): tiene
+bind y no tiene lógica. La 4 dejó de estarlo al llegar el escudo, la 1 y la 2 al llegar
+las dos ranuras de arma, **la 3 en la vuelta 71 con el cuchillo** y **la G en la
+87 con las granadas** — que es exactamente para lo que se reservaron.
 
 ---
 

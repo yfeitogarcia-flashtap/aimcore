@@ -391,6 +391,16 @@ export class ClienteRed {
        * rebobinado de un minuto — que se le acote a lo que el arma da.
        */
       if (this._disparo.carga) d.c = +this._disparo.carga.toFixed(3)
+      /**
+       * **Y lo de una granada: cuánto se ha sostenido y si va corta** (vuelta
+       * 87). Lo que **no** viaja es la mecha ya calculada, que es justo lo que
+       * un cliente podría mentir para que reventase antes en la cara del otro:
+       * los dos extremos la derivan con `mechaDeGranada`, que lleva el suelo de
+       * un segundo dentro. Es el mismo reparto que `lanzamientoDeArma` con la
+       * parábola — viaja el gesto, no su resultado.
+       */
+      if (this._disparo.sostenidoS) d.h = +this._disparo.sostenidoS.toFixed(3)
+      if (this._disparo.corto) d.j = 1
       this._disparo = null
     }
 
@@ -471,7 +481,7 @@ export class ClienteRed {
    * de la entrada se muestrea al empezar el paso y el ratón se mueve entre
    * medias.
    */
-  disparar(ahoraMs, yaw, pitch, golpe = 0, carga = 0) {
+  disparar(ahoraMs, yaw, pitch, golpe = 0, carga = 0, granada = null) {
     // **En pausa no se anota nada.** Como el disparo se consume en el paso
     // siguiente y en pausa no hay pasos, uno anotado ahora saldría al reanudar:
     // una bala guardada durante la pausa, apuntada a donde el rival estaba
@@ -488,7 +498,11 @@ export class ClienteRed {
     // mismo desde el punto de vista del protocolo: sellado en la entrada de su
     // paso, con su `seq` y con su veredicto. Lo único que cambia es cómo se
     // resuelve en el otro extremo.
-    this._disparo = { ts: ahoraMs, yaw, pitch, golpe, carga }
+    this._disparo = {
+      ts: ahoraMs, yaw, pitch, golpe, carga,
+      sostenidoS: granada?.sostenidoS ?? 0,
+      corto: Boolean(granada?.corto),
+    }
   }
 
   /**
