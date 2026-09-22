@@ -30,7 +30,6 @@ import { resolverDisparo } from './disparo.js'
 import { ClienteRed } from './cliente.js'
 import { conRedSimulada, transporteWebSocket } from './transporte.js'
 import { montarCapaDeDuelo } from '../src/ui/duelo.jsx'
-import { normalizarCodigo } from './codigo.js'
 import { compraAbierta } from './protocolo.js'
 import { codigoDeLaDireccion, direccionDeLaBarra, enlaceDeSala, mapaDeLaDireccion, urlDeSala } from './sala-cliente.js'
 
@@ -557,20 +556,20 @@ $('pedirVoto').addEventListener('click', () => {
 
 cliente.conectar()
 
-// Entrar en otra sala es **recargar en su dirección**, no reconectar por
-// dentro: un mundo nuevo es un escenario, un movimiento y un historial nuevos, y
-// rehacerlos a mano en caliente es la forma de dejarse la mitad.
-$('entrar').addEventListener('click', () => {
-  const otro = normalizarCodigo($('otro').value)
-  if (!otro) {
-    $('otro').style.borderColor = '#E4462B'
-    return
-  }
-  // Y aquí también la dirección de la barra, no el enlace limpio: entrar en
-  // otra sala no puede perder con qué servidor se estaba hablando.
-  location.href = direccionDeLaBarra(otro)
-  location.reload()
-})
+/**
+ * **Y el campo de teclear un código se quitó** (vuelta 92).
+ *
+ * Estaba desde la 47 como la otra puerta a una sala y lo que se comparte de
+ * verdad es el enlace entero: teclear seis caracteres no llega a ningún sitio
+ * al que el enlace no lleve ya, y sí puede llevar a una sala equivocada si se
+ * teclean mal. Un control que sólo produce el mismo resultado o uno peor no es
+ * una opción, es una forma de equivocarse.
+ *
+ * Lo que **no** se ha tocado es nada de debajo: el alfabeto sin parejas que se
+ * confunden al dictar (vuelta 47), `normalizarCodigo` y `direccionDeLaBarra`
+ * siguen en pie porque los usa el propio enlace. Entrar en otra sala es abrir
+ * su dirección — que es exactamente lo que este botón hacía, con un paso más.
+ */
 /**
  * **Copiar el enlace, y que se copie de verdad** (vuelta 67).
  *
@@ -1148,6 +1147,7 @@ function porQueNo(item, eco, fase) {
   if (item.clave === 'casco' && eco.inv.casco) return 'puesto'
   if (item.clave === eco.inv.primaria) return 'equipada'
   if (item.clave === eco.inv.secundaria) return 'equipada'
+  if (item.clave === eco.inv.especial) return 'equipada'
   /**
    * **Y el tope de granadas lo dice el panel antes de cobrar** (vuelta 88).
    * Mira el mismo inventario que el servidor, así que no hay una segunda idea
@@ -1184,6 +1184,7 @@ function pintarTienda() {
     boton.classList.toggle('puedo', razon === null)
     const puesto =
       item.clave === eco.inv.primaria ||
+      item.clave === eco.inv.especial ||
       (eco.inv.granadas ?? []).includes(item.clave) ||
       (item.clave === 'chaleco' && eco.inv.escudo > 0) ||
       (item.clave === 'casco' && eco.inv.casco)

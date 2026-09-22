@@ -9,13 +9,10 @@ import {
 import {
   COLORS,
   CROSSHAIR,
-  SESSION_DURATIONS,
   FEEDBACK,
   MOVEMENT,
   NET,
   RESUME_KEY_DELAY_MS,
-  SESSION_MODES,
-  scenarioHasCover,
 } from './config.js'
 import { Engine, PHASE } from './game/engine.js'
 import { disposeAudio } from './audio/sfx.js'
@@ -26,6 +23,7 @@ import { VektorLogo } from './ui/Logo.jsx'
 import Hud from './ui/Hud.jsx'
 import Armoury from './ui/Armoury.jsx'
 import Options from './ui/Options.jsx'
+import Training from './ui/Training.jsx'
 import Summary from './ui/Summary.jsx'
 
 /**
@@ -51,6 +49,26 @@ export default function App() {
    * motor suelta el ratón antes de avisar, así que aquí sólo hay que enseñarla.
    */
   const [armouryOpen, setArmouryOpen] = useState(false)
+  /**
+   * **Por dónde va el menú de inicio** (vuelta 92): `marca`, `modos` o
+   * `entrenamiento`.
+   *
+   * Hasta aquí la pantalla de inicio era **una sola** con cinco botones en
+   * fila —dos modos, el duelo, la armería y las opciones— más tres párrafos de
+   * instrucciones encima. Lo que eso produce es lo que se reportó del panel de
+   * opciones por otra puerta: el primer contacto con el juego es una lista, y
+   * en una lista de cinco cosas iguales no hay ninguna que sea *la* que hay que
+   * pulsar.
+   *
+   * Tres pasos, y cada uno hace **una** pregunta: ¿juegas? → ¿a qué? → ¿cómo?
+   * El logotipo se queda solo con su botón, que es lo que se pidió; las
+   * instrucciones bajan al segundo paso, donde ya hay sitio y donde todavía no
+   * estorban a nadie.
+   *
+   * Y es estado y no ruta a propósito: `App.jsx` no tiene router, y meterlo
+   * para tres pantallas de menú sería una dependencia para un `useState`.
+   */
+  const [menu, setMenu] = useState('marca')
   /** Vista del avatar: mientras está abierta, los paneles se apartan. */
   const [avatarDebug, setAvatarDebug] = useState(false)
   /**
@@ -166,6 +184,11 @@ export default function App() {
   const finishSession = useCallback(() => engineRef.current?.finishSession(), [])
   const backToStart = useCallback(() => {
     setSummary(null)
+    // **Y se vuelve al primer paso, no al último que se vio** (vuelta 92).
+    // Terminar una sesión es terminar, así que la pantalla que toca es la de
+    // la marca: volver a la lista de ajustes de la partida que acaba de
+    // acabar es ofrecer retocarla en vez de decidir qué se hace ahora.
+    setMenu('marca')
     engineRef.current?.goToStart()
   }, [])
 
@@ -187,30 +210,25 @@ export default function App() {
    * dibuja el motor, que además es el único que sabe si en este escenario el
    * cono decide algo.
    */
+  const enEntrenamiento = menu === 'entrenamiento'
   useEffect(() => {
-    engineRef.current?.mostrarConoDeAparicion(optionsOpen)
-  }, [optionsOpen])
+    // **Y se dibuja donde vive el slider** (vuelta 92): el cono se movió a la
+    // pantalla de entrenamiento, así que el dibujo se va con él. Colgarlo de
+    // `optionsOpen` habría dejado el ajuste en un panel y su efecto en otro,
+    // que es exactamente lo que la convención de la vuelta 78 prohíbe.
+    engineRef.current?.mostrarConoDeAparicion(enEntrenamiento)
+  }, [enEntrenamiento])
   const openArmoury = useCallback(() => setArmouryOpen(true), [])
   const closeArmoury = useCallback(() => setArmouryOpen(false), [])
 
   const showHud = phase === PHASE.RUNNING || phase === PHASE.PAUSED
 
   /**
-   * Rótulo del segundo botón: **Deathmatch** donde hay contra quién —escenario
-   * con cobertura— y práctica libre donde no. Y con su duración detrás, si no
-   * es «sin límite»: el modo se configura en opciones y el botón es el único
-   * sitio donde se ve antes de empezar.
+   * **Los dos rótulos de modo se fueron con sus botones** (vuelta 92). El
+   * nombre del segundo modo y la duración que lleva detrás se resuelven ahora
+   * en `Training.jsx`, que es donde están los botones que los llevan — y se
+   * resuelven **igual que en el motor**, que es lo que la vuelta 78 pidió.
    */
-  const deathmatch = scenarioHasCover(settings.scenario)
-  // **Y la duración elegida vale para los dos modos** (vuelta 78), así que el
-  // rótulo la resuelve igual que el motor: `mode` es «la del modo», y ahí el
-  // Deathmatch sigue siendo sin límite.
-  const elegida = SESSION_DURATIONS[settings.sessionDuration]
-  const segundosDeathmatch = elegida.seconds ?? 0
-  const deathmatchLabel = deathmatch
-    ? `${SESSION_MODES.deathmatch.label}${segundosDeathmatch > 0 ? ` · ${elegida.label}` : ' ∞'}`
-    : SESSION_MODES.deathmatch.plainLabel
-
   const optionsPanel = (
     <Options
       settings={settings}
@@ -253,17 +271,8 @@ export default function App() {
    * huéspedes y el servidor de desarrollo, así que es una sola en los tres
    * sitios. Y va con `assign` y no como un `<a>` para que el `onMouseDown` que
    * se traga el clic —el que evita que capture el ratón— siga valiendo aquí.
+   * Lo pinta el segundo paso del menú, junto al entrenamiento.
    */
-  const duelButton = (
-    <button
-      type="button"
-      className="button"
-      onMouseDown={swallowClick}
-      onClick={() => window.location.assign(NET.rutaDuelo)}
-    >
-      Duelo 1v1
-    </button>
-  )
 
   /** Con cualquier panel abierto el overlay deja de capturar el ratón. */
   const panelOpen = optionsOpen || armouryOpen
@@ -331,13 +340,22 @@ export default function App() {
       )}
 
       {!engineError && !avatarDebug && phase === PHASE.IDLE && (
-        // Con las opciones abiertas el overlay deja de capturar el ratón: sería
-        // desconcertante que tocar un slider arrancara la partida.
-        <div className="overlay" onMouseDown={panelOpen ? undefined : lock}>
+        // Con cualquier panel abierto el overlay deja de capturar el ratón:
+        // sería desconcertante que tocar un slider arrancara la partida. Y con
+        // el menú fuera del primer paso, tampoco: ahí hay botones que pulsar.
+        <div className="overlay" onMouseDown={panelOpen || menu !== 'marca' ? undefined : lock}>
           {armouryOpen ? (
             armouryPanel
           ) : optionsOpen ? (
             optionsPanel
+          ) : menu === 'entrenamiento' ? (
+            <Training
+              settings={settings}
+              onChange={updateSettings}
+              onStartTimed={startTimed}
+              onStartDeathmatch={startDeathmatch}
+              onBack={() => setMenu('modos')}
+            />
           ) : (
             <div className="panel">
               {/* El logotipo **es** el título: lleva «VEKTOR» dentro, así que
@@ -347,65 +365,97 @@ export default function App() {
                 <VektorLogo />
               </h1>
               <p className="panel__byline">by FlickLAB</p>
+
               {/**
-                * **Bajo el logo no va ningún rótulo destacado** (vuelta 89).
-                *
-                * Había uno —«RONDA CON EXPLOSIVO», en versalitas— que decía qué
-                * se juega al pulsar el primer botón. Dos cosas mal, y la segunda
-                * es la que lo quita para siempre:
-                *
-                * - **Mentía desde la vuelta 88.** Con la duración en «sin
-                *   límite» el explosivo ya no se arma, así que el rótulo
-                *   anunciaba un objetivo que no iba a salir. Es el fallo de la
-                *   67 —un control que promete lo que el juego ignora— en un
-                *   sitio donde ni siquiera hay control que tocar.
-                * - **Y ese sitio no es para eso.** Debajo de la marca van las
-                *   instrucciones —cómo se captura el ratón y cuáles son los
-                *   controles— y nada más: lo que se juega al pulsar un botón lo
-                *   dice el botón, que para eso lleva su nombre y su duración
-                *   justo debajo.
+                * **Bajo el logo no va ningún rótulo destacado** (vuelta 89), y
+                * desde la 92 tampoco van las instrucciones: se pidió que la
+                * primera pantalla fuese el logotipo y un botón, y el motivo
+                * aguanta solo — nadie lee tres líneas de controles antes de
+                * haber decidido que va a jugar. Bajan al paso siguiente, que es
+                * donde por primera vez hay algo que elegir.
                 *
                 * `panel__eyebrow` sigue viva: es de donde cuelga el veredicto
                 * del resumen (`panel__eyebrow--fail`), que ahí sí es un rótulo.
                 */}
-              <p className="panel__body">
-                Click para capturar el ratón y empezar. Click izquierdo para disparar.
-              </p>
-              {MOVEMENT.enabled && (
-                <p className="panel__hint">
-                  WASD o flechas para moverte · SHIFT camina · C agacha · SPACE salta y encadena
-                </p>
+              {menu === 'marca' ? (
+                <div className="panel__actions panel__actions--solo">
+                  <button
+                    type="button"
+                    className="button button--primary button--grande"
+                    onMouseDown={swallowClick}
+                    onClick={() => setMenu('modos')}
+                    autoFocus
+                  >
+                    Jugar ahora
+                  </button>
+                </div>
+              ) : (
+                <>
+                  {/**
+                    * **Los dos modos arriba y en verde; lo demás debajo y en
+                    * gris** (vuelta 92). No es decoración: el verde de acción
+                    * es «esto es lo que pasa al pulsar» en todo el juego, y lo
+                    * que pasa aquí es jugar. La armería y las opciones son
+                    * preparativos, así que van en el gris de siempre — cinco
+                    * botones del mismo color obligan a leerlos todos para saber
+                    * cuál es el que hace la cosa (la regla de las fichas de la
+                    * armería, vuelta 43, aplicada a un menú).
+                    */}
+                  <div className="panel__actions panel__actions--duo">
+                    <button
+                      type="button"
+                      className="button button--primary button--grande"
+                      onMouseDown={swallowClick}
+                      onClick={() => setMenu('entrenamiento')}
+                      autoFocus
+                    >
+                      Entrenamiento
+                      <span className="button__sub">Dianas, muñecos y la bomba. Tú solo.</span>
+                    </button>
+                    {/* **El duelo va con los modos, no con los paneles**: es a
+                        lo que se juega, aunque lo que haga sea salir de esta
+                        página. */}
+                    <button
+                      type="button"
+                      className="button button--primary button--grande"
+                      onMouseDown={swallowClick}
+                      onClick={() => window.location.assign(NET.rutaDuelo)}
+                    >
+                      Duelo 1v1
+                      <span className="button__sub">Contra un amigo, por enlace.</span>
+                    </button>
+                  </div>
+
+                  <div className="panel__actions panel__actions--duo">
+                    {armouryButton}
+                    {optionsButton}
+                  </div>
+
+                  {/* **Y aquí sí van las instrucciones** (vuelta 92): quien ha
+                      llegado a este paso ya ha decidido jugar, así que es el
+                      primer sitio donde leerlas significa algo. */}
+                  <p className="panel__body">
+                    Click para capturar el ratón. Click izquierdo para disparar.
+                  </p>
+                  {MOVEMENT.enabled && (
+                    <p className="panel__hint">
+                      WASD o flechas para moverte · SHIFT camina · C agacha · SPACE salta y encadena
+                    </p>
+                  )}
+                  <p className="panel__hint">R recarga · B armería · Escape pausa.</p>
+
+                  <div className="panel__actions">
+                    <button
+                      type="button"
+                      className="button button--quiet"
+                      onMouseDown={swallowClick}
+                      onClick={() => setMenu('marca')}
+                    >
+                      Volver
+                    </button>
+                  </div>
+                </>
               )}
-              <p className="panel__hint">R recarga · B armería · Escape pausa.</p>
-              <div className="panel__actions">
-                <button
-                  type="button"
-                  className="button button--primary"
-                  onMouseDown={swallowClick}
-                  onClick={startTimed}
-                  autoFocus
-                >
-                  Jugar ahora
-                </button>
-                {/* **El segundo modo tiene nombre propio donde lo tiene.** Con
-                    cobertura y muñecos que disparan es un Deathmatch y se llama
-                    así; en la sala vacía no hay contra quién, así que sigue
-                    siendo la práctica libre de siempre. El rótulo sale del
-                    escenario elegido, no de un interruptor aparte. */}
-                <button
-                  type="button"
-                  className="button button--primary"
-                  onMouseDown={swallowClick}
-                  onClick={startDeathmatch}
-                >
-                  {deathmatchLabel}
-                </button>
-                {/* **El duelo va con los modos, no con los paneles**: es a lo
-                    que se juega, aunque lo que haga sea salir de esta página. */}
-                {duelButton}
-                {armouryButton}
-                {optionsButton}
-              </div>
             </div>
           )}
         </div>

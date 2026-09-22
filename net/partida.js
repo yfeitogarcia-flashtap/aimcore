@@ -382,7 +382,7 @@ export class Partida {
        */
       dinero: ECONOMY.inicial,
       /** Lo comprado: el arma principal y los supresores montados. */
-      inventario: { primaria: null, secundaria: null, granadas: [], supresor: {}, reserva: {} },
+      inventario: { primaria: null, secundaria: null, especial: null, granadas: [], supresor: {}, reserva: {} },
       /** Escudo y casco, que ahora existen también en red. */
       escudo: 0,
       casco: false,
@@ -1718,34 +1718,56 @@ export class Partida {
     if (jugador.dinero < item.precio) return
 
     if (item.tipo === 'arma') {
-      // La pistola va siempre puesta: comprarla no es nada.
       /**
        * **Y desde la vuelta 90 también se compra pistola.** Es la primera
        * compra del juego que **sustituye** algo que ya llevas en vez de llenar
        * un hueco, y eso no necesita ninguna regla nueva: la ranura es una, así
        * que comprar el Reaper es escribirlo en ella. Lo que la de serie
        * garantiza es que quitarlo —morir— tenga a qué volver.
+       *
+       * ---
+       *
+       * **Y el Reaper era gratis, desde la vuelta 90** (encontrado en la 92).
+       * Su rama escribía la ranura, mandaba la economía y **salía con un
+       * `return`** — y el cobro está al final de esta función, detrás de todas
+       * las ramas. O sea que el primer artículo del juego que sustituye algo
+       * que ya llevas era también el único que no se pagaba, sin un error en
+       * ninguna pantalla: el panel lo daba por comprado porque el servidor
+       * decía que lo llevaba, y decía la verdad.
+       *
+       * Lo cazó construir la ranura especial, porque su rama salió calcada y
+       * el banco de la vuelta miró el saldo: **una mecánica nueva es lo que
+       * enseña los agujeros de la anterior**, otra vez. Y lo que lo cierra no
+       * es acordarse del cobro en tres sitios, es que **haya un solo camino
+       * hasta él** — que es la misma disciplina que `zoneDamage` y
+       * `encajarImpacto`, aplicada a la caja.
        */
-      if (item.ranura === 'secondary') {
-        jugador.inventario.secundaria = item.clave
-        this._enviarEconomia(jugador)
-        return
-      }
-      if (item.ranura !== 'primary') return
-      // **Una principal cada vez.** Comprar otra sustituye a la que hubiera, y
-      // lo pagado por la anterior no vuelve: es una decisión, no un carrito.
-      jugador.inventario.primaria = item.clave
       /**
-       * **Un arma con reserva se compra llena** (vuelta 86). El U2 llega con
-       * dos cohetes, que es lo que se pidió: los otros dos se ganan matando. Va
-       * aquí y no en el catálogo porque es del **arma**, no de su precio — el
-       * día que haya otra con reserva, funciona sola.
+       * **Y desde la vuelta 92 hay una tercera ranura que se compra: la
+       * especial.** El arco y el U2 salieron de la principal, y eso cambia la
+       * economía por donde tiene que cambiarla: ya no es «o rifle o cohete»
+       * —que era una prohibición disfrazada de precio— sino «los dos, si te lo
+       * puedes pagar». El U2 sigue costando 4200, así que llevarlo con un
+       * rifle son dos rondas buenas.
+       *
+       * Las tres ranuras son **la misma forma**: la ranura es una, comprar
+       * sustituye, y el arma con reserva llega llena. Lo único que cambia es
+       * en qué campo se escribe, así que se escribe una vez y se elige el
+       * campo — tres bloques con tres `return` era lo que escondía el fallo de
+       * aquí abajo.
        */
-      const r = WEAPONS[item.clave]?.tiro?.reserva
-      if (r) {
-        if (!jugador.inventario.reserva) jugador.inventario.reserva = {}
-        jugador.inventario.reserva[item.clave] = r.inicial
-      }
+      const CAMPO = { primary: 'primaria', secondary: 'secundaria', special: 'especial' }
+      const campo = CAMPO[item.ranura]
+      if (!campo) return
+      /**
+       * **Comprar lo que ya llevas no es comprar**, así que no cuesta. Es la
+       * misma guarda que el chaleco y el casco tienen desde la vuelta 64, y
+       * aquí hacía falta desde que una ranura tiene dos armas: sin ella,
+       * pulsar dos veces el Reaper cobra dos veces por lo mismo.
+       */
+      if (jugador.inventario[campo] === item.clave) return
+      jugador.inventario[campo] = item.clave
+      this._darReservaInicial(jugador, item.clave)
     } else if (item.clave === 'chaleco') {
       const tope = ECONOMY.escudoPorChaleco
       if (jugador.escudo >= tope) return
@@ -1806,6 +1828,7 @@ export class Partida {
         inv: {
           primaria: jugador.inventario.primaria,
           secundaria: jugador.inventario.secundaria,
+          especial: jugador.inventario.especial ?? null,
           granadas: [...(jugador.inventario.granadas ?? [])],
           supresor: { ...jugador.inventario.supresor },
           escudo: jugador.escudo,
@@ -1865,6 +1888,10 @@ export class Partida {
      * escribirlo también aquí sería un segundo sitio que puede decir otra cosa.
      */
     jugador.inventario.secundaria = null
+    // Y la especial (vuelta 92), que es equipo como todo lo demás: un U2 de
+    // 4200 que sobreviviera a la muerte sería lo que la nota de la pistola de
+    // aquí arriba dice que no puede ser.
+    jugador.inventario.especial = null
     // Y las granadas, que son equipo como todo lo demás.
     jugador.inventario.granadas = []
     jugador.escudo = 0
@@ -1876,6 +1903,20 @@ export class Partida {
      * lo mismo.
      */
     jugador.inventario.reserva = {}
+  }
+
+  /**
+   * **Un arma con reserva se compra llena** (vuelta 86). El U2 llega con dos
+   * cohetes, que es lo que se pidió: los otros dos se ganan matando. Es del
+   * **arma** y no de su precio, así que el día que haya otra con reserva
+   * funciona sola — y desde la vuelta 92 lo llaman las dos ranuras que venden
+   * armas, que es lo que evita que una lo haga y la otra se olvide.
+   */
+  _darReservaInicial(jugador, clave) {
+    const r = WEAPONS[clave]?.tiro?.reserva
+    if (!r) return
+    if (!jugador.inventario.reserva) jugador.inventario.reserva = {}
+    jugador.inventario.reserva[clave] = r.inicial
   }
 
   /**
@@ -2021,14 +2062,24 @@ export class Partida {
      * te quita el arma** y con ella su reserva (`_perderEquipo`): el que pierde
      * no acumula nada.
      */
+    /**
+     * **Y se recorren las dos ranuras que pueden llevar un arma con reserva**
+     * (vuelta 92). Esto miraba sólo `primaria`, que era exacto mientras el U2
+     * estuviera ahí; con el cohete en la especial, mirar una sola ranura era
+     * dejar la regla de arriba sin ningún arma a la que aplicarse — el fallo
+     * silencioso de siempre, y esta vez con la vuelta anterior delante.
+     */
     for (const jugador of this.jugadores.values()) {
-      const clave = jugador.inventario?.primaria
-      const r = clave ? WEAPONS[clave]?.tiro?.reserva : null
-      if (!r) continue
-      if (!jugador.inventario.reserva) jugador.inventario.reserva = {}
-      const tiene = jugador.inventario.reserva[clave] ?? 0
-      jugador.inventario.reserva[clave] = Math.min(r.maxima, Math.max(r.inicial, tiene))
-      this._enviarEconomia(jugador)
+      let cambio = false
+      for (const clave of [jugador.inventario?.primaria, jugador.inventario?.especial]) {
+        const r = clave ? WEAPONS[clave]?.tiro?.reserva : null
+        if (!r) continue
+        if (!jugador.inventario.reserva) jugador.inventario.reserva = {}
+        const tiene = jugador.inventario.reserva[clave] ?? 0
+        jugador.inventario.reserva[clave] = Math.min(r.maxima, Math.max(r.inicial, tiene))
+        cambio = true
+      }
+      if (cambio) this._enviarEconomia(jugador)
     }
     this.rondas.fase = 'ronda'
     this.rondas.hastaPaso = this.paso + this._pasosDe(ROUNDS.duracionSegundos)

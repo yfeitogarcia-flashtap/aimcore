@@ -18,6 +18,7 @@ import {
   TRAINER_SCENARIOS,
   PRIMARY_WEAPONS,
   SECONDARY_WEAPONS,
+  SPECIAL_WEAPONS,
   THROWABLE_WEAPONS,
   SETTINGS,
   SIMULTANEOUS_TARGETS,
@@ -54,6 +55,11 @@ const CATALOGS = {
   // **Y el de la granada es el de su ranura** (vuelta 87), derivado igual y
   // por lo mismo: una clave que no sea una de las tres cae a fábrica.
   throwable: THROWABLE_WEAPONS,
+  // **Y el de la especial, desde la vuelta 92.** Aquí el saneado hace además
+  // de traducción: quien tuviera `weapon: 'bow'` o `'u2'` guardado ya no tiene
+  // un arma principal válida —salieron de esa ranura— y cae al Rift, que es lo
+  // correcto. Lo que no puede pasar es que se quede sin nada en la mano.
+  special: SPECIAL_WEAPONS,
   simultaneousTargets: SIMULTANEOUS_TARGETS,
   frameLimit: FRAME_LIMITS,
 }
@@ -142,6 +148,19 @@ export function sanitizeSettings(raw) {
     // de al de su valor. Sin esto, a quien tuviera puestos cinco minutos de
     // Deathmatch se le habría quedado en fábrica sin explicación.
     if (key === 'sessionDuration' && value === undefined) value = raw.deathmatchDuration
+    /**
+     * **Y un arma que cambia de ranura se traduce, no se tira** (vuelta 92).
+     * El arco y el U2 salieron de la principal, así que un `weapon: 'bow'`
+     * guardado ya no es una opción válida de su catálogo y caería al Rift sin
+     * decir nada — a quien llevaba el arco elegido se le habría cambiado el
+     * arma. Va **donde se lee la ranura nueva**, no borrando la vieja: la
+     * principal sigue cayendo a fábrica, que es lo correcto, y la especial
+     * hereda lo que había. Misma idea que `LEGACY_WEAPON_KEYS`, aplicada a la
+     * ranura en vez de al nombre.
+     */
+    if (key === 'special' && value === undefined && CATALOGS.special[raw.weapon]) {
+      value = raw.weapon
+    }
     if (Object.prototype.hasOwnProperty.call(CATALOGS[key], value)) result[key] = value
   }
   return result

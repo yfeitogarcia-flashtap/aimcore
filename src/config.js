@@ -1291,7 +1291,15 @@ export const WEAPONS = {
   'bow': {
     label: 'Bow',
     character: 'arco',
-    slot: 'primary',
+    /**
+     * **La quinta ranura, la de las armas especiales** (vuelta 92). El arco y
+     * el U2 estaban en la principal y competían con el rifle, que es donde
+     * nunca ganaban: quien puede pagar un Rift paga un Rift. La ranura propia
+     * —la tecla 5, reservada desde la vuelta 27— es lo que las hace elegibles
+     * **además de** y no **en vez de**, y de paso pone el límite por donde
+     * tiene que estar: se llevan las dos cosas, pero se pagan las dos cosas.
+     */
+    slot: 'special',
     /**
      * **El cuarto modo.** `auto` suelta mientras se aprieta, `semi` uno por
      * clic, `melee` es el cuchillo, y `carga` es éste: **el disparo ocurre al
@@ -1424,7 +1432,7 @@ export const WEAPONS = {
   'u2': {
     label: 'U2',
     character: 'lanzacohetes',
-    slot: 'primary',
+    slot: 'special',
     /**
      * **Semi, no carga.** Un cohete sale con la fuerza que tiene el motor: no
      * hay nada que tensar, y cargar aquí sería un gesto sin significado. Lo que
@@ -2272,6 +2280,16 @@ export const MELEE_WEAPON = Object.keys(WEAPONS).find(
 )
 
 /**
+ * **Las armas especiales** (vuelta 92): el arco y el U2, que hasta aquí
+ * competían por la ranura principal. Se deriva del `slot` como todas las
+ * demás listas de ranura, así que el día que haya una tercera sale sola en el
+ * selector, en la armería y en el saneado. No hay una segunda lista.
+ */
+export const SPECIAL_WEAPONS = Object.fromEntries(
+  Object.entries(WEAPONS).filter(([, weapon]) => weapon.slot === 'special'),
+)
+
+/**
  * **Las tres granadas** (vuelta 87). Se deriva de la ranura, como
  * `PRIMARY_WEAPONS`, y por la misma razón: el día que haya una cuarta, sale
  * sola en el selector, en la armería y en el saneado sin que nadie tenga que
@@ -2377,9 +2395,23 @@ export const KEYBINDS = {
   secondary: { label: 'Pistola', default: 'Digit2', group: 'Equipo' },
   melee: { label: 'Cuerpo a cuerpo', default: 'Digit3', group: 'Equipo' },
   // El escudo tampoco está reservado: aplica una carga del inventario (ver
-  // `PLAYER.shield`). El artilugio y el arrojadizo siguen siendo sólo tecla.
+  // `PLAYER.shield`).
   shield: { label: 'Escudo', default: 'Digit4', group: 'Equipo' },
-  gadget: { label: 'Artilugio', default: 'Digit5', reserved: true, group: 'Equipo' },
+  /**
+   * **«Arma especial» y no «Artilugio»** (vuelta 92), y deja de estar
+   * reservada. La 5 llevaba desde la vuelta 27 siendo sólo tecla —que es
+   * exactamente para lo que se reservó: el mapa de controles tiene que ser el
+   * definitivo desde el principio, o cuando llegue la mecánica alguien ya
+   * habrá puesto ahí su bind favorito— y la mecánica que le ha llegado es el
+   * arco y el U2 saliendo de la ranura principal. El nombre dice **qué ranura
+   * saca**, así que cambia con ella.
+   *
+   * **El artilugio no desaparece, cambia de puerta.** Sigue reservado donde
+   * siempre tuvo sentido: en la contextual (`use`, la E), que es la tecla de
+   * *usar algo*, no la de *sacar un arma*. Tener las dos cosas era el hueco
+   * duplicado, y lo que se ha gastado es el que sobraba.
+   */
+  special: { label: 'Arma especial', default: 'Digit5', group: 'Equipo' },
   /**
    * **«Arrojadizos» y no «Granadas»** (vuelta 91). La ranura se llamó por lo
    * que había dentro mientras lo único que había dentro eran granadas; con el
@@ -3181,6 +3213,18 @@ export const SETTINGS = {
   secondary: {
     label: 'Pistola',
     default: SECONDARY_WEAPON,
+  },
+  /**
+   * **Cuál de las armas especiales se lleva** (vuelta 92), la de la tecla 5.
+   * Hermano de `weapon`, `secondary` y `throwable`: una ranura con catálogo,
+   * saneada contra `SPECIAL_WEAPONS` y elegible en la armería.
+   *
+   * De fábrica el arco, que es la barata: en el entrenamiento la ranura no
+   * cuesta nada, y lo que se aprende ahí es lo que luego se compra.
+   */
+  special: {
+    label: 'Arma especial',
+    default: 'bow',
   },
   /**
    * **Cuál de las tres granadas se lleva** (vuelta 87). Es el hermano de
@@ -6267,13 +6311,23 @@ export const ECONOMY = {
      * siguen sin ser correlativos a propósito (vuelta 64): dejan sitio a lo que
      * venga sin mover de los dedos lo que la gente ya se sabe.
      *
-     * El arco a 2400 —entre el subfusil y el rifle— porque mata de un tiro sólo
-     * cargado y hay que adelantar a quien se mueve. El U2 a 4200, el artículo
-     * más caro del catálogo: con dos cohetes y un área de cinco unidades, un
-     * precio de rifle lo convertiría en el arma de todas las rondas.
+     * **Y desde la vuelta 92 los precios de estos dos dicen lo contrario el uno
+     * del otro, a propósito.** Ya no compiten con el rifle —tienen su ranura—,
+     * así que un precio se lee ahora contra lo que cuesta llevarlos **además
+     * de** un arma principal:
+     *
+     * - **El arco baja de 2400 a 1200.** A 2400 se sumaba a un rifle de 2900 y
+     *   eran dos rondas ganadas para sacarlo una vez, así que no se sacaba: el
+     *   arma menos vista del arsenal. A 1200 cabe en la misma ronda que un
+     *   subfusil y obliga a pensárselo con un rifle, que es la decisión que se
+     *   le pide.
+     * - **El U2 se queda en 4200**, y ahora eso significa algo distinto: es lo
+     *   que hace que llevar cohete **y** rifle cueste dos rondas buenas. Antes
+     *   era «o uno o el otro» por la ranura; ahora es «los dos, si te lo
+     *   puedes pagar», que es una decisión y no una prohibición.
      */
-    { clave: 'bow', nombre: 'Bow', tipo: 'arma', ranura: 'primary', categoria: 8, codigo: 1, precio: 2400, disponible: true },
-    { clave: 'u2', nombre: 'U2', tipo: 'arma', ranura: 'primary', categoria: 8, codigo: 2, precio: 4200, disponible: true },
+    { clave: 'bow', nombre: 'Bow', tipo: 'arma', ranura: 'special', categoria: 8, codigo: 1, precio: 1200, disponible: true },
+    { clave: 'u2', nombre: 'U2', tipo: 'arma', ranura: 'special', categoria: 8, codigo: 2, precio: 4200, disponible: true },
     { clave: 'chaleco', nombre: 'Chaleco', tipo: 'equipo', categoria: 6, codigo: 1, precio: 500, disponible: true },
     { clave: 'casco', nombre: 'Casco', tipo: 'equipo', categoria: 6, codigo: 2, precio: 350, disponible: true },
     /**
@@ -6313,7 +6367,7 @@ export const ECONOMY = {
     5: 'Francotirador',
     6: 'Equipo',
     7: 'Utilidad',
-    8: 'Proyectil',
+    8: 'Especiales',
   },
   /**
    * **El techo de la ronda 1**: los tipos que se pueden comprar. Sin `arma`, así

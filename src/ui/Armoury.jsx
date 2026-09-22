@@ -1,15 +1,12 @@
-import { useEffect } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   CAMERA,
   GRENADES,
   MOVEMENT,
-  MELEE_WEAPON,
-  PRIMARY_WEAPONS,
-  THROWABLE_WEAPONS,
-  SECONDARY_WEAPONS,
   TARGET_TYPES,
   WEAPONS,
   WEAPON_MODES,
+  catalogoDeTienda,
   weaponSpeedFactor,
 } from '../config.js'
 import { zoneDamage } from '../game/player.js'
@@ -168,14 +165,88 @@ const BLOQUES_DE_FICHA = 6
 const FILAS_DE_STATS = 6
 const FILAS_DE_FICHA = BLOQUES_DE_FICHA + FILAS_DE_STATS
 
-/** Con qué tecla sale cada ranura. La lista de teclas de equipo, en un sitio. */
-const SLOT_KEYS = { primary: '1', secondary: '2', melee: '3', throwable: 'G' }
+/**
+ * **Las ranuras, en el orden en que se llevan, y con todo lo suyo junto**
+ * (vuelta 92).
+ *
+ * Eran **dos mapas sueltos** —`SLOT_KEYS` con la tecla y `SLOT_SETTING` con el
+ * ajuste— y ahora hacen falta dos cosas más: cómo se llama la ranura en el
+ * raíl de categorías y qué frase la explica. Cuatro mapas paralelos con las
+ * mismas claves son cuatro sitios donde una ranura nueva se puede quedar a
+ * medias, y eso ya pasó una vez en este fichero (vuelta 89, con las filas del
+ * `subgrid` escritas en tres sitios). Aquí hay **una sola lista de ranuras**.
+ *
+ * Lo que **no** se escribe aquí es qué armas tiene cada una: eso se filtra del
+ * catálogo por su `slot`, como `PRIMARY_WEAPONS` y sus hermanas. Una lista de
+ * miembros a mano es una lista donde un día falta un arma.
+ */
+const RANURAS = [
+  {
+    slot: 'primary',
+    label: 'Primarias',
+    tecla: '1',
+    nota: 'Con lo que sales a la ronda. Es la decisión que más pesa, literalmente: lo que carga se nota al andar.',
+  },
+  {
+    slot: 'secondary',
+    label: 'Pistolas',
+    tecla: '2',
+    nota: 'Siempre llevas una. La Pulse es la de serie y no cuesta nada; el Reaper se compra y se paga al morir.',
+  },
+  {
+    slot: 'special',
+    label: 'Especiales',
+    tecla: '5',
+    nota: 'Se llevan ADEMÁS de un arma principal, no en vez de ella. Lo que las acota es el precio: un cohete y un rifle son dos rondas buenas.',
+  },
+  {
+    slot: 'throwable',
+    label: 'Arrojadizas',
+    tecla: 'G',
+    nota: 'La tecla cicla entre las que lleves. Clic izquierdo lanza lejos; clic derecho, corto y a ras de suelo.',
+  },
+  {
+    slot: 'melee',
+    label: 'Cuerpo a cuerpo',
+    tecla: '3',
+    nota: 'Se lleva siempre y no se elige. Clic izquierdo flojo, clic derecho fuerte, y por la espalda mata.',
+  },
+]
+
+/** La ranura de un arma, por su clave de `slot`. */
+const RANURA = Object.fromEntries(RANURAS.map((r) => [r.slot, r]))
 
 /**
  * **Qué ajuste escribe cada ranura.** La de cuerpo a cuerpo no tiene: el
  * cuchillo se lleva y no se elige, así que no hay nada que guardar.
  */
-const SLOT_SETTING = { primary: 'weapon', secondary: 'secondary', throwable: 'throwable' }
+const SLOT_SETTING = {
+  primary: 'weapon',
+  secondary: 'secondary',
+  special: 'special',
+  throwable: 'throwable',
+}
+
+/**
+ * **El precio de cada arma, aunque en el entrenamiento no se pague** (vuelta
+ * 92). Sale del **mismo catálogo que cobra el servidor** (`catalogoDeTienda`),
+ * no de una tabla al lado: una armería que prometiera un precio distinto del
+ * que la tienda cobra sería la versión de escaparate del fallo de la vuelta 67.
+ *
+ * Y se enseña en los dos modos a propósito: la economía del duelo se decide
+ * durante la ronda anterior, así que el sitio donde se aprenden los precios es
+ * el panel que se abre sin prisa.
+ */
+const PRECIOS = Object.fromEntries(catalogoDeTienda().map((item) => [item.clave, item]))
+
+function lineaDePrecio(weaponKey) {
+  const item = PRECIOS[weaponKey]
+  // Lo que no está en el catálogo es lo que no se compra, y hoy eso es el
+  // cuchillo — fuera por construcción, no por olvido (vuelta 73).
+  if (!item) return { texto: 'Siempre contigo', gratis: true }
+  if (item.deSerie || item.precio === 0) return { texto: 'De serie', gratis: true }
+  return { texto: `$${item.precio}`, gratis: false }
+}
 
 /**
  * **Cuántas armas hay en cada ranura**, derivado del catálogo (vuelta 90).
@@ -195,6 +266,7 @@ for (const arma of Object.values(WEAPONS)) {
 
 function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip, onSuppressor, soloFicha }) {
   const weapon = WEAPONS[weaponKey]
+  const precio = lineaDePrecio(weaponKey)
   // **Una ranura con un arma sola no ofrece ninguna decisión**, así que su
   // ficha no lleva botón: hoy es el cuchillo y nada más. Ver `ARMAS_POR_RANURA`.
   const fixed = (ARMAS_POR_RANURA[weapon.slot] ?? 1) <= 1
@@ -212,16 +284,28 @@ function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip,
         {/* La tecla con la que sale, en la propia ficha: la armería es también
             donde se aprende el mapa de controles del equipo. */}
         <span className="armoury__slot" title={`Sale con la tecla ${slotKey}`}>{slotKey}</span>
+        {/**
+          * **«En la mano» va aquí desde la vuelta 92**, y no en una fila
+          * propia. La tenía —vacía en trece de las catorce fichas— porque con
+          * `subgrid` una fila reservada es lo que impide que la ficha de al
+          * lado baile. Al lado del nombre no hay nada que reservar: es un
+          * punto que se enciende, y la fila que sobraba se fue con él.
+          */}
+        {inHand && <span className="armoury__inhand" title="La llevas empuñada">•</span>}
       </div>
       <div className="armoury__character">
         {WEAPON_MODES[weapon.mode]?.largo} · {weapon.character}
       </div>
 
-      {/* Las tres zonas de abajo llevan hueco reservado aunque estén vacías: si
-          una ficha es más corta que la de al lado, las estadísticas dejan de
-          estar a la misma altura y comparar vuelve a ser leer, no mirar. */}
-      <div className="armoury__state">
-        {inHand && <span className="armoury__inhand">En la mano</span>}
+      {/**
+        * **El precio, aunque aquí no se pague** (vuelta 92). Se pidió
+        * explícitamente —«así la gente se aprende los precios»— y encaja con
+        * lo que este panel ya hace: es el único sitio donde se comparan las
+        * armas sin nadie disparando. Sale del catálogo de la tienda, así que
+        * no puede decir un número distinto del que el servidor cobra.
+        */}
+      <div className={`armoury__precio${precio.gratis ? ' armoury__precio--gratis' : ''}`}>
+        {precio.texto}
       </div>
 
       <div className="armoury__action">
@@ -266,7 +350,7 @@ function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip,
           <SuppressorToggle on={suppressed} onToggle={() => onSuppressor(weaponKey)} />
         )}
         {weapon.supportsSuppressor && (
-          <span className="armoury__hint">Clic derecho del ratón = Silenciador</span>
+          <span className="armoury__hint">Clic derecho = silenciador</span>
         )}
       </div>
 
@@ -476,22 +560,37 @@ function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip,
  */
 export default function Armoury({ settings, equipped, onChange, onClose, soloFicha = false }) {
   /**
-   * **Y el cuchillo el último** (vuelta 71), que es el orden en que se llevan:
-   * principal, pistola, cuerpo a cuerpo. Sale de `MELEE_WEAPON`, derivado de la
-   * ranura como los otros dos — aquí no hay ninguna lista escrita a mano.
+   * **Por categorías, y una cada vez** (vuelta 92). Eran las catorce fichas
+   * seguidas en una rejilla, y con el arsenal cerrado eso son tres filas y
+   * medio panel de rueda: el sitio donde se **comparan** armas obligaba a
+   * recorrerlo, que es justo lo contrario de lo que la vuelta 43 le pidió a
+   * esta pantalla («comparar es mirar, no restar»).
+   *
+   * Las categorías **son las ranuras** y no una clasificación aparte, y eso no
+   * es comodidad: lo que se compara de verdad es lo que compite por la misma
+   * tecla. Comparar el cuchillo con un rifle no decide nada, porque se llevan
+   * los dos.
+   *
+   * De ahí sale el resto de la forma: dentro de una categoría caben todas sus
+   * fichas en una fila, así que `subgrid` vuelve a alinearlas —con dos filas de
+   * fichas cada fila cuadra por su cuenta, y CADENCIA dejaba de estar a la
+   * misma altura en las catorce—.
    */
-  const order = [
-    ...Object.keys(PRIMARY_WEAPONS),
-    // **Y las pistolas desde la vuelta 90 son dos**, así que esto también sale
-    // de su ranura. Con `SECONDARY_WEAPON` —la de serie— el Reaper no habría
-    // salido en la armería: comprable en el duelo y sin ficha en ninguna parte.
-    ...Object.keys(SECONDARY_WEAPONS),
-    MELEE_WEAPON,
-    // **Y las granadas al final** (vuelta 87), que es el orden en que se llevan
-    // y el mismo en que están las teclas. Sale de la ranura, como las otras
-    // tres: aquí no hay ninguna lista escrita a mano.
-    ...Object.keys(THROWABLE_WEAPONS),
-  ].filter(Boolean)
+  const porRanura = RANURAS.map((ranura) => ({
+    ...ranura,
+    armas: Object.keys(WEAPONS).filter((key) => WEAPONS[key].slot === ranura.slot),
+  })).filter((ranura) => ranura.armas.length > 0)
+
+  /**
+   * **Se abre por la categoría del arma que llevas en la mano.** Abrir siempre
+   * por la primera obliga a buscar lo que se estaba mirando; la que tienes
+   * empuñada es la única que el panel sabe que te interesa ahora mismo.
+   */
+  const ranuraEnMano = equipped?.weaponKey ? WEAPONS[equipped.weaponKey]?.slot : null
+  const [abierta, setAbierta] = useState(
+    porRanura.some((r) => r.slot === ranuraEnMano) ? ranuraEnMano : porRanura[0].slot,
+  )
+  const activa = porRanura.find((r) => r.slot === abierta) ?? porRanura[0]
 
   // Escape cierra, como en cualquier panel del juego. La tecla de la armería ya
   // la conmuta el motor; ésta es la que espera quien no se sabe el bind.
@@ -508,28 +607,69 @@ export default function Armoury({ settings, equipped, onChange, onClose, soloFic
   const toggleSuppressor = (key) =>
     onChange({ suppressor: { ...settings.suppressor, [key]: !settings.suppressor[key] } })
 
+  /**
+   * **Y el foco va al panel, no al botón de cerrar** (vuelta 92, con la lección
+   * de la 78). «Cerrar» es el **último** hijo de un panel que además es el
+   * contenedor con scroll, así que el navegador lo traía a la vista al montar
+   * y con él arrastraba la lista entera: la armería abría por el final, con el
+   * raíl de categorías —que es lo primero que hay que ver— fuera de la
+   * pantalla. Es literalmente el mismo fallo que opciones tuvo hasta la 78, y
+   * aquí llevaba desde la vuelta 42.
+   */
+  const panelRef = useRef(null)
+  useEffect(() => {
+    const panel = panelRef.current
+    if (!panel) return
+    panel.scrollTop = 0
+    panel.focus({ preventScroll: true })
+  }, [])
+
   return (
-    <div className="panel panel--armoury" onMouseDown={(event) => event.stopPropagation()}>
+    <div
+      className="panel panel--armoury"
+      ref={panelRef}
+      tabIndex={-1}
+      onMouseDown={(event) => event.stopPropagation()}
+    >
       <h2 className="panel__title panel__title--small">
         {soloFicha ? 'Fichas de las armas' : 'Armería'}
       </h2>
+
+      {/**
+        * **El raíl dice qué ranuras hay, esté abierta la que esté.** Es la
+        * misma regla que el raíl del editor (vuelta 78): la lista de lo que se
+        * puede configurar tiene que verse sin abrir nada, o no se sabe que
+        * está. Y cada pestaña lleva **su tecla**, porque la armería es también
+        * donde se aprende el mapa de controles del equipo.
+        */}
+      <div className="armoury__ranuras" role="tablist" aria-label="Ranuras">
+        {porRanura.map((ranura) => (
+          <button
+            key={ranura.slot}
+            type="button"
+            role="tab"
+            aria-selected={ranura.slot === activa.slot}
+            className={`armoury__ranura${ranura.slot === activa.slot ? ' armoury__ranura--activa' : ''}`}
+            onClick={() => setAbierta(ranura.slot)}
+          >
+            <span className="armoury__ranura-nombre">{ranura.label}</span>
+            <span className="armoury__ranura-tecla">{ranura.tecla}</span>
+          </button>
+        ))}
+      </div>
+
       <p className="panel__hint">
-        {soloFicha
-          ? <>Lo que llevas en una partida lo decide el servidor: se compra, o lo reparte el mapa.
-              Esto son los números — la principal sale con la <strong>1</strong>, la{' '}
-              pistola con la <strong>2</strong> y el{' '}
-              {WEAPONS[MELEE_WEAPON].label} con la <strong>3</strong>.</>
-          : <>La principal sale con la <strong>1</strong> y la pistola con la{' '}
-              <strong>2</strong>. Lo que pesa se nota al andar, y el silenciador es de cada arma. La granada
-              sale con la <strong>G</strong>: clic izquierdo la lanza lejos y clic derecho, corto
-              y a ras de suelo.</>}
+        {activa.nota}
+        {soloFicha && (
+          <> Aquí lo que llevas lo decide el servidor: se compra, o lo reparte el mapa.</>
+        )}
       </p>
 
       <div
         className="armoury__grid"
         style={{ '--armoury-filas': FILAS_DE_FICHA, '--armoury-stats': FILAS_DE_STATS }}
       >
-        {order.map((key) => (
+        {activa.armas.map((key) => (
           <WeaponCard
             key={key}
             weaponKey={key}
@@ -539,7 +679,7 @@ export default function Armoury({ settings, equipped, onChange, onClose, soloFic
             equipped={!soloFicha && key === settings[SLOT_SETTING[WEAPONS[key].slot]]}
             inHand={key === equipped?.weaponKey}
             suppressed={Boolean(settings.suppressor[key])}
-            slotKey={SLOT_KEYS[WEAPONS[key].slot] ?? '1'}
+            slotKey={RANURA[WEAPONS[key].slot]?.tecla ?? '1'}
             onEquip={(next) => onChange({ [SLOT_SETTING[WEAPONS[next].slot]]: next })}
             onSuppressor={toggleSuppressor}
             soloFicha={soloFicha}
@@ -548,7 +688,7 @@ export default function Armoury({ settings, equipped, onChange, onClose, soloFic
       </div>
 
       <div className="panel__actions">
-        <button type="button" className="button button--primary" onClick={onClose} autoFocus>
+        <button type="button" className="button button--primary" onClick={onClose}>
           Cerrar
         </button>
       </div>

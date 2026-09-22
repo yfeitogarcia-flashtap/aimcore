@@ -902,9 +902,15 @@ body {
   color: var(--naranja, #E4462B);
 }
 
-/* ---------- Panel de opciones ---------- */
+/* ---------- Panel de opciones y de entrenamiento ---------- */
 
-.panel--options {
+/* **La misma forma para los dos** (vuelta 92): son la misma clase de pantalla
+   —una columna de filas de ajuste con scroll de seguridad— y escribirla dos
+   veces sería dos paneles que se separan a la primera. La de entrenamiento va
+   más ancha porque lleva el selector de escenario, que son cuatro miniaturas
+   en fila. */
+.panel--options,
+.panel--training {
   gap: 16px;
   align-items: stretch;
   min-width: 460px;
@@ -920,9 +926,27 @@ body {
   overflow-y: auto;
 }
 
-.panel--options .panel__title {
+.panel--training {
+  max-width: 720px;
+}
+
+.panel--options .panel__title,
+.panel--training .panel__title {
   align-self: center;
   margin-bottom: 4px;
+}
+
+/* Los dos botones de empezar, uno al lado del otro y ocupando el ancho: son la
+   acción de esa pantalla, no una fila más de ajustes. */
+.training__modos {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 10px;
+  margin-bottom: 4px;
+}
+
+.training__modos .button {
+  margin-top: 0;
 }
 
 .field {
@@ -1290,8 +1314,31 @@ body {
   margin-top: 4px;
 }
 
-.panel--options .panel__hint {
+.panel--options .panel__hint,
+.panel--training .panel__hint {
   text-align: center;
+}
+
+/* **Un botón solo se centra; dos se reparten** (vuelta 92). La pantalla de la
+   marca tiene uno y el paso siguiente tiene dos filas de dos, y lo que hace
+   que las dos filas se lean como dos filas es que sus botones midan lo mismo:
+   con `flex-wrap` y ancho de contenido, «Armería» y «Opciones» salían de dos
+   tamaños distintos debajo de dos que sí eran iguales. */
+.panel__actions--solo {
+  justify-content: center;
+}
+
+.panel__actions--duo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: min(460px, 100%);
+  align-self: center;
+}
+
+.panel__actions--duo .button {
+  margin-top: 0;
+  width: 100%;
 }
 
 .button--quiet {
@@ -1361,6 +1408,30 @@ body {
   border-color: var(--accent-color);
   color: var(--accent-color);
   outline: none;
+}
+
+/* **El botón grande de los modos** (vuelta 92). Lo que lo separa de los demás
+   no es el color —eso ya lo hace `--primary`— sino el tamaño y el renglón de
+   debajo: es la regla de la vuelta 43 en un menú, un botón grande por decisión
+   y lo demás pequeño. */
+.button--grande {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 16px 26px;
+  font-size: 13px;
+}
+
+/* El renglón de debajo dice qué es ese modo, en minúsculas y sin espaciar: si
+   se pareciera al rótulo del botón serían dos rótulos y no un botón con
+   explicación. */
+.button__sub {
+  font-size: 10px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  opacity: 0.72;
+  line-height: 1.35;
 }
 
 /* Acción principal: verde de marca. No se usa en ningún otro sitio. */
@@ -1710,7 +1781,11 @@ body {
    pegada de otro sitio.
 --------------------------------------------------------------------------- */
 .panel--armoury {
-  gap: 16px;
+  gap: 12px;
+  /* Relleno propio y más corto que el de un panel de texto: aquí el contenido
+     ya trae su propio margen —cada ficha tiene el suyo— y lo que decide si el
+     panel pide rueda es cada píxel de alto. */
+  padding: 24px 40px;
   align-items: stretch;
   /* Ancho fijo y no «lo que ocupe»: la rejilla es de columna mínima, y con el
      ancho a merced del contenido las fichas se partían en dos filas aunque
@@ -1720,7 +1795,7 @@ body {
      con las de arriba, porque cada fila de fichas alinea las suyas. Con 1100 px
      —y el relleno del panel descontado— entran las cinco en una. El día que sean más de las que caben, lo correcto
      es justo lo que pasa: se reparten en filas y cada fila cuadra por dentro. */
-  width: min(1100px, calc(100vw - 48px));
+  width: min(1240px, calc(100vw - 48px));
   max-height: calc(100vh - 48px);
   overflow-y: auto;
   text-align: left;
@@ -1743,7 +1818,7 @@ body {
    navegador y no hay número que mantener. */
 .armoury__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(185px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(212px, 1fr));
   /* Seis filas de ficha **más las seis de estadística** (vuelta 89; eran cinco
      desde la 71). Las filas de estadística **son filas de la rejilla**, así que
      un valor que ocupe dos líneas empuja el suyo en las once fichas y no sólo
@@ -1757,17 +1832,24 @@ body {
      una encima de otra. Ahora lo declara `Armoury.jsx` —que es quien sabe
      cuántas emite— y esto lo lee. */
   grid-template-rows: repeat(var(--armoury-filas), auto);
-  gap: 12px;
+  gap: 10px;
 }
 
 .armoury__card {
   display: grid;
   grid-template-rows: subgrid;
   grid-row: span var(--armoury-filas);
-  row-gap: 8px;
+  /* **Y apretada desde la vuelta 92.** Con una categoría cada vez las fichas
+     caben en una fila, así que lo único que decide si el panel pide rueda es
+     lo **alta** que sea una: medida antes de tocar nada, 695 px de ficha y 939
+     de panel, que a 1080 entra justo y a 860 se pasa por 129. Lo que se ha
+     quitado son huecos y una fila que estaba vacía casi siempre —el «En la
+     mano» se fue a la cápsula del nombre—, no números: esconderlos detrás de
+     un clic es lo que la vuelta 43 quitó. */
+  row-gap: 6px;
   justify-items: center;
   align-content: start;
-  padding: 14px 12px;
+  padding: 11px 10px;
   border: 1px solid var(--panel-border);
   background: rgba(255, 255, 255, 0.015);
 }
@@ -1782,7 +1864,7 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 62px;
+  min-height: 54px;
 }
 
 /* Nombre y tecla, en la misma línea: el arma y con qué sale. */
@@ -1812,21 +1894,13 @@ body {
   color: var(--text-muted);
 }
 
-/* Fila de estado: ocupa sitio aunque esté vacía, o la ficha de al lado baila. */
-.armoury__state {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 14px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-}
 
+/* El punto de «la llevas en la mano», al lado del nombre: verde de acción,
+   que es el color de lo que está pasando ahora mismo. */
 .armoury__inhand {
   color: var(--action-color);
+  font-size: 18px;
+  line-height: 1;
 }
 
 .armoury__character {
@@ -1842,6 +1916,74 @@ body {
   min-height: 30px;
 }
 
+/* **El precio, en la fila de debajo del carácter** (vuelta 92). Es fila de la
+   rejilla, así que cae a la misma altura en todas las fichas de la categoría:
+   comparar precios es mirar una línea, no leer catorce. En el ámbar del
+   explosivo no —ése significa otra cosa—: va en el texto normal, y lo que es
+   gratis se apaga, porque un «De serie» que compite con un número se lee como
+   un precio más. */
+.armoury__precio {
+  font-family: var(--font-mono);
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  color: var(--text-primary);
+}
+
+.armoury__precio--gratis {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* **El raíl de ranuras** (vuelta 92), la lista de lo que hay, siempre puesta.
+   Es la idea del raíl del editor (vuelta 78) en un panel que se lee en
+   horizontal: la pestaña abierta se marca con el verde de acción, que es el
+   color de «aquí es donde estás» en todo el juego, y cada una lleva su tecla
+   porque la armería es también donde se aprende el mapa de controles. */
+.armoury__ranuras {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+}
+
+.armoury__ranura {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--panel-border);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.armoury__ranura:hover {
+  color: var(--text-primary);
+  border-color: var(--text-muted);
+}
+
+.armoury__ranura--activa,
+.armoury__ranura--activa:hover {
+  color: var(--action-color);
+  border-color: var(--action-color);
+}
+
+/* La tecla, en la misma cápsula que lleva en la ficha: el mismo dato con la
+   misma forma en los dos sitios. */
+.armoury__ranura-tecla {
+  min-width: 18px;
+  padding: 1px 0;
+  border: 1px solid currentColor;
+  font-size: 10px;
+  text-align: center;
+}
+
 .armoury__actions {
   display: flex;
   flex-wrap: wrap;
@@ -1855,8 +1997,14 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 34px;
+  min-height: 30px;
   width: 100%;
+}
+
+/* El botón de una ficha no arrastra el margen de un botón de panel: aquí su
+   hueco ya lo pone la fila de la rejilla. */
+.armoury__action .button {
+  margin-top: 0;
 }
 
 .armoury__fixed {
@@ -1892,8 +2040,8 @@ body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  min-height: 22px;
+  gap: 3px;
+  min-height: 18px;
   width: 100%;
 }
 
@@ -1905,9 +2053,9 @@ body {
   display: grid;
   grid-template-rows: subgrid;
   grid-row: span var(--armoury-stats);
-  row-gap: 7px;
+  row-gap: 5px;
   width: 100%;
-  padding-top: 8px;
+  padding-top: 6px;
   border-top: 1px solid var(--panel-border);
 }
 
@@ -1921,7 +2069,7 @@ body {
 .armoury__extras {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 5px;
   width: 100%;
   align-self: start;
 }
@@ -2021,8 +2169,11 @@ body {
 }
 
 /* La silueta de la armería es la misma del HUD, un poco más grande: aquí es el
-   retrato del arma y no un dato al lado de la munición. */
+   retrato del arma y no un dato al lado de la munición. **Y desde la vuelta 92
+   la ficha es más ancha**, así que la silueta cabe con la misma presencia
+   siendo menos alta: lo que se gana en alto es lo que hace que el panel no
+   pida rueda. */
 .armoury__art .weapon__svg {
-  width: 168px;
-  height: 73px;
+  width: 190px;
+  height: 62px;
 }

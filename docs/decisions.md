@@ -12728,3 +12728,274 @@ despliegue. Dos cosas que son la decisión:
 
 Sale sin firmar, con su aviso de «editor desconocido» en Windows, y está
 aceptado.
+
+---
+
+## §92 — El retrabajo de la interfaz, y la quinta ranura
+
+El encargo fueron dos cosas de tamaño muy distinto: **rehacer la interfaz de
+entrada al juego** y **proponer por fases** las cuentas y la presencia en vivo
+(lo segundo, sin construir nada — está en `docs/propuestas/07-cuentas-y-presencia.md`).
+
+Lo que las une es un diagnóstico que el encargo trae escrito y que vale la pena
+citar entero, porque es de lo más certero que ha entrado en este repositorio:
+*«la gente no irá a opciones a ver que si hay más modos de juego»*.
+
+### §92.1 — Lo que estaba mal no era una pantalla: era dónde vivían las decisiones
+
+El panel de opciones tenía **veinte ajustes**, y once de ellos no eran ajustes:
+eran **la partida**. El escenario, el tipo de diana, su tamaño, la distancia, el
+cono, la cadencia, cuántas a la vez, la duración, la dificultad, el modo dinámico
+y la velocidad de patrulla deciden a qué juegas, y estaban detrás de un botón
+que se llama «Opciones» — entre la sensibilidad del ratón y el límite de FPS.
+
+El efecto no es que cueste encontrarlos. Es que **quien abre Vektor juega siempre
+a lo mismo y no sabe que hay otra cosa**: pulsa «Jugar ahora» y sale lo que
+hubiera configurado, sin una pista en ninguna pantalla de que hay cuatro
+escenarios, tres tipos de diana, patrulla y cinco niveles de dianas
+simultáneas. Es el fallo de la vuelta 89 —«está en pantalla» y «se ve» son dos
+medidas distintas— llevado un paso más allá: aquí ni siquiera estaba en
+pantalla.
+
+**El corte que se aplica cabe en una frase: si cambia de una partida a otra, no
+es una opción; es la partida.** De ahí sale todo lo demás:
+
+- **Lo de la partida** se va a una pantalla propia, `Training.jsx`, que se llega
+  pulsando «Entrenamiento» y donde lo primero que se ve son **los dos modos**.
+- **Lo del jugador** —sensibilidad, sensibilidad con mirilla, controles, avisos,
+  audio espacial— se queda en opciones.
+- **Y el límite de FPS también se queda**, que no estaba en la lista de lo que
+  el encargo pedía dejar ahí. Es un juicio propio y va dicho: no configura una
+  partida, configura **esta máquina**. Quien lo baja porque su portátil se
+  calienta no quiere volver a bajarlo cada vez que elige mapa, y en la pantalla
+  de entrenamiento habría quedado **fuera del duelo**, que es donde más falta
+  hace. Es la misma clase de ajuste que el audio espacial.
+
+Y hay una consecuencia que no se buscaba y es un arreglo: **el panel de opciones
+del duelo dejó de enseñar once controles que el duelo ignora**. Se monta ahí
+desde la vuelta 73 (`src/ui/duelo.jsx`), así que hasta hoy un jugador en una
+partida 1v1 podía mover «dianas simultáneas» y «dificultad de los muñecos». Era
+el fallo de la vuelta 67 —un control que promete lo que el juego ignora— con
+once filas, y se cierra sin escribir una línea contra él.
+
+### §92.2 — Tres pasos, y cada uno hace una pregunta
+
+La pantalla de inicio eran **cinco botones en fila** —dos modos, el duelo, la
+armería y las opciones— con tres párrafos de instrucciones encima. En una lista
+de cinco cosas del mismo tamaño no hay ninguna que sea *la* que hay que pulsar.
+
+Ahora: **marca → modos → configurar**.
+
+1. **El logotipo y un botón.** «Jugar ahora», verde, solo. Nada debajo: las
+   instrucciones bajan al paso siguiente, que es el primer sitio donde leerlas
+   significa algo — nadie lee tres líneas de controles antes de haber decidido
+   que va a jugar.
+2. **Entrenamiento y Duelo 1v1**, los dos en verde y grandes, con un renglón
+   debajo que dice qué es cada uno; y **Armería y Opciones** debajo, en el gris
+   de siempre. El color separa *jugar* de *prepararse*, que es la regla de la
+   vuelta 43 aplicada a un menú: un botón grande por decisión y lo demás
+   pequeño.
+3. **La pantalla de entrenamiento**, con los dos modos arriba —no al final de
+   una lista de once ajustes, donde hay que buscarlos con la rueda— y la
+   configuración debajo.
+
+Dos detalles que son del mecanismo:
+
+- **Terminar una sesión devuelve al paso 1, no al último que se vio.** Volver a
+  la lista de ajustes de la partida que acaba de acabar es ofrecer retocarla en
+  vez de decidir qué se hace ahora.
+- **El dibujo del cono de aparición se fue con su slider.** Se encendía con
+  `optionsOpen`; ahora con la pantalla de entrenamiento. Dejar el ajuste en un
+  panel y su efecto en otro es exactamente lo que la convención de la vuelta 78
+  prohíbe.
+
+### §92.3 — Las filas de ajuste se escriben una vez
+
+`SliderRow`, `SegmentedRow`, `ToggleRow` y `FieldHead` vivían dentro de
+`Options.jsx`, que era exacto mientras opciones fuese el único panel que toca
+ajustes. Con dos, copiarlas habría sido la vuelta 63 por la puerta de la
+interfaz: dos paneles que escriben en el mismo store y se comportan distinto
+—un slider que acota de otra manera, un «por defecto» que falta en uno— es una
+diferencia que nadie decidió.
+
+Están en `src/ui/fields.jsx`, y la regla que las hace seguras sigue siendo la de
+la vuelta 78: **cada fila se identifica por la clave del ajuste**, no por su
+descriptor. De la clave salen la etiqueta, el rango, el valor de fábrica y el
+parche que se escribe, así que un panel nuevo no puede enseñar un ajuste y
+restablecer otro.
+
+### §92.4 — La quinta ranura: el arco y el U2 salen de la principal
+
+**El cambio de mecánica de la vuelta.** `slot: 'special'`, la tecla **5** —que
+llevaba reservada sin lógica desde la vuelta 27, exactamente como la 3 hasta el
+cuchillo y la G hasta las granadas—.
+
+El motivo que dio el encargo es económico y es el correcto: *«de esta forma
+también será más complicado que alguien pueda llevar al mismo tiempo rift y un
+u2 por temas de economía»*. Hasta aquí el arco y el cohete competían con el
+rifle **por el hueco**, y en ese reparto nunca ganaban: quien puede pagar un
+Rift paga un Rift. Con ranura propia se llevan **además de** y no **en vez de**,
+y lo que los acota pasa a ser el precio — que es una decisión y no una
+prohibición.
+
+De ahí los dos precios, que ahora dicen cosas contrarias a propósito:
+
+- **El arco baja de 2400 a 1200**, que es lo que se pidió («más barato para que
+  los jugadores lo usen más a menudo»). A 2400 se sumaba a un rifle de 2900 y
+  eran dos rondas ganadas para sacarlo una vez: el arma menos vista del arsenal.
+  A 1200 cabe en la misma ronda que un subfusil y obliga a pensárselo con un
+  rifle.
+- **El U2 se queda en 4200**, y ahora eso significa otra cosa: es lo que hace
+  que llevar cohete **y** rifle cueste dos rondas buenas.
+
+Cuatro cosas de forma, y ninguna es nueva — son las mismas reglas que ya
+gobiernan las otras cuatro ranuras:
+
+- **La lista sale del `slot`** (`SPECIAL_WEAPONS`), como `PRIMARY_WEAPONS` y sus
+  hermanas. No hay una segunda lista en ninguna parte.
+- **El bind deja de estar reservado** y se llama **«Arma especial»**, porque el
+  nombre de un bind dice qué ranura saca. **El artilugio no desaparece, cambia
+  de puerta**: sigue reservado en la contextual (`use`, la E), que es la tecla
+  de *usar algo* y no la de *sacar un arma*. Tener las dos cosas era el hueco
+  duplicado, y lo que se ha gastado es el que sobraba.
+- **En el duelo la compra es la de la pistola**: la ranura es una y comprar
+  sustituye. Lo que no tiene es un arma de serie a la que volver — aquí `null`
+  es una respuesta válida y significa que no llevas.
+- **Y un `weapon: 'bow'` guardado se traduce, no se tira.** El arco salió de la
+  ranura principal, así que un ajuste guardado con él ya no es válido y caería
+  al Rift sin decir nada — a quien llevaba el arco elegido se le habría cambiado
+  el arma. `sanitizeSettings` lo lee **donde se lee la ranura nueva**: la
+  principal cae a fábrica, que es lo correcto, y la especial hereda lo que
+  había. Es `LEGACY_WEAPON_KEYS` aplicada a la ranura en vez de al nombre.
+
+Medido (`ranura92`, con teclado y ratón de verdad en el motor del
+entrenamiento): la 1 saca el Rift, la 2 la Pulse, la **5 el Bow**, la 3 el Vanta
+y la G la Core, el HUD lo dice en las cinco, y disparando con la especial el
+cargador baja de 12 a 11. Y contra `Partida` sin navegador (`duelo92srv`): se
+compran **rifle y arco a la vez**, el U2 sustituye al arco y no al rifle, llega
+con su reserva llena, la reserva se repone al empezar la ronda, morir cuesta la
+especial y en la ronda 1 se rechaza sin cobrar.
+
+### §92.5 — Y el Reaper era gratis, desde la vuelta 90
+
+Lo encontró el banco de la ranura nueva, mirando el saldo.
+
+`_comprar` cobra **al final**, detrás de todas las ramas. La rama de la pistola,
+escrita en la vuelta 90, escribía la ranura, mandaba la economía y **salía con
+un `return`**. O sea que el primer artículo del juego que sustituye algo que ya
+llevas era también **el único que no se pagaba**, y sin un error en ninguna
+pantalla: el panel lo daba por comprado porque el servidor decía que lo llevaba,
+y decía la verdad.
+
+La rama de la especial salió calcada —por eso es el mismo fallo y no otro— y el
+banco la cazó porque, además del inventario, **miró el dinero**. Es la regla del
+denominador de la vuelta 46 por la puerta de la caja: comprobar que el
+inventario cambia no es comprobar que la compra ocurrió.
+
+Lo que lo cierra no es acordarse del cobro en tres sitios: las tres ranuras que
+venden armas son **la misma forma** —la ranura es una, comprar sustituye, el
+arma con reserva llega llena— y lo único que cambia es en qué campo se escribe.
+Así que se escribe una vez y se elige el campo (`CAMPO[item.ranura]`), y **hay
+un solo camino hasta el cobro**. Es la disciplina de `zoneDamage` y
+`encajarImpacto` aplicada a la caja.
+
+Y de paso entró la guarda que faltaba: **comprar lo que ya llevas no cuesta**,
+como el chaleco y el casco desde la vuelta 64. Sin ella, pulsar dos veces el
+Reaper cobraba dos veces por lo mismo.
+
+Medido (`duelo92srv`): $9000 → 6100 con el Rift → 4900 con el arco → 700 con el
+U2; el Reaper cobra sus 900 y comprarlo otra vez deja el saldo clavado.
+
+### §92.6 — La armería por categorías, y las categorías son las ranuras
+
+Eran **catorce fichas seguidas** en una rejilla de tres filas, con media
+pantalla de rueda. El sitio donde se **comparan** armas obligaba a recorrerlo,
+que es lo contrario de lo que la vuelta 43 le pidió a esta pantalla («comparar
+es mirar, no restar»), y con `subgrid` sólo alinea **cada fila por dentro** — así
+que en tres filas CADENCIA ya no caía a la misma altura en las catorce.
+
+Un raíl de categorías arriba, una cada vez. **Y las categorías son las
+ranuras**, no una clasificación aparte: lo que se compara de verdad es lo que
+compite por la misma tecla, porque comparar el cuchillo con un rifle no decide
+nada — se llevan los dos. Dentro de una categoría caben todas sus fichas en una
+fila, así que `subgrid` vuelve a alinearlas.
+
+Y las cuatro cosas que decían una ranura —su tecla, su ajuste, su nombre y su
+frase— **pasan a ser una sola lista** (`RANURAS`). Eran dos mapas paralelos y
+harían falta cuatro: cuatro mapas con las mismas claves son cuatro sitios donde
+una ranura nueva se queda a medias, que es exactamente lo que pasó en este mismo
+fichero en la vuelta 89 con las filas del `subgrid` escritas en tres sitios.
+
+**Los precios**, que se pidieron aunque en el entrenamiento no se pague («así la
+gente se aprende los precios»), salen de **`catalogoDeTienda()`** — el mismo
+catálogo que cobra el servidor. Una armería que prometiera un precio distinto
+del que la tienda cobra sería la versión de escaparate del fallo de la 67. Lo
+que no está en el catálogo es lo que no se compra, y hoy eso es el cuchillo:
+dice «siempre contigo».
+
+**Lo del scroll, medido y con su límite dicho.** Antes: ficha de 695 px, panel
+de 939 — a 1080 entraba justo y a 860 se pasaba por 129. Ahora, con la ficha
+apretada —una fila que estaba vacía en trece de las catorce se fue: «En la mano»
+pasó a ser un punto verde al lado del nombre— y la ficha más ancha, que hace que
+los valores se partan menos: **ficha 583, panel 795**. A 1920×1080 y a 1280×860
+**no hay rueda**; a 1366×768 se pasa por **77 px**, y eso es honesto decirlo:
+cinco fichas de arma con todos sus números no caben en 720 px de alto sin
+esconder números, y esconderlos detrás de un clic es lo que la vuelta 43 quitó.
+
+Y de paso, un fallo que llevaba ahí **desde la vuelta 42**: la armería abría por
+el final. El `autoFocus` estaba en «Cerrar», que es el último hijo de un panel
+que además es el contenedor con scroll, así que el navegador lo traía a la vista
+y con él arrastraba la lista entera — el raíl de categorías, que es lo primero
+que hay que ver, quedaba fuera de pantalla. Es **literalmente** el mismo fallo
+que opciones tuvo hasta la vuelta 78, encontrado mirando una captura.
+
+### §92.7 — La página del duelo: lo que se quita pesa más que lo que se pone
+
+Tres cambios, y el del medio es el que tiene argumento:
+
+- **El enlace dice para qué es**: «Copia y comparte este link para retar a tus
+  amigos a un duelo». Era un campo de texto y un botón «copiar» sin una palabra
+  alrededor, y lo que hay detrás —«así es como se invita a alguien»— es justo lo
+  que un jugador nuevo no puede adivinar mirando una URL.
+- **El campo de teclear un código se retira.** Existía desde la vuelta 47 como
+  la otra puerta a una sala, y lo que se comparte es el enlace entero: teclear
+  seis caracteres no llega a ningún sitio al que el enlace no lleve ya, y sí
+  puede llevar a una sala equivocada si se teclean mal. **Un control que sólo
+  puede producir el mismo resultado o uno peor no es una opción, es una forma de
+  equivocarse.** Lo de debajo no se toca: el alfabeto sin parejas que se
+  confunden al dictar, `normalizarCodigo` y `direccionDeLaBarra` siguen en pie
+  porque los usa el propio enlace.
+- **Mapa y fase de compra, cada uno en su fila.** La vuelta 72 los puso juntos
+  para no crecer un renglón, y el sitio lo ha devuelto el campo que se acaba de
+  quitar.
+
+**Y el rótulo del segundo dice lo que el desplegable hace.** El encargo lo
+llamaba «tiempo de ronda» y no lo es: sus opciones son «15 s» y «sin fase
+(rápida)», o sea **cuánto dura la fase de compra** entre rondas. Llamarlo tiempo
+de ronda sería un control que promete lo que el juego ignora — el fallo de la
+vuelta 67, y justo el que esta vuelta viene a quitar del resto de la interfaz.
+La fila propia sí es lo pedido, y es lo que se ha hecho.
+
+**Y la regla de la vuelta 62 se cumplió, con su banco delante.** Añadir el
+rótulo del enlace subió el menú de 469 a 487 px, y a 700×460 los tres botones de
+abajo se salían de la ventana — que es exactamente lo que `menu62` llevaba
+guardando desde entonces («si añades algo aquí, quita algo o pasa el banco»).
+Lo que se quitó fue el renglón «Pásale el enlace a la otra persona y haz clic
+para jugar», que decía lo mismo que la línea nueva y **peor**, porque no estaba
+al lado del control del que hablaba. Medido (`menu92`, con `elementFromPoint` a
+cuatro tamaños): **466 px y ningún control inalcanzable**.
+
+### §92.8 — Lo que la propuesta de cuentas contesta, y lo que avisa
+
+Está entera en `docs/propuestas/07-cuentas-y-presencia.md`. Lo que conviene
+tener aquí son las dos cosas que cambian decisiones:
+
+- **La fase 1 no necesita servidor**, y es la que se nota: hoy el rival se llama
+  `VK-01`. Un nick de invitado guardado en el navegador y viajando en la
+  bienvenida cuesta poco y no compromete nada — pero trae lo único de toda la
+  propuesta que hay que escribir con cuidado aunque no haya servidor: **un nick
+  es la primera entrada de datos ajenos que tiene el juego**.
+- **Y la presencia no puede convertirse en un registro de salas.** La vuelta 47
+  decidió que no hay lista de partidas porque `idFromName(código)` *es* el
+  encaminado. La presencia dice **quién está**, no **qué salas hay**; el
+  buscador de partidas sigue siendo una decisión aparte con su propio precio.

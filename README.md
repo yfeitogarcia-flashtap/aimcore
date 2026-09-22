@@ -30,9 +30,13 @@ Abre la URL que imprime Vite, haz click en el canvas y a disparar.
 - **1** saca el arma principal y **2** la pistola. **Q** alterna entre las dos.
   Las dos se eligen en la armería; la pistola de serie es la Pulse y va sin
   pagar.
+- **5** saca el **arma especial** —el arco o el U2—. Se lleva **además de** la
+  principal, no en vez de ella, y por eso lo que la acota es el precio: en un
+  duelo, cohete y rifle a la vez son dos rondas buenas.
 - **TAB** (mantenida): marcador de la sesión — bajas, muertes, precisión y KD.
-- **B**: abre la **armería** — el panel donde se eligen y se equipan el arma
-  principal, la pistola y el arrojadizo. Jugando, **pausa** igual que Escape.
+- **B**: abre la **armería** — el panel donde se eligen y se equipan las armas,
+  ordenado por categorías (una por ranura) y con los precios a la vista.
+  Jugando, **pausa** igual que Escape.
 - **G**: saca lo que lleves en la ranura de **arrojadizos** —las granadas y el
   Fang—. Con uno ya en la mano, la misma tecla pasa al siguiente.
 - **V** conmuta el silenciador, **E** es la acción contextual y **4** aplica una
@@ -40,7 +44,7 @@ Abre la URL que imprime Vite, haz click en el canvas y a disparar.
 - La **acción contextual** reparte tres cosas, y siempre en este orden: dentro
   del radio del explosivo **desactiva** y nada más; fuera, si tienes una
   **tirolina** al alcance, te agarras a ella (y con la misma tecla te sueltas);
-  y si no hay ninguna, saca el artilugio — que todavía no existe.
+  y si no hay ninguna, usa el artilugio — que todavía no existe.
 - **Escape**: suelta el ratón y **pausa** el cronómetro. En la pantalla de pausa
   hay un botón **Reanudar**, y también vale un click en cualquier sitio.
 
@@ -110,20 +114,23 @@ captura la siguiente pulsación. Cada acción tiene su botón **por defecto**.
 | --- | --- |
 | Movimiento | adelante, atrás, izquierda, derecha, saltar, agacharse, caminar |
 | Combate | disparar, recargar, cambiar de arma, silenciador, **usar / artilugio** |
-| Equipo | **arma principal (1)**, **pistola (2)**, cuerpo a cuerpo (3), escudo (4), artilugio (5), arrojadizo (G) |
+| Equipo | **arma principal (1)**, **pistola (2)**, cuerpo a cuerpo (3), escudo (4), **arma especial (5)**, arrojadizos (G) |
 | Interfaz | **marcador (TAB)**, **armería (B)** |
 | Depuración | vista del avatar (F3) |
 
-De las de **Equipo**, la **1 y la 2 equipan** cada una su ranura, la **4 aplica
-una carga de escudo** y las otras tres están **reservadas y no hacen nada
-todavía**: la tecla existe para que el mapa de controles sea el definitivo desde
-el principio y nadie se encuentre luego con que su bind favorito ya estaba
-cogido. El panel marca las que no tienen efecto.
+De las de **Equipo**, la **1, la 2, la 3, la 5 y la G equipan** cada una su
+ranura y la **4 aplica una carga de escudo**: desde la vuelta 92 **ya no queda
+ninguna sin efecto**. Las cinco estuvieron reservadas antes de tener mecánica, y
+ésa era la idea — que el mapa de controles fuese el definitivo desde el
+principio, para que nadie se encontrara luego con que su bind favorito ya estaba
+cogido.
 
 **E es una sola acción, no dos.** Dentro del radio de algo con lo que se puede
 interactuar —hoy el explosivo— **siempre** interactúa, y nada más: que ahí dentro
-sacara un artilugio es como se pierde una ronda. Fuera de ese radio equipará el
-lanzacohetes, que todavía no existe.
+pasara otra cosa es como se pierde una ronda. Fuera de ese radio te agarras a
+una tirolina si la tienes al alcance, y si no, usa el **artilugio** — la única
+mecánica que sigue reservada, y ya sin tecla propia: vive aquí porque ésta es la
+tecla de *usar* algo, no la de *sacarlo*.
 
 Cuatro reglas que el sistema no se salta:
 
@@ -294,10 +301,17 @@ detalles, en `escritorio/README.md`.
 
 ## El duelo 1v1: rondas y reconexión
 
-Se entra por el botón **Duelo 1v1** de la pantalla de inicio. Lleva a la página
-del duelo, que crea una partida sola y enseña su código, el enlace para copiar,
-un campo para entrar en el código de otro y los selectores de **mapa** y de fase
-de compra.
+Se entra por el botón **Duelo 1v1** del segundo paso del menú de inicio. Lleva a
+la página del duelo, que crea una partida sola y enseña su código, **el enlace
+para copiar y compartir** y los selectores de **mapa** y de **fase de compra**,
+cada uno en su fila.
+
+**Invitar es pasar el enlace, y eso es todo.** Lo dice la propia página encima
+del campo: «Copia y comparte este link para retar a tus amigos a un duelo».
+Hasta la vuelta 91 había además un campo para teclear el código de otra sala, y
+se quitó porque sólo podía acabar igual o peor: lo que se comparte es el enlace
+entero, así que teclear seis caracteres no lleva a ningún sitio al que el enlace
+no lleve ya — y sí puede llevar a una sala equivocada si se teclean mal.
 
 **Las opciones de la partida son de quien la crea**, y sólo hasta que entra el
 rival: al que se une por el enlace le salen apagadas, porque cambiarlas no
@@ -429,6 +443,13 @@ detrás de ese botón.
 
 **El cuchillo tampoco se compra:** el Vanta va contigo siempre, en cualquier
 mapa, como la pistola.
+
+**Y el arco y el U2 tienen ranura propia desde la vuelta 92**, la tecla **5**,
+así que se compran **además de** un arma principal y no en vez de ella —`8 1` y
+`8 2`, en *Especiales*—. Lo que los acota ya no es el hueco, es el precio: el
+arco baja a **1200** para que se vea de una vez (a 2400 y sumado a un rifle eran
+dos rondas para sacarlo una sola vez) y el U2 se queda en **4200**, que es lo
+que hace que llevar cohete y rifle a la vez cueste dos rondas buenas.
 
 **Lo que compras suena al ponértelo** —cada cosa con lo suyo: el chaleco con una
 cremallera, el casco con un golpe sordo, un arma con el cerrojo— y su artículo
@@ -619,11 +640,28 @@ Nada de esto es un sistema de skins de pago: eso depende de economía y cuentas,
 que no existen.
 
 
+## La pantalla de inicio
+
+Va en **tres pasos**, y cada uno hace una pregunta:
+
+1. El **logotipo** y un solo botón, **Jugar ahora**.
+2. **Entrenamiento** y **Duelo 1v1**, los dos en verde; debajo, **Armería** y
+   **Opciones** en gris. El color separa *jugar* de *prepararse*.
+3. Pulsando Entrenamiento, la pantalla donde **se configura la partida**: los
+   dos modos arriba y, debajo, el mapa, el tipo de diana, cuántas a la vez, el
+   modo dinámico, la dificultad, la duración y el resto.
+
+Hasta la vuelta 91 todo eso vivía dentro de **Opciones**, y ése era el problema:
+nadie entra en opciones a ver a qué se puede jugar, así que quien abría Vektor
+jugaba siempre a lo mismo sin saber que había otra cosa. **Opciones** se queda
+con lo que es tuyo y vale para todos los modos: sensibilidad, sensibilidad con
+mirilla, controles, mensajes de ayuda, audio espacial y límite de FPS.
+
 ## Modos de sesión
 
-Dos botones en la pantalla de inicio:
+Los dos botones de arriba de la pantalla de entrenamiento:
 
-- **Jugar ahora** — sesión cronometrada, que termina sola y saca el resumen.
+- **Ronda cronometrada** — sesión que termina sola y saca el resumen.
   Con escenario, es **la ronda del explosivo**: la bomba lleva el reloj y los
   muñecos **no reaparecen** (ver más abajo).
 - **Deathmatch** — el escenario **sin bomba**. En la sala vacía este botón se
@@ -643,8 +681,9 @@ estrellas**: las estrellas puntúan cumplir un objetivo —la mitad de la nota e
 lo que tardas en desactivar— y sin bomba no hay contra qué medir. El porqué
 completo está en `docs/decisions.md` §41.4.
 
-**Reiniciar** conserva el modo; **Volver al inicio**, en el resumen, devuelve a
-la pantalla de selección.
+**Reiniciar** conserva el modo; **Volver al inicio**, en el resumen, devuelve al
+primer paso del menú — no a la lista de ajustes de la partida que acaba de
+acabar, que sería ofrecer retocarla en vez de decidir qué se hace ahora.
 
 ## Marcador (TAB)
 
@@ -1617,9 +1656,9 @@ se traduce al nuevo en vez de caer al valor de fábrica.
 | **Rift** | principal (**1**) | auto | 600 | 30 | 2.3 s | sí | 3.6 kg | 5.41 u/s | rifle: subida vertical marcada los primeros ocho disparos, luego deriva a la izquierda |
 | **Volt** | principal (**1**) | auto | 800 | 25 | 1.8 s | sí | 2.6 kg | 5.86 u/s | SMG: patada más inmediata pero la mitad de techo vertical, y más bamboleo lateral que vertical |
 | **Scout** | principal (**1**) | semi | 48 | 10 | 2.6 s | **no** | 3.2 kg | 5.59 u/s | francotirador: una patada sola y grande, 2.4° de golpe |
-| **Bow** | principal (**1**) | **carga** | 80 | 12 | 2.2 s | **no** | 2.8 kg | 5.77 u/s | arco: un empujón corto hacia arriba, lo que sacude una cuerda |
+| **Bow** | especial (**5**) | **carga** | 80 | 12 | 2.2 s | **no** | 2.8 kg | 5.77 u/s | arco: un empujón corto hacia arriba, lo que sacude una cuerda |
 | **Pump** | principal (**1**) | semi | 120 | 8 | 0.55 s/cartucho | **no** | 4.2 kg | 5.13 u/s | escopeta: una coz de 3.4°, y medio segundo de corredera para bajarla |
-| **U2** | principal (**1**) | semi | 40 | 1 + reserva | 2.0 s | **no** | 5.4 kg | 4.88 u/s | lanzacohetes: una patada sola y grande, más que la Scout |
+| **U2** | especial (**5**) | semi | 40 | 1 + reserva | 2.0 s | **no** | 5.4 kg | 4.88 u/s | lanzacohetes: una patada sola y grande, más que la Scout |
 | **Titan** | principal (**1**) | semi | 24 | 5 | 4.0 s | **no** | 6.5 kg | 4.88 u/s | francotirador pesado: una coz de 3.8°, y no se vuelve a ver en 2.5 s |
 | **Vanta** | cuchillo (**3**) | — | — | — | — | no | 0.6 kg | 6.50 u/s | cada golpe empuja la cámara: el flojo poco, el fuerte el doble |
 | **Core** | granada (**G**) | **carga** | 50 | 1 + 1 | 1.2 s | **no** | 0.5 kg | 6.50 u/s | el empujón de tirar algo: pequeño y hacia arriba |

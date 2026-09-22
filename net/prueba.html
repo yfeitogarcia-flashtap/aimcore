@@ -168,6 +168,11 @@
   #sala h1 { margin: 0 0 10px; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: #E4462B; }
   #codigo { font-size: 30px; letter-spacing: .3em; color: #FFF; }
   .linea { display: flex; gap: 6px; align-items: center; margin: 7px 0; width: 340px; }
+  /* **El rótulo del enlace** (vuelta 92): dice para qué sirve el campo de
+     debajo. En verde de acción porque eso es lo que hay que hacer aquí, y
+     pegado al campo —margen de abajo a cero— para que se lean como una cosa y
+     no como una frase suelta encima de otra. */
+  .invita { margin: 12px 0 0; color: #2FCB82; font-size: 11px; line-height: 1.4; width: 340px; }
   .linea input { flex: 1; min-width: 0; background: #141414; color: #E8E8E8; border: 1px solid #333;
     border-radius: 3px; padding: 5px 7px; font: inherit; }
   /* **Un control que no es tuyo se ve apagado** (vuelta 67): el desplegable de
@@ -308,21 +313,41 @@
          no entra en `App.jsx` (vuelta 45). -->
     <p style="margin:0 0 10px"><button id="reconectar" hidden>Reconectar</button></p>
     <div class="fila"><span class="apagado">código de partida</span><span id="codigo">—</span></div>
+    <!-- **El enlace dice para qué es** (vuelta 92). Era un campo de texto y un
+         botón «copiar» sin una palabra alrededor, y lo que hay detrás —«así es
+         como se invita a alguien»— es justo lo que un jugador nuevo no puede
+         adivinar mirando una URL. -->
+    <p class="invita">Copia y comparte este link para retar a tus amigos a un duelo</p>
     <div class="linea"><input id="enlace" readonly /><button id="copiar">copiar</button></div>
-    <div class="linea"><input id="otro" placeholder="entrar en otro código" maxlength="9" /><button id="entrar">ir</button></div>
+    <!-- **Y el campo de código a mano se retira** (vuelta 92). Existía desde la
+         47 como la otra puerta de entrada a una sala, y lo que se comparte es
+         el enlace entero: tecleando seis caracteres no se llega a ningún sitio
+         al que el enlace no lleve ya, y en cambio sí se llega a una sala
+         equivocada si se teclean mal. Un control que sólo puede producir el
+         mismo resultado o uno peor no es una opción, es una forma de
+         equivocarse. Entrar en otra sala sigue siendo abrir su enlace. -->
     <!-- **La fase de compra es de la partida, y la elige quien la crea**
          (vuelta 64). Viaja en la dirección —como el pase de reconexión— porque
          la sala se configura al nacer; cambiarla aquí recarga con una partida
          nueva, que es lo único honesto: una sala ya creada no se reconfigura.
          Lo que se enseña debajo es lo que dice el servidor, no lo que pide el
          selector. -->
-    <!-- **El mapa va en la misma fila que la fase** (vuelta 72), no en una
-         nueva: el menú ya se salió de una ventana pequeña una vez por crecer un
-         renglón (vuelta 62) y las dos cosas son lo mismo —opciones de la
-         partida, de quien la crea y hasta que entre alguien—. -->
-    <div class="fila"><span class="apagado">mapa y compra</span>
-      <span><select id="mapaSel" class="control"></select>
-      <select id="compraSel" class="control"></select></span></div>
+    <!-- **Y desde la 92 cada uno en su fila.** La 72 los puso juntos para no
+         crecer un renglón —el menú se había salido de una ventana pequeña en la
+         62— y el sitio lo ha devuelto el campo de código que se acaba de
+         quitar. Dos desplegables en la misma fila con un rótulo común («mapa y
+         compra») obligan a saber cuál es cuál por el orden; con su rótulo cada
+         uno, se lee. -->
+    <div class="fila"><span class="apagado">selección de mapa</span>
+      <span><select id="mapaSel" class="control"></select></span></div>
+    <!-- **Y el rótulo dice lo que el desplegable hace** (vuelta 92). El encargo
+         lo llamaba «tiempo de ronda» y no lo es: sus opciones son «15 s» y «sin
+         fase (rápida)», o sea **cuánto dura la fase de compra** entre rondas.
+         Llamarlo tiempo de ronda sería un control que promete lo que el juego
+         ignora, que es el fallo de la vuelta 67 y el que esta vuelta viene a
+         quitar en el resto de la interfaz. La fila propia sí es lo pedido. -->
+    <div class="fila"><span class="apagado">fase de compra</span>
+      <span><select id="compraSel" class="control"></select></span></div>
 
     <!-- **De quién son las opciones** (vuelta 67) va aquí y no en una fila
          nueva: el menú ya se salió de una ventana pequeña una vez por crecer un
@@ -333,7 +358,14 @@
     <div class="fila"><span class="apagado">tú</span><span id="quien">conectando…</span></div>
     <div class="fila"><span class="apagado">rival</span><span id="hayRival">—</span></div>
   </div>
-  <p><b>Pásale el enlace a la otra persona</b> y haz clic para jugar.</p>
+  <!-- **Y este renglón se fue con la línea nueva** (vuelta 92). Decía «Pásale
+       el enlace a la otra persona y haz clic para jugar», que es exactamente lo
+       que ahora dice el rótulo que está **pegado al campo del enlace** — y ahí
+       significa más, porque señala el control del que habla. La regla de la
+       vuelta 62 sigue en pie y es la que obliga a esto: si añades algo a este
+       menú, quita algo o pasa el banco. Medido (`menu92`): 469 px antes, 487
+       con la línea nueva —a 700×460 los tres botones de abajo se salían— y 466
+       quitando ésta. -->
   <!-- **Tres renglones de ayuda eran cuatro** (vuelta 67). El menú ha crecido en
        cada vuelta que le ha añadido algo —pausar en la 60, salir en la 62, la
        fase de compra en la 64— y a 700×460 acabó midiendo 505 px: los dos

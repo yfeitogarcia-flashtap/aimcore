@@ -211,6 +211,15 @@ gesto propuesto es correr + agacharse, con SPACE como salida.
 
 ## Fase 2 — Saber quién juega
 
+> **Esta fase tiene propuesta propia desde la vuelta 92:**
+> `docs/propuestas/07-cuentas-y-presencia.md`. Lo de aquí abajo sigue siendo el
+> inventario —qué hay y qué bloquea a qué—; la propuesta es el **cómo**, en seis
+> fases, y añade lo que este renglón no contemplaba: la **presencia en vivo**
+> (quién está conectado ahora), invitar a un duelo desde esa lista y la lista de
+> amigos. Dos cosas de ahí que ya son decisiones: **se sigue jugando sin cuenta,
+> en igualdad**, y **la presencia no es un registro de salas** — el buscador de
+> partidas sigue aplazado y con su propio precio.
+
 Todo lo de las fases 3 a 6 —ranking, mapas de comunidad, economía, cobrar—
 necesita **una identidad que sobreviva a la partida**. Hoy eres `p1` o `p2` y la
 partida muere con la sala, que es exactamente lo que se decidió en la vuelta 47 y

@@ -476,11 +476,19 @@ export class Engine {
      * puede quedarse vacío ni empuñando algo que no exista — que es justo lo
      * que la convierte en la ranura a la que se cae cuando falla otra.
      */
+    /**
+     * **Y cinco desde la vuelta 92**, con la especial en la tecla 5 —que
+     * llevaba reservada sin lógica desde la 27, como la 3 hasta el cuchillo y
+     * la G hasta las granadas—. El arco y el U2 salieron de la principal: lo
+     * que la ranura compra es que se lleven **además de** un rifle y no en vez
+     * de él, y lo que lo acota es el precio, no el hueco.
+     */
     this.slots = {
       primary: getSettings().weapon,
       secondary: getSettings().secondary || SECONDARY_WEAPON,
       melee: MELEE_WEAPON,
       throwable: getSettings().throwable,
+      special: getSettings().special,
     }
     /**
      * **Las clases de granada que llevas** (vuelta 88), en el orden en que se
@@ -943,6 +951,33 @@ export class Engine {
       this._cancelReload()
       this._refillMagazine()
     }
+    /**
+     * **Y la especial** (vuelta 92), con la regla de la granada y no la de la
+     * principal: comprar un arco **no** te lo pone en la mano. La principal es
+     * con lo que sales a la ronda; la especial es lo que sacas cuando toca, y
+     * arrancarte el rifle por haber comprado un cohete sería lo que la vuelta
+     * 87 ya decidió que no.
+     *
+     * Lo que sí pasa es lo contrario: perderla teniéndola empuñada devuelve a
+     * la pistola, porque empuñar un arma que ya no existe es la versión
+     * silenciosa del mismo fallo.
+     */
+    const especialAntes = this.slots.special
+    this.slots.special = inv.especial ?? null
+    if (especialAntes && especialAntes !== this.slots.special) {
+      delete this._stowed[especialAntes]
+      delete this._reserva[especialAntes]
+    }
+    if (this.slot === 'special' && !this.slots.special) {
+      this.slot = 'secondary'
+      this.weaponKey = this.slots.secondary
+      this._cancelReload()
+      this._refillMagazine()
+    } else if (this.slot === 'special' && this.weaponKey !== this.slots.special) {
+      this.weaponKey = this.slots.special
+      this._cancelReload()
+      this._refillMagazine()
+    }
     this._publishWeapon(getSettings())
   }
 
@@ -1228,6 +1263,24 @@ export class Engine {
       this._granadas = settings.throwable ? [settings.throwable] : []
       if (this.slot === 'throwable') {
         this.weaponKey = settings.throwable
+        this._releaseTrigger()
+        this._cancelReload()
+        this._refillMagazine()
+      }
+    }
+    /**
+     * **Y lo mismo con la especial** (vuelta 92). Misma forma que la pistola y
+     * la granada, y la condición de red por el mismo motivo: en un duelo el
+     * arco o el cohete se compran, y un ajuste guardado no puede devolverte un
+     * arma que no has pagado.
+     */
+    if (!this.enRed && settings.special && settings.special !== this.slots.special) {
+      delete this._stowed[this.slots.special]
+      delete this._stowed[settings.special]
+      delete this._reserva[this.slots.special]
+      this.slots.special = settings.special
+      if (this.slot === 'special') {
+        this.weaponKey = settings.special
         this._releaseTrigger()
         this._cancelReload()
         this._refillMagazine()
@@ -2870,6 +2923,14 @@ export class Engine {
       // **Y si no llevas ninguna, se dice.** Una tecla que no responde sin
       // explicar por qué es una tecla que parece rota (vuelta 86).
       this._granadaSiguiente()
+      return
+    }
+
+    // **Y la quinta** (vuelta 92), que hasta aquí era una tecla sin efecto.
+    if (this._isBind('special', event)) {
+      event.preventDefault()
+      if (this.slots.special) this._equipSlot('special')
+      else this._showHelp('No llevas arma especial.')
       return
     }
 
