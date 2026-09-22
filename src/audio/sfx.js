@@ -100,7 +100,12 @@ export function setMasterVolume(value) {
  * capas pasa de 50 ms; la Pulse es corta y sube el crack; la Rift es la que
  * conserva cuerpo grave.
  */
-const SHOT_PROFILES = {
+/**
+ * **Y se exporta** (vuelta 91), para el banco de voces de `/editor/sonidos.html`.
+ * Es una tabla de datos y sólo la lee: el juego sigue eligiendo voz por la
+ * clave del arma y por ningún otro camino.
+ */
+export const SHOT_PROFILES = {
   normal: {
     voz: 'clasica',
     bandHz: 2100,
@@ -303,6 +308,169 @@ const SHOT_PROFILES = {
     mecaDecay: 0.024,
     mecaDelay: 0.009,
   },
+
+  /* ------------------------------------------------------------------ *
+   * **Las cuatro que faltaban** (vuelta 91).
+   *
+   * Hasta aquí sólo tenían voz propia la Pulse, la Volt y la Rift; la Scout
+   * (70), el Reaper y el Titan (90) y la Pump (91) caían a `normal`, o sea a
+   * la voz clásica —la misma para las cuatro—. Jugando se oyó exactamente eso:
+   * «el Reaper suena prácticamente igual que la Pulse» y «varias armas
+   * comparten casi el mismo sonido base».
+   *
+   * Lo que separa a las cuatro **no es el volumen** (regla de la vuelta 40) ni
+   * «más agresivo»: es **qué capa manda**. Una pistola es crack sin cuerpo; un
+   * revólver es cuerpo sin crack; un cerrojo ligero es crack con cola; uno
+   * pesado es cuerpo largo con un cerrojo detrás; y una escopeta es ruido
+   * ancho y grave con la corredera a doscientos milisegundos. Con ese reparto,
+   * las cuatro se reconocen **con los ojos cerrados y sin mirar el volumen**.
+   * ------------------------------------------------------------------ */
+
+  /**
+   * **La Scout: crack con cola.** Un fusil de francotirador ligero es lo que
+   * más lejos se oye del arsenal, y lo que viaja de un disparo es la banda
+   * ancha de arriba — así que su capa dominante es el `crack`, el más agudo
+   * (3600 Hz) y **el más largo** de todos (55 ms contra los 18-24 del resto).
+   * Esa cola es la que se lee como «ha sonado en campo abierto» y es lo único
+   * que la separa de una pistola, que tiene el mismo crack y no tiene cola.
+   *
+   * Y lleva **cerrojo** (`meca`) a 45 ms, porque un cerrojo se monta a mano y
+   * se oye: es la mitad de por qué un tiro de Scout es un gesto y no una bala.
+   */
+  scout: {
+    voz: 'seca',
+    crackTipo: 'highpass',
+    crackHz: 3600,
+    crackQ: 0.7,
+    crackGain: 0.95,
+    crackDecay: 0.055,
+    metalHz: 1900,
+    metalTo: 900,
+    metalRatio: 1.73,
+    metalDrive: 3.0,
+    metalBandHz: 2900,
+    metalBandQ: 1.0,
+    metalGain: 0.34,
+    metalDecay: 0.06,
+    bodyFrom: 110,
+    bodyTo: 50,
+    bodyGain: 0.42,
+    bodyDecay: 0.038,
+    mecaHz: 2400,
+    mecaQ: 1.4,
+    mecaGain: 0.3,
+    mecaDecay: 0.05,
+    mecaDelay: 0.045,
+  },
+
+  /**
+   * **El Reaper: cuerpo sin crack.** Es el reverso exacto de la Pulse, y a
+   * propósito — son las dos armas de la misma ranura, así que lo que tienen
+   * que hacer es no parecerse. La Pulse sube el crack a 3200 y se queda en 0.34
+   * de cuerpo; aquí el crack baja a **un pasa-banda de 1300** con un tercio de
+   * fuerza y el cuerpo sube a **0.88**, más grave y más largo.
+   *
+   * Y **no lleva cerrojo**, que no es un olvido: un revólver no cicla nada. Lo
+   * que se oye después de un disparo suyo es el eco de su propio grave, y eso
+   * es exactamente lo que un tambor suena de más que una corredera.
+   */
+  reaper: {
+    voz: 'seca',
+    crackTipo: 'bandpass',
+    crackHz: 1300,
+    crackQ: 0.9,
+    crackGain: 0.34,
+    crackDecay: 0.02,
+    metalHz: 900,
+    metalTo: 420,
+    metalRatio: 1.31,
+    metalDrive: 4.2,
+    metalBandHz: 1500,
+    metalBandQ: 0.8,
+    metalGain: 0.5,
+    metalDecay: 0.06,
+    bodyFrom: 150,
+    bodyTo: 52,
+    bodyGain: 0.88,
+    bodyDecay: 0.062,
+  },
+
+  /**
+   * **El Titan: lo más grave y lo más largo del arsenal.** Es el arma que
+   * mata de un disparo a cualquier zona y a través de cualquier armadura, así
+   * que su voz tiene que decir eso sin que nadie lo explique: cuerpo a 78 Hz
+   * cayendo a 34 durante 90 ms —el triple que la Rift— y un metal a 620 con
+   * una relación de **1.93**, casi una octava sin llegar a serla, que es lo
+   * que suena a algo muy pesado golpeando.
+   *
+   * Su cerrojo va a **70 ms** y es el más lento: montarlo es lo que dura entre
+   * dos disparos, que son dos segundos y medio.
+   */
+  titan: {
+    voz: 'seca',
+    crackTipo: 'highpass',
+    crackHz: 2200,
+    crackQ: 0.6,
+    crackGain: 0.9,
+    crackDecay: 0.035,
+    metalHz: 620,
+    metalTo: 280,
+    metalRatio: 1.93,
+    metalDrive: 5.0,
+    metalBandHz: 1100,
+    metalBandQ: 0.7,
+    metalGain: 0.62,
+    metalDecay: 0.09,
+    bodyFrom: 78,
+    bodyTo: 34,
+    bodyGain: 1.0,
+    bodyDecay: 0.09,
+    mecaHz: 1700,
+    mecaQ: 1.0,
+    mecaGain: 0.42,
+    mecaDecay: 0.07,
+    mecaDelay: 0.07,
+  },
+
+  /**
+   * **La Pump: ruido ancho, grave, y la corredera detrás.**
+   *
+   * Lo que se pidió es «seco y contundente, característico de escopeta», y lo
+   * característico de una escopeta no es ser aguda ni grave: es que **no hay
+   * una nota**. Un rifle dispara un proyectil por un tubo estrecho y eso deja
+   * un tono; un cartucho de perdigones es una deflagración ancha. Así que su
+   * `crack` es un pasa-banda con **Q 0.4** —o sea casi ningún filtro— centrado
+   * abajo, en 900 Hz: banda ancha de verdad.
+   *
+   * Y lo que la hace reconocible en una frase es la **corredera a 190 ms**: no
+   * es decoración, es el único sonido del juego que dice *cuándo vuelves a
+   * poder disparar*. Con 500 ms de cadencia, ese clac cae justo en medio.
+   */
+  pump: {
+    voz: 'seca',
+    crackTipo: 'bandpass',
+    crackHz: 900,
+    crackQ: 0.4,
+    crackGain: 1.0,
+    crackDecay: 0.045,
+    metalHz: 700,
+    metalTo: 330,
+    metalRatio: 1.27,
+    metalDrive: 4.6,
+    metalBandHz: 1200,
+    metalBandQ: 0.6,
+    metalGain: 0.44,
+    metalDecay: 0.05,
+    bodyFrom: 92,
+    bodyTo: 38,
+    bodyGain: 0.95,
+    bodyDecay: 0.055,
+    mecaHz: 2600,
+    mecaQ: 2.4,
+    mecaGain: 0.45,
+    mecaDecay: 0.04,
+    mecaDelay: 0.19,
+  },
 }
 
 /**
@@ -349,6 +517,33 @@ export function playShot(suppressed = false, emitter = null, volume = AUDIO.shot
   const out = emitter?.input ?? master
   if (perfil.voz === 'seca') _disparoSeco(perfil, t, volume, out)
   else _disparoClasico(perfil, t, volume, out)
+}
+
+/**
+ * **Los dos asideros del banco de voces** (vuelta 91): el contexto en marcha y
+ * el nodo maestro. Existen **sólo para medir** —engancharle una sonda al
+ * máster y leer muestra a muestra es la única forma honesta de comprobar que
+ * dos armas no suenan igual (vuelta 62)— y el juego no los llama nunca.
+ *
+ * Devuelven `null` antes de `initAudio()`, que es lo que hay: un contexto no
+ * existe hasta que hay un gesto del usuario.
+ */
+export const audioContextDePrueba = () => ctx
+export const masterDePrueba = () => master
+
+/**
+ * **Toca un perfil suelto** (vuelta 91), sin pasar por un arma.
+ *
+ * Existe para una sola cosa: el banco de voces, donde se comparan variantes
+ * que **no están en el catálogo**. El juego no lo llama nunca —ahí la voz la
+ * elige la clave del arma, y esa sigue siendo la única puerta— y por eso no
+ * mira `samples.js` ni nada más: lo que se quiere oír aquí es la síntesis.
+ */
+export function playPerfil(perfil, volume = AUDIO.shotVolume) {
+  if (!ctx || !master || !noiseBuffer || !perfil) return
+  const t = ctx.currentTime
+  if (perfil.voz === 'seca') _disparoSeco(perfil, t, volume, master)
+  else _disparoClasico(perfil, t, volume, master)
 }
 
 /**
@@ -972,6 +1167,71 @@ export function playBow(tipo, carga = 1) {
   cuerda(300 * k * 1.61, 0.15, 0.10, 0.004)
   // 3. La flecha rozando el arco al salir, un pelo después.
   roce('bandpass', 2600 * k, 5200 * k, 3, 0.13, 0.07, 0.012)
+}
+
+/**
+ * **El cuchillo arrojadizo saliendo de la mano** (vuelta 91).
+ *
+ * El Fang nació mudo del todo (vuelta 90) con un argumento que sigue siendo
+ * cierto a medias: **lo que compra un cuchillo arrojadizo es matar a alguien
+ * que no sabía que estabas ahí**, y el oído es el único canal que no hay que
+ * apuntar a ninguna parte (vuelta 73). Lo que ese argumento no miraba es que
+ * hay **dos oyentes**, y el silencio sólo tenía que ser para uno: jugándolo,
+ * lanzar y no oír nada se lee como un arma que no ha hecho nada.
+ *
+ * Así que esta voz suena **sólo para quien lanza** —como las tres del arco,
+ * que tampoco viajan al rival— y la promesa del arma se queda entera: el que
+ * la recibe sigue sin oír ni el brazo ni el clavado.
+ *
+ * Y es **aire, no metal**: ruido por un pasa-banda que **sube** de 900 a 4200
+ * Hz en 90 ms, sin una sola capa grave. Eso es lo que la separa de todo lo
+ * demás del juego —un disparo lleva cuerpo grave y un cuchillazo del Vanta
+ * lleva su golpe (`playMelee`)— y de paso de la bala que pasa cerca, cuyo
+ * silbido **baja** (vuelta 40). Lo que sube es algo que se aleja cortando; lo
+ * que baja es algo que ya ha pasado de largo.
+ *
+ * `carga` no toca el volumen: **sube el tono**, como en el arco. Una hoja que
+ * sale más rápido corta más agudo, y es lo único que distingue de oído un
+ * lanzamiento a tope de uno de golpe.
+ */
+export function playThrow(carga = 1) {
+  if (!ctx || !master || !noiseBuffer) return
+  const t = ctx.currentTime
+  const level = AUDIO.throwVolume
+  const k = 1 + 0.3 * Math.max(0, Math.min(1, carga))
+
+  // 1. El corte de aire. Sube, y ésa es la voz entera.
+  const noise = ctx.createBufferSource()
+  noise.buffer = noiseBuffer
+  const f = ctx.createBiquadFilter()
+  f.type = 'bandpass'
+  f.Q.value = 1.6
+  f.frequency.setValueAtTime(900 * k, t)
+  f.frequency.exponentialRampToValueAtTime(4200 * k, t + 0.09)
+  const g = ctx.createGain()
+  g.gain.setValueAtTime(0.0001, t)
+  g.gain.exponentialRampToValueAtTime(Math.max(0.0002, 0.9 * level), t + 0.012)
+  g.gain.exponentialRampToValueAtTime(0.0001, t + 0.09)
+  noise.connect(f).connect(g).connect(master)
+  noise.start(t)
+  noise.stop(t + 0.12)
+  noise.onended = () => { noise.disconnect(); f.disconnect(); g.disconnect() }
+
+  // 2. La hoja soltando los dedos: un tic agudo de 20 ms, y nada más. Sin él
+  // el barrido empieza de la nada y se oye como viento, no como un gesto.
+  const tic = ctx.createBufferSource()
+  tic.buffer = noiseBuffer
+  const hf = ctx.createBiquadFilter()
+  hf.type = 'highpass'
+  hf.frequency.value = 3200 * k
+  const tg = ctx.createGain()
+  tg.gain.setValueAtTime(0.0001, t)
+  tg.gain.exponentialRampToValueAtTime(Math.max(0.0002, 0.55 * level), t + 0.0015)
+  tg.gain.exponentialRampToValueAtTime(0.0001, t + 0.02)
+  tic.connect(hf).connect(tg).connect(master)
+  tic.start(t)
+  tic.stop(t + 0.05)
+  tic.onended = () => { tic.disconnect(); hf.disconnect(); tg.disconnect() }
 }
 
 /**

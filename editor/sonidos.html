@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Vektor · banco de voces</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; padding: 24px 28px 60px;
+    background: #0A0A0A; color: #E8E8E8;
+    font: 13px/1.5 ui-sans-serif, system-ui, sans-serif;
+  }
+  h1 { font-size: 18px; letter-spacing: .12em; text-transform: uppercase; margin: 0 0 4px; }
+  h1 small { display: block; font-size: 11px; letter-spacing: .04em; text-transform: none; color: #8A8A8A; margin-top: 6px; }
+  .aviso { margin: 16px 0 24px; padding: 10px 12px; border-left: 3px solid #E4462B; background: #151515; color: #C8C8C8; max-width: 760px; }
+  .arma { border: 1px solid #242424; background: #111; margin: 0 0 14px; }
+  .arma > header { display: flex; align-items: baseline; gap: 12px; padding: 10px 12px; border-bottom: 1px solid #242424; }
+  .arma h2 { font-size: 14px; margin: 0; letter-spacing: .06em; }
+  .arma .meta { color: #7A7A7A; font-size: 11px; }
+  .fila { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 12px; align-items: center; }
+  button {
+    font: inherit; padding: 6px 12px; border: 1px solid #333; background: #1A1A1A;
+    color: #E8E8E8; cursor: pointer; letter-spacing: .04em;
+  }
+  button:hover { border-color: #2FCB82; color: #2FCB82; }
+  button.actual { border-color: #2FCB82; }
+  textarea {
+    width: 100%; box-sizing: border-box; min-height: 130px; margin: 0 12px 12px;
+    width: calc(100% - 24px);
+    font: 12px/1.45 ui-monospace, SFMono-Regular, Menlo, monospace;
+    background: #0D0D0D; color: #B8D8C8; border: 1px solid #242424; padding: 8px;
+  }
+  .malo { border-color: #E4462B !important; }
+</style>
+</head>
+<body>
+  <h1>Banco de voces
+    <small>Sólo en desarrollo. Cada botón toca una variante; la caja de texto es el perfil que se toca con «Editada» — se puede cambiar y volver a darle sin recargar.</small>
+  </h1>
+  <div class="aviso" id="aviso">Pulsa en cualquier sitio para arrancar el audio del navegador.</div>
+  <div id="lista"></div>
+  <script type="module" src="./sonidos.js"></script>
+</body>
+</html>

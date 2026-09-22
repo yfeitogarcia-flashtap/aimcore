@@ -32,7 +32,9 @@ Abre la URL que imprime Vite, haz click en el canvas y a disparar.
   pagar.
 - **TAB** (mantenida): marcador de la sesión — bajas, muertes, precisión y KD.
 - **B**: abre la **armería** — el panel donde se eligen y se equipan el arma
-  principal, la pistola y la granada. Jugando, **pausa** igual que Escape.
+  principal, la pistola y el arrojadizo. Jugando, **pausa** igual que Escape.
+- **G**: saca lo que lleves en la ranura de **arrojadizos** —las granadas y el
+  Fang—. Con uno ya en la mano, la misma tecla pasa al siguiente.
 - **V** conmuta el silenciador, **E** es la acción contextual y **4** aplica una
   carga de escudo. Todo esto se reasigna — ver *Controles reasignables*.
 - La **acción contextual** reparte tres cosas, y siempre en este orden: dentro
@@ -251,7 +253,7 @@ usa el del sistema que tengas.
 | Mac | `Alchemist.command` | doble clic (la primera vez, si el sistema no deja: `chmod +x Alchemist.command`) |
 | Linux | `Alchemist.command` | doble clic → «Ejecutar en terminal» |
 
-Hace tres cosas y las dice por pantalla:
+Hace cuatro cosas y las dice por pantalla:
 
 1. **Trae lo último sin pisar tus mapas.** Usa `git pull --rebase --autostash`,
    que guarda lo que tengas a medias, trae lo nuevo y lo vuelve a poner encima.
@@ -261,8 +263,34 @@ Hace tres cosas y las dice por pantalla:
    de dependencias con la copia de la última instalación de verdad.
 3. **Abre Alchemist** en el navegador. Con él levantado, el juego está en esa
    misma dirección sin el `/editor/`.
+4. **Y al cerrarlo, sube tus mapas.** Guardar un mapa en Alchemist lo escribe en
+   tu PC y nada más: el juego que se juega es el desplegado, y ahí llega lo que
+   se sube al repositorio. Así que al cerrar mira `src/maps`, te enseña lo que
+   está cambiado aquí y no en el juego, y **lo sube pulsando Intro**. Si
+   prefieres que no, `n`. Sólo sube `src/maps`: cualquier otra cosa que tengas a
+   medias se queda donde está.
 
 Para cerrarlo, `Ctrl+C` en la ventana negra, o cerrarla.
+
+### La app de escritorio
+
+En `escritorio/` hay una **ventana nativa de Windows** hecha con Tauri que carga
+el juego desplegado: sin barra de direcciones y sin pestañas. **No lleva el
+juego dentro**, y eso es justo lo que se quería — se actualiza solo, porque lo
+que mira es el despliegue de siempre. Y de paso resuelve el `Ctrl+W` que cierra
+una pestaña sin querer: aquí no hay pestaña.
+
+Se compila una vez por versión, con Rust y Node instalados:
+
+```
+cd escritorio
+npm install
+npm run build
+```
+
+El ejecutable sale **sin firmar**, así que Windows enseña un aviso de «editor
+desconocido» la primera vez (*Más información → Ejecutar de todas formas*). Los
+detalles, en `escritorio/README.md`.
 
 ## El duelo 1v1: rondas y reconexión
 
@@ -388,7 +416,7 @@ panel abierto eres un blanco.
 **Se compra de dos formas, y las dos valen igual:** pinchando el artículo, o
 tecleando su **combinación** — categoría y código, que van escritos en la esquina
 de cada ficha. La Pulse es `1 1`, el Reaper `1 3`, la Volt `3 1`, la Rift `4 3`,
-el Titan `5 3` y el Fang `7 5`. Los códigos
+el Titan `5 3`, la Pump `2 1` y el Fang `7 5`. Los códigos
 dejan huecos a propósito para las armas que faltan: cuando lleguen, lo que ya te
 sabes no cambiará de sitio.
 
@@ -448,18 +476,41 @@ calibran jugando.
 
 ## Cómo suena un disparo
 
-Todas las armas suenan sintetizadas en tiempo real, sin un solo fichero de audio,
-y **las tres** llevan la misma voz seca y metálica: ataque instantáneo, un golpe
-de ruido, metal saturado encima y un grave corto por debajo. Nada se sostiene.
+Todas las armas suenan sintetizadas en tiempo real, sin un solo fichero de
+audio, y todas llevan la misma voz seca y metálica de fondo: ataque instantáneo,
+un golpe de ruido, metal saturado encima y un grave corto por debajo. Nada se
+sostiene.
 
-Cada una tiene su carácter, y sale de su ficha: la **Pulse** es corta y aguda, la
-**Volt** es la más breve de las tres —dispara cada 75 ms, y una cola más larga se
-pisaría a sí misma— y la **Rift** es la que conserva cuerpo. Medido, la Pulse ha
-subido 12.8 dB y la Volt 11.1 respecto a la voz que tenían.
+**Y desde la vuelta 91 las siete tienen la suya**, que antes eran tres: la
+Scout, el Reaper, el Titan y la Pump sonaban todas igual, con la voz genérica.
+Lo que las separa no es el volumen —es **qué capa manda**—:
+
+| arma | lo que se oye | centroide | cola |
+|---|---|---|---|
+| **Pulse** | chasquido seco, sin cuerpo | 4200 Hz | 22 ms |
+| **Volt** | la más breve: dispara cada 75 ms | 3675 Hz | 18 ms |
+| **Rift** | la que conserva cuerpo | 3750 Hz | 31 ms |
+| **Scout** | crack alto **con cola**: suena a campo abierto, más cerrojo | 9325 Hz | 59 ms |
+| **Reaper** | lo contrario de la Pulse: cuerpo y casi nada de chasquido | 725 Hz | 32 ms |
+| **Titan** | lo más grave y lo más largo, con su cerrojo pesado detrás | 1525 Hz | 89 ms |
+| **Pump** | ruido ancho y grave, y la **corredera a 190 ms** | 975 Hz | 203 ms |
 
 Las silenciadas no son las normales con el volumen bajado: se les quitan el grave
 y el chasquido de banda ancha —las dos capas que delatan un disparo a distancia—
 y se les deja el **cerrojo**, que suena un instante después.
+
+### Probar voces alternativas
+
+Con `npm run dev` levantado, **`/editor/sonidos.html`** es un banco para oír el
+arsenal: una ficha por arma con su voz actual, un par de variantes que están
+sobre la mesa y una caja de texto con el perfil, que se puede cambiar y volver a
+tocar sin recargar nada.
+
+Las variantes viven **en el banco y no en el juego**, a propósito: una variante
+que está donde el juego la toca es una variante que ya se ha decidido. Cuando
+una gane, se copia a `src/audio/sfx.js` y su entrada del banco se borra.
+
+Es una herramienta, así que **no entra en el despliegue** — igual que el editor.
 
 ## Muestras de audio (probadas y apagadas)
 
@@ -1567,6 +1618,7 @@ se traduce al nuevo en vez de caer al valor de fábrica.
 | **Volt** | principal (**1**) | auto | 800 | 25 | 1.8 s | sí | 2.6 kg | 5.86 u/s | SMG: patada más inmediata pero la mitad de techo vertical, y más bamboleo lateral que vertical |
 | **Scout** | principal (**1**) | semi | 48 | 10 | 2.6 s | **no** | 3.2 kg | 5.59 u/s | francotirador: una patada sola y grande, 2.4° de golpe |
 | **Bow** | principal (**1**) | **carga** | 80 | 12 | 2.2 s | **no** | 2.8 kg | 5.77 u/s | arco: un empujón corto hacia arriba, lo que sacude una cuerda |
+| **Pump** | principal (**1**) | semi | 120 | 8 | 0.55 s/cartucho | **no** | 4.2 kg | 5.13 u/s | escopeta: una coz de 3.4°, y medio segundo de corredera para bajarla |
 | **U2** | principal (**1**) | semi | 40 | 1 + reserva | 2.0 s | **no** | 5.4 kg | 4.88 u/s | lanzacohetes: una patada sola y grande, más que la Scout |
 | **Titan** | principal (**1**) | semi | 24 | 5 | 4.0 s | **no** | 6.5 kg | 4.88 u/s | francotirador pesado: una coz de 3.8°, y no se vuelve a ver en 2.5 s |
 | **Vanta** | cuchillo (**3**) | — | — | — | — | no | 0.6 kg | 6.50 u/s | cada golpe empuja la cámara: el flojo poco, el fuerte el doble |
@@ -1574,6 +1626,41 @@ se traduce al nuevo en vez de caer al valor de fábrica.
 | **Blind** | granada (**G**) | **carga** | 50 | 1 + 1 | 1.2 s | **no** | 0.5 kg | 6.50 u/s | el mismo |
 | **KO** | granada (**G**) | **carga** | 50 | 1 + 1 | 1.2 s | **no** | 0.5 kg | 6.50 u/s | el mismo |
 | **Fang** | granada (**G**) | **carga** | 60 | 1 + 2 | 0.9 s | **no** | 0.4 kg | 6.50 u/s | el empujón de lanzar una hoja: pequeño y hacia arriba |
+
+### Pump, la escopeta
+
+**Ocho perdigones por disparo**, y todo lo demás sale de eso.
+
+No hay ninguna regla de «a menos de tantos metros mata». Lo que hay es un
+**cono de 6°** que abre con la distancia, así que a bocajarro el patrón entero
+cabe en una silueta y a quince unidades le pasa por al lado. Medido, apuntando
+al pecho:
+
+| distancia | perdigones que entran | daño |
+|---|---|---|
+| 2-5 u | los 8 | 136 |
+| 8 u | 5.4 | 90 |
+| 12 u | 3.5 | 59 |
+| 15 u | 2.6 | 44 |
+| 20 u | 1.8 | 27 |
+
+O sea: **hasta unas 5 u mata de un disparo al cuerpo, y también a través de un
+chaleco**. A las piernas no —los ocho suman 92 de 100— y pasadas las diez
+unidades hacen falta dos o tres disparos, que con medio segundo de corredera es
+una eternidad.
+
+**La corredera son 500 ms**, y se oye: el clac del mecanismo cae a 190 ms del
+disparo, o sea justo en medio de la espera. Es el único sonido del juego que
+dice *cuándo vuelves a poder disparar*.
+
+**Y se recarga cartucho a cartucho**, 550 ms cada uno, **y se puede cortar
+disparando**. Llenarla del todo desde vacía son 4.4 segundos; meter dos y salir,
+poco más de uno. Ésa es la decisión que el arma pone encima de la mesa cada vez
+que se oye algo en el pasillo.
+
+Pesa 4.2 kg (5.13 u/s), más que la Rift: es un arma de llegar a la distancia
+corta, y lo que cuesta es precisamente llegar. En el duelo cuesta **2400**, en
+la categoría *Escopetas* (`2 1`).
 
 ### Reaper, el revólver
 
@@ -1624,14 +1711,18 @@ justamente la decisión.
 Se lanza **cargando**, como una granada, y **sólo con el clic izquierdo**: el
 clic derecho de una granada existe para dejarla caer a tus pies, y un cuchillo a
 tus pies no sirve de nada. Apuntando plano llega a **11.7 u** sin cargar y a
-**21.3** cargado del todo (450 ms).
+**18.1** cargado del todo (800 ms).
 
-**Al cuerpo no es gran cosa** —35 sin cargar, 60 a tope, o sea dos sin chaleco y
-tres con él, que es todo lo que llevas—. **A la cabeza mata de uno.** Con casco
-hacen falta dos: el Fang no perfora nada.
+**Cargado del todo mata de un impacto al cuerpo** si el otro no lleva chaleco;
+con chaleco hacen falta dos. Sin cargar hace 35 y hacen falta tres, que es todo
+lo que llevas — o sea que tensar es la diferencia entre una apuesta y un remate.
+**A la cabeza mata de uno** en los dos casos, y con casco hacen falta dos: el
+Fang no perfora nada.
 
-**Y es silencioso**, al armar el brazo y al clavarse. Es lo que compra: matar a
-alguien que no sabía que estabas ahí.
+**Y es silencioso para el que lo recibe**: ni al armar el brazo ni al clavarse.
+Es lo que compra —matar a alguien que no sabía que estabas ahí— y por eso el
+único que oye algo es quien lanza: un silbido de aire corto que no sale de su
+pantalla.
 
 **Acertar lo gasta; fallar lo deja clavado.** Si la hoja entra en un cuerpo se
 acabó. Si se va a una pared, se queda ahí a la vista hasta que empiece la ronda
@@ -1639,6 +1730,11 @@ siguiente — y **se recoge pasando por encima**, sin tecla. Llevas tres por vid
 y no se reponen matando: se reponen yendo a por ellos, y nunca pasas de los que
 compraste. Si no llevas Fang, pasar por encima de uno no hace nada: recogerlo es
 recargar, no comprar.
+
+**Ojo con la ronda siguiente**: empezar una ronda limpia el suelo, así que lo
+que no recogieras se pierde. No se te devuelven solos — volver a tenerlos es
+comprarlos otra vez, como una granada, y comprar el Fang que ya llevas lo
+rellena.
 
 En el duelo cuesta **450** y, como es utilidad, **cabe en la ronda 1**.
 

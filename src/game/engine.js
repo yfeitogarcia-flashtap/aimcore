@@ -26,7 +26,7 @@ import { createSceneTransition } from './transition.js'
 import { LookControls } from './lookControls.js'
 import { MovementController } from './movement.js'
 import { TargetManager } from './targets.js'
-import { initAudio, playBow, playDamage, playEquip, playGrenade, playRocket, playDevice, playFootstep, playHeal, playHelmetCrack, playHit, playKill, playLanding, playMelee, playObjectiveDefused, playObjectiveExplosion, playShieldCharge, playUiConfirm } from '../audio/sfx.js'
+import { initAudio, playBow, playDamage, playEquip, playGrenade, playRocket, playThrow, playDevice, playFootstep, playHeal, playHelmetCrack, playHit, playKill, playLanding, playMelee, playObjectiveDefused, playObjectiveExplosion, playShieldCharge, playUiConfirm } from '../audio/sfx.js'
 import { loadWeaponSamples, playDrySound, playWeaponReload, playWeaponShot } from '../audio/samples.js'
 import { attachListener, createEmitter, detachListener, setSpatialEnabled } from '../audio/spatial.js'
 import { ActionPanel } from './actionPanel.js'
@@ -38,7 +38,7 @@ import { Dispositivos } from './dispositivos.js'
 import { Impacts } from './impacts.js'
 import { Proyectiles, caidaDeArea, lanzamientoDeArma } from './proyectiles.js'
 import { Trayectoria } from './trayectoria.js'
-import { direccionDeMira } from '../../net/disparo.js'
+import { direccionDeMira, perdigonDeSemilla } from '../../net/disparo.js'
 import { Clavadas } from './clavadas.js'
 import { VueloDeProyectiles } from './vuelo.js'
 import { SpawnCone } from './spawnCone.js'
@@ -802,6 +802,16 @@ export class Engine {
         this.slash?.show(tipo, Boolean(veredicto.espalda))
         return
       }
+      /**
+       * **Y un lanzamiento no deja marca de bala** (vuelta 91). Lo que sale de
+       * un arma con bloque `tiro` es un proyectil que tarda en llegar, así que
+       * quien pinta dónde acabó es `_impactoDeProyectil` cuando aterriza. Sin
+       * esta guarda salían **dos marcas por flecha**: la del rayo instantáneo
+       * aquí y la de verdad medio segundo después. El veredicto lo declara
+       * (`proyectil`) porque quien resuelve el disparo es quien sabe si hubo
+       * rayo — deducirlo aquí sería una segunda idea de qué arma lanza.
+       */
+      if (veredicto.proyectil) return
       if (!veredicto.impacto) this._impactoDeRed(d.yaw, d.pitch)
     }
 
@@ -1575,7 +1585,16 @@ export class Engine {
       // **Y lo dice el arma**, no esta línea: el U2 se repone matando y una
       // granada no se repone de ninguna manera, así que un aviso escrito aquí
       // mentiría en una de las dos.
-      this._showHelp(this.armaDeTiro.reserva.aviso ?? 'Sin munición de reserva')
+      //
+      // **Y un arma que se recoge tiene dos** (vuelta 91): «recoge uno del
+      // suelo» es un consejo mientras quede alguno, y una mentira en cuanto el
+      // suelo está limpio —que es lo que deja una ronda nueva—. Cuál toca lo
+      // decide el mundo y no el catálogo, porque es el mundo lo que cambia.
+      const r = this.armaDeTiro.reserva
+      const enElSuelo = this.clavadas.vivas > 0
+      this._showHelp(
+        (enElSuelo ? r.aviso : (r.avisoSinNada ?? r.aviso)) ?? 'Sin munición de reserva',
+      )
       return
     }
     this.reloadStartedAt = now
@@ -1594,6 +1613,28 @@ export class Engine {
   /** Cierra la recarga cuando le toca: cargador lleno y patrón desde cero. */
   _updateReload(now) {
     if (!this.reloading || now < this.reloadEndsAt) return
+    /**
+     * **Y una escopeta mete un cartucho, no un cargador** (vuelta 91).
+     *
+     * Se ofrecían las dos formas y ésta es la que **crea una decisión**: con
+     * tres dentro y un ruido en el pasillo, meter dos y salir o meter los ocho
+     * y llegar tarde es una pregunta que una recarga de bloque no hace nunca.
+     * Y no necesita ningún estado nuevo — es el mismo temporizador de siempre
+     * rearmado mientras quepa algo—, que es lo que hace que interrumpirla sea
+     * gratis: disparar ya cancela una recarga.
+     */
+    if (this.weapon.recargaPorCartucho) {
+      this.ammo = Math.min(this.weapon.magazine, this.ammo + 1)
+      this._lowAmmoWarned = false
+      this._sprayIndex = 0
+      if (this.ammo < this.weapon.magazine) {
+        this.reloadStartedAt = now
+        this.reloadEndsAt = now + this.weapon.reloadMs
+        return
+      }
+      this._cancelReload()
+      return
+    }
     this._cancelReload()
     this._refillMagazine()
     // El patrón de retroceso vuelve al principio: un cargador nuevo es una
@@ -3061,7 +3102,18 @@ export class Engine {
   _tryShoot(now, instanteReal = this._simTime) {
     // Recargando o sin munición no sale nada. El aviso del cargador vacío lo
     // da la pulsación del gatillo, no este camino.
-    if (this.reloading || this.ammo <= 0) return false
+    if (this.reloading) {
+      /**
+       * **Salvo con una recarga por cartuchos y algo dentro** (vuelta 91). Esa
+       * recarga es una sucesión de pasos cortos, así que la mitad del arma es
+       * poder cortarla: obligar a terminar los ocho sería una escopeta que se
+       * queda mirando mientras alguien dobla la esquina. Con el tubo vacío no
+       * hay nada que interrumpir y se sigue esperando.
+       */
+      if (!(this.weapon.recargaPorCartucho && this.ammo > 0)) return false
+      this._cancelReload()
+    }
+    if (this.ammo <= 0) return false
     // Abatido tampoco: el arma se calla hasta reaparecer. En red, quien dice
     // si estás vivo es el servidor.
     if (this.enRed ? this.net.vida <= 0 : !this.status.alive) return false
@@ -3408,13 +3460,23 @@ export class Engine {
       // **Con el desvío puesto** (vuelta 88): hasta aquí el duelo mandaba los
       // ángulos crudos y era el único modo del juego sin dispersión ninguna.
       const mira = this._miraConDesvio(_mira)
-      this.net.disparar(instanteReal, mira.yaw, mira.pitch)
+      // **Y con escopeta viaja además la semilla del patrón** (vuelta 91): los
+      // ocho perdigones los derivan los dos extremos de ese número.
+      this.net.disparar(instanteReal, mira.yaw, mira.pitch, 0, 0, null, this._semillaDePerdigones())
       playWeaponShot(this.weaponKey, this.suppressorEnabled)
       this.callbacks.onShot?.(false)
       // La marca en la pared no se pone aquí: se pone cuando el cliente resuelve
       // este disparo contra el rival que estabas viendo (`onTiroLocal`, un paso
       // después). Si le diste, no hay marca — y quién recibió el tiro no lo
       // decide el motor, que es la regla de la vuelta 56.
+      return
+    }
+
+    // **Una escopeta resuelve ocho rayos, no uno** (vuelta 91). Va aquí, tras
+    // el camino de red y tras `shots += 1`, porque un perdigonazo **es un
+    // disparo**: lo que cambia es contra qué se resuelve, no cuántos cuenta.
+    if (this.weapon.perdigones) {
+      this._perdigonazoLocal(this.weapon.perdigones)
       return
     }
 
@@ -3463,6 +3525,72 @@ export class Engine {
     this.callbacks.onShot?.(hit !== null)
   }
 
+
+  /**
+   * **La semilla del patrón de perdigones**, o 0 si el arma no es una escopeta.
+   *
+   * Se sortea **aquí y una vez por disparo**, que es el mismo sitio donde ya
+   * se sortea el desvío por movimiento (vuelta 88): lo que el cliente decide
+   * de una bala lo sigue decidiendo el cliente. Lo que viaja es este número, y
+   * de él salen los ocho rayos a los dos lados.
+   *
+   * Nunca vale 0 a propósito: ése es el valor que significa «este disparo no
+   * es de escopeta», y lo que vale su valor de fábrica no viaja (vuelta 83).
+   */
+  _semillaDePerdigones() {
+    if (!this.weapon.perdigones) return 0
+    return (1 + Math.floor(Math.random() * 0xfffffffe)) >>> 0
+  }
+
+  /**
+   * **El perdigonazo del entrenamiento**, contra muñecos y contra el mapa.
+   *
+   * Es el disparo de siempre repetido `n` veces con el mismo rumbo central y
+   * el cono derivado de una semilla, y de ahí salen las tres cosas que hacen
+   * falta: cada perdigón pregunta a los muñecos **y** a la geometría, gana lo
+   * más cercano —que es la regla de la vuelta 64, «un rayo, dos respuestas»— y
+   * el que no da en nadie deja su marca en la pared. Ocho marcas de un golpe
+   * es exactamente lo que se quiere ver: **el patrón**.
+   *
+   * Y lo que se cuenta es **el disparo**: uno en `shots` (ya sumado por
+   * `_shoot`) y uno en `hits` si entró alguno. La precisión de la sesión mide
+   * puntería, y un arma que reparte ocho rayos la inflaría hasta dejar de
+   * decir nada — es la misma razón por la que un cuchillazo no cuenta como
+   * disparo (vuelta 71).
+   */
+  _perdigonazoLocal(perd) {
+    this.camera.updateMatrixWorld()
+    if (this.targets.hasActive) this.targets.updateMatrices()
+    // El rumbo central lleva ya el retroceso (está en la cámara) y el desvío
+    // por movimiento: el cono de los perdigones se abre **encima** de él.
+    const centro = this._miraConDesvio(_mira)
+    const semilla = this._semillaDePerdigones()
+    let tocado = false
+    for (let i = 0; i < perd.n; i++) {
+      const dir = perdigonDeSemilla(semilla, i, perd.conoGrados, centro.yaw, centro.pitch)
+      this.camera.getWorldPosition(this.raycaster.ray.origin)
+      this.raycaster.ray.direction.set(dir.x, dir.y, dir.z)
+      let hit = this.targets.hasActive ? this.targets.raycast(this.raycaster) : null
+      const superficie = this._superficieBajoElRayo()
+      if (hit && superficie && superficie.distancia < hit.distance) hit = null
+      if (!hit) {
+        if (superficie) this.impacts.spawn(superficie.punto, superficie.normal, this.gameTime)
+        continue
+      }
+      tocado = true
+      const { killed } = this.targets.applyHit(hit, this.gameTime, this.weaponKey)
+      if (killed) {
+        this.kills += 1
+        this.status.onKill()
+      }
+    }
+    playWeaponShot(this.weaponKey, this.suppressorEnabled)
+    if (tocado) {
+      this.hits += 1
+      playHit()
+    }
+    this.callbacks.onShot?.(tocado)
+  }
 
   /**
    * **El arma que llevas, ¿lanza algo?** (vuelta 85). Lo dice el dato y no el
@@ -3623,8 +3751,18 @@ export class Engine {
       this._encenderSilbido(serie)
     } else if (tiro.granada) {
       playGrenade('lanzar')
-    } else if (!tiro.clavable) {
-      // Ver `_empezarCarga`: el Fang es silencioso a propósito.
+    } else if (tiro.clavable) {
+      /**
+       * **Y el cuchillo sí suena al salir** (vuelta 91), que enmienda a media
+       * la 90. Allí quedó mudo entero con el argumento de que lo que compra un
+       * arrojadizo es que no te oigan — y eso sigue siendo cierto **para el
+       * rival**, que no oye ni el brazo ni el clavado porque las voces de un
+       * proyectil no viajan. Lo que la 90 no vio es que el silencio también se
+       * lo aplicaba **al que lanza**, y ahí no compra nada: lanzar sin oír nada
+       * se juega como un arma que no ha respondido.
+       */
+      playThrow(carga)
+    } else {
       playBow('soltar', carga)
     }
     /**

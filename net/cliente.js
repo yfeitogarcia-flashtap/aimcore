@@ -19,7 +19,7 @@
  * `protocolo.js`.
  */
 import { NET, PAUSE, ROUNDS, SIM_STEP_MS, WEAPONS, WEAPON_ORDER } from '../src/config.js'
-import { resolverCuchillada, resolverDisparo } from './disparo.js'
+import { resolverCuchillada, resolverDisparo, resolverEscopeta } from './disparo.js'
 import { cuerpoDeJugador } from './pose.js'
 import { MSG, desempaquetarTeclas, empaquetarTeclas, instanteDePaso, instanteEnPaso } from './protocolo.js'
 
@@ -416,6 +416,19 @@ export class ClienteRed {
        */
       if (this._disparo.sostenidoS) d.h = +this._disparo.sostenidoS.toFixed(3)
       if (this._disparo.corto) d.j = 1
+      /**
+       * **Y con una escopeta, la semilla del patrón** (vuelta 91). Es el único
+       * campo del protocolo que no describe un gesto sino **un sorteo**, y va
+       * así por lo mismo que la física de la vuelta 72 no viaja: los ocho
+       * perdigones se **derivan** de este número en los dos extremos con
+       * `perdigonDeSemilla`, así que lo que viaja es uno y no dieciséis
+       * ángulos.
+       *
+       * No regala nada nuevo: el desvío de una bala lo sortea el cliente desde
+       * la vuelta 88, así que quién decide dónde va el plomo no cambia — lo
+       * que cambia es que ahora el servidor puede reproducirlo exactamente.
+       */
+      if (this._disparo.semilla) d.p = this._disparo.semilla >>> 0
       this._disparo = null
     }
 
@@ -499,7 +512,7 @@ export class ClienteRed {
    * de la entrada se muestrea al empezar el paso y el ratón se mueve entre
    * medias.
    */
-  disparar(ahoraMs, yaw, pitch, golpe = 0, carga = 0, granada = null) {
+  disparar(ahoraMs, yaw, pitch, golpe = 0, carga = 0, granada = null, semilla = 0) {
     // **En pausa no se anota nada.** Como el disparo se consume en el paso
     // siguiente y en pausa no hay pasos, uno anotado ahora saldría al reanudar:
     // una bala guardada durante la pausa, apuntada a donde el rival estaba
@@ -517,7 +530,7 @@ export class ClienteRed {
     // paso, con su `seq` y con su veredicto. Lo único que cambia es cómo se
     // resuelve en el otro extremo.
     this._disparo = {
-      ts: ahoraMs, yaw, pitch, golpe, carga,
+      ts: ahoraMs, yaw, pitch, golpe, carga, semilla,
       sostenidoS: granada?.sostenidoS ?? 0,
       corto: Boolean(granada?.corto),
     }
@@ -530,6 +543,35 @@ export class ClienteRed {
    * comparar los dos veredictos es la medida de si la compensación funciona.
    */
   _resolverLocal(d) {
+    /**
+     * **Un arma de proyectil no se resuelve aquí, igual que no se resuelve en
+     * el servidor** (vuelta 91). `partida.js` desvía a `_lanzarProyectil`
+     * antes de rebobinar nada (vuelta 85) y este lado no lo hacía: seguía
+     * sacando el veredicto de **un rayo instantáneo** para un disparo que lo
+     * que ha hecho es soltar una flecha. Dos cosas salían de ahí, y ninguna
+     * daba un error:
+     *
+     * - **Dos marcas de bala por flecha.** `onTiroLocal` pinta la marca de la
+     *   vuelta 64 donde acaba el rayo, así que en la pared aparecía una al
+     *   instante —a la distancia de un hitscan— y otra medio segundo después,
+     *   donde la flecha cae de verdad. Se veía como que el arco disparaba dos
+     *   veces.
+     * - **Y fantasmas en los números de F3.** Apuntando de frente, el rayo
+     *   entra en el cuerpo del rival y el veredicto local decía «impacto»
+     *   contra un servidor que dice que no, porque la flecha todavía va por el
+     *   aire. O sea que la medida de la compensación de retraso contaba como
+     *   desacuerdo de red algo que es del mundo.
+     *
+     * Se marca `proyectil` en vez de no devolver nada porque el cliente espera
+     * **un veredicto por `seq`**, y quien lo lee tiene que poder saber que ahí
+     * no hubo rayo sin preguntarle al catálogo por su cuenta.
+     */
+    if (WEAPONS[this.arma]?.tiro) {
+      return {
+        veredicto: { impacto: false, zona: null, distancia: 0, dano: 0, tapado: false, proyectil: true },
+        enPaso: null,
+      }
+    }
     const pose = this.poseDelRival()
     if (!pose) return { veredicto: { impacto: false, zona: null, distancia: 0, dano: 0, tapado: false }, enPaso: null }
     const cuerpo = cuerpoDeJugador(pose.x, pose.z, pose.feetY, pose.eyeHeight)
@@ -546,6 +588,17 @@ export class ClienteRed {
         enPaso: pose.enPaso,
       }
     }
+    // **Y una escopeta resuelve su patrón, no un rayo** (vuelta 91), con la
+    // misma función que corre el servidor: dos copias de la fórmula serían
+    // ocho perdigones que el tirador ve dar y el servidor ve fallar.
+    if (WEAPONS[this.arma]?.perdigones) {
+      return {
+        veredicto: resolverEscopeta(
+          this.camara.position, d.yaw, d.pitch, d.p >>> 0, cuerpo, this.oclusores, this.arma,
+        ),
+        enPaso: pose.enPaso,
+      }
+    }
     return {
       veredicto: resolverDisparo(this.camara.position, d.yaw, d.pitch, cuerpo, this.oclusores, this.arma),
       enPaso: pose.enPaso,
@@ -557,6 +610,15 @@ export class ClienteRed {
     const mio = this.disparosEnVuelo.get(resultado.seq)
     if (!mio) return
     this.disparosEnVuelo.delete(resultado.seq)
+    // **Un lanzamiento no entra en la tabla de acuerdo** (vuelta 91). Lo que
+    // esa tabla mide es si el rebobinado pone al rival donde el tirador lo
+    // veía, y una flecha no se rebobina a propósito (vuelta 85): los dos
+    // extremos dirían «sin impacto» siempre y el porcentaje subiría por
+    // disparos que no prueban nada. El veredicto se avisa igual.
+    if (mio.mio.proyectil) {
+      this.onVeredicto?.(resultado)
+      return
+    }
     const m = this.medidas
     m.disparos += 1
     // **Un disparo rechazado por cadencia no es un desacuerdo de la red**: el

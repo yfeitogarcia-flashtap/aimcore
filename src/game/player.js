@@ -590,7 +590,24 @@ export function aimPoint(body, factor, out = _toPlayer) {
  */
 export function zoneDamage(zone, weaponKey = null, danoDeTorso = 0) {
   const base = ZONES[zone]?.damage ?? 0
-  if (base >= TARGET.maxHealth) return base
+  /**
+   * **Y con una escopeta sí se escala, porque la unidad es otra** (vuelta 91).
+   *
+   * «Lo que ya vale una vida entera no se escala» se escribió cuando un
+   * disparo era **un rayo**, y con esa unidad es exactamente correcto: una
+   * bala a la cabeza mata. La Pump suelta ocho, y con la regla tal cual **un
+   * solo perdigón perdido a la cabeza a veinte unidades mataría** — o sea que
+   * la escopeta sería el mejor francotirador del juego, por accidente y sin
+   * que nadie lo decidiera.
+   *
+   * Lo que falla no es la regla: es la unidad. La unidad letal de una escopeta
+   * es **el disparo**, no el perdigón, así que aquí la cabeza vale lo que vale
+   * en el modelo —el doble que el torso— y lo que mata es meter el patrón
+   * entero. La exención se queda igual para todo lo demás, que es todo lo que
+   * dispara de una en una.
+   */
+  const porPerdigon = Boolean(WEAPONS[weaponKey]?.perdigones)
+  if (base >= TARGET.maxHealth && !porPerdigon) return base
   /**
    * **Y desde la vuelta 85 el número puede venir del proyectil y no del arma.**
    * `damageScale` es fijo por arma, y eso vale mientras una bala de un arma

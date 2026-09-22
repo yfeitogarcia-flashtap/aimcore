@@ -38,7 +38,7 @@ const explosionDeProyectil = (tipo) => WEAPONS[claveDeProyectil(tipo)]?.tiro?.ex
 /** La ficha de tiro entera, que es lo que una granada necesita mirar. */
 const tiroDeProyectil = (tipo) => WEAPONS[claveDeProyectil(tipo)]?.tiro ?? null
 import { crearPose, cuerpoDeJugador } from './pose.js'
-import { direccionDeMira, resolverCuchillada, resolverDisparo } from './disparo.js'
+import { direccionDeMira, resolverCuchillada, resolverDisparo, resolverEscopeta } from './disparo.js'
 import { MSG, compraAbierta, desempaquetarTeclas, instanteDePaso, instanteEnPaso } from './protocolo.js'
 
 /** Temporales del vuelo de un proyectil: el bucle del servidor no asigna. */
@@ -1484,14 +1484,28 @@ export class Partida {
      */
     const cuchillo = Boolean(WEAPONS[tirador.arma]?.melee)
     const tipo = tipoDeGolpe(d)
-    const veredicto = cuchillo
-      ? resolverCuchillada(origen, d.yaw, d.pitch, cuerpo, this.escenario.occluders, tirador.arma, tipo)
-      : resolverDisparo(origen, d.yaw, d.pitch, cuerpo, this.escenario.occluders, tirador.arma)
+    /**
+     * **Y una escopeta se resuelve con su patrón** (vuelta 91), con la misma
+     * función que el cliente y desde la misma semilla: es `net/disparo.js`
+     * otra vez, que es lo que impide que el tirador vea entrar seis perdigones
+     * y el servidor cuente dos. La semilla viene del cliente (`d.p`) y el
+     * servidor no la valida porque no hay nada que validar en un sorteo — el
+     * desvío lo sortea el cliente desde la vuelta 88, así que esto no le da
+     * ningún poder que no tuviera.
+     */
+    const escopeta = Boolean(WEAPONS[tirador.arma]?.perdigones)
+    const semilla = (d.p ?? 0) >>> 0
+    const resolver = (contra) => (
+      cuchillo
+        ? resolverCuchillada(origen, d.yaw, d.pitch, contra, this.escenario.occluders, tirador.arma, tipo)
+        : escopeta
+          ? resolverEscopeta(origen, d.yaw, d.pitch, semilla, contra, this.escenario.occluders, tirador.arma)
+          : resolverDisparo(origen, d.yaw, d.pitch, contra, this.escenario.occluders, tirador.arma)
+    )
+    const veredicto = resolver(cuerpo)
     // **El control**: el mismo disparo sin rebobinar nada. No decide nada, se
     // manda para poder medir qué compra la compensación.
-    const sin = cuchillo
-      ? resolverCuchillada(origen, d.yaw, d.pitch, ahora, this.escenario.occluders, tirador.arma, tipo)
-      : resolverDisparo(origen, d.yaw, d.pitch, ahora, this.escenario.occluders, tirador.arma)
+    const sin = resolver(ahora)
 
     salida.impacto = veredicto.impacto
     salida.zona = veredicto.zona

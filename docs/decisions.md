@@ -12386,3 +12386,345 @@ en cualquier otro juego. El techo de esa ronda es **por tipo** desde la vuelta
 64 y el Reaper es `arma`; con 800 de saldo inicial tampoco llegaría a sus 900,
 así que abrir una excepción habría sido escribir una regla para un caso que no
 ocurre.
+
+---
+
+## §91 — La Pump, siete voces, y tres cosas que llevaban rotas
+
+La vuelta sale entera de jugar las tres armas de la 90 y de una lista de doce
+cosas. Once se construyeron y una —el air-strafe— se pidió como juicio: aquí
+está el juicio, con lo que se midió para llegar a él.
+
+### §91.1 — El arco disparaba dos veces, y no era el arco
+
+Reportado como «el Arco dispara dos flechas por cada disparo, se ven dos
+marcas de impacto en la pared, tanto con carga larga como con clic rápido».
+
+Lo primero que se descartó fue lo obvio, y hay que dejarlo escrito porque es
+donde cualquiera miraría: **el camino del fuego automático está cerrado para un
+arma de carga** (`this.weapon.mode === 'auto'`), `_soltarCarga` se guarda con
+`if (!this.cargando) return false` y limpia `_cargaDesde`, y `_onMouseUp` la
+llama una sola vez. Por ahí no salían dos flechas, y de hecho **no salían dos
+flechas en absoluto**: salía una.
+
+Lo que había dos era **marcas**. En el duelo, un lanzamiento viaja **dentro del
+disparo** (`d`), que es la decisión de la vuelta 85 —una mecánica nueva no es un
+protocolo nuevo—, y el cliente resolvía **todo** `d` que no fuera un cuchillo
+como un rayo instantáneo:
+
+```js
+// net/cliente.js, antes
+return { veredicto: resolverDisparo(…), enPaso: pose.enPaso }
+```
+
+Así que soltar una flecha pintaba la marca de bala de la vuelta 64 **donde
+habría acabado un hitscan**, al instante, y medio segundo después caía la
+flecha y pintaba la suya. Dos marcas, un disparo.
+
+El servidor **ya lo hacía bien** desde la 85: `_resolverTiro` desvía a
+`_lanzarProyectil` antes de rebobinar nada. El cliente se quedó sin esa mitad, y
+es el patrón de siempre —**lo que se escribe en un extremo y no en el otro se
+despega**—, con el agravante de que aquí los dos códigos son distintos a
+propósito y por eso nadie los comparó.
+
+Y había un segundo síntoma que no se veía: apuntando de frente, ese rayo
+fantasma **entraba en el cuerpo del rival**, así que el veredicto local decía
+«impacto» contra un servidor que decía que no —porque la flecha todavía volaba—
+y eso se contaba como **fantasma** en la tabla de acuerdo de F3. La medida de la
+compensación de retraso estaba contando como desacuerdo de red algo que es del
+mundo. Por eso un lanzamiento ahora **no entra en esa tabla**: lo que mide es si
+el rebobinado pone al rival donde el tirador lo veía, y una flecha no se
+rebobina (vuelta 85).
+
+### §91.2 — La Pump: una escopeta sin una sola regla de distancia
+
+Lo que se pidió: perdigones en cono, ocho cartuchos, recarga progresiva o de
+bloque «decidid vosotros», **dispersión creciente y precisión decreciente con la
+distancia**, y muerte instantánea a corta distancia en cuerpo o cabeza pero no
+en piernas, con «un umbral que decidáis vosotros».
+
+**No hay umbral, y no hay curva de daño por distancia.** Las dos cosas salen del
+cono, que es lo mismo que ya hace el desvío de una bala desde la vuelta 88: un
+cono de apertura fija **abre en el mundo**, así que a dos unidades el patrón es
+más estrecho que una silueta y entran los ocho perdigones, y a quince es más
+ancho y entra uno. Medido con 400 semillas por fila, apuntando al pecho:
+
+| distancia | perdigones que entran | daño |
+|---|---|---|
+| 2 u | 8.00 de 8 | 136.0 |
+| 3 u | 8.00 | 136.0 |
+| 5 u | 8.00 | 136.0 |
+| 8 u | 5.43 | 90.5 |
+| 12 u | 3.47 | 59.2 |
+| 15 u | 2.61 | 43.6 |
+| 20 u | 1.75 | 27.4 |
+| 30 u | 0.89 | 14.1 |
+
+O sea que el «umbral de corta distancia» **existe y está medido**: son 5 u, y no
+está escrito en ninguna parte. Si mañana se cambia el cono, se mueve solo.
+
+Y lo de las piernas también sale gratis: ocho perdigones a las piernas son
+**92.5**, por debajo de 100, porque las piernas valen 34 de 50 en el modelo de
+zonas de siempre. No hace falta una excepción que diga «en piernas no mata».
+
+**Lo que sí obligó a decidir algo fue la cabeza.** «Lo que ya vale una vida
+entera no se escala» (vuelta 70) se escribió cuando un disparo era **un rayo**, y
+con esa unidad es exactamente correcto. Con ocho, un solo perdigón perdido a la
+cabeza a veinte unidades valdría 100 y mataría: la escopeta sería el mejor
+francotirador del juego, por accidente. Lo que falla no es la regla, es la
+unidad — **la unidad letal de una escopeta es el disparo, no el perdigón**— así
+que en un arma con bloque `perdigones` la cabeza vale lo que vale en el modelo
+(el doble que el torso) y lo que mata es meter el patrón entero. Para todo lo
+demás, que dispara de una en una, la regla de la 70 queda intacta.
+
+**Y viaja una semilla, que es el primer número del protocolo que no describe un
+gesto.** Los ocho rumbos no caben en una entrada, así que lo que viaja es el
+sorteo (`d.p`) y los dos extremos **derivan** el mismo cono con
+`perdigonDeSemilla`. No regala nada: el desvío de una bala lo sortea el cliente
+desde la vuelta 88, así que quién decide dónde va el plomo no cambia — lo que
+cambia es que el servidor puede reproducirlo exactamente. Medido contra
+`Partida` de verdad: cliente 136.0 y servidor 136.0, baja a 4 u.
+
+**El generador se escribió a mano y se midió, y las dos primeras versiones
+estaban mal**, las dos de la misma forma y las dos visibles al instante:
+
+- Sembrando cada perdigón por separado (`semilla ^ i·dorado`), un LCG desde
+  semillas vecinas devuelve valores **correlacionados**: los ocho ángulos salían
+  2.37°, 2.42°, 2.46°, 2.51°… o sea **un anillo**, que es lo contrario de un
+  patrón.
+- Arreglado eso con calentamiento, quedaba lo mismo en el azimut: −62°, −83°,
+  −105°, −126°, −148°… los ocho repartidos en **abanico regular**.
+
+Lo que lo arregla no es una maña: es **avanzar un chorro único** y darle al
+perdigón `i` sus valores `2i` y `2i+1`. Es O(n²) con n = 8 —setenta y dos
+multiplicaciones por disparo, y un disparo no es el bucle caliente—.
+
+**La recarga es cartucho a cartucho**, que era la otra decisión delegada. Se
+eligió porque **crea una decisión**: con tres dentro y un ruido en el pasillo,
+meter dos y salir o meter los ocho y llegar tarde es una pregunta que una
+recarga de bloque no hace nunca. No necesitó estado nuevo —es el mismo
+temporizador rearmado mientras quepa algo— y cortarla fue una línea, porque
+disparar ya cancelaba una recarga.
+
+**Y la silueta enseñó un fallo del trazador.** `pump.png` viene a 1536×1024 y
+las demás referencias a ~350×250, así que su caja trazada salió 1445×487 contra
+las 258-322 del resto y **el encuadre común pasó de 322×169 a 1532×517**: la
+escopeta salía enorme y las otras doce siluetas diminutas, sin que fallara
+nada. El encuadre común conserva el tamaño relativo **dando por supuesto que
+todas las fotos están a la misma escala**, y esa suposición no estaba escrita en
+ninguna parte. Ahora hay una tabla (`IGUALAR_ALTO`) que iguala el alto de una
+foto descuadrada a la de otra arma, que es lo que `matchHeightOf` ya hacía entre
+las dos fotos de un arma con supresor.
+
+### §91.3 — Siete voces, y el Reaper sonaba a Pulse porque no tenía voz
+
+Reportado como «el Reaper suena prácticamente igual que la Pulse, y en general
+varias armas comparten casi el mismo sonido base».
+
+Era literal: desde la vuelta 63 sólo tenían perfil propio **la Pulse, la Volt y
+la Rift**. La Scout (70), el Reaper y el Titan (90) y la Pump (91) caían todas a
+`normal`, o sea **a la misma voz clásica**. No era una impresión.
+
+Lo que separa a las cuatro nuevas **no es el volumen** (regla de la vuelta 40) ni
+«más agresivo», que es lo que el encargo pedía explícitamente evitar: es **qué
+capa manda**.
+
+- **Scout**: crack alto (3600 Hz) y **con cola** (55 ms contra 18-24), que es lo
+  que se lee como «ha sonado en campo abierto». Más cerrojo a 45 ms.
+- **Reaper**: el reverso exacto de la Pulse, a propósito, porque son las dos
+  armas de la misma ranura. Crack a 1300 con un tercio de fuerza, cuerpo a 0.88.
+  **Sin cerrojo**: un revólver no cicla nada.
+- **Titan**: lo más grave y lo más largo. Cuerpo a 78 Hz durante 90 ms, metal a
+  620 con relación 1.93 —casi una octava sin llegar a serla—, cerrojo a 70 ms.
+- **Pump**: pasa-banda con **Q 0.4**, o sea casi ningún filtro, centrado en 900.
+  Un cartucho de perdigones es una deflagración ancha, no una nota. Y la
+  **corredera a 190 ms**, que es el único sonido del juego que dice *cuándo
+  vuelves a poder disparar*.
+
+Medido (`voz91`, cinco disparos por arma y la mediana, con bloque de 4096 por la
+lección de la vuelta 62 y la cuenta de capturas completas al lado):
+
+| arma | pico | cola | centroide | capturas |
+|---|---|---|---|---|
+| Pulse | 0.4309 | 22.2 ms | 4200 Hz | 5/5 |
+| Rift | 0.4547 | 30.6 ms | 3750 Hz | 5/5 |
+| Volt | 0.4449 | 18.1 ms | 3675 Hz | 5/5 |
+| Scout | 0.5356 | 58.9 ms | 9325 Hz | 5/5 |
+| Pump | 0.3912 | 202.9 ms | 975 Hz | 5/5 |
+| Reaper | 0.3186 | 31.7 ms | 725 Hz | 5/5 |
+| Titan | 0.5497 | 89.3 ms | 1525 Hz | 5/5 |
+
+Reaper 725 Hz contra Pulse 4200: lo que se reportó, arreglado y medible.
+
+**Y el banco de voces es una página, no una lista** (`/editor/sonidos.html`).
+Vive en `editor/` para que no entre en `dist/` —la regla de la vuelta 74— y
+tiene tres propiedades que valen para cualquier herramienta parecida: **las
+variantes viven en la página y no en el catálogo** (una variante que se está
+valorando no puede estar donde el juego la toca, porque entonces ya se habría
+decidido), **«Actual» entra por `samples.js`** para que suene exactamente lo que
+suena jugando, y **la caja de texto toca lo que pone**, así que afinar un número
+es cambiarlo y volver a pulsar.
+
+Medirlo enseñó además una trampa: un `import()` desde el banco devolvía **otra
+instancia del módulo** y el contexto de audio salía en `null` con el audio
+funcionando delante. Se arregló como el duelo y el editor lo tenían resuelto
+desde hace vueltas — **con un asa en la página** (`window.vektorVoces`).
+
+### §91.4 — Air-strafe: no era la ganancia que se creía
+
+El encargo lo dejó a criterio: «sigue sin convencer y no sabemos describir el
+síntoma con más precisión que *se siente inconsistente*; confiamos en vuestro
+criterio sobre si merece la pena subir la ganancia (`airAccel`/`airWishFactor`)
+o dejarlo aparcado».
+
+Lo primero fue descartar la hipótesis obvia —que dependiera del arma, que es lo
+único que cambia de sesión a sesión— y **no era**: con seis saltos encadenados a
+40°/s, todas las armas ganan entre el 19% y el 26%, y la diferencia entre la
+mejor y la peor son 7 puntos. El arma no explica nada.
+
+Lo que sí explica todo es **cuántos saltos hacen falta**, y el número es feo:
+
+| saltos encadenados | pico | del techo |
+|---|---|---|
+| 1 | 6.500 | 68% |
+| 2 | 6.584 | 69% |
+| 3 | 6.876 | 72% |
+| 4 | 7.166 | 75% |
+| 6 | 7.746 | 82% |
+| 10 | 8.899 | 94% |
+| 16 | 9.500 | 100% |
+
+**Dieciséis saltos encadenados para tocar el techo.** En un mapa de 40×40 no hay
+sitio para seis en línea recta, así que lo que el jugador nota depende de
+cuántos le dejó encadenar el mapa antes de una pared — que es exactamente «en
+según qué sesión parece funcionar mejor que en otra». El síntoma que no se sabía
+describir era ése.
+
+**Y de los dos números que la pregunta proponía, uno es inerte.** La aceleración
+de un paso es `min(airAccel · wishSpeed · dt, wishSpeed − proyección)` y en el
+aire el segundo término es siempre el pequeño, así que subir `airAccel` no mueve
+**ni un decimal**: medido con 10, 14, 24 y 60, los seis saltos dan 7.7462 u/s en
+los cuatro. El que manda es `airWishFactor`.
+
+| `airWishFactor` | 1 salto | 3 | 6 |
+|---|---|---|---|
+| 0.12 (antes) | 6.50 | 6.88 | 7.75 |
+| 0.16 | 6.50 | 7.04 | 8.22 |
+| **0.20** | **6.50** | **7.23** | **8.70** |
+| 0.26 | 6.50 | 7.55 | 9.45 |
+| 0.34 | 6.50 | 8.02 | 9.50 |
+
+Se sube a **0.20**: seis saltos limpios llegan al 92% del techo, que hace la
+mecánica legible en un mapa real, y **un salto suelto sigue sin ganar nada**, que
+es lo que la deja siendo una técnica que se encadena y no una velocidad gratis.
+0.12 nunca fue un número calibrado: es la proporción de Source (30 sobre 250)
+puesta como punto de partida en la vuelta 32, con su nota de «calibrar jugando»
+sin cumplir durante cincuenta y nueve vueltas.
+
+Lo que se paga y hay que saber: **el ritmo de giro óptimo se mueve**. Con 0.12 un
+vuelo suelto rendía más a 40°/s; con 0.20, a 80°/s rinde 7.236 contra 7.028. Y
+girar demasiado sigue frenando —140°/s acaba **por debajo** de la marcha de
+salida—, que es la forma de la mecánica y no ha cambiado.
+
+Es seguro en red sin añadir nada, por lo mismo que la física de la vuelta 72: los
+dos extremos lo leen del mismo `config.js` y no viaja ningún número.
+
+### §91.5 — El Fang, cuatro cosas
+
+**El cuchillo clavado se ve demasiado grande.** Nació a escala 1.35 —más grande
+que la hoja en vuelo— con el argumento de que parado y contra una pared gris hay
+que poder encontrarlo, y jugándolo se vio que eso era al revés: **lo que vuela se
+ve un instante y lo clavado se está mirando**. Baja a 0.85. Lo que lo hace
+encontrable no es el bulto, es el balanceo.
+
+**El bind de la G se llamaba «Granada».** Con el Fang compartiendo esa tecla, el
+rótulo prometía una lista que ya no es la que cicla. El nombre de un bind dice
+**qué ranura saca**, no qué hay hoy en ella: «Arrojadizos».
+
+**El aviso de «recoge los que has lanzado» mentía**, y la pregunta que se hizo al
+reportarlo era la correcta: ¿siguen siendo alcanzables los cuchillos de la ronda
+anterior? **No.** `_empezarRonda` apaga las clavadas por lo mismo que apaga los
+proyectiles en vuelo (vuelta 85), así que el suelo empieza limpio y ese texto
+mandaba al jugador a buscar algo que ya no existe.
+
+Lo que **no** cambia es la regla, que se pidió explícitamente: una ronda nueva no
+te devuelve los cuchillos. Se gastaron, como una granada, y volver a tenerlos es
+comprarlos —comprar el Fang que ya llevas **lo rellena** (vuelta 88)—. Lo que
+cambia es que ahora el aviso lo decide **el mundo** y no el catálogo: con alguno
+en el suelo, «recoge uno del suelo»; con el suelo limpio, «y no queda ninguno en
+el suelo». Un aviso que no puede ser falso.
+
+**Y el balance.** Se reportó que a carga completa quitaba 60 al pecho y hacían
+falta dos impactos, con la propuesta de que matara de uno y la petición de
+valorarlo antes de aplicarlo tal cual.
+
+Lo que decidió fue mirar **qué compraba la carga**: nada. A tope hacían falta dos
+al cuerpo —dos de los tres que se llevan— y lo único que mataba de una era la
+cabeza, que ya mataba igual **sin cargar**, porque la cabeza vale 100 de 100 y no
+se escala. O sea que tensar del todo sólo daba alcance. Una carga que no cambia
+el resultado es una carga decorativa.
+
+A tope pasa a **100 al torso**, y no desequilibra por una razón que ya está
+escrita en otro sitio del arsenal: **la respuesta es el chaleco**, que lo baja a
+50 y devuelve los dos impactos. Es exactamente el perfil de la Scout (110 al
+torso, una sin chaleco y dos con él). Lo que se paga está arriba y son dos cosas,
+porque esta ocupa la ranura de granada y no la principal: `cargaMs` sube de 450 a
+**800** —un pelo más que el arco, así que la hoja letal deja de salir de un
+reflejo— y `vMax` baja de 40 a **34**, o sea de 21.3 u planas a **18.1**. Sin
+cargar sigue quitando 35 y siguen haciendo falta tres.
+
+**Y suena.** La vuelta 90 lo dejó mudo del todo con un argumento que era cierto a
+medias: lo que compra un arrojadizo es que no te oigan. Lo que ese argumento no
+miraba es que hay **dos oyentes**, y el silencio sólo tenía que ser para uno.
+`playThrow` suena **sólo para quien lanza** —como las tres voces del arco, que
+tampoco viajan— y es aire y no metal: ruido por un pasa-banda que **sube** de 900
+a 4200 Hz sin una sola capa grave, o sea justo al revés que el silbido de una
+bala que pasa de largo (vuelta 40). La promesa del arma se queda entera: el que
+la recibe sigue sin oír ni el brazo ni el clavado.
+
+### §91.6 — ESC desde la tienda, y dos escuchas de targets distintos
+
+Reportado como «dentro de la tienda, ESC lleva a la pantalla de pausa pero
+pulsar ESC otra vez ahí no reanuda; hay que hacer clic».
+
+Medido contra el producto (`esc91`) antes de tocar nada, y lo que salió fue un
+fallo **distinto** del reportado y en la dirección contraria: ESC dentro de la
+tienda la cerraba **y volvía al juego de un salto**, sin que el menú llegara a
+verse. La causa es que el manejador de la tienda vive en `document` y el de
+reanudar en `window`, así que un evento que burbujea pasa por **los dos**: el
+primero cerraba la tienda y el segundo, viendo ya el camino libre, pedía la
+captura en la misma pulsación.
+
+Que el jugador viera el menú y no volviera al juego encaja con eso: Chrome
+rechaza `requestPointerLock` durante algo más de un segundo tras un Escape y no
+dice nada (vuelta 89), así que esa petición se perdía en silencio y dejaba el
+menú puesto.
+
+Es el problema de la vuelta 89 —dos escuchas y el orden de una tecla— con dos
+targets en vez de uno, y la respuesta es la misma: **no pelearse por el orden**.
+Cerrar la tienda **reinicia la espera** (`soltadoEn = performance.now()`), y de
+paso el número ya significa lo que hace falta aquí. Medido después: ESC cierra la
+tienda y deja el menú delante, ese mismo ESC no reanuda, y el siguiente sí.
+
+### §91.7 — Alchemist sube los mapas, y una ventana de escritorio
+
+**Un mapa guardado en Alchemist estaba sólo en ese PC.** El juego que se juega es
+el desplegado, y ahí llega lo que se sube al repositorio, así que editar o
+despublicar un mapa y no acordarse de subirlo era perderlo de vista sin ningún
+aviso. Al cerrar el editor, los dos lanzadores miran `src/maps` y, si hay algo,
+lo enseñan y **suben por defecto** —pulsar Intro sube—. Sólo `src/maps`: si hay
+cualquier otra cosa a medias, se queda donde está.
+
+**Y la app de escritorio es una ventana, no una copia** (`escritorio/`). Tauri,
+Windows, sin barra de direcciones y sin pestañas, apuntando a la URL del
+despliegue. Dos cosas que son la decisión:
+
+- **Una sola fuente de verdad.** No contiene el juego, así que no hay una versión
+  de escritorio que se quede vieja ni nada que mantener sincronizado: el
+  despliegue automático de la vuelta 81 sigue siendo el único camino.
+- **Y resuelve lo que motivó el encargo**: `Ctrl+W` cierra una pestaña por
+  encima de la página —es la razón por la que Vektor no mapea modificadores
+  desde la vuelta 27— y aquí no hay pestaña que cerrar.
+
+Sale sin firmar, con su aviso de «editor desconocido» en Windows, y está
+aceptado.

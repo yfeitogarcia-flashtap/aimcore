@@ -1232,6 +1232,22 @@ document.addEventListener('keydown', (evento) => {
   if (tienda.hidden) return
   if (evento.key === 'Escape') {
     alternarTienda(false)
+    /**
+     * **Y la tecla que cierra la tienda no reanuda** (vuelta 91). Este
+     * manejador está en `document` y el de reanudar en `window`, así que un
+     * evento que burbujea pasa por los dos: con la tienda ya cerrada, el
+     * segundo veía el camino libre y pedía la captura **en la misma
+     * pulsación**. Medido (`esc91`): ESC dentro de la tienda devolvía al
+     * juego de un salto y el menú no llegaba a verse.
+     *
+     * Es el problema de la vuelta 89 —dos escuchas del mismo `window` y el
+     * orden de una tecla— con dos targets en vez de uno, así que la respuesta
+     * es la misma: no pelearse por el orden. Cerrar **reinicia la espera**, y
+     * de paso el número ya significa lo que hace falta aquí —Chrome tarda algo
+     * más de un segundo en volver a admitir una captura tras un Escape— así
+     * que no hay que inventar un segundo reloj.
+     */
+    soltadoEn = performance.now()
     return
   }
   if (!/^[0-9]$/.test(evento.key)) return

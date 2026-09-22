@@ -76,6 +76,33 @@ for (const { key, file, matchHeightOf } of WEAPONS) {
   console.log(`${key.padEnd(14)} ${d.length} caracteres | caja ${Math.round(bounds.width)}x${Math.round(bounds.height)} px`)
 }
 
+/**
+ * **Y una referencia encuadrada de otra manera se iguala a mano** (vuelta 91).
+ *
+ * El encuadre común de aquí abajo conserva el tamaño relativo del arsenal
+ * **dando por supuesto que todas las fotos están a la misma escala**, que es lo
+ * que pasaba mientras todas venían recortadas igual (~350 px de ancho). La
+ * referencia de la Pump llega a 1536×1024, o sea cuatro veces y media, y con
+ * ella dentro el encuadre pasó de 322×169 a **1532×517**: la escopeta salía
+ * enorme y **las otras doce siluetas se quedaban diminutas**, sin que nada
+ * fallara en ninguna parte.
+ *
+ * Es el mismo problema que `matchHeightOf` resuelve entre las dos fotos de un
+ * arma con supresor, así que se resuelve igual: se declara a qué arma se le
+ * iguala el alto. Va **en el script y no en `WEAPONS`** porque es una
+ * propiedad de la foto, no del arma — el día que se vuelva a fotografiar el
+ * arsenal con un recorte común, esta tabla se queda vacía.
+ */
+const IGUALAR_ALTO = { pump: 'titan' }
+for (const [key, comoLa] of Object.entries(IGUALAR_ALTO)) {
+  if (!traced[key] || !traced[comoLa]) continue
+  const factor = traced[comoLa].bounds.height / traced[key].bounds.height
+  traced[key].d = scalePath(traced[key].d, traced[key].bounds, factor)
+  traced[key].bounds = boundsOf(traced[key].d)
+  const b = traced[key].bounds
+  console.log(`${key.padEnd(14)} reencuadrada x${factor.toFixed(3)} como ${comoLa} | caja ${Math.round(b.width)}x${Math.round(b.height)} px`)
+}
+
 // Un único encuadre para todas, con margen: así conservan su tamaño
 // relativo —una pistola no se ve tan larga como un fusil— y se centran solas.
 const PADDING = 1.06

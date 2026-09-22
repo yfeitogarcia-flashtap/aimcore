@@ -421,6 +421,25 @@ function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip,
               value={`${weapon.tiro.explosion.dano} en ${weapon.tiro.explosion.nucleoU} u · nada pasadas ${weapon.tiro.explosion.radioU} u · el chaleco no la para`}
             />
           ) : null}
+          {/* **Una escopeta dice cuántos perdigones y cuánto abre** (vuelta
+              91), porque su daño real no se lee en la fila de arriba: ahí pone
+              lo que vale **un** perdigón, y lo que llega a un cuerpo depende de
+              cuántos caben en él. Es lo mismo que el `perforaArmadura` del
+              Reaper — lo único que un arma hace y no está en sus números. */}
+          {weapon.perdigones ? (
+            <Stat
+              label="Perdigones"
+              value={`${weapon.perdigones.n} por disparo en un cono de ${weapon.perdigones.conoGrados}° · de cerca entran todos y matan; de lejos entra uno`}
+            />
+          ) : null}
+          {/* Y una recarga por cartuchos se dice, porque cambia cómo se juega:
+              se puede cortar. La fila «Cargador» sólo dice cuánto tarda uno. */}
+          {weapon.recargaPorCartucho ? (
+            <Stat
+              label="Recarga"
+              value={`cartucho a cartucho, ${weapon.reloadMs} ms cada uno · se interrumpe disparando`}
+            />
+          ) : null}
           {weapon.tiro?.reserva ? (
             <Stat
               label={weapon.slot === 'throwable' ? 'Cuántas llevas' : 'Cohetes'}

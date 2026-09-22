@@ -491,7 +491,16 @@ export const CLAVADAS = {
    * luces, lo que dice que algo es un objeto es que se mueve.
    */
   dibujo: {
-    escala: 1.35,
+    /**
+     * **0.85 y no 1.35** (vuelta 91). Nació más grande que la hoja en vuelo
+     * con el argumento de que parado y contra una pared gris hay que poder
+     * encontrarlo, y jugándolo se vio que eso era al revés: **lo que vuela se
+     * ve un instante y lo clavado se está mirando**, así que el que necesita
+     * tamaño es el otro. A 1.35 el cuchillo en el suelo se leía como un
+     * objeto del mapa y no como algo que dejaste caer. Lo que lo hace
+     * encontrable no es el bulto, es el balanceo de aquí debajo.
+     */
+    escala: 0.85,
     /** Amplitud y ritmo del balanceo, en unidades y en vueltas por segundo. */
     vaivenU: 0.06,
     vaivenPorSegundo: 0.4,
@@ -1147,6 +1156,111 @@ export const WEAPONS = {
      * la ventana, el segundo empuja como el primero.
      */
     recoilLoopFrom: 2,
+  },
+  /**
+   * **Pump: la escopeta** (vuelta 91), y la primera arma de Vektor que suelta
+   * **más de un rayo por disparo**.
+   *
+   * Lo que la convierte en escopeta es tener bloque `perdigones`, igual que lo
+   * que convierte un arma en arma de proyectil es tener `tiro` y en cuerpo a
+   * cuerpo tener `melee`: el motor mira el dato y no el nombre ni la ranura.
+   *
+   * **Y la caída con la distancia no está escrita en ninguna parte: sale del
+   * cono.** Se pidió que «la dispersión aumente y la precisión baje cuanto
+   * mayor es la distancia», y la primera tentación es una curva de daño por
+   * metros — que el juego no tiene para nada (vuelta 70) y que habría que
+   * mantener sincronizada en los dos extremos. No hace falta: un cono de
+   * apertura fija abre **en el mundo**, así que a dos unidades el patrón es
+   * más estrecho que un cuerpo y entran los ocho perdigones, y a quince es más
+   * ancho y entran uno o dos. El arma se apaga sola, con geometría.
+   *
+   * De ahí sale también el «umbral de corta distancia» que se dejó a nuestro
+   * criterio, y sale **medido y no elegido**: es donde el patrón deja de caber
+   * en una silueta, que con 6° y un cuerpo de 0.586 u de ancho cae en torno a
+   * las **5 u** (ver `pump91`).
+   */
+  'pump': {
+    label: 'Pump',
+    character: 'escopeta',
+    slot: 'primary',
+    /** De corredera: un disparo por clic, como el cerrojo de la Scout. */
+    mode: 'semi',
+    /** 120 RPM = **500 ms** entre disparos, que es lo que se pidió. */
+    rpm: 120,
+    magazine: 8,
+    /**
+     * **Y se recarga cartucho a cartucho** (`recargaPorCartucho`), que es la
+     * otra mitad del arma. Se ofrecían las dos —de golpe o progresiva— y ésta
+     * es la que **crea una decisión**: con tres cartuchos dentro y un ruido en
+     * el pasillo, meter dos y salir o meter los ocho y llegar tarde es la
+     * pregunta que una recarga de bloque no hace. Se interrumpe disparando, y
+     * eso no necesita nada nuevo: disparar ya cancela una recarga.
+     *
+     * 550 ms **por cartucho**, así que llenarla entera desde vacía son 4.4 s —
+     * el doble que la Rift, y a propósito: lo que se compra al interrumpirla es
+     * exactamente eso.
+     */
+    reloadMs: 550,
+    recargaPorCartucho: true,
+    /** Sin silenciador: un perdigonazo no se disimula. */
+    supportsSuppressor: false,
+    /**
+     * **Un arma que reparte ocho rayos se juzga flojo**: acertar con una es
+     * rozar con uno, así que el listón no puede ser el de un cerrojo.
+     */
+    precisionTarget: 0.55,
+    /**
+     * **Y el chaleco cuenta una vez sobre el total**, no ocho veces. Lo que
+     * para el plomo es el chaleco entero. Con 0.25, el perdigonazo completo al
+     * torso (136) sigue matando a través de un chaleco —que es lo que se pidió
+     * de cerca— y a media distancia, con dos o tres perdigones, el chaleco
+     * devuelve el disparo que hace falta.
+     */
+    shieldAbsorb: 0.25,
+    /**
+     * 4.2 kg. Pesa más que la Rift (3.6) y menos que el U2: es un arma de
+     * llegar a la distancia corta, así que lo que se paga por ella es
+     * precisamente tardar en llegar.
+     */
+    weight: 4.2,
+    /**
+     * **17 por perdigón al torso** (50 × 0.34), y de ahí sale el arma entera
+     * sin escribir ni una regla más:
+     *
+     * - **Los ocho al torso son 136**: mata de cerca, y **también a través de
+     *   un chaleco** (102 a la vida), que es lo que se pidió.
+     * - **Los ocho a las piernas son 92.5**: no mata. También se pidió, y no
+     *   hace falta una excepción — sale de que las piernas valen 34 de 50 en
+     *   el modelo de zonas de siempre.
+     * - **Y uno suelto a quince unidades son 17**, o sea cosquillas.
+     */
+    damageScale: 0.34,
+    /**
+     * **Ocho perdigones en un cono de 6°**, y los dos números son el arma.
+     *
+     * El cono es la **apertura total**, como el de aparición desde la vuelta
+     * 78: el semiángulo es una cuenta que no tiene por qué hacer quien lee
+     * esto. Y no hay un segundo número de «dispersión a tal distancia» porque
+     * no hace falta ninguno.
+     *
+     * Ojo a la consecuencia que **no** es tuning y vive en `zoneDamage`: con
+     * ocho rayos, **un perdigón a la cabeza no puede valer una vida entera**.
+     * La regla de la vuelta 70 —lo que ya vale 100 de 100 no se escala— se
+     * escribió cuando un disparo era un rayo, y sigue en pie con la unidad
+     * bien puesta: la unidad letal de una escopeta es **el disparo**, no el
+     * perdigón. Ver `zoneDamage` en `player.js`.
+     */
+    perdigones: { n: 8, conoGrados: 6 },
+    /**
+     * **Una patada sola y muy grande.** Es el retroceso de la Scout subido:
+     * 3.4° de golpe, que a 500 ms de cadencia obliga a bajar la mira entre
+     * disparo y disparo.
+     */
+    recoil: [
+      [3.4, 0.5],
+      [3.0, -0.4],
+    ],
+    recoilLoopFrom: 1,
   },
   /**
    * **Bow: el arco** (vuelta 85). La primera arma de Vektor con **proyectil de
@@ -1943,7 +2057,15 @@ export const WEAPONS = {
        * que el arco (750): esto es un golpe de muñeca, y si costara lo que
        * tensar un arco nadie lo sacaría a bocajarro, que es donde vive.
        */
-      cargaMs: 450,
+      /**
+       * **800 ms, y no 450** (vuelta 91). Es el precio de que la carga llena
+       * mate de un impacto: a 450 la hoja letal salía de un gesto, y un arma
+       * que mata de una y se saca con un reflejo no deja nada que el rival
+       * pueda hacer. A 800 —un pelo más que el arco (750)— tensarla del todo
+       * es una decisión que se toma **antes** de asomarse, y el lanzamiento de
+       * pánico se queda en los 35 de abajo, que es un remate y no una apertura.
+       */
+      cargaMs: 800,
       /**
        * **De 22 a 40 u/s.** Medido con la gravedad de abajo y desde la altura
        * de ojos: apuntando **plano** cae a **11.7 u** sin cargar y a **21.3**
@@ -1957,7 +2079,14 @@ export const WEAPONS = {
        * plano.
        */
       vMin: 22,
-      vMax: 40,
+      /**
+       * **34 y no 40** (vuelta 91), o sea **18.1 u** planas a tope en vez de
+       * 21.3. La otra mitad del precio de matar de una: 21 u es media sala de
+       * El Espejo, y un arma silenciosa que mata de un impacto a media sala no
+       * es un cuchillo, es un francotirador sin destello y sin peso. A 18 sigue
+       * cruzando un patio y ya no cruza el mapa.
+       */
+      vMax: 34,
       /**
        * **12, entre la flecha (10) y la granada (18).** Un cuchillo se lanza
        * más plano que un bulto y menos que una flecha: la curva se ve, y verla
@@ -1965,26 +2094,56 @@ export const WEAPONS = {
        */
       gravedad: 12,
       /**
-       * **35 sin cargar y 60 a tope, al torso**, y de ahí sale lo que el arma
-       * es: **un cuchillo a la cabeza**. Al cuerpo y a tope hacen falta **dos
-       * sin chaleco y tres con él** — y tres es exactamente todo lo que se
-       * lleva (uno en la mano y dos de reserva), así que matar a alguien al
-       * pecho a base de cuchillos es gastar el arma entera y acertar las tres.
+       * **35 sin cargar y 100 a tope, al torso** (vuelta 91; a tope eran 60).
        *
-       * A la cabeza es **una**, y eso no sale de este número sino del modelo de
-       * zonas: la cabeza vale 100 de 100 y lo que ya vale una vida entera no se
-       * escala (vuelta 70). Con casco hacen falta dos, como con cualquier otra
-       * cosa: el Fang **no perfora**, que es lo que un casco viene a parar.
+       * Lo de la 90 dejaba el arma sin un momento propio: a tope hacían falta
+       * **dos al cuerpo**, o sea dos de los tres que se llevan, y lo único que
+       * mataba de una era la cabeza — que ya mataba igual sin cargar, porque la
+       * cabeza vale 100 de 100 y no se escala (vuelta 70). Así que tensar del
+       * todo no compraba **nada** salvo alcance, y un arma con una carga que no
+       * cambia el resultado es una carga decorativa.
+       *
+       * Con 100, la carga llena **es** la promesa: un cuchillo al pecho mata a
+       * quien no lleve chaleco. Y no desequilibra por una razón que ya está
+       * escrita en otro sitio del arsenal — **la respuesta es el chaleco**, que
+       * lo baja a 50 y devuelve los dos impactos. Es exactamente el perfil de
+       * la Scout (110 al torso, una sin chaleco y dos con él), y nadie la tiene
+       * por rota: lo que hace justo a un arma que mata de una es que exista
+       * algo que se compra para que no lo haga.
+       *
+       * Lo que **sí** se paga está arriba y son dos cosas, porque esta ocupa la
+       * ranura de granada y no la principal: `cargaMs` sube a 800 y `vMax` baja
+       * a 34. Sin cargar sigue quitando 35, que es un remate.
        */
       danoMin: 35,
-      danoMax: 60,
+      danoMax: 100,
       /**
        * **Tres por vida —uno en la mano y dos de reserva— y no se reponen
        * matando: se reponen recogiéndolos.** `porBaja` es cero, como en las
        * granadas; lo que sube esta cuenta es pisar el cuchillo que fallaste,
        * con el mismo tope. Nunca se llevan más de los que se compraron.
        */
-      reserva: { inicial: 2, maxima: 2, porBaja: 0, aviso: 'Sin cuchillos: recoge los que has lanzado' },
+      /**
+       * **Y el aviso son dos, porque la respuesta no siempre es la misma**
+       * (vuelta 91). «Recoge los que has lanzado» sólo es un consejo mientras
+       * quede alguno en el suelo. Empezada una ronda nueva el suelo está
+       * limpio —`_empezarRonda` apaga las clavadas por lo mismo que apaga los
+       * proyectiles en vuelo (vuelta 85)—, así que ahí ese texto mandaba al
+       * jugador a buscar algo que ya no existe. Quién de los dos sale lo
+       * decide el mundo (`clavadas.vivas`), que es un dato que los dos modos
+       * tienen delante.
+       *
+       * Lo que **no** cambia es la regla: una ronda nueva no te devuelve los
+       * cuchillos. Se gastaron, como una granada; volver a tenerlos es
+       * comprarlos, y comprar el Fang que ya llevas **lo rellena** (vuelta 88).
+       */
+      reserva: {
+        inicial: 2,
+        maxima: 2,
+        porBaja: 0,
+        aviso: 'Sin cuchillos: recoge uno del suelo',
+        avisoSinNada: 'Sin cuchillos, y no queda ninguno en el suelo',
+      },
     },
   },
 }
@@ -2221,7 +2380,14 @@ export const KEYBINDS = {
   // `PLAYER.shield`). El artilugio y el arrojadizo siguen siendo sólo tecla.
   shield: { label: 'Escudo', default: 'Digit4', group: 'Equipo' },
   gadget: { label: 'Artilugio', default: 'Digit5', reserved: true, group: 'Equipo' },
-  throwable: { label: 'Granada', default: 'KeyG', group: 'Equipo' },
+  /**
+   * **«Arrojadizos» y no «Granadas»** (vuelta 91). La ranura se llamó por lo
+   * que había dentro mientras lo único que había dentro eran granadas; con el
+   * Fang compartiendo esta tecla, el rótulo de la sección de controles
+   * prometía una lista que ya no es la que cicla. El nombre de un bind dice
+   * **qué ranura saca**, no qué hay hoy en ella.
+   */
+  throwable: { label: 'Arrojadizos', default: 'KeyG', group: 'Equipo' },
 
   /**
    * **El marcador, mientras se mantenga pulsada.** Va en su propio grupo porque
@@ -2594,10 +2760,35 @@ export const MOVEMENT = {
    * gana nada: la condición «W suelta» del modelo escalar aquí no hace falta
    * porque **sale sola de la geometría**.
    *
-   * 0.12 es la proporción de Source (30 u/s de tope sobre 250 de carrera).
-   * Aquí son 0.78 u/s. Punto de partida, para calibrar jugando.
+   * **0.20, y era 0.12** (vuelta 91). 0.12 es la proporción de Source (30 u/s
+   * de tope sobre 250 de carrera) y estaba ahí como punto de partida desde la
+   * vuelta 32, con su nota de «calibrar jugando». Se calibró midiendo qué
+   * costaba llegar al techo, y el número salió feo: con 0.12 hacían falta
+   * **dieciséis saltos encadenados** para tocar los 9.5, y en seis —que es más
+   * de lo que cabe en línea recta en un mapa de 40×40— se llegaba a 7.75, o
+   * sea el 82%. De ahí sale el síntoma que se reportó jugando, «se siente
+   * inconsistente, en según qué sesión parece funcionar mejor»: lo que cambia
+   * de una sesión a otra es **cuántos saltos te deja encadenar el mapa antes
+   * de una pared**, y con una rampa tan larga eso es la diferencia entre notar
+   * algo y no notar nada.
+   *
+   * Con 0.20: tres saltos dan 7.23 y seis dan **8.70, el 92% del techo**. Y lo
+   * que no cambia es lo que hace que siga siendo una técnica — **un salto
+   * suelto sigue sin ganar nada** (6.50), así que lo que se paga sigue siendo
+   * encadenar bien.
+   *
+   * **Y el que manda es éste y no `airAccel`**, que es la otra mitad de lo que
+   * se preguntó. La aceleración de un paso es
+   * `min(airAccel · wishSpeed · dt, wishSpeed − proyección)` y en el aire el
+   * segundo término es siempre el pequeño, así que subir `airAccel` no mueve
+   * **ni un decimal**: medido con 10, 14, 24 y 60, los seis saltos dan
+   * 7.7462 u/s en los cuatro.
+   *
+   * Es seguro en red sin añadir nada, por lo mismo que la física de la vuelta
+   * 72: los dos extremos lo leen del mismo `config.js` y no viaja ningún
+   * número.
    */
-  airWishFactor: 0.12,
+  airWishFactor: 0.20,
   /**
    * **Aceleración en el aire (air-strafe).** Techo de velocidad horizontal que
    * se puede alcanzar estrafeando en el aire, en unidades por segundo. Es un
@@ -3002,7 +3193,7 @@ export const SETTINGS = {
    * servidor (vuelta 64), como con el arma principal.
    */
   throwable: {
-    label: 'Granada',
+    label: 'Arrojadizo',
     default: 'core',
   },
   targetRadius: {
@@ -5604,6 +5795,17 @@ export const AUDIO = {
    * Va aún más bajo que el de equipar porque suena **quince veces seguidas**.
    */
   roundTickVolume: 0.3,
+  /**
+   * **El cuchillo saliendo de la mano** (vuelta 91). Bajo a propósito y por
+   * una razón que es de diseño y no de mezcla: lo que compra el Fang es matar
+   * a alguien que no sabía que estabas ahí, así que **lo que no puede sonar es
+   * en el mundo**. Esto suena sólo para quien lanza —como las tres voces del
+   * arco, que tampoco viajan— y lo único que dice es «ha salido».
+   *
+   * Por debajo de una pisada: si tapara a un rival acercándose, el arma
+   * silenciosa te estaría delatando a ti.
+   */
+  throwVolume: 0.22,
   footstepVolume: 0.26,
   /**
    * **La voz de un dispositivo** (vuelta 82). Por encima de una pisada y por
@@ -6031,6 +6233,18 @@ export const ECONOMY = {
      * de saldo inicial tampoco llegaría.
      */
     { clave: 'reaper', nombre: 'Reaper', tipo: 'arma', ranura: 'secondary', categoria: 1, codigo: 3, precio: 900, disponible: true },
+    /**
+     * **La Pump estrena la categoría 2**, que llevaba reservada para las
+     * escopetas desde que existe el catálogo — y por eso su código es el 1 de
+     * esa categoría y no un hueco de otra: lo que se prometió al dejar la 2
+     * vacía era exactamente esto.
+     *
+     * 2400 la deja entre el subfusil (1600) y el rifle (2900). Mata de cerca
+     * de un disparo, así que no puede costar menos que un subfusil; y no llega
+     * a los tres mil porque **sólo mata de cerca**, que es lo contrario de lo
+     * que compran la Rift y la Scout.
+     */
+    { clave: 'pump', nombre: 'Pump', tipo: 'arma', ranura: 'primary', categoria: 2, codigo: 1, precio: 2400, disponible: true },
     { clave: 'volt', nombre: 'Volt', tipo: 'arma', ranura: 'primary', categoria: 3, codigo: 1, precio: 1600, disponible: true },
     { clave: 'rift', nombre: 'Rift', tipo: 'arma', ranura: 'primary', categoria: 4, codigo: 3, precio: 2900, disponible: true },
     // **La Scout cuesta más que el rifle** porque una bala al cuerpo mata a

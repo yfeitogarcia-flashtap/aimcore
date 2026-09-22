@@ -1,0 +1,13 @@
+{
+  "name": "vektor-escritorio",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Ventana nativa de Vektor: carga el despliegue, sin barra ni pestañas.",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.0"
+  }
+}

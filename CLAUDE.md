@@ -95,6 +95,8 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Mapas de fichero | `src/maps/index.js` | Registro **generado** de los mapas que escribe el editor, fundido en `SCENARIOS`. Importaciones estáticas para que lo lean igual Vite y Node. |
 | Fondo | `src/game/backdrop.js` | El panorama 360° de un mapa: una esfera vista por dentro con la textura **dibujada en un canvas**. Sin colisión, fuera de los oclusores y fuera del presupuesto. |
 | Editor | `editor/` | La página de dibujar mapas (`/editor/`). **Sólo en desarrollo**: no entra en `dist/`. Hospeda el motor entero para probar, como el duelo. |
+| Banco de voces | `editor/sonidos.html` | Oír cada arma y sus variantes antes de decidir (`/editor/sonidos.html`). **Sólo en desarrollo**, como el editor, y las variantes viven ahí y no en el catálogo. |
+| Escritorio | `escritorio/` | La ventana de Tauri: carga la URL del despliegue y nada más. **No contiene el juego**, a propósito. |
 | Partida (servidor) | `net/partida.js` | **Todo lo que decide el servidor**, sin saber por dónde viaja: entradas, pasos, disparo, rebobinado y fotos. Un jugador entra con una función `enviar(texto)` y nada más. **No hay red en este fichero.** |
 | Huésped de Node | `net/servidor.mjs` | Node + `ws`, y desde la vuelta 58 **el del despliegue**: encamina por código de sala, lleva un reloj por sala y sirve `dist/`. El mismo fichero en local y en Fly. |
 | Huésped de Cloudflare | `worker/sala.js` | El Durable Object. Lo mismo, con las piezas de Cloudflare. **Respaldo** desde la 58; ya no es donde se juega. |
@@ -706,6 +708,79 @@ propósito: meter un contador en esa esquina es la decisión de jerarquía que l
 vuelta 89 acaba de tomar (el dinero primero, los FPS detrás), y añadir una
 tercera cosa sin medirla es exactamente cómo se pierde de vista lo que ya está.
 
+**Una escopeta obliga a poner la unidad donde va** (vuelta 91). La Pump es la
+primera arma que suelta **más de un rayo por disparo**, y eso choca con dos
+reglas que estaban escritas para un disparo que es un rayo. Ninguna de las dos
+se rompe: las dos se aplican con la unidad bien puesta. Cinco reglas:
+
+- **La caída con la distancia no se escribe: sale del cono.** Se pidió
+  «dispersión creciente y precisión decreciente con la distancia», y la
+  tentación es una curva de daño por metros — que el juego no tiene para nada
+  (vuelta 70) y que habría que mantener igual en los dos extremos. No hace
+  falta: un cono de apertura fija **abre en el mundo**. Medido: a 2, 3 y 5 u
+  entran **los ocho** perdigones (136 de daño, o sea muerte); a 8 entran 5.4; a
+  15, 2.6; a 20, 1.75. El «umbral de corta distancia» **existe, está medido y no
+  está escrito**: son 5 u, y si mañana cambia el cono se mueve solo.
+- **Y que a las piernas no mate tampoco se escribe.** Ocho perdigones a las
+  piernas son **92.5**, por debajo de 100, porque las piernas valen 34 de 50 en
+  el modelo de zonas de siempre.
+- **La cabeza sí se escala, y sólo aquí.** «Lo que ya vale una vida entera no se
+  escala» (vuelta 70) es exactamente correcto **cuando un disparo es un rayo**.
+  Con ocho, un perdigón perdido a la cabeza a veinte unidades valdría 100 y
+  mataría: la escopeta sería el mejor francotirador del juego, por accidente.
+  Lo que falla no es la regla sino la unidad — **la unidad letal de una escopeta
+  es el disparo, no el perdigón**— así que con bloque `perdigones` la cabeza
+  vale lo que vale en el modelo (el doble que el torso). Para todo lo demás, la
+  regla de la 70 queda intacta.
+- **Viaja una semilla, y es el primer número del protocolo que no describe un
+  gesto.** Los ocho rumbos no caben en una entrada, así que lo que viaja es el
+  sorteo (`d.p`) y los dos extremos derivan el mismo cono con
+  `perdigonDeSemilla`, en `net/disparo.js`, que es donde ya vive lo que llaman
+  los dos. No regala nada nuevo: **el desvío lo sortea el cliente desde la
+  vuelta 88**, así que quién decide dónde va el plomo no cambia — lo que cambia
+  es que el servidor puede reproducirlo exactamente. Medido: cliente 136.0 y
+  servidor 136.0.
+- **Y el generador hay que mirarlo, porque las dos primeras versiones eran un
+  anillo.** Un LCG sembrado desde semillas vecinas devuelve valores
+  correlacionados: los ocho ángulos salían 2.37°, 2.42°, 2.46°… y, arreglado
+  eso, los ocho azimuts salían en abanico regular. Lo que lo cierra es avanzar
+  **un chorro único** y darle al perdigón `i` sus valores `2i` y `2i+1`. Vale
+  para cualquier cosa que quiera N sorteos de una semilla.
+
+**Y la recarga por cartuchos crea una decisión; la de bloque, no** (vuelta 91).
+Se podían hacer las dos y se eligió ésta: con tres cartuchos dentro y un ruido
+en el pasillo, meter dos y salir o meter los ocho y llegar tarde es una pregunta
+que una recarga de bloque no hace nunca. No necesitó estado nuevo —es el mismo
+temporizador rearmado mientras quepa algo— y cortarla fue una línea, porque
+disparar ya cancelaba una recarga. Lo declara el arma (`recargaPorCartucho`), y
+la ficha de la armería lo dice: es lo único de esa recarga que no se lee en su
+número.
+
+**Cada arma tiene voz propia, y lo que las separa es qué capa manda** (vuelta
+91). Hasta aquí sólo la tenían la Pulse, la Volt y la Rift; la Scout, el Reaper,
+el Titan y la Pump caían **todas a la misma voz clásica**, y jugándolo se oyó
+exactamente eso («el Reaper suena prácticamente igual que la Pulse»). Lo que las
+separa **no es el volumen** —ésa es la regla de la vuelta 40— ni «más agresivo»:
+una pistola es crack sin cuerpo, un revólver es cuerpo sin crack, un cerrojo
+ligero es crack con cola, uno pesado es cuerpo largo con cerrojo detrás, y una
+escopeta es ruido ancho y grave con la corredera a 190 ms. Medido (`voz91`,
+cinco disparos y la mediana): Pulse 4200 Hz / 22 ms, Rift 3750 / 31, Volt 3675 /
+18, Scout 9325 / 59, Titan 1525 / 89, Reaper 725 / 32 y Pump 975 / 203.
+
+**Y las variantes que se están valorando no viven en el catálogo** (vuelta 91).
+El banco de voces es una página de `editor/` —así que no entra en `dist/`, la
+regla de la vuelta 74— con un botón por variante y una caja de texto que toca lo
+que pone. Las alternativas se declaran **ahí** y no en `SHOT_PROFILES`: una
+variante que está en el sitio donde el juego la toca es una variante que ya se ha
+decidido. Cuando una gane, se copia y su entrada del banco se borra.
+
+**Un banco que importa un módulo por su cuenta puede acabar con otra instancia**
+(vuelta 91). Midiendo las voces, un `import()` desde `evaluate` devolvía un
+contexto de audio en `null` con el audio sonando delante. Se arregla como ya lo
+tenían resuelto el duelo (`window.vektorNet`) y el editor
+(`window.vektorEditor`): **con un asa en la página**. Si un banco necesita tocar
+el estado vivo de una página, lo pide por el asa y no importando el módulo.
+
 **Y un verbo no puede llamarse como un dato** (vuelta 90). `MSG.CLAVADA` lleva
 sus tres acciones en la forma del mensaje —`x/y/z` planta, `q` quita, `l`
 limpia— y la primera versión usaba `z` para limpiar. Un mensaje de plantar lleva
@@ -723,6 +798,28 @@ cuenta que el cliente hace al rellenar el cargador y en el mismo instante. Sin
 esto el Fang no se podría recoger nunca, porque el servidor creería que siempre
 llevas el tope — que es cómo se encontró: **una mecánica nueva es lo que enseña
 los agujeros de la anterior**, otra vez.
+
+**Un lanzamiento no es un rayo, y el cliente lo resolvía como si lo fuera**
+(vuelta 91). En el duelo un lanzamiento viaja **dentro del disparo** —la
+decisión de la vuelta 85: una mecánica nueva no es un protocolo nuevo— y el
+servidor lo desvía bien desde entonces (`_resolverTiro` → `_lanzarProyectil`).
+El cliente no: `_resolverLocal` sacaba el veredicto de **un rayo instantáneo**
+para un disparo que lo que había hecho era soltar una flecha. Dos cosas salían
+de ahí, y ninguna daba un error:
+
+- **Dos marcas de bala por flecha.** Una al instante, donde habría acabado un
+  hitscan, y la de verdad medio segundo después. Se reportó como «el arco
+  dispara dos flechas».
+- **Y fantasmas en los números de F3.** Apuntando de frente, ese rayo entraba en
+  el cuerpo del rival y el veredicto local decía «impacto» contra un servidor
+  que decía que no, porque la flecha todavía volaba. La medida de la
+  compensación de retraso contaba como desacuerdo de red algo que es del mundo.
+  Por eso un lanzamiento **no entra en esa tabla**.
+
+La lección es de dónde vino: **los dos extremos tienen aquí código distinto a
+propósito**, así que la disciplina de la vuelta 46 —una sola función que llaman
+los dos— no los cubre, y eso obliga a mirar a mano que las dos ramas de una
+decisión existan en los dos lados.
 
 **Un `subgrid` no crece cuando le sobran hijos: los amontona** (vuelta 89). La
 armería declaraba cuántas filas ocupa una ficha en **tres reglas de
@@ -765,6 +862,17 @@ cualquier cosa que se añada a un HUD: un banco puede afirmar que el elemento
 existe, mide, no tiene nada encima y es opaco —lo afirmó cinco veces— y el
 jugador seguir sin verlo. Eso se comprueba **mirando la captura y preguntándose
 contra qué compite**.
+
+**Y ESC también reanuda desde la tienda** (vuelta 91), que es lo que la 89 dejó
+a medias por el otro lado. Lo reportado era que ESC llevaba al menú y el
+siguiente no volvía al juego; lo que se midió antes de tocar nada fue un fallo
+**distinto y en la dirección contraria** — ESC cerraba la tienda **y volvía al
+juego de un salto**, sin que el menú llegara a verse. La causa: el manejador de
+la tienda vive en `document` y el de reanudar en `window`, así que un evento que
+burbujea pasa por los dos. Es el problema de la 89 con dos targets en vez de uno,
+y la respuesta es la misma —**no pelearse por el orden**—: cerrar la tienda
+**reinicia la espera**, con el mismo número que ya significa «espera a que
+Chrome vuelva a admitir la captura».
 
 **ESC cierra y también vuelve** (vuelta 89). La 88 le enseñó a cerrar el panel de
 opciones y se quedó a mitad: con el panel cerrado, la única salida de la pausa
@@ -839,6 +947,32 @@ pedida. Cinco cosas:
 La puerta está cerrada por construcción: un paseo con saltos **sin** W+estrafe en
 el aire acaba en la misma coordenada hasta el último decimal con el interruptor
 apagado y encendido.
+
+**Y el air-strafe no estaba flojo de aceleración: estaba flojo de rampa**
+(vuelta 91). La 88 lo hizo alcanzable con W pulsada y se siguió sintiendo
+«inconsistente, en según qué sesión parece funcionar mejor». Lo que se midió
+antes de tocar un número:
+
+- **No es el arma.** Con seis saltos encadenados a 40°/s todas ganan entre el
+  19% y el 26%, y de la mejor a la peor van 7 puntos. El peso decide con qué
+  marcha despegas, no cuánto ganas.
+- **Son los saltos que hacen falta**, y eran **dieciséis** para tocar los 9.5:
+  uno da 6.50, tres 6.88, seis 7.75 (el 82%). En un mapa de 40×40 no caben seis
+  en línea recta, así que lo que se nota depende de cuántos te dejó encadenar el
+  mapa — que **es** el síntoma que no se sabía describir.
+- **Y `airAccel` es inerte.** La aceleración de un paso es
+  `min(airAccel · wishSpeed · dt, wishSpeed − proyección)` y en el aire el
+  segundo término es siempre el pequeño: medido con 10, 14, 24 y 60, los seis
+  saltos dan **7.7462 u/s en los cuatro**. El que manda es `airWishFactor`.
+
+Sube de 0.12 a **0.20**: tres saltos dan 7.23 y seis **8.70, el 92% del techo**,
+y **un salto suelto sigue sin ganar nada**, que es lo que la deja siendo una
+técnica que se encadena. 0.12 nunca fue calibrado — es la proporción de Source
+puesta como punto de partida en la vuelta 32, con su nota de «calibrar jugando»
+sin cumplir durante cincuenta y nueve vueltas. Lo que se paga y hay que saber:
+**el ritmo de giro óptimo se mueve de 40 a ~80°/s**, y girar demasiado sigue
+frenando (140°/s acaba por debajo de la marcha de salida). Seguro en red sin
+añadir nada, como la física de la 72: no viaja ningún número.
 
 **El duelo no tenía dispersión, ninguna** (vuelta 88). `_shoot` mandaba
 `camera.rotation.y/x` **crudos** a `net.disparar` y `applySpread` sólo corría por
@@ -4799,7 +4933,19 @@ reloj y cable:
   propósito no entra en el despliegue— están `Alchemist.bat` y
   `Alchemist.command` en la raíz: doble clic, `git pull --rebase --autostash`
   para no pisar los mapas locales, instalar sólo si el fichero de dependencias
-  ha cambiado de verdad, y abrir.
+  ha cambiado de verdad, y abrir. **Y al cerrar, subir los mapas** (vuelta 91):
+  un mapa guardado en Alchemist estaba sólo en ese PC, y el juego que se juega
+  es el desplegado — así que editar o despublicar uno y no acordarse de subirlo
+  era perderlo de vista sin ningún aviso. Se mira `src/maps`, se enseña lo que
+  hay y **se sube por defecto** (Intro sube). **Sólo `src/maps`**: cualquier
+  otra cosa a medias se queda donde está.
+- **Y hay una ventana de escritorio** (`escritorio/`, vuelta 91). Tauri,
+  Windows, sin barra de direcciones y sin pestañas, apuntando a la URL del
+  despliegue. **No contiene el juego**, y eso es la decisión entera: no hay una
+  versión de escritorio que se quede vieja ni nada que mantener sincronizado, y
+  de paso se acaba el `Ctrl+W` que cierra la pestaña por encima de la página
+  (que es la razón por la que Vektor no mapea modificadores desde la vuelta 27).
+  Sale sin firmar, con su aviso de «editor desconocido», y está aceptado.
 - **En Cloudflare**, un **Durable Object por código de partida**
   (`worker/sala.js`), con el mismo Worker sirviendo el juego y las salas.
   **Desde la 58 es respaldo, no producción**, y se queda en pie unas semanas. Se
@@ -5102,8 +5248,8 @@ quedan en su punto, porque un destino aleatorio las metería dentro de un muro.
 funcionan hoy —movimiento, salto, agachado, caminar, disparar, recargar, cambiar
 de arma, el silenciador en la **V** (era la B hasta la vuelta 42), la contextual
 **E**, el escudo en la **4**, **1** y **2** para equipar principal y pistola,
-**TAB** para el marcador, **B** para la armería y **G** para la granada (vuelta
-87)— y la **reservada sin lógica**: la 5 del artilugio. Sección **Controles** en opciones: tecla actual, reasignar
+**TAB** para el marcador, **B** para la armería y **G** para los arrojadizos —granadas y Fang— (vuelta
+87, renombrada en la 91)— y la **reservada sin lógica**: la 5 del artilugio. Sección **Controles** en opciones: tecla actual, reasignar
 capturando la siguiente pulsación, botón por acción y por lo general.
 Persistido en `aimcore.keybinds.v1` con saneado. **Escape queda fuera del
 sistema** y el panel lo dice.
@@ -5133,14 +5279,16 @@ entrar. Tuning en `MOVEMENT.slide`, con `enabled` como ventana para quitarlo. Y
 **air-strafe**: en el aire, girar el ratón hacia el lado de la tecla de estrafe
 acelera hasta `MOVEMENT.airStrafeMaxSpeed` (9.5 contra 6.5 de carrera) y sin
 pasar de ahí nunca. Con el modelo vectorial (por defecto) el ritmo de giro
-importa —40°/s es el óptimo, 140°/s frena— y en el aire hay inercia; con el
-escalar, tres saltos bien encadenados llevan de 6.5 a 9.5 girando todo lo rápido
-que se pueda. Límites
+importa —**~80°/s** es el óptimo desde la vuelta 91, 140°/s frena— y en el aire
+hay inercia; con el escalar, tres saltos bien encadenados llevan de 6.5 a 9.5
+girando todo lo rápido que se pueda. Límites
 reales de la sala con margen de seguridad. **Y desde la vuelta 88 el air-strafe
 se alcanza con W pulsada** (`MOVEMENT.airStrafeIgnoraFrente`): en el aire, con
 una tecla de estrafe, W deja de contar para la dirección pedida, que es lo único
 que hacía falta para que la mecánica exista para quien no sabe que hay que
-soltarla.
+soltarla. **Y desde la 91 la rampa es la mitad de larga**
+(`MOVEMENT.airWishFactor`, 0.12 → 0.20): seis saltos limpios llegan al 92% del
+techo en vez del 82%, y un salto suelto sigue sin ganar nada.
 
 Por encima de `ACCURACY.speedThreshold` y siempre en el aire se aplica dispersión
 de disparo (dirección y magnitud aleatorias, sumada al recoil, sin mover la
@@ -5185,6 +5333,7 @@ con sonido propio.
 | Rift | principal (tecla **1**) | auto | 600 | 30 | 2300 ms | sí | 3.6 kg | 5.41 u/s |
 | Volt | principal (tecla **1**) | auto | 800 | 25 | 1800 ms | sí | 2.6 kg | 5.86 u/s |
 | Scout | principal (tecla **1**) | semi | 48 | 10 | 2600 ms | **no** | 3.2 kg | 5.59 u/s |
+| Pump | principal (tecla **1**) | semi | 120 | 8 | 550 ms/cartucho | **no** | 4.2 kg | 5.13 u/s |
 | Bow | principal (tecla **1**) | **carga** | 80 | 12 | 2200 ms | **no** | 2.8 kg | 5.77 u/s |
 | U2 | principal (tecla **1**) | semi | 40 | 1 (+reserva) | 2000 ms | **no** | 5.4 kg | 4.88 u/s |
 | Reaper | secundaria (tecla **2**) | semi | 150 | 6 | 2400 ms | **no** | 1.8 kg | 6.23 u/s |
@@ -5210,17 +5359,30 @@ vuelta 88 **se llevan dos clases a la vez** (`ECONOMY.granadasMax`): la **G** sa
 la elegida y, con una ya en la mano, pasa a la otra. En la tienda del duelo van
 en *Utilidad*, a 300 / 250 / 250, y **caben en la ronda 1**.
 
-**Fang** (vuelta 90) es el **cuchillo arrojadizo**, y ocupa la ranura de la
-granada: compite con ellas por el tope de dos clases, que es la decisión. Se
-lanza cargando (450 ms al máximo) y **sólo con el clic izquierdo** — el corto de
-una granada existe para dejarla caer a tus pies, y un cuchillo a tus pies no
-sirve de nada. Alcanza **11.7 u sin cargar y 21.3 cargado** apuntando plano.
-Hace 35-60 al torso, o sea dos al cuerpo pelado y tres con chaleco —que es todo
-lo que se lleva—, y **una a la cabeza**, dos con casco: no perfora. **Es
-silencioso**, al armar el brazo y al clavarse. Se llevan tres por vida y **no se
-reponen matando: se recogen del suelo** — acertar la gasta y fallar la deja
-clavada donde cayó hasta que empiece la ronda siguiente. En la tienda va en
-*Utilidad*, a 450, y **cabe en la ronda 1**.
+**Pump** (vuelta 91) es la **escopeta**, y la primera arma que suelta **más de
+un rayo por disparo**: ocho perdigones en un cono de 6°, uno cada 500 ms de
+corredera y ocho cartuchos que se meten **de uno en uno** (550 ms cada uno,
+interrumpible disparando). A bocajarro mata de un disparo al cuerpo, **también a
+través de un chaleco**; a las piernas no (92.5 de 100, y eso sale del modelo de
+zonas, no de una excepción). Y se apaga con la distancia **sin ninguna regla de
+distancia**: el cono abre en el mundo, así que entran los ocho perdigones hasta
+**5 u** y uno solo a partir de 20. En la tienda estrena la categoría
+*Escopetas*, a 2400.
+
+**Fang** (vuelta 90, recalibrado en la 91) es el **cuchillo arrojadizo**, y ocupa
+la ranura de la granada: compite con ellas por el tope de dos clases, que es la
+decisión. Se lanza cargando (**800 ms** al máximo) y **sólo con el clic
+izquierdo** — el corto de una granada existe para dejarla caer a tus pies, y un
+cuchillo a tus pies no sirve de nada. Alcanza **11.7 u sin cargar y 18.1
+cargado** apuntando plano. A tope hace **100 al torso**, o sea que **mata de uno
+al cuerpo pelado** y hacen falta dos con chaleco; sin cargar hace 35 y hacen
+falta tres. A la cabeza es **una**, dos con casco: no perfora. **Es silencioso
+para quien lo recibe** —ni el brazo ni el clavado hacen ruido— y desde la 91
+**suena un silbido de aire para quien lo lanza**, que no viaja. Se llevan tres
+por vida y **no se reponen matando: se recogen del suelo** — acertar la gasta y
+fallar la deja clavada donde cayó hasta que empiece la ronda siguiente, que
+limpia el suelo; a partir de ahí, volver a tenerlos es comprarlos. En la tienda
+va en *Utilidad*, a 450, y **cabe en la ronda 1**.
 
 **Reaper** (vuelta 90) es el **revólver**, y es la primera arma que compite por
 la ranura de la pistola: seis tiros, uno cada 400 ms, una patada de 1.8° que hay

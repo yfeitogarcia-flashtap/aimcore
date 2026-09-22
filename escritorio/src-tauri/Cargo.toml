@@ -1,0 +1,19 @@
+[package]
+name = "vektor-escritorio"
+version = "0.1.0"
+description = "Ventana nativa de Vektor"
+edition = "2021"
+rust-version = "1.77"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+
+[profile.release]
+# Una ventana que carga una URL no necesita nada más: se optimiza por tamaño
+# para que el instalador no pese lo que no hace falta.
+opt-level = "s"
+lto = true
+strip = true

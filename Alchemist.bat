@@ -95,6 +95,59 @@ echo   Para cerrarlo: pulsa Ctrl+C aqui, o cierra esta ventana.
 echo.
 call npm run editor
 
+rem ---------------------------------------------------------------------------
+rem 4. Al cerrar, que los mapas lleguen al juego (vuelta 91).
+rem
+rem Guardar un mapa en Alchemist escribe src\maps\<clave>.js en ESTE PC y nada
+rem mas: el juego que se juega es el que esta desplegado, y ahi llega lo que se
+rem sube al repositorio. O sea que hasta ahora un mapa editado o despublicado se
+rem quedaba aqui si no te acordabas de subirlo a mano.
+rem
+rem Se sube SOLO src\maps: si tienes cualquier otra cosa a medias, se queda
+rem donde esta. Y lo normal es que si: pulsar Enter sube.
+rem ---------------------------------------------------------------------------
+echo.
+echo ================================================
+echo   Mapas sin subir
+echo ================================================
+git status --porcelain -- src/maps > "%TEMP%\vektor-mapas.txt" 2>nul
+for %%A in ("%TEMP%\vektor-mapas.txt") do set "PENDIENTE=%%~zA"
+if "!PENDIENTE!"=="0" (
+  echo   Nada que subir: lo que hay aqui es lo que hay en el juego.
+  del "%TEMP%\vektor-mapas.txt" >nul 2>&1
+  goto :fin
+)
+echo   Estos mapas estan cambiados en este PC y NO en el juego:
+echo.
+type "%TEMP%\vektor-mapas.txt"
+del "%TEMP%\vektor-mapas.txt" >nul 2>&1
+echo.
+set "SUBIR="
+set /p "SUBIR=  Subirlos ahora? [S/n] "
+if /i "!SUBIR!"=="n" (
+  echo   Vale, se quedan aqui. La proxima vez te lo vuelvo a preguntar.
+  goto :fin
+)
+
+git add -- src/maps
+git -c core.editor=true commit -q -m "mapas: cambios desde Alchemist"
+if errorlevel 1 (
+  echo   No he podido anotar los cambios. Pasaselo a Code tal cual.
+  goto :fin
+)
+rem Traer lo de fuera antes de empujar: si mientras editabas ha entrado codigo
+rem nuevo, empujar sin esto se rechaza y no dice por que.
+git pull --rebase --autostash origin "!RAMA!" >nul 2>&1
+git push origin "!RAMA!"
+if errorlevel 1 (
+  echo.
+  echo   No he podido subirlos. Tus mapas siguen guardados aqui, anotados y
+  echo   sin perder nada: pasale a Code lo que pone arriba.
+  goto :fin
+)
+echo.
+echo   Subidos. En unos minutos estan en el juego.
+
 :fin
 echo.
 pause

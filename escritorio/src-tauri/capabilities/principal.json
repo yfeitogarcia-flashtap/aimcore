@@ -1,0 +1,14 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "principal",
+  "description": "Lo mínimo para que una ventana remota funcione: nada de sistema de ficheros, nada de shell, nada de red desde JS.",
+  "windows": ["main"],
+  "remote": {
+    "urls": ["https://ancient-violet-678.fly.dev"]
+  },
+  "permissions": [
+    "core:window:allow-start-dragging",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-is-fullscreen"
+  ]
+}
