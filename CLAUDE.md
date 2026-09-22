@@ -85,6 +85,7 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Proyectiles | `src/game/proyectiles.js` | **Lo que vuela y tarda en llegar**: parábolas en forma cerrada y contra qué chocan. No sabe dibujar ni a quién hiere — eso cambia según quién lo llame. **Sin three**, así que lo montan el motor, el duelo y `net/partida.js` en Node. |
 | Curva de tiro | `src/game/trayectoria.js` | El láser que dibuja lo que va a pasar, de la **misma fórmula** que el vuelo. Del motor, así que sale en los dos modos. |
 | Proyectil (dibujo) | `src/game/vuelo.js` | Sólo dibuja: dos `InstancedMesh` como `impacts.js` —el huso de lo que vuela y **el octaedro de una granada**—, con la estela orientada a la velocidad y **más larga cuanto más cargado salió**. |
+| Clavados | `src/game/clavadas.js` | **Lo que un jugador deja en el mundo y se puede volver a coger**: hoy los cuchillos del Fang. Sin `three`, como `proyectiles.js`, porque lo montan el motor **y el servidor**; lo dibuja `vuelo.js`. |
 | Ceguera y aturdimiento | `src/game/granadas.js` | Lo que una Blind y una KO le hacen a **la pantalla**. **Del motor, con su propia hoja de estilos**, para que salga igual en los dos modos. |
 | Recogibles | `src/game/pickups.js` | Cruces de vida, cargas de escudo y casco por el suelo. |
 | Config | `src/config.js` | Todo el tuning, sin excepción. |
@@ -564,6 +565,164 @@ premisa delante**: el cuerpo del rival ocupa 4.711 px en la pantalla del otro):
 cargando el arco, el tiro largo y el tiro corto, el que apunta ve su curva
 (353 / 393 / 29 px del láser) y **el rival ve exactamente cero en los tres, y en
 todo momento de la carga**.
+
+**Atravesar una armadura no es más daño: es saltarse una capa** (vuelta 90).
+El Reaper y el Titan son las dos primeras armas que lo hacen, y por eso
+`perforaArmadura` vive en `encajarImpacto` —junto a la puñalada por la espalda—
+y no en un número. Un número grande lo pararía **justo la armadura que se
+quiere atravesar**, que es la razón por la que la vuelta 71 puso ahí el
+`mortal` del cuchillo. Tres reglas:
+
+- **Dos valores, y la diferencia entre ellos es la diferencia entre las dos
+  armas.** `'casco'` (Reaper) se salta el casco y nada más: como la cabeza vale
+  100 de 100 y no se escala nunca (vuelta 70), eso **es** «mata de un tiro a la
+  cabeza lleves lo que lleves», sin tocar un solo número de daño. `'todo'`
+  (Titan) se salta las dos, y con su escala la zona más barata del modelo ya
+  pasa de 100 — de ahí sale su promesa entera sin escribirla: una bala,
+  cualquier zona, cualquier armadura.
+- **Lo que no para, no se gasta.** Ninguna de las dos rompe el casco: una
+  armadura que se pierde sin haber servido de nada es peor que no llevarla.
+- **Y lo dice la ficha del arma**, en la armería, porque es lo único que un
+  arma puede hacer que no se lee en sus números. Sale del mismo campo que
+  resuelve el disparo, así que la ficha no puede prometer una perforación que
+  la bala no haga.
+
+Medido (`dano90`): Reaper **2 al cuerpo pelado, 3 con chaleco y 1 a la cabeza
+aunque haya casco**; Titan **1 en cualquier zona y con cualquier armadura**; y
+Pulse, Rift y Scout **idénticas** a antes de la vuelta, fila a fila.
+
+**Una ranura con dos armas deja de ser una constante** (vuelta 90). El Reaper
+es la segunda de la ranura de pistola, y la nota de `MELEE_WEAPON` decía desde
+la 71 lo que había que hacer el día que pasara: **la lista sale del `slot`**,
+como `PRIMARY_WEAPONS`, y no hay una segunda lista en ninguna parte. Tres
+consecuencias que hay que respetar al añadir la tercera:
+
+- **Quién es la de serie lo dice el arma** (`deSerie`), no el catálogo de la
+  tienda. Estaba en la tienda —que es donde se usa para escribir «de serie»— y
+  desde ahí **no se puede leer**: `SETTINGS` se evalúa antes que `ECONOMY`, así
+  que un `const` de módulo que preguntara al catálogo revienta al cargar. Se
+  invirtió la dependencia: el arma lo declara, `catalogoDeTienda()` lo sella al
+  vuelo y sigue habiendo **un solo sitio** que dice cuál es la pistola gratis —
+  que es lo que evita que el catálogo regale una y el saneado te ponga otra en
+  la mano.
+- **Y qué ficha lleva botón de equipar también se deriva.** La armería decía
+  «la pistola y el cuchillo se llevan, no se equipan», y era cierto mientras esas
+  dos ranuras tuvieran un arma sola: con el Reaper dentro, esa frase es un panel
+  que se niega a equipar un arma recién comprada. Lo que significaba de verdad
+  es **«una ranura sin elección no tiene botón»**, y eso se cuenta
+  (`ARMAS_POR_RANURA`).
+- **En el duelo la pistola sigue sin elegirse**, y eso no es una excepción: ahí
+  lo que llevas lo dice el inventario del servidor desde la vuelta 64. Lo que se
+  compra se escribe en la ranura y **morir lo cuesta**, como todo lo demás; sin
+  eso, el Reaper sería el único artículo del catálogo que se paga una vez por
+  partida.
+
+**El destello del Titan es lo primero de Vektor que le cuenta al rival lo que
+estás haciendo** (vuelta 90), y eso **enmienda a propósito** lo que la vuelta 87
+dejó escrito. Allí se verificó que la curva de carga es de quien apunta y nunca
+del rival, y se anotó que ponerle una señal a alguien sería «una decisión de
+diseño con su propio precio». Ésta es esa decisión, y el precio lo paga el arma
+que la lleva: una bala que mata en cualquier zona y a través de cualquier
+armadura sólo puede ser justa si **se puede ver venir**. Cinco reglas:
+
+- **Lo declara el arma, no el modo** (`scope.destello`). La Scout sigue
+  apuntando en silencio, y ésa es la mitad de lo que separa a las dos: la misma
+  mecánica con y sin delación.
+- **Se escribe en el único sitio que cambia la mirilla** (`_ponerMirilla`), así
+  que los cuatro caminos que la bajan —cambiar de arma, pausar, morir, soltar el
+  ratón— apagan el destello sin que ninguno tenga que acordarse.
+- **Viaja como flanco declarado y no deducido**, en la entrada y sólo cuando lo
+  hay (vuelta 83: lo que vale su valor de fábrica no viaja). El servidor **no lo
+  deduce y sí lo comprueba**: no se cree un destello de un arma que no lo lleva,
+  que es lo que impide pintarle uno falso al rival. Ocultarlo desde un cliente
+  modificado **sí es posible**, y es el precio conocido de que la mirilla sea del
+  cliente desde la vuelta 70 — queda escrito porque es lo que habría que cerrar
+  el día que importe.
+- **Y no se ve a través de una pared.** Se cuelga de `seen`, el mismo veredicto
+  de encuadre más rayo que decide la brújula (vuelta 42): un reflejo que
+  atraviesa la geometría no es un reflejo, es un detector de rivales — que es
+  exactamente lo que este marcador no puede ser.
+- **La forma es una raya horizontal y el color es blanco.** Compite con una
+  cuña, dos glifos, una estrella de cuatro puntas y un octaedro, así que lo que
+  lo separa es la forma (vuelta 67); y el blanco es el único tono de la paleta
+  que no significa nada — un reflejo no tiene color propio.
+
+Medido (`destello90`, dos navegadores en la misma sala y **con su premisa
+delante**: el cuerpo del rival mide 75.7 px de alto en la pantalla del otro).
+Apuntando con el Titan, el rival ve **64.8 × 5.7 px** de destello; bajándola,
+cero; y la Scout **apuntando de verdad** (`_scopeOn` en true) deja al rival en
+cero también.
+
+**El Fang es lo primero de Vektor que se queda en el mundo y se puede volver a
+coger** (vuelta 90). Hasta aquí todo lo que salía de un arma **terminaba**: una
+bala se resuelve en su paso, una flecha revienta y una granada estalla. Un
+cuchillo lanzado se clava donde cayó y sigue ahí. Seis reglas:
+
+- **Acertar la gasta; fallar la deja clavada.** Si la hoja entra en un cuerpo se
+  acabó —está dentro de alguien—; si se va a una pared se recupera andando por
+  encima. No es una compensación por fallar: es lo que convierte cada
+  lanzamiento en una apuesta con **dos resultados distintos**, y lo que hace que
+  valga la pena ir a buscarla.
+- **Vive en `src/game/clavadas.js`, y no en el pool de vuelo.** Lo que hay ahí
+  no vuela: no tiene parábola, ni reloj, ni gravedad, ni choca con nada. Meterlo
+  en `proyectiles.js` habría sido pasear por el bucle caliente, sesenta veces
+  por segundo, objetos que ya no se mueven. **Sin `three`**, como
+  `proyectiles.js` y `movement.js`, porque lo monta el motor **y el servidor**;
+  lo que se ve sale de `vuelo.js`, que es donde ya vive el dibujo de un
+  proyectil.
+- **En el duelo los planta y los recoge el servidor.** Un cuchillo en el suelo
+  es munición, y lo que se puede tener lo decide él desde la vuelta 64: si cada
+  cliente lo recogiera por su cuenta, los dos podrían recoger el mismo. El
+  cliente **no lo predice** —plantarlo además por su cuenta dejaría dos donde hay
+  uno— y llega por `MSG.CLAVADA` un viaje más tarde, que no se nota porque lo que
+  llega ya está quieto.
+- **El identificador lo pone quien manda**, y no es la ranura del pool ni el
+  número de serie del vuelo: bajo latencia los tres extremos lanzan en órdenes
+  distintos, así que un número suyo nombraría cosas distintas en cada pantalla.
+- **Recoger es recargar, no comprar.** Sólo lo levanta quien ya lleva Fang, y
+  nunca por encima de lo que compró: un arma que se adquiere pisándola convierte
+  la tienda en una sugerencia. Y va **por proximidad, sin tecla**, como los
+  recogibles desde la vuelta 33 — la contextual ya reparte tres cosas (vuelta
+  83) y meterle una cuarta es como se pierde una ronda por un reflejo.
+- **Y es silenciosa**, ni al armar el brazo ni al clavarse. No es mezcla: es la
+  mitad del arma. Lo que compra un cuchillo arrojadizo es matar a alguien que no
+  sabía que estabas ahí, y el oído es el único canal que no hay que apuntar a
+  ninguna parte (vuelta 73). Lo que **sí** suena es recogerlo: el silencio es del
+  lanzamiento, no de la recompensa.
+
+Medido (`fang90`, contra `Partida` sin navegador, y `fang90ent`, en el motor del
+entrenamiento con ratón y teclado de verdad): se compra por 450 ($800 → $350), se
+clava, el rival recibe su aviso, **acertar deja el suelo a cero y fallar deja
+uno**, recogerlo sube la reserva de 1 a 2 con su aviso a los dos, quien no lleva
+Fang pasa por encima y no pasa nada, una ronda que empieza limpia el suelo y el
+pool se queda en ocho metiéndole doce.
+
+**Residuo anotado, y es de producto:** en el HUD **no se ve cuántos te
+quedan**. La reserva no se ha dibujado nunca —el U2 la tiene desde la 86 y las
+granadas desde la 87, y las tres se apañan con el aviso de «no te quedan»— y con
+un arma que se va a recoger del suelo eso pasa de ser un hueco a ser una
+pregunta que el jugador se hace cada ronda. No se ha construido aquí a
+propósito: meter un contador en esa esquina es la decisión de jerarquía que la
+vuelta 89 acaba de tomar (el dinero primero, los FPS detrás), y añadir una
+tercera cosa sin medirla es exactamente cómo se pierde de vista lo que ya está.
+
+**Y un verbo no puede llamarse como un dato** (vuelta 90). `MSG.CLAVADA` lleva
+sus tres acciones en la forma del mensaje —`x/y/z` planta, `q` quita, `l`
+limpia— y la primera versión usaba `z` para limpiar. Un mensaje de plantar lleva
+`z` siempre, así que **cada cuchillo clavado habría borrado el suelo entero**,
+sin un error en ninguna pantalla. Lo cazó leerlo, no un banco; vale para
+cualquier protocolo donde los verbos y los campos comparten espacio.
+
+**Y la reserva no bajaba en el servidor, desde la vuelta 86** (vuelta 90). El
+servidor **sólo la subía**: se ponía al comprar y volvía a subir con
+`_premiarBajaDeProyectil`, así que `inv.reserva` no medía lo que te queda sino lo
+que te dieron — y como el inventario viaja y el cliente lo copia tal cual, **un
+cohete que mataba repartía de más**: con dos gastados, la baja devolvía tres.
+Ahora baja una por lanzamiento con suelo en cero, que es exactamente la misma
+cuenta que el cliente hace al rellenar el cargador y en el mismo instante. Sin
+esto el Fang no se podría recoger nunca, porque el servidor creería que siempre
+llevas el tope — que es cómo se encontró: **una mecánica nueva es lo que enseña
+los agujeros de la anterior**, otra vez.
 
 **Un `subgrid` no crece cuando le sobran hijos: los amontona** (vuelta 89). La
 armería declaraba cuántas filas ocupa una ficha en **tres reglas de
@@ -2978,10 +3137,17 @@ indistinguible de un juego que pierde los ajustes por su cuenta. Ojo también co
 que **`localStorage` es por origen**: mudar el despliegue de dominio deja atrás
 todo lo guardado, una vez.
 
-**Se llevan dos armas, y la pistola no se elige.** La ranura la declara el arma
-(`WEAPONS[x].slot`) y de ahí salen `PRIMARY_WEAPONS` —lo que ofrece el
-desplegable y valida el saneado— y `SECONDARY_WEAPON`. No hay una segunda lista
-en ninguna parte: si un arma cambia de ranura, cambia sola en los tres sitios.
+**Se llevan dos armas, y cada ranura sale de su `slot`.** Lo declara el arma
+(`WEAPONS[x].slot`) y de ahí salen `PRIMARY_WEAPONS`, `SECONDARY_WEAPONS`,
+`MELEE_WEAPON` y `THROWABLE_WEAPONS` —lo que ofrecen los desplegables y lo que
+valida el saneado—. No hay una segunda lista en ninguna parte: si un arma cambia
+de ranura, cambia sola en todos los sitios. **Hasta la vuelta 89 «la pistola no
+se elige» era literal**, porque su ranura tenía un arma sola; con el Reaper
+dentro son dos y lo que queda en pie es lo que de verdad importaba: **siempre
+hay una**, la de serie (`deSerie`), que es la que el saneado devuelve ante
+cualquier clave que no sea de esa ranura y la que queda al perder el equipo. Por
+eso `slots.secondary` no puede quedarse vacío, que es lo que la convierte en la
+ranura a la que se cae cuando falla otra.
 Tres consecuencias que **son** el sistema:
 
 - **Lo que dejas se congela**, y de una recarga a medias se guarda **lo que le
@@ -3210,7 +3376,10 @@ que eso se calibra con alguien jugando delante y no de oficio.
 un ajuste entre la sensibilidad y el tamaño de diana: es la decisión de la
 partida. El panel (tecla **B**) **pausa como Escape** —por el mismo camino,
 `_suspend()`—, porque elegir arma con ocho muñecos disparándote es una ruleta, no
-una decisión. La pistola tiene ficha pero no botón: se lleva siempre. Y el daño
+una decisión. Lo que no tiene botón es la ficha de una ranura **con un arma
+sola**, que hoy es sólo el cuchillo (vuelta 90): la pistola dejó de serlo al
+llegar el Reaper, y el panel lo deriva del catálogo en vez de tenerlo escrito.
+Y el daño
 que enseña es el del **modelo de zonas** (100/50/34), que hoy no varía por arma:
 un número de daño por arma sería inventarse un dato que el juego no tiene.
 Opciones conserva la fila diciendo qué llevas y por dónde se cambia — quitarla
@@ -5018,7 +5187,10 @@ con sonido propio.
 | Scout | principal (tecla **1**) | semi | 48 | 10 | 2600 ms | **no** | 3.2 kg | 5.59 u/s |
 | Bow | principal (tecla **1**) | **carga** | 80 | 12 | 2200 ms | **no** | 2.8 kg | 5.77 u/s |
 | U2 | principal (tecla **1**) | semi | 40 | 1 (+reserva) | 2000 ms | **no** | 5.4 kg | 4.88 u/s |
+| Reaper | secundaria (tecla **2**) | semi | 150 | 6 | 2400 ms | **no** | 1.8 kg | 6.23 u/s |
+| Titan | principal (tecla **1**) | semi | 24 | 5 | 4000 ms | **no** | 6.5 kg | 4.88 u/s |
 | Vanta | cuerpo a cuerpo (tecla **3**, siempre) | cuchillo | — | — | — | no | 0.6 kg | 6.50 u/s |
+| Fang | granada (tecla **G**) | **carga** | 60 | 1 (+2) | 900 ms | **no** | 0.4 kg | 6.50 u/s |
 | Core | granada (tecla **G**) | **carga** | 50 | 1 (+1) | 1200 ms | **no** | 0.5 kg | 6.50 u/s |
 | Blind | granada (tecla **G**) | **carga** | 50 | 1 (+1) | 1200 ms | **no** | 0.5 kg | 6.50 u/s |
 | KO | granada (tecla **G**) | **carga** | 50 | 1 (+1) | 1200 ms | **no** | 0.5 kg | 6.50 u/s |
@@ -5037,6 +5209,35 @@ durante 2.4 s. Se llevan **dos por clase y por vida** y no se reponen, y desde l
 vuelta 88 **se llevan dos clases a la vez** (`ECONOMY.granadasMax`): la **G** saca
 la elegida y, con una ya en la mano, pasa a la otra. En la tienda del duelo van
 en *Utilidad*, a 300 / 250 / 250, y **caben en la ronda 1**.
+
+**Fang** (vuelta 90) es el **cuchillo arrojadizo**, y ocupa la ranura de la
+granada: compite con ellas por el tope de dos clases, que es la decisión. Se
+lanza cargando (450 ms al máximo) y **sólo con el clic izquierdo** — el corto de
+una granada existe para dejarla caer a tus pies, y un cuchillo a tus pies no
+sirve de nada. Alcanza **11.7 u sin cargar y 21.3 cargado** apuntando plano.
+Hace 35-60 al torso, o sea dos al cuerpo pelado y tres con chaleco —que es todo
+lo que se lleva—, y **una a la cabeza**, dos con casco: no perfora. **Es
+silencioso**, al armar el brazo y al clavarse. Se llevan tres por vida y **no se
+reponen matando: se recogen del suelo** — acertar la gasta y fallar la deja
+clavada donde cayó hasta que empiece la ronda siguiente. En la tienda va en
+*Utilidad*, a 450, y **cabe en la ronda 1**.
+
+**Reaper** (vuelta 90) es el **revólver**, y es la primera arma que compite por
+la ranura de la pistola: seis tiros, uno cada 400 ms, una patada de 1.8° que hay
+que compensar y una recarga del doble que la Pulse. A cambio, **70 al torso**
+—dos al cuerpo pelado, tres con chaleco— y **la cabeza no la protege nada**:
+atraviesa el casco. Es también la primera pistola que cuesta velocidad (6.23
+contra 6.50), y eso es la regla del peso gratis funcionando: se elige y se paga.
+En la tienda va en *Pistolas*, a 900, y como es `arma` **no cabe en la ronda 1**.
+
+**Titan** (vuelta 90) es el **francotirador pesado**, el escalón de arriba de la
+Scout: **una bala a cualquier parte del cuerpo mata, lleves lo que lleves**
+—atraviesa chaleco y casco—. Los tres precios se pagan antes de disparar: **2500
+ms entre tiros** (el doble que la Scout), **4.88 u/s** (el suelo del peso, lo
+mismo que el U2) y **el destello de mira**, que es lo único del juego que le
+cuenta al rival lo que estás haciendo. Mirilla de 14° (5.1×) contra los 22 de la
+Scout. En la tienda va en *Francotirador*, a **4700**, el artículo más caro del
+catálogo: no se paga con una ronda.
 
 **Vanta** (vuelta 71) es el **cuchillo**, y ocupa la tercera ranura —la tecla 3,
 reservada desde la vuelta 27—. Se lleva siempre, como la pistola. Clic izquierdo
@@ -5066,8 +5267,10 @@ en vez de caer a fábrica. Cada una trae sus dos siluetas —`<arma>` y
 silenciador es **de cada arma**: se pone y se quita en su ficha de la armería, y
 la tecla (**V**) conmuta el de la que lleves en la mano.
 
-**Se llevan dos: la principal, que se elige en opciones, y la pistola, que va
-siempre.** La 1 saca una, la 2 la otra y **Q** alterna. Cada una lleva su propio
+**Se llevan dos: la principal y la pistola, las dos elegidas en la armería
+desde la vuelta 90.** La 1 saca una, la 2 la otra y **Q** alterna. La pistola de
+serie es la Pulse y va sin pagar; el Reaper es la alternativa, y en el duelo se
+compra. Cada una lleva su propio
 cargador y su propia recarga, y la que dejas se congela tal cual estaba —una
 recarga a medias no avanza en la espalda, se reanuda al volver a equiparla—.
 
@@ -5246,8 +5449,10 @@ comparativa contra el arsenal en cadencia, cargador y peso: daño (el modelo de
 zonas, igual para las tres), cadencia, peso y lo que cuesta en velocidad,
 cargador y recarga, absorción de escudo y objetivo de precisión. **El daño ya no
 es el mismo en las cuatro** (vuelta 70): sale de `zoneDamage`, la misma función
-que resuelve el disparo. La pistola sale
-con su ficha y sin botón de equipar: se lleva siempre, y el cuchillo igual.
+que resuelve el disparo, y desde la **90** dos armas dicen además **qué
+armadura atraviesan**, que es lo único que hacen y no se lee en sus números. El
+cuchillo sale con su ficha y sin botón de equipar —es la única ranura que sigue
+teniendo un arma sola—; **las dos pistolas sí se equipan** (vuelta 90).
 **Y desde la vuelta 87 también las tres granadas**, al final y con su propia
 ranura: «Equipar» en una de ellas escribe `settings.throwable`, no
 `settings.weapon`. Sus filas dicen lo suyo —la mecha, el radio y qué hace al

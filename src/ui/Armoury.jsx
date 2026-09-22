@@ -1,11 +1,12 @@
 import { useEffect } from 'react'
 import {
+  CAMERA,
   GRENADES,
   MOVEMENT,
   MELEE_WEAPON,
   PRIMARY_WEAPONS,
   THROWABLE_WEAPONS,
-  SECONDARY_WEAPON,
+  SECONDARY_WEAPONS,
   TARGET_TYPES,
   WEAPONS,
   WEAPON_MODES,
@@ -170,11 +171,33 @@ const FILAS_DE_FICHA = BLOQUES_DE_FICHA + FILAS_DE_STATS
 /** Con qué tecla sale cada ranura. La lista de teclas de equipo, en un sitio. */
 const SLOT_KEYS = { primary: '1', secondary: '2', melee: '3', throwable: 'G' }
 
+/**
+ * **Qué ajuste escribe cada ranura.** La de cuerpo a cuerpo no tiene: el
+ * cuchillo se lleva y no se elige, así que no hay nada que guardar.
+ */
+const SLOT_SETTING = { primary: 'weapon', secondary: 'secondary', throwable: 'throwable' }
+
+/**
+ * **Cuántas armas hay en cada ranura**, derivado del catálogo (vuelta 90).
+ *
+ * De aquí sale qué ficha lleva botón de equipar, y **por eso se deriva**: hasta
+ * la 89 la condición estaba escrita a mano —«la pistola y el cuchillo se
+ * llevan, no se equipan»— y era cierta mientras esas dos ranuras tuvieran un
+ * arma sola. En cuanto el Reaper entró en la de pistola, esa frase pasó a ser
+ * un panel que se niega a equipar un arma que el jugador acaba de comprar.
+ * Lo que de verdad significaba es **«una ranura sin elección no tiene botón»**,
+ * y eso se cuenta.
+ */
+const ARMAS_POR_RANURA = {}
+for (const arma of Object.values(WEAPONS)) {
+  ARMAS_POR_RANURA[arma.slot] = (ARMAS_POR_RANURA[arma.slot] ?? 0) + 1
+}
+
 function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip, onSuppressor, soloFicha }) {
   const weapon = WEAPONS[weaponKey]
-  // **Ni la pistola ni el cuchillo se equipan: se llevan.** Lo que decide que
-  // una ficha no tenga botón es que su ranura no se elige, y eso hoy son dos.
-  const fixed = weapon.slot === 'secondary' || weapon.slot === 'melee'
+  // **Una ranura con un arma sola no ofrece ninguna decisión**, así que su
+  // ficha no lleva botón: hoy es el cuchillo y nada más. Ver `ARMAS_POR_RANURA`.
+  const fixed = (ARMAS_POR_RANURA[weapon.slot] ?? 1) <= 1
 
   return (
     <div className={`armoury__card${equipped ? ' armoury__card--equipped' : ''}`}>
@@ -326,7 +349,44 @@ function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip,
               label={weapon.tiro.granada ? 'Lanzamiento' : 'Carga'}
               value={weapon.tiro.granada
                 ? `${(weapon.tiro.cargaMs / 1000).toFixed(2)} s al máximo · clic izquierdo lejos, clic derecho corto y a ras de suelo`
-                : `${(weapon.tiro.cargaMs / 1000).toFixed(2)} s al máximo · mantén para tensar, suelta para tirar`}
+                : weapon.tiro.clavable
+                  // **El Fang no tiene tiro corto, y eso se dice** (vuelta 90).
+                  // El clic derecho de una granada existe porque a veces hay
+                  // que dejarla caer a tus pies; un cuchillo a tus pies no
+                  // sirve para nada, así que ese botón se queda vacío a
+                  // propósito — y un botón vacío hay que declararlo, o se lee
+                  // como que el arma está a medias.
+                  ? `${(weapon.tiro.cargaMs / 1000).toFixed(2)} s al máximo · mantén para armar el brazo, suelta para lanzar · sólo clic izquierdo`
+                  : `${(weapon.tiro.cargaMs / 1000).toFixed(2)} s al máximo · mantén para tensar, suelta para tirar`}
+            />
+          ) : null}
+          {/**
+            * **Lo que atraviesa** (vuelta 90). Va en las específicas y no en
+            * una fila de la rejilla porque sólo dos armas lo tienen, y lo que
+            * dice no es un número que se compare: es qué deja de valer contra
+            * ellas. Sale del mismo campo que `encajarImpacto`, así que la
+            * ficha no puede prometer una perforación que el disparo no haga.
+            */}
+          {weapon.perforaArmadura ? (
+            <Stat
+              label="Armadura"
+              value={weapon.perforaArmadura === 'todo'
+                ? 'atraviesa chaleco y casco · una bala en cualquier zona mata'
+                : 'atraviesa el casco · a la cabeza mata siempre, el chaleco sí la para'}
+            />
+          ) : null}
+          {/**
+            * **Y la mirilla dice lo que cuesta** (vuelta 90). Los aumentos son
+            * lo que compra; el destello es lo que paga, y es la única línea de
+            * una ficha que habla de lo que **el rival** ve. Escribirlo aquí es
+            * la regla de «lo que ves es lo que te llevas» (vuelta 43): un arma
+            * que te delata al apuntar no puede enterarte jugando.
+            */}
+          {weapon.scope ? (
+            <Stat
+              label="Mirilla"
+              value={`${(CAMERA.fov / weapon.scope.fov).toFixed(1)}× con el clic derecho` +
+                (weapon.scope.destello ? ' · el rival ve un destello mientras apuntas' : ' · sin destello')}
             />
           ) : null}
           {/* **Y una granada dice su mecha** (vuelta 87), que es lo único suyo
@@ -363,9 +423,15 @@ function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip,
           ) : null}
           {weapon.tiro?.reserva ? (
             <Stat
-              label={weapon.tiro.granada ? 'Cuántas llevas' : 'Cohetes'}
-              value={weapon.tiro.granada
-                ? `${weapon.tiro.reserva.inicial + weapon.magazine} por vida · no se reponen`
+              label={weapon.slot === 'throwable' ? 'Cuántas llevas' : 'Cohetes'}
+              value={weapon.slot === 'throwable'
+                ? `${weapon.tiro.reserva.inicial + weapon.magazine} por vida · ` +
+                  // **Y el Fang se recupera, que es lo suyo** (vuelta 90).
+                  // Antes esta rama miraba `granada`, y con un arrojadizo que
+                  // no es una granada habría contado los cohetes del U2.
+                  (weapon.tiro.clavable
+                    ? 'acertar la gasta, fallar la deja clavada · se recoge pasando por encima'
+                    : 'no se reponen')
                 : `${weapon.tiro.reserva.inicial} al comprar · hasta ${weapon.tiro.reserva.maxima} · cada cohete que mata repone uno`}
             />
           ) : null}
@@ -397,7 +463,10 @@ export default function Armoury({ settings, equipped, onChange, onClose, soloFic
    */
   const order = [
     ...Object.keys(PRIMARY_WEAPONS),
-    SECONDARY_WEAPON,
+    // **Y las pistolas desde la vuelta 90 son dos**, así que esto también sale
+    // de su ranura. Con `SECONDARY_WEAPON` —la de serie— el Reaper no habría
+    // salido en la armería: comprable en el duelo y sin ficha en ninguna parte.
+    ...Object.keys(SECONDARY_WEAPONS),
     MELEE_WEAPON,
     // **Y las granadas al final** (vuelta 87), que es el orden en que se llevan
     // y el mismo en que están las teclas. Sale de la ranura, como las otras
@@ -429,9 +498,9 @@ export default function Armoury({ settings, equipped, onChange, onClose, soloFic
         {soloFicha
           ? <>Lo que llevas en una partida lo decide el servidor: se compra, o lo reparte el mapa.
               Esto son los números — la principal sale con la <strong>1</strong>, la{' '}
-              {WEAPONS[SECONDARY_WEAPON].label} con la <strong>2</strong> y el{' '}
+              pistola con la <strong>2</strong> y el{' '}
               {WEAPONS[MELEE_WEAPON].label} con la <strong>3</strong>.</>
-          : <>La principal sale con la <strong>1</strong> y la {WEAPONS[SECONDARY_WEAPON].label} con la{' '}
+          : <>La principal sale con la <strong>1</strong> y la pistola con la{' '}
               <strong>2</strong>. Lo que pesa se nota al andar, y el silenciador es de cada arma. La granada
               sale con la <strong>G</strong>: clic izquierdo la lanza lejos y clic derecho, corto
               y a ras de suelo.</>}
@@ -448,15 +517,11 @@ export default function Armoury({ settings, equipped, onChange, onClose, soloFic
             // En el modo de consulta **nada está «equipado»**: lo que llevas
             // no sale de este ajuste, sale del servidor. Marcar la que tienes
             // guardada en el juego sería señalar un arma que no llevas.
-            equipped={!soloFicha && key === (
-              WEAPONS[key].slot === 'throwable' ? settings.throwable : settings.weapon
-            )}
+            equipped={!soloFicha && key === settings[SLOT_SETTING[WEAPONS[key].slot]]}
             inHand={key === equipped?.weaponKey}
             suppressed={Boolean(settings.suppressor[key])}
             slotKey={SLOT_KEYS[WEAPONS[key].slot] ?? '1'}
-            onEquip={(next) => onChange(
-              WEAPONS[next].slot === 'throwable' ? { throwable: next } : { weapon: next },
-            )}
+            onEquip={(next) => onChange({ [SLOT_SETTING[WEAPONS[next].slot]]: next })}
             onSuppressor={toggleSuppressor}
             soloFicha={soloFicha}
           />

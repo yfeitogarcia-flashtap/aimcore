@@ -159,6 +159,35 @@ export const MSG = {
    * y dibujar un cohete que sale de una pared.
    */
   PROYECTIL: 'pr',
+  /**
+   * **Un cuchillo del mundo** (vuelta 90), y es el primer mensaje del protocolo
+   * que habla de un objeto que **se queda**: todo lo demás que viaja son
+   * jugadores, disparos y vuelos, y los tres terminan.
+   *
+   * Lleva las tres cosas que un cuchillo clavado puede hacer, y el verbo lo
+   * dice la forma del mensaje: con `x/y/z` se planta, con `q` se quita —alguien
+   * lo ha recogido— y con `l` se limpia el suelo entero, que es lo que hace una
+   * ronda al empezar.
+   *
+   * **El verbo de limpiar es `l` y no `z` por un motivo tonto y caro**: `z` es
+   * una coordenada, así que un mensaje de plantar la lleva siempre y el que
+   * leyera «limpiar» ahí habría borrado el suelo cada vez que alguien clava un
+   * cuchillo — sin un error en ninguna pantalla, que es como degradan estas
+   * cosas. Un verbo no puede llamarse como un dato.
+   *
+   * **Va a los dos jugadores, incluido quien lo lanzó**, al revés que
+   * `PROYECTIL`. Un vuelo lo predice su dueño; dónde acaba clavado y quién lo
+   * recoge **no lo predice nadie**, porque es del mundo y porque recogerlo es
+   * inventario, y lo que se puede tener lo decide el servidor desde la vuelta
+   * 64. Mandarlo a uno solo dejaría al otro dibujando un cuchillo que ya no
+   * está.
+   *
+   * Y el identificador lo pone el servidor, no la ranura del pool ni el número
+   * de serie del vuelo: bajo latencia los tres extremos lanzan en órdenes
+   * distintos, así que un número suyo nombraría cosas distintas en cada
+   * pantalla.
+   */
+  CLAVADA: 'kc',
 }
 
 /**

@@ -102,13 +102,35 @@ export function encajarImpacto(estado, { zone, damage, weaponKey, mortal = false
     salida.killed = true
     return salida
   }
-  if (zone === 'head' && estado.helmet) {
+  /**
+   * **Y hay armas que se saltan una capa, o las dos** (vuelta 90). Va aquí, con
+   * la puñalada por la espalda y por el mismo motivo: **no es más daño, es
+   * saltarse una armadura**, y un número grande no sirve para decir eso — lo
+   * pararía justo la armadura que se quiere atravesar.
+   *
+   * Dos valores, y la diferencia entre ellos es la diferencia entre las dos
+   * armas que los llevan:
+   *
+   * - `'casco'` (Reaper) **atraviesa el casco y nada más**. La cabeza vale 100
+   *   de 100 y no se escala nunca, así que saltarse el casco es exactamente
+   *   «mata de un tiro a la cabeza lleves lo que lleves», sin tocar ni un
+   *   número de daño. El chaleco lo sigue parando.
+   * - `'todo'` (Titan) **atraviesa las dos**. Con la escala de esa arma la zona
+   *   más barata del modelo ya pasa de 100, así que de las dos cosas juntas
+   *   sale su promesa entera: una bala, cualquier zona, cualquier armadura.
+   *
+   * Lo que **no** hace ninguna de las dos es romper el casco: si no lo para, no
+   * lo gasta. Un casco que se rompiera parando lo que no para sería una
+   * armadura que se pierde sin haber servido de nada.
+   */
+  const perfora = WEAPONS[weaponKey]?.perforaArmadura ?? null
+  if (zone === 'head' && estado.helmet && !perfora) {
     salida.helmet = false
     salida.helmetBroken = true
     return salida
   }
   let aLaVida = damage
-  if (zone !== 'head' && estado.shield > 0) {
+  if (zone !== 'head' && estado.shield > 0 && perfora !== 'todo') {
     const absorbe = WEAPONS[weaponKey]?.shieldAbsorb ?? 0
     const parado = Math.min(estado.shield, damage * absorbe)
     salida.shield = estado.shield - parado

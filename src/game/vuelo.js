@@ -18,7 +18,7 @@
  */
 
 import * as THREE from 'three'
-import { COLORS, GRENADES, PROJECTILES, WEAPONS } from '../config.js'
+import { CLAVADAS, COLORS, GRENADES, PROJECTILES, WEAPONS } from '../config.js'
 
 const _dummy = new THREE.Object3D()
 const _dir = new THREE.Vector3()
@@ -58,6 +58,15 @@ const TINTES = {
   core: COLORS.threat,
   blind: COLORS.health,
   ko: COLORS.electric,
+  /**
+   * **El Fang en blanco roto, como la flecha** (vuelta 90), y por la misma
+   * razón: el mapa es gris y una hoja del color del mapa no se ve venir. Que
+   * repita el tinte de la flecha no es una colisión de significados — es que
+   * dice lo mismo, «esto viene a clavarse», y lo que las separa es la forma
+   * (una es un huso largo y ésta una hoja corta) y el sitio (una pasa y la otra
+   * se queda en el suelo).
+   */
+  fang: COLORS.health,
 }
 
 /**
@@ -99,6 +108,17 @@ export class VueloDeProyectiles {
      */
     this.geomG = new THREE.OctahedronGeometry(GRENADES.dibujo.radioU, 0)
     this.meshG = this._malla(this.geomG, pool)
+    /**
+     * **Y una tercera para lo que ya no vuela** (vuelta 90): los cuchillos
+     * clavados. Comparte **la misma geometría** que el huso, porque es la misma
+     * cosa — una hoja — sólo que parada; lo que no puede compartir es la malla,
+     * porque las ranuras de un `InstancedMesh` son las del pool de vuelo y un
+     * cuchillo clavado ya no ocupa ninguna.
+     *
+     * Con esto son tres llamadas de dibujo en total, una más que antes y
+     * ninguna por cuchillo.
+     */
+    this.meshC = this._malla(geom, CLAVADAS.pool)
   }
 
   /** Una malla instanciada con su color por instancia y todo apagado. */
@@ -195,9 +215,43 @@ export class VueloDeProyectiles {
     }
   }
 
+  /**
+   * **Y los cuchillos clavados** (vuelta 90), que se dibujan con el mismo huso
+   * orientado a la dirección con la que llegaron: una hoja metida en una pared
+   * apunta hacia donde iba.
+   *
+   * **Se balancean despacio**, como un recogible: sin luces en la escena, lo
+   * que dice que algo es un objeto y no una arista de la geometría es que se
+   * mueva (vuelta 33). Y el balanceo va con el **reloj del mundo** —el mismo
+   * `now` que las marcas de impacto— así que en pausa se queda quieto.
+   *
+   * @param {import('./clavadas.js').Clavadas} cl
+   * @param {number} now reloj del mundo, en ms
+   */
+  updateClavadas(cl, now = 0) {
+    const d = CLAVADAS.dibujo
+    for (let i = 0; i < this.meshC.count; i++) {
+      if (i >= cl.pool || cl.id[i] === 0) { this._apagarEn(this.meshC, i); continue }
+      _dir.set(cl.dx[i], cl.dy[i], cl.dz[i])
+      // El desfase por identificador es lo que evita que dos cuchillos en el
+      // suelo se balanceen a la vez, que se lee como una sola cosa duplicada.
+      const fase = (now / 1000) * d.vaivenPorSegundo * Math.PI * 2 + cl.id[i] * 1.3
+      _dummy.position.set(cl.x[i], cl.y[i] + Math.sin(fase) * d.vaivenU, cl.z[i])
+      _dummy.quaternion.setFromUnitVectors(_adelante, _dir)
+      _dummy.scale.set(d.escala, d.escala, d.escala)
+      _dummy.updateMatrix()
+      this.meshC.setMatrixAt(i, _dummy.matrix)
+      this._color.set(TINTES.fang ?? 0xffffff)
+      this.meshC.setColorAt(i, this._color)
+    }
+    this.meshC.instanceMatrix.needsUpdate = true
+    if (this.meshC.instanceColor) this.meshC.instanceColor.needsUpdate = true
+  }
+
   dispose() {
     this.scene.remove(this.mesh)
     this.scene.remove(this.meshG)
+    this.scene.remove(this.meshC)
     this.geom.dispose()
     this.geomG.dispose()
     this.mat.dispose()

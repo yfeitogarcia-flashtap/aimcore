@@ -12129,3 +12129,260 @@ encadenados para notarla. Si al probarla despacio sigue pareciendo poca, lo que
 hay que mover no es el arreglo sino el precio — `airAccel` (10) y
 `airWishFactor` (0.12), que son los dos números que deciden cuánto se gana por
 grado girado. Eso es tuning y se calibra jugando, no midiendo.
+
+---
+
+## §90 — Las tres últimas: Fang, Reaper y Titan
+
+El encargo cerraba el arsenal de esta primera versión con tres armas, y las tres
+pedían algo que el juego no tenía. No eran tres fichas nuevas en `WEAPONS`: eran
+**una mecánica cada una**.
+
+- **Reaper** — «1 a la cabeza incluso con casco». El casco es binario desde la
+  vuelta 64 y se come el disparo entero, así que eso **no se puede escribir con
+  un número**.
+- **Titan** — «mata de un disparo a cualquier parte del cuerpo sin importar la
+  armadura», y «un destello de mira visible para el rival al apuntar». Lo
+  primero es la misma pared por la otra punta; lo segundo contradice algo que la
+  vuelta 87 dejó escrito y verificado.
+- **Fang** — «una vez en el suelo, se puede recoger caminando sobre él». Hasta
+  aquí **todo lo que salía de un arma terminaba**.
+
+### §90.1 — Atravesar una armadura no es más daño
+
+La tentación es obvia: subir el daño hasta que el casco no llegue. No vale, y
+por la misma razón por la que la puñalada por la espalda de la vuelta 71 no es
+un número grande: **lo que para un número grande es justo la armadura que se
+quiere atravesar**. Con el casco, además, ni siquiera es cuestión de cantidad —
+`encajarImpacto` devuelve *antes* de mirar el daño: rompe el casco y se acabó.
+
+Así que `perforaArmadura` vive donde vive `mortal`, arriba de la escalera, y
+tiene dos valores porque las dos armas piden cosas distintas:
+
+| | casco | chaleco | resultado |
+|---|---|---|---|
+| `'casco'` (Reaper) | lo atraviesa | lo para | cabeza: **1 siempre**; cuerpo: 2 pelado, 3 con chaleco |
+| `'todo'` (Titan) | lo atraviesa | lo atraviesa | **1 en cualquier zona, siempre** |
+
+Y dos decisiones dentro de eso:
+
+**El Reaper no atraviesa el chaleco a propósito.** Podría —es un plomo grande— y
+entonces sería un Titan de 900 dólares. Que se salte una armadura y no las dos
+es lo que lo deja por debajo del Titan **sin tener que bajarle el daño**, que es
+el ajuste que habría hecho el arma aburrida en vez de más barata.
+
+**Y lo que no para, no se gasta.** Ninguna de las dos rompe el casco al
+atravesarlo. Un casco que se pierde sin haber servido de nada es peor que no
+llevarlo: el jugador pagaría 350 por un objeto que desaparece sin devolver nada,
+y eso no es un coste, es una trampa.
+
+Del Titan salen tres números y ninguno es de gusto: `damageScale: 3` porque la
+zona más barata del modelo son las **piernas a 34**, y 34 × 3 = 102 — o sea que
+«mata en cualquier zona» sale de la escala y no de una regla nueva. `rpm: 24`
+porque es exactamente el doble de la Scout. Y `weight: 6.5` porque es lo más
+pesado del arsenal.
+
+**El peso topa, y se deja topar.** 6.5 kg cae por debajo de
+`MOVEMENT.load.minFactor`, así que el Titan anda a 4.88 u/s: **exactamente lo
+mismo que el U2**. Se valoró bajar el suelo para que fuera más lento que el
+lanzacohetes y se descartó — mover `minFactor` cambia lo que anda el U2, que es
+calibración de otra arma y con cuarenta vueltas de medidas detrás. Y la
+comparación que el encargo hacía no era contra el U2 sino **contra la Scout**:
+ahí la penalización sí crece, 4.88 contra 5.59.
+
+### §90.2 — El destello, y por qué enmienda a la vuelta 87
+
+La 87 verificó, con dos navegadores y pixel a pixel, que **la curva de carga es
+de quien apunta y nunca del rival**, y dejó escrito que el día que se le quisiera
+poner al rival una señal de lo que estás haciendo, eso sería «una decisión de
+diseño con su propio precio, no un detalle de implementación».
+
+Ésta es esa decisión, y conviene decir por qué se toma aquí y no antes: **el
+Titan es la primera arma que la necesita**. Un arma que mata de un tiro en
+cualquier zona y a través de cualquier armadura sólo puede ser justa si **se
+puede ver venir**, que es la misma idea que hace justa una flecha (vuelta 85) —
+allí lo que se ve venir es el proyectil y aquí es la intención.
+
+Lo que se rechazó, y por qué:
+
+- **Un sonido al apuntar.** Es más barato —no toca el protocolo— y está mal por
+  dos lados: se oye desde detrás de una pared, o sea que sería un detector; y
+  choca de frente con lo que el Fang de esta misma vuelta compra, que es el
+  silencio.
+- **Simularlo en el servidor.** Sería lo autoritativo, y significa mudar la
+  mirilla entera al servidor: transición, encuadre, sensibilidad. La mirilla es
+  del cliente desde la vuelta 70 y eso está medido; moverla por esto es rehacer
+  un sistema para pintar una raya.
+- **Deducirlo del arma.** El servidor sabe que llevas un Titan, no que has
+  apretado el botón derecho. Deducir «está apuntando» de que lleva el arma
+  convierte el destello en permanente, que es lo mismo que no tenerlo.
+
+Lo que queda es un **flanco declarado por el cliente y comprobado por el
+servidor**: viaja en la entrada (`z`), sólo cuando lo hay, y el servidor no se
+cree un destello de un arma que no lo declara. **Ocultarlo sí se puede** desde
+un cliente modificado, y eso queda escrito en vez de escondido: es el precio
+conocido de que la mirilla sea del cliente, y es lo que habría que cerrar el día
+que la partida valga algo.
+
+Y una regla de dibujo que no es opcional: **se cuelga de `seen`**, el veredicto
+de encuadre más rayo que decide la brújula desde la vuelta 42. Un reflejo que
+atraviesa la geometría no es un reflejo, es un radar — y el arma estaría pagando
+un coste que además le regala información al de enfrente.
+
+Medido (`destello90`), y **con su premisa delante**, que es la lección de la
+vuelta 46 y la que costó tres intentos en `laser87`: El Espejo tiene el centro
+tapado a propósito, así que dos puntos enfrentados a doce unidades suelen tener
+una caja en medio — y ahí **no sale ningún marcador**, que es correcto y se lee
+igual que un fallo. El banco busca un par con línea de visión en vez de
+suponerlo.
+
+| | A (Titan) | B ve |
+|---|---|---|
+| premisa | — | cuerpo del rival **75.7 px** de alto |
+| sin mirilla | `mirilla=false` | **0 px** |
+| apuntando | `mirilla=true` | **64.8 × 5.7 px** |
+| bajándola | `mirilla=false` | **0 px** |
+| Scout apuntando de verdad (`_scopeOn=true`) | `mirilla=false` | **0 px** |
+
+### §90.3 — El Fang: lo primero que se queda en el mundo
+
+Hasta esta vuelta, **todo lo que salía de un arma terminaba**. Una bala se
+resuelve con un rayo en el paso en que sale; una flecha revienta contra lo que
+toque; una granada estalla. Incluso lo que dura —el silbido del U2 (vuelta 86),
+una granada rodando (vuelta 87)— termina. Un cuchillo lanzado no.
+
+**Dónde vive.** Se probó primero como un estado nuevo del pool de vuelo
+(`proyectiles.js`), que es donde parecía que iba: ya tiene posición, dueño,
+número de serie y se apaga al empezar una ronda. Se descartó por dos cosas. La
+primera es de coste: `paso()` recorre el pool sesenta veces por segundo, y lo que
+está clavado **no se mueve** — pasearlo por el bucle caliente es pagar por nada.
+La segunda es más de fondo: ese módulo es «lo que vuela y tarda en llegar», y un
+cuchillo clavado no vuela, no tiene parábola, ni reloj, ni gravedad, ni choca con
+nada. Es otra cosa, y las otras cosas van en otro fichero.
+
+`src/game/clavadas.js` sigue el reparto de `proyectiles.js` / `vuelo.js` al pie
+de la letra: **el modelo sin `three`**, porque lo monta el motor y también
+`net/partida.js` en Node, y **el dibujo en `vuelo.js`**, que es donde ya vive lo
+que se ve de un proyectil — un `InstancedMesh` más, compartiendo el huso, y una
+llamada de dibujo más en total.
+
+**Quién recoge.** En el entrenamiento, el motor. En el duelo tenía que ser el
+servidor, y eso no es una preferencia: un cuchillo en el suelo es **munición**, y
+lo que se puede tener lo decide el servidor desde la vuelta 64. Si cada cliente
+lo recogiera por su cuenta, los dos podrían recoger el mismo.
+
+De ahí sale una consecuencia que hay que respetar: **el cliente no lo predice**.
+Se consideró —es lo que hace con su propio disparo— y se cayó con un ejemplo:
+plantarlo localmente además de recibirlo del servidor deja **dos cuchillos donde
+hay uno**, y recoger el suyo no quita el del otro. Lo que se pierde por no
+predecir es un viaje de mensaje, y eso no se nota porque lo que llega **ya está
+quieto**: un proyectil que llega tarde hay que adelantarlo (vuelta 85), un
+objeto parado no.
+
+**El identificador.** No puede ser la ranura del pool ni el número de serie del
+vuelo, aunque las dos cosas existan ya: bajo latencia el cliente lanza el suyo
+al instante del clic y recibe el del rival un viaje después, así que **los tres
+extremos numeran en órdenes distintos**. Lo pone quien manda en el mundo y viaja
+en el mensaje.
+
+**Y la regla de producto, que es la que hace el arma:** *acertar la gasta;
+fallar la deja clavada*. Se valoró lo contrario —que se recuperase siempre, como
+una flecha que se saca del cuerpo— y es peor: convierte el arma en munición
+infinita con un paseo de por medio. Tal como está, cada lanzamiento tiene **dos
+resultados distintos y los dos significan algo**, que es lo que hace que ir a
+buscar el que has fallado sea una decisión y no un trámite.
+
+Dos condiciones más, y las dos son reglas:
+
+- **Sólo lo recoge quien ya lleva Fang.** Recoger es *recargar*, no *comprar*:
+  un arma que se adquiere pisándola convierte la tienda en una sugerencia. Y en
+  el duelo importa el doble, porque el cuchillo del suelo puede ser del rival.
+- **Nunca por encima de lo que compraste**, con el `reserva.maxima` de siempre.
+
+Medido en los dos modos. `fang90` conduce `Partida` sin navegador: se compra por
+450 ($800 → $350), se clava, **el rival recibe su aviso de plantar**, acertar
+deja el suelo a cero y fallar deja uno, recogerlo sube la reserva de 1 a 2 con
+su aviso a los dos, quien no lleva Fang pasa por encima y no pasa nada, una
+ronda que empieza limpia el suelo, y el pool se queda en ocho metiéndole doce.
+`fang90ent` lo repite en el **motor del entrenamiento con ratón y teclado de
+verdad**, que es el camino que el otro banco no recorre: la **G** saca el Fang
+(1 en la mano, 2 de reserva), lanzar lo clava a 3.4 u y baja la reserva a 1, y
+andar por encima la devuelve a 2 dejando el suelo limpio. Cero errores de página
+en los dos.
+
+### §90.4 — Una ranura con dos armas deja de ser una constante
+
+`SECONDARY_WEAPON` era un `find` sobre el catálogo, y la nota de `MELEE_WEAPON`
+decía desde la vuelta 71 lo que había que hacer el día que hubiera dos: **la
+lista sale del `slot`**, como las principales.
+
+Lo que costó más que eso fue **quién dice cuál es la de serie**. Estaba en el
+catálogo de la tienda (`deSerie`), que es donde se usa para escribir «de serie»
+en la ficha, y desde ahí **no se puede leer**: `SETTINGS` se evalúa antes que
+`ECONOMY`, así que un `const` de módulo que preguntara al catálogo revienta al
+cargar con un «Cannot access before initialization». Se probó mover la
+derivación debajo de `ECONOMY` y funciona, pero deja el valor de fábrica del
+ajuste sin poder leerlo. La salida buena es **invertir la dependencia**: lo
+declara el arma y `catalogoDeTienda()` lo sella al vuelo. Sigue habiendo un solo
+sitio que dice cuál es la pistola gratis, que es lo que evita que el catálogo
+regale una y el saneado te ponga otra en la mano.
+
+Y una que el propio panel enseñó: la armería decidía qué ficha lleva botón con
+una frase escrita a mano —«la pistola y el cuchillo se llevan, no se equipan»—.
+Era cierta mientras esas dos ranuras tuvieran un arma sola; con el Reaper dentro
+es **un panel que se niega a equipar un arma recién comprada**. Lo que esa frase
+significaba de verdad es «una ranura sin elección no tiene botón», y eso se
+cuenta desde el catálogo.
+
+### §90.5 — Dos agujeros que encontró construirlo
+
+**La reserva no bajaba en el servidor, desde la vuelta 86.** `inv.reserva` se
+ponía al comprar y volvía a subir con `_premiarBajaDeProyectil`, y **nunca
+bajaba**: no medía lo que te queda sino lo que te dieron. Como el inventario
+viaja y el cliente lo copia tal cual, un cohete que mataba **repartía de más** —
+con dos gastados, la baja devolvía tres. No lo cazó nadie porque el mensaje sólo
+sale en unos pocos momentos y porque el cliente lleva su propia cuenta, que es
+la correcta hasta que llega una corrección.
+
+Se encontró porque el Fang no se dejaba recoger: el servidor creía que siempre
+llevabas el tope. Es la lección de la 87 otra vez — **una mecánica nueva es lo
+que enseña los agujeros de la anterior**.
+
+El arreglo es una resta con suelo en cero por lanzamiento, y **coincide con el
+cliente en el mismo instante**: allí el disparo vacía el cargador y el cargador
+se llena de la reserva; aquí se resta directamente. No se manda economía por
+esto, que sería tráfico para decirle al cliente lo que acaba de hacer.
+
+**Y un verbo no puede llamarse como un dato.** `MSG.CLAVADA` lleva sus tres
+acciones en la forma del mensaje —`x/y/z` planta, `q` quita, `l` limpia— y la
+primera versión usaba `z` para limpiar. Un mensaje de plantar lleva `z` siempre,
+así que **cada cuchillo clavado habría borrado el suelo entero**, sin un error
+en ninguna pantalla. Lo cazó leerlo antes de probarlo, no un banco, y vale para
+cualquier protocolo donde los verbos y los campos comparten espacio.
+
+Y una tercera, menor y latente: `tick()` pedía `1 + exceso` entradas de la cola
+sin acotarlas contra las que hay. Con `colchon` en cero —que hoy no pasa, porque
+`NET.jitterBufferTicks` no es cero, pero es un número de configuración—
+`shift()` devuelve `undefined` y **el paso revienta con la sala dentro**. Queda
+acotado.
+
+### §90.6 — Lo que se queda fuera, con su porqué
+
+**Cuántos cuchillos te quedan no se ve en el HUD.** La reserva no se ha dibujado
+nunca —el U2 la tiene desde la 86 y las granadas desde la 87, y las tres se
+apañan con el aviso de «no te quedan»— y con un arma que se va a recoger del
+suelo eso pasa de ser un hueco a ser una pregunta que el jugador se hace cada
+ronda. No se ha construido aquí a propósito: meter un contador en esa esquina es
+la decisión de jerarquía que la vuelta 89 acaba de tomar —el dinero primero, los
+FPS detrás— y añadir una tercera cosa sin medirla es exactamente cómo se pierde
+de vista lo que ya está. Es lo primero de la lista si se vuelve al HUD.
+
+**El clic derecho del Fang no hace nada**, y está declarado en su ficha. El de
+una granada existe para dejarla caer a tus pies; un cuchillo a tus pies no sirve
+de nada. Un botón vacío hay que decirlo, o se lee como un arma a medias.
+
+**Y el Reaper no es comprable en la ronda 1**, aunque sea la ronda de pistolas
+en cualquier otro juego. El techo de esa ronda es **por tipo** desde la vuelta
+64 y el Reaper es `arma`; con 800 de saldo inicial tampoco llegaría a sus 900,
+así que abrir una excepción habría sido escribir una regla para un caso que no
+ocurre.

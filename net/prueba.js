@@ -1147,6 +1147,7 @@ function porQueNo(item, eco, fase) {
   if (item.clave === 'chaleco' && eco.inv.escudo >= ECONOMY.escudoPorChaleco) return 'puesto'
   if (item.clave === 'casco' && eco.inv.casco) return 'puesto'
   if (item.clave === eco.inv.primaria) return 'equipada'
+  if (item.clave === eco.inv.secundaria) return 'equipada'
   /**
    * **Y el tope de granadas lo dice el panel antes de cobrar** (vuelta 88).
    * Mira el mismo inventario que el servidor, así que no hay una segunda idea
@@ -1276,9 +1277,13 @@ let invAnterior = null
 function sonarLoComprado(inv) {
   const antes = invAnterior
   const granadas = [...(inv.granadas ?? [])]
-  invAnterior = { primaria: inv.primaria, escudo: inv.escudo, casco: inv.casco, granadas }
+  invAnterior = { primaria: inv.primaria, secundaria: inv.secundaria, escudo: inv.escudo, casco: inv.casco, granadas }
   if (!antes) return
   if (inv.primaria && inv.primaria !== antes.primaria) playEquip('arma')
+  // **Y una pistola comprada suena a arma** (vuelta 90), que es lo que es: el
+  // cerrojo de `playEquip`. Va detrás de la principal porque las dos no pueden
+  // llegar en el mismo mensaje — una compra es un artículo.
+  else if (inv.secundaria && inv.secundaria !== antes.secundaria) playEquip('arma')
   else if (inv.escudo > antes.escudo) playEquip('chaleco')
   else if (inv.casco && !antes.casco) playEquip('casco')
   // **Y una granada nueva suena a utilidad** (vuelta 88), que es la cuarta voz

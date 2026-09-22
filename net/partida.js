@@ -20,6 +20,7 @@
 import { ECONOMY, NET, PAUSE, PROJECTILES, ROUNDS, SIM, SIM_STEP_MS, WEAPONS, WEAPON_ORDER, catalogoDeTienda } from '../src/config.js'
 import { MovementController } from '../src/game/movement.js'
 import { encajarImpacto, hitPlayer, zoneDamage } from '../src/game/player.js'
+import { Clavadas } from '../src/game/clavadas.js'
 import { Proyectiles, caidaDeArea, lanzamientoDeArma } from '../src/game/proyectiles.js'
 
 /**
@@ -111,6 +112,13 @@ export class Partida {
      * lo apaga y abandonar tampoco.
      */
     this.proyectiles = new Proyectiles(PROJECTILES.pool * 2)
+    /**
+     * **Los cuchillos clavados, y son del servidor** (vuelta 90). Un cuchillo
+     * en el suelo es munición, y lo que se puede tener lo decide él desde la
+     * vuelta 64: si cada cliente lo recogiera por su cuenta, los dos podrían
+     * recoger el mismo. Los clientes lo dibujan y nada más.
+     */
+    this.clavadas = new Clavadas()
     /**
      * **La dotación del mapa, si no se compra en él** (vuelta 72). `null` es el
      * camino de siempre: hay economía y cada uno lleva lo que ha pagado. Con
@@ -374,7 +382,7 @@ export class Partida {
        */
       dinero: ECONOMY.inicial,
       /** Lo comprado: el arma principal y los supresores montados. */
-      inventario: { primaria: null, granadas: [], supresor: {}, reserva: {} },
+      inventario: { primaria: null, secundaria: null, granadas: [], supresor: {}, reserva: {} },
       /** Escudo y casco, que ahora existen también en red. */
       escudo: 0,
       casco: false,
@@ -785,7 +793,12 @@ export class Partida {
       // cliente que se congeló y vuelve, o paquetes que llegan a pares—, y con
       // tope, para que ponerse al día no sea una avalancha de simulación.
       const exceso = jugador.cola.length - this.colchon
-      const cuantas = Math.min(1 + Math.max(0, exceso), NET.maxCatchUpTicks)
+      // **Y nunca más de las que hay.** Con `colchon` en cero —que hoy no pasa,
+      // pero es un número de configuración— `exceso` vale la cola entera y esto
+      // pedía una entrada de más: `shift()` devolvía `undefined` y el paso
+      // reventaba con la sala dentro. Un tope que depende de un ajuste tiene
+      // que acotarse contra lo que de verdad hay.
+      const cuantas = Math.min(1 + Math.max(0, exceso), NET.maxCatchUpTicks, jugador.cola.length)
       for (let i = 0; i < cuantas; i++) this._ejecutar(jugador, jugador.cola.shift())
     }
 
@@ -796,6 +809,9 @@ export class Partida {
      * anterior, que es un rebobinado de uno que nadie ha pedido.
      */
     this._pasoDeProyectiles()
+    // **Y se recoge lo que haya debajo, con los jugadores ya movidos**: por lo
+    // mismo que los proyectiles van detrás del movimiento y no delante.
+    this._pasoDeClavadas()
 
     // **Y dónde ha quedado cada uno.** Se anota siempre, incluso para quien no
     // avanzó por falta de entrada: no moverse también es una posición, y el
@@ -873,6 +889,10 @@ export class Partida {
         // Y el arma que lleva, para la ficha flotante del rival. Sólo cuando se
         // sabe —o sea, desde su primer disparo—: antes no hay nada que decir.
         ...(jugador.arma ? { arma: jugador.arma } : null),
+        // **El destello de mira, y sólo cuando lo hay** (vuelta 90): lo que
+        // vale su valor de fábrica no viaja (vuelta 83), así que una foto sin
+        // francotiradores pesa exactamente lo que pesaba.
+        ...(jugador.mirilla ? { mir: 1 } : null),
         bajas: jugador.bajas,
         muertes: jugador.muertes,
         yaw: jugador.pose.rotation.y,
@@ -1023,6 +1043,18 @@ export class Partida {
       jugador.arma = WEAPON_ORDER[entrada.w]
       m.setWeaponWeight(arma.weight)
     }
+    /**
+     * **Y si tiene la mirilla puesta** (vuelta 90), que es lo único que el
+     * servidor sabe de lo que un jugador está haciendo y no de dónde está. No
+     * toca el mundo —no mueve, no frena, no dispara—: sólo se reenvía en la
+     * foto para que el rival lo dibuje.
+     *
+     * **Se comprueba contra el arma que este mismo paso declara**, así que un
+     * cliente no puede pintarle un destello al otro con una pistola en la mano.
+     * Lo que no se puede impedir desde aquí es que se lo calle: la mirilla es
+     * del cliente desde la vuelta 70 y el servidor no ve el botón derecho.
+     */
+    jugador.mirilla = entrada.z === 1 && Boolean(arma?.scope?.destello)
     jugador.pose.rotation.y = entrada.yaw
     if (entrada.jt >= 0) m.pressJump(instanteEnPaso(entrada.n, entrada.jt))
     m.update(SIM_STEP_MS / 1000, instanteDePaso(entrada.n))
@@ -1076,6 +1108,32 @@ export class Partida {
       reposoU: l.reposoU,
       mechaS: l.mechaS,
     })
+    /**
+     * **Y la reserva baja al lanzar** (vuelta 90), que es un agujero que no es
+     * de esta vuelta: el servidor **sólo la subía**. Se ponía al comprar
+     * (vuelta 86) y volvía a subir con `_premiarBajaDeProyectil`, así que
+     * `inv.reserva` no medía lo que te queda sino lo que te dieron — y como el
+     * inventario viaja y el cliente lo copia tal cual, un cohete que mataba
+     * **repartía de más**: con dos gastados, la baja devolvía tres.
+     *
+     * Baja **una por lanzamiento y con suelo en cero**, que es exactamente la
+     * misma cuenta que hace el cliente al rellenar el cargador — allí el
+     * disparo vacía el cargador y el cargador se llena de la reserva, aquí se
+     * resta directamente, y las dos ocurren en el mismo instante. Sin esto, el
+     * Fang no se podría recoger nunca: el servidor creería que siempre llevas
+     * el tope.
+     *
+     * **Y no se manda `MSG.ECONOMIA` por esto**: el cliente ya lo predice al
+     * recargar, y un mensaje por lanzamiento sería tráfico para decirle lo que
+     * acaba de hacer. La siguiente economía que salga —una compra, una ronda,
+     * una recogida— lo lleva ya corregido.
+     */
+    if (arma.tiro.reserva) {
+      const inv = tirador.inventario
+      if (!inv.reserva) inv.reserva = {}
+      const tiene = inv.reserva[tirador.arma] ?? arma.tiro.reserva.inicial
+      inv.reserva[tirador.arma] = Math.max(0, tiene - 1)
+    }
     /**
      * **Y el lanzamiento se le cuenta al otro, no a los dos.** Quien lo tiró ya
      * lo tiene volando desde el instante del clic porque lo predijo, igual que
@@ -1139,6 +1197,16 @@ export class Partida {
         continue
       }
       if (tiro?.granada) continue
+      /**
+       * **Acertar la gasta; fallar la deja clavada** (vuelta 90). La misma
+       * regla que el motor aplica en el entrenamiento, y por eso se lee del
+       * mismo campo del arma: dos ideas de cuándo se recupera un cuchillo
+       * serían dos juegos.
+       */
+      if (tiro?.clavable && !im.victima) {
+        this._clavar(im)
+        continue
+      }
       if (!im.victima) continue
       /**
        * **El daño sale de la fuerza con la que salió, no del arma de ahora.**
@@ -1148,6 +1216,74 @@ export class Partida {
        */
       const dano = zoneDamage(im.zona, null, im.fuerza)
       this._aplicarDano(im.victima, dano, tirador, im.zona, false)
+    }
+  }
+
+  /**
+   * **Deja el cuchillo donde ha chocado y se lo dice a los dos** (vuelta 90).
+   *
+   * El rumbo que viaja es la normal de la superficie del revés, que es lo que
+   * el motor usa también para dibujarlo: en una pared, la hoja metida hacia
+   * dentro; en el suelo, clavada de punta. Y va **a los dos**, incluido quien
+   * lo lanzó — un vuelo lo predice su dueño, pero dónde acaba clavado es del
+   * mundo y lo dice el servidor.
+   */
+  _clavar(im) {
+    const id = this.clavadas.nuevoId()
+    if (!this.clavadas.plantar({
+      id, x: im.x, y: im.y, z: im.z, dx: -im.nx, dy: -im.ny, dz: -im.nz, dueno: im.dueno,
+    })) return
+    this._avisarClavadas({
+      t: MSG.CLAVADA,
+      i: id,
+      x: +im.x.toFixed(3), y: +im.y.toFixed(3), z: +im.z.toFixed(3),
+      dx: +(-im.nx).toFixed(3), dy: +(-im.ny).toFixed(3), dz: +(-im.nz).toFixed(3),
+    })
+  }
+
+  /** El mismo mensaje a todo el mundo: aquí no hay nada privado. */
+  _avisarClavadas(mensaje) {
+    const texto = JSON.stringify(mensaje)
+    for (const jugador of this.jugadores.values()) jugador.enviar(texto)
+  }
+
+  /**
+   * **Quién recoge un cuchillo, y es el servidor quien lo dice** (vuelta 90).
+   *
+   * Un paso por jugador y por cuchillo, con el pool en ocho y las dos cosas a
+   * cero casi siempre: sale por la primera línea sin tocar nada.
+   *
+   * Tres reglas, y las tres son las del entrenamiento porque salen del mismo
+   * dato:
+   *
+   * - **Hay que llevar Fang.** Recoger es recargar, no comprar: un arma no se
+   *   adquiere pisándola, o la tienda pasaría a ser una sugerencia. Y en red
+   *   eso importa más que en el entrenamiento, porque el cuchillo del suelo
+   *   puede ser del rival.
+   * - **Y no se llevan más de las que se compraron**, con el `reserva.maxima`
+   *   de siempre.
+   * - **Un muerto no recoge.** Recoger es un gesto de andar por encima, y un
+   *   abatido no anda.
+   */
+  _pasoDeClavadas() {
+    if (this.clavadas.vivas === 0) return
+    for (const jugador of this.jugadores.values()) {
+      if (!jugador.vida) continue
+      const clave = (jugador.inventario.granadas ?? []).find((g) => WEAPONS[g]?.tiro?.clavable)
+      if (!clave) continue
+      const r = WEAPONS[clave].tiro.reserva
+      const tiene = jugador.inventario.reserva?.[clave] ?? 0
+      if (tiene >= r.maxima) continue
+      const p = jugador.pose.position
+      const id = this.clavadas.alAlcanceDe(p.x, jugador.movimiento.feetY, p.z)
+      if (!id) continue
+      this.clavadas.quitar(id)
+      if (!jugador.inventario.reserva) jugador.inventario.reserva = {}
+      jugador.inventario.reserva[clave] = Math.min(r.maxima, tiene + 1)
+      // **A los dos, porque los dos lo están dibujando**; y el inventario, sólo
+      // a quien se lo lleva, que es la regla de `MSG.ECONOMIA` desde la 64.
+      this._avisarClavadas({ t: MSG.CLAVADA, i: id, q: 1 })
+      this._enviarEconomia(jugador)
     }
   }
 
@@ -1569,6 +1705,18 @@ export class Partida {
 
     if (item.tipo === 'arma') {
       // La pistola va siempre puesta: comprarla no es nada.
+      /**
+       * **Y desde la vuelta 90 también se compra pistola.** Es la primera
+       * compra del juego que **sustituye** algo que ya llevas en vez de llenar
+       * un hueco, y eso no necesita ninguna regla nueva: la ranura es una, así
+       * que comprar el Reaper es escribirlo en ella. Lo que la de serie
+       * garantiza es que quitarlo —morir— tenga a qué volver.
+       */
+      if (item.ranura === 'secondary') {
+        jugador.inventario.secundaria = item.clave
+        this._enviarEconomia(jugador)
+        return
+      }
       if (item.ranura !== 'primary') return
       // **Una principal cada vez.** Comprar otra sustituye a la que hubiera, y
       // lo pagado por la anterior no vuelve: es una decisión, no un carrito.
@@ -1643,6 +1791,7 @@ export class Partida {
         dinero: jugador.dinero,
         inv: {
           primaria: jugador.inventario.primaria,
+          secundaria: jugador.inventario.secundaria,
           granadas: [...(jugador.inventario.granadas ?? [])],
           supresor: { ...jugador.inventario.supresor },
           escudo: jugador.escudo,
@@ -1694,6 +1843,14 @@ export class Partida {
    */
   _perderEquipo(jugador) {
     jugador.inventario.primaria = null
+    /**
+     * **Y la pistola comprada** (vuelta 90). Morir cuesta el equipo, y una
+     * pistola de 900 que sobreviviera a la muerte sería el único artículo del
+     * catálogo que se paga una vez por partida. Se queda a cero y no en la de
+     * serie a propósito: quién es la de serie lo dice `SECONDARY_WEAPON`, y
+     * escribirlo también aquí sería un segundo sitio que puede decir otra cosa.
+     */
+    jugador.inventario.secundaria = null
     // Y las granadas, que son equipo como todo lo demás.
     jugador.inventario.granadas = []
     jugador.escudo = 0
@@ -1823,6 +1980,15 @@ export class Partida {
      * 62).
      */
     this.proyectiles.apagarTodos()
+    /**
+     * **Y el suelo se limpia de cuchillos** (vuelta 90), por lo mismo que se
+     * apaga lo que volaba: una ronda que empieza tira lo que quedaba del mundo
+     * anterior. Se dice con un mensaje y no se deja deducir de la fase, porque
+     * deducirlo sería una segunda idea de cuándo empieza una ronda — y la
+     * primera ya viaja en la foto.
+     */
+    this.clavadas.limpiar()
+    this._avisarClavadas({ t: MSG.CLAVADA, l: 1 })
     /**
      * **Y la reserva se rellena hasta lo de fábrica, sin bajar de lo que
      * traigas** (vuelta 88; la 86 la ponía en `inicial` a secas).

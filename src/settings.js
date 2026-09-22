@@ -17,6 +17,7 @@ import {
   FRAME_LIMITS,
   TRAINER_SCENARIOS,
   PRIMARY_WEAPONS,
+  SECONDARY_WEAPONS,
   THROWABLE_WEAPONS,
   SETTINGS,
   SIMULTANEOUS_TARGETS,
@@ -46,6 +47,10 @@ const CATALOGS = {
   // antes de la vuelta 39 no es una opción válida y cae al valor de fábrica,
   // que es exactamente lo que hace el saneado con cualquier clave obsoleta.
   weapon: PRIMARY_WEAPONS,
+  // **Y desde la vuelta 90 la pistola también se elige**, porque hay dos. Lo
+  // que no cambia es la regla de arriba: el catálogo es el de **su ranura**, y
+  // lo que no esté en él cae a fábrica — que aquí es la pistola de serie.
+  secondary: SECONDARY_WEAPONS,
   // **Y el de la granada es el de su ranura** (vuelta 87), derivado igual y
   // por lo mismo: una clave que no sea una de las tres cae a fábrica.
   throwable: THROWABLE_WEAPONS,

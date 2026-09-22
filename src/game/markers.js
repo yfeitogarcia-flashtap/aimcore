@@ -308,12 +308,27 @@ export class DummyMarkers {
     })
     this._alertMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color(COLORS.alert) })
     this._threatMaterial = new THREE.MeshBasicMaterial({ color: new THREE.Color(COLORS.threat) })
+    /**
+     * **El destello de mira** (vuelta 90). Aditivo y sin escritura de
+     * profundidad, que es lo que hace que se lea como luz y no como una
+     * cartulina blanca pegada a la cara: es el mismo material que el fogonazo
+     * (vuelta 40) y las marcas de impacto (vuelta 64), y por lo mismo —sin
+     * luces en la escena, lo único que distingue «esto brilla» de «esto está
+     * pintado» es la mezcla—.
+     */
+    this._destelloMaterial = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      blending: THREE.AdditiveBlending,
+      transparent: true,
+      depthWrite: false,
+    })
     this._materials = [
       this._compassMaterial,
       this._compassTailMaterial,
       this._compassTailBackMaterial,
       this._compassEdgeMaterial,
       this._alertMaterial,
+      this._destelloMaterial,
       this._threatMaterial,
     ]
 
@@ -349,7 +364,18 @@ export class DummyMarkers {
     const iconSize = MARKERS.icon.size * height
     const bang = new THREE.ShapeGeometry(bangShapes(iconSize))
     const query = new THREE.ShapeGeometry(queryShapes(iconSize))
-    this._geometries.push(compass, compassEdges, bang, query)
+    /**
+     * **La raya del destello**, un plano y nada más. Se dibuja siempre
+     * encarado a la cámara —lo suyo es verse, como los dos iconos— y por eso no
+     * necesita volumen: la trampa de la vuelta 37 (un triángulo plano a la
+     * altura de los ojos ocupa cero píxeles) es de la brújula, que **no** se
+     * encara porque tiene que decir hacia dónde mira alguien.
+     */
+    const destello = new THREE.PlaneGeometry(
+      MARKERS.destello.anchoFactor * height,
+      MARKERS.destello.altoFactor * height,
+    )
+    this._geometries.push(compass, compassEdges, bang, query, destello)
 
     /**
      * **Dónde va cada capa, y por qué en dos trozos.**
@@ -385,6 +411,10 @@ export class DummyMarkers {
       threat.visible = false
       group.add(threat)
 
+      const brillo = new THREE.Mesh(destello, this._destelloMaterial)
+      brillo.visible = false
+      group.add(brillo)
+
       // La ficha va en la escena del CSS3DRenderer, que es otra escena: se
       // coloca en mundo, no colgada del grupo.
       const dom = nameplateElement()
@@ -399,6 +429,7 @@ export class DummyMarkers {
         needle,
         alert,
         threat,
+        brillo,
         plate,
         dom,
         /** Cuánto lleva la mira encima, y hasta cuándo sigue puesta la ficha. */
@@ -497,6 +528,10 @@ export class DummyMarkers {
       slot.needle.position.y = anchor + this.compassOffset
       slot.alert.position.y = anchor + this.iconOffset
       slot.threat.position.y = anchor + this.iconOffset
+      // **El destello no va sobre la cabeza: va en ella.** Los tres marcadores
+      // de arriba son etiquetas que flotan; esto es una lente, y una lente está
+      // donde está el ojo. Por eso su altura sale del cuerpo y no de la pila.
+      slot.brillo.position.y = this.bodyTop * MARKERS.destello.alturaFactor / scale
 
       // **¿Se le ve de verdad?** Las dos mitades de la pregunta, en el orden
       // que cuesta menos: primero el encuadre, que es aritmética, y sólo a
@@ -513,6 +548,22 @@ export class DummyMarkers {
       // atrás y volver a entrar recomprueba en el primer frame.
       const seen = framed && slot.sightClear
       slot.needle.visible = seen
+
+      /**
+       * **Y el destello, que sólo sale si se le ve de verdad** (vuelta 90).
+       * Se cuelga de `seen` —el mismo veredicto que decide la brújula, o sea
+       * encuadre más rayo— porque un reflejo a través de una pared no es un
+       * reflejo: es un detector de rivales, que es exactamente lo que este
+       * marcador **no** puede ser. El arma paga un coste, no regala uno.
+       */
+      slot.brillo.visible = seen && instance.mirilla === true
+      if (slot.brillo.visible) {
+        slot.brillo.quaternion.copy(camera.quaternion)
+        // Late con el reloj del mundo, así que en pausa se queda quieto.
+        const d = MARKERS.destello
+        const fase = (Math.sin((now / 1000) * d.pulsoPorSegundo * Math.PI * 2) + 1) * 0.5
+        slot.brillo.scale.set(d.pulsoMin + (1 - d.pulsoMin) * fase, 1, 1)
+      }
 
       const phase = phaseOf(instance, now)
       slot.alert.visible = phase === 'alert'

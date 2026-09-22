@@ -452,6 +452,53 @@ export const GRENADES = {
 }
 
 /**
+ * **Los cuchillos clavados** (vuelta 90): lo primero de Vektor que un jugador
+ * deja en el mundo y que se puede volver a coger.
+ *
+ * Hasta aquí todo lo que salía de un arma terminaba: una bala se resuelve en su
+ * paso, una flecha revienta contra lo que toque y una granada estalla. El Fang
+ * no — se queda clavado donde cayó, a la vista, hasta que empiece la ronda
+ * siguiente. El modelo está en `src/game/clavadas.js` (sin three, como
+ * `proyectiles.js`, porque lo corre también el servidor) y el dibujo en
+ * `vuelo.js`, que es donde ya vive lo que se ve de un proyectil.
+ */
+export const CLAVADAS = {
+  /**
+   * **Cuántas caben.** Dos jugadores con dos cuchillos cada uno son cuatro;
+   * ocho deja sitio a una ronda entera de fallos sin que el pool se llene. Que
+   * sea fijo es la regla del bucle caliente: nada se asigna al clavar.
+   */
+  pool: 8,
+  /**
+   * **Hasta dónde llega el brazo**, en unidades, medido desde el **pecho** y no
+   * desde los pies: un cuchillo clavado en una pared a la altura de la cara se
+   * coge andando por delante, y uno clavado a tres metros hay que saltar a por
+   * él. Con los pies como centro, lo de la pared sería inalcanzable y lo del
+   * suelo se cogería desde la barbilla; con el pecho, las dos cosas salen
+   * bien de una sola cuenta.
+   *
+   * 1.2 es poco menos que el alcance del Vanta (1.6): recogerlo es un gesto de
+   * pasar por encima, no un imán.
+   */
+  alcanceU: 1.2,
+  /** Altura del centro de esa esfera sobre los pies. El pecho. */
+  alturaDelPechoU: 0.9,
+  /**
+   * **Lo que se ve.** Se dibuja con el mismo huso que la hoja en vuelo —es la
+   * misma cosa, parada— y un pelo más grande, porque parado y contra una pared
+   * gris hay que poder encontrarlo. Se balancea despacio como un recogible
+   * (`PICKUPS`), que es lo que lo separa de una esquina de la geometría: sin
+   * luces, lo que dice que algo es un objeto es que se mueve.
+   */
+  dibujo: {
+    escala: 1.35,
+    /** Amplitud y ritmo del balanceo, en unidades y en vueltas por segundo. */
+    vaivenU: 0.06,
+    vaivenPorSegundo: 0.4,
+  },
+}
+
+/**
  * **El destello de un golpe de cuchillo** (vuelta 71). Lo dibuja
  * `src/game/slash.js`; aquí están los números.
  *
@@ -868,6 +915,15 @@ export const WEAPONS = {
      * pistolas.
      */
     slot: 'secondary',
+    /**
+     * **La pistola de serie: la que se lleva sin elegir y sin pagar** (vuelta
+     * 90). Hasta que hubo dos armas en esta ranura no hacía falta decirlo —era
+     * la única— y desde el Reaper sí: de aquí salen `SECONDARY_WEAPON`, el
+     * valor de fábrica del ajuste, con qué te quedas al perder el equipo y el
+     * «de serie» que la tienda escribe en su ficha. **Un solo sitio**, que es
+     * lo que evita que el catálogo regale una y el saneado devuelva otra.
+     */
+    deSerie: true,
     mode: 'semi',
     rpm: 500,
     magazine: 18,
@@ -1652,6 +1708,285 @@ export const WEAPONS = {
       reserva: { inicial: 1, maxima: 1, porBaja: 0, aviso: 'No te quedan aturdidoras' },
     },
   },
+  /**
+   * **Reaper: el revólver** (vuelta 90), y es lo primero del juego que compite
+   * por la **ranura de la pistola**. Hasta aquí esa ranura tenía una sola arma
+   * y por eso se derivaba como una constante (`SECONDARY_WEAPON`); con dos,
+   * pasa a ser una lista igual que las principales — que es exactamente lo que
+   * la nota de `MELEE_WEAPON` decía que pasaría el día que hubiera dos.
+   *
+   * Lo que lo separa de la Pulse **no es ser mejor, es ser otra cosa**: la
+   * Pulse es fiable —dieciocho balas, sin retroceso, quinientas por minuto— y
+   * ésta es de precisión: seis tiros, uno cada 400 ms, una patada que hay que
+   * compensar y una recarga del doble. A cambio, cada bala pesa el doble larga
+   * y **la cabeza no la protege nada**.
+   *
+   * **Y sí cuesta velocidad, que es la primera vez.** La regla de
+   * `MOVEMENT.load.free` dice que la pistola no puede costar porque «el coste
+   * estaría en no haber elegido» — y ése es justo el argumento que la deja
+   * pagar: el Reaper **se elige y se paga**, así que sus 600 g de más sobre el
+   * peso gratis son la decisión haciéndose notar. La Pulse sigue sin costar
+   * nada, que es lo que la regla protege.
+   */
+  'reaper': {
+    label: 'Reaper',
+    character: 'revólver',
+    slot: 'secondary',
+    mode: 'semi',
+    /** 150 RPM = 400 ms. Un revólver de acción simple: se amartilla cada tiro. */
+    rpm: 150,
+    /** Un tambor. Seis, y contarlas es parte del arma. */
+    magazine: 6,
+    /** Vaciar el tambor y meter seis de una en una. El doble que la Pulse. */
+    reloadMs: 2400,
+    /**
+     * **No admite silenciador, y no es una omisión de arte.** Un revólver tiene
+     * el hueco entre tambor y cañón: por ahí sale el fogonazo y el ruido pase
+     * lo que pase. Es el mismo criterio que dejó a la Scout y al arco sin él.
+     */
+    supportsSuppressor: false,
+    /** Seis tiros lentos se juzgan contra acertarlos, no contra rociar. */
+    precisionTarget: 0.6,
+    /** Un chaleco contra un plomo grande: la mitad, como la Pulse. */
+    shieldAbsorb: 0.5,
+    /**
+     * **1.8 kg → 6.23 u/s.** 600 g por encima del peso gratis, que con el
+     * `perKg` de la vuelta 89 son un 4%: se nota y no ata. Ver arriba por qué
+     * esta pistola sí paga.
+     */
+    weight: 1.8,
+    /**
+     * **50 × 1.4 = 70 al torso**, contra los 50 de la Pulse. De ahí salen los
+     * tres números sin escribir ninguna regla más: **dos al cuerpo sin
+     * chaleco**, tres con él, y cuatro a las piernas con chaleco. Un solo tiro
+     * al pecho deja a alguien en 30, que es lo que hace que un revólver dé
+     * miedo sin matar de uno.
+     */
+    damageScale: 1.4,
+    /**
+     * **Y atraviesa el casco** (ver `encajarImpacto`). Es lo único que hace
+     * esta arma que ninguna otra hace, y es lo que el encargo pidió con todas
+     * las letras: «1 a la cabeza incluso con casco». No es más daño —la cabeza
+     * ya vale 100 de 100 y no se escala nunca—, es **saltarse una capa**, y
+     * por eso vive donde vive la puñalada por la espalda y no en un número.
+     *
+     * Lo que **no** atraviesa es el chaleco: el casco es una pieza pequeña y
+     * dura y esto es un plomo lento y gordo; una placa de pecho sí lo frena.
+     * Que el arma se salte una armadura y no las dos es lo que la deja por
+     * debajo del Titan sin tener que bajarle el daño.
+     */
+    perforaArmadura: 'casco',
+    /**
+     * **Una patada grande y sola**, como la Scout: entre dos tiros pasan 400 ms
+     * y el patrón no se llega a recorrer. Lo que se aprende de un revólver no
+     * es una ráfaga, es volver a poner la mira donde estaba.
+     */
+    recoil: [
+      [1.8, 0.22],
+      [1.5, -0.2],
+    ],
+    recoilLoopFrom: 1,
+  },
+  /**
+   * **Titan: el francotirador pesado** (vuelta 90). Es el escalón de arriba de
+   * la Scout, y lo que lo define cabe en una frase: **una bala a cualquier
+   * parte del cuerpo mata, lleves lo que lleves**.
+   *
+   * Eso es un arma que en cualquier juego rompe el equilibrio, así que **los
+   * tres precios están puestos a propósito y los tres se pagan antes de
+   * disparar**:
+   *
+   * - **2500 ms entre tiros**, el doble que la Scout. Fallar es regalar dos
+   *   segundos y medio a quien tienes delante.
+   * - **4.88 u/s**, el suelo del peso: se anda un 25% más despacio que con la
+   *   pistola y un 13% más que con la Scout. Reposicionar cuesta de verdad.
+   * - **Y el destello de mira**, que es lo único del juego que le cuenta al
+   *   rival lo que estás haciendo. Ver `scope.destello`.
+   */
+  'titan': {
+    label: 'Titan',
+    character: 'francotirador pesado',
+    slot: 'primary',
+    mode: 'semi',
+    /** 24 RPM = 2500 ms, exactamente el doble que la Scout. Es de cerrojo largo. */
+    rpm: 24,
+    /** Cinco. Y recargarlo es media eternidad: no es un arma de aguantar un tiroteo. */
+    magazine: 5,
+    reloadMs: 4000,
+    supportsSuppressor: false,
+    /** Si una bala mata pase lo que pase, el listón es acertarla. */
+    precisionTarget: 0.8,
+    /**
+     * **Cero, y aquí no significa lo mismo que en el U2.** Allí era que una
+     * onda no llega por delante; aquí es que **el chaleco no entra en la
+     * cuenta**, porque `perforaArmadura: 'todo'` lo salta antes de llegar a
+     * este número. Está dicho en cero para que nadie lo lea como una absorción
+     * que se aplica y no se nota.
+     */
+    shieldAbsorb: 0,
+    /**
+     * **6.5 kg, lo más pesado del arsenal → 4.88 u/s.** Cae por debajo del
+     * suelo del peso (`MOVEMENT.load.minFactor`), así que anda exactamente lo
+     * que el U2: **el suelo es el tope y no se mueve por un arma**. Bajarlo
+     * para que el Titan fuera más lento que el lanzacohetes cambiaría de paso
+     * lo que anda el lanzacohetes, que es calibración de otro arma. Contra la
+     * Scout —que es la comparación que el encargo hace— la penalización sí
+     * crece: 4.88 contra 5.59.
+     */
+    weight: 6.5,
+    /**
+     * **34 × 3 = 102 a las piernas**, que es lo que hace que una bala mate
+     * **en cualquier zona** sin una regla nueva: el número más bajo del modelo
+     * ya pasa de 100. Al torso son 150 y a la cabeza 100, que es lo que vale y
+     * no se escala nunca.
+     */
+    damageScale: 3,
+    /**
+     * **Atraviesa las dos armaduras.** Con `'casco'` la cabeza ya moría, pero
+     * el chaleco habría dejado 102 en 51 a las piernas y el arma dejaría de ser
+     * lo único que es. `'todo'` es la promesa entera.
+     */
+    perforaArmadura: 'todo',
+    /**
+     * **14° contra los 22 de la Scout**: 5.1 aumentos contra 3.2. Un arma que
+     * mata a cualquier distancia tiene que poder verla, y el encuadre estrecho
+     * es también su otro coste — lo de fuera de la lente es negro macizo.
+     */
+    scope: {
+      fov: 14,
+      /**
+       * **El destello, y es lo primero de Vektor que le enseña al rival lo que
+       * estás haciendo.** La vuelta 87 dejó escrito que la curva de carga es de
+       * quien apunta y nunca del rival, y que ponerle una señal a alguien sería
+       * «una decisión de diseño con su propio precio». Ésta es esa decisión, y
+       * el precio lo paga el arma que la lleva: con la mirilla puesta, quien te
+       * mire ve una raya de luz donde está tu cabeza.
+       *
+       * Es lo que deja que un arma que mata de un tiro sea justa: **se puede
+       * ver venir**. Es la misma idea que la estela de una flecha (vuelta 85),
+       * sólo que aquí lo que se ve venir es la intención.
+       *
+       * Un arma con mirilla y sin este campo no brilla: la Scout sigue
+       * apuntando en silencio, que es lo que la separa de ésta.
+       */
+      destello: true,
+    },
+    /** Una coz. Sube casi cuatro grados y no se vuelve a ver en 2.5 s. */
+    recoil: [
+      [3.8, 0.5],
+      [3.0, -0.4],
+    ],
+    recoilLoopFrom: 1,
+  },
+  /**
+   * **Fang: el cuchillo arrojadizo** (vuelta 90), y ocupa la ranura de la
+   * granada —la **G**— junto a las tres que ya viven ahí. No es el Vanta: el
+   * Vanta se lleva siempre y no se gasta nunca; éste **se lanza, se gasta y se
+   * queda en el suelo donde cayó**.
+   *
+   * Que vaya en `throwable` y no en una quinta ranura no es comodidad: es lo
+   * que hace que **compita con las granadas** por el mismo tope de dos clases
+   * (`ECONOMY.granadasMax`), y una decisión entre cosas que se llevan además
+   * del arma es exactamente lo que esa ranura significa desde la vuelta 87.
+   *
+   * Tres cosas son suyas y ninguna existía:
+   *
+   * - **Se clava y se queda a la vista.** Un proyectil que choca contra la
+   *   geometría desaparecía siempre; éste deja un objeto en el mundo
+   *   (`src/game/clavadas.js`) hasta que empiece la ronda siguiente.
+   * - **Acertar la gasta; fallar la deja.** Si el cuchillo entra en un cuerpo,
+   *   se acabó — está dentro de alguien. Si se va a una pared, se recupera
+   *   andando por encima. No es una compensación por fallar: es lo que
+   *   convierte cada lanzamiento en una apuesta con dos resultados distintos, y
+   *   lo que hace que valga la pena ir a por él.
+   * - **Y es silenciosa.** No suena al salir ni al clavarse, que es lo que la
+   *   hace el arma de matar a alguien que no sabía que estabas ahí.
+   */
+  'fang': {
+    label: 'Fang',
+    character: 'arrojadizo',
+    slot: 'throwable',
+    /**
+     * **De carga, como las granadas y el arco**, y por la misma razón: es lo
+     * único que enseña la curva antes de soltar. Un cuchillo que saliera al
+     * pulsar se lanzaría a ciegas, y con dos en el cinturón eso es tirar el
+     * arma entera a la primera.
+     */
+    mode: 'carga',
+    /** 60 «RPM» = 1000 ms. Lo que cuesta sacar el segundo del cinturón. */
+    rpm: 60,
+    magazine: 1,
+    reloadMs: 900,
+    supportsSuppressor: false,
+    /** Acertar con una parábola corta y un blanco pequeño: el listón medio. */
+    precisionTarget: 0.5,
+    /** Un chaleco contra una hoja: la mitad, como el Vanta. */
+    shieldAbsorb: 0.5,
+    /** 400 g: por debajo del peso gratis, así que con el Fang en la mano se corre. */
+    weight: 0.4,
+    recoil: [
+      [0.8, 0.12],
+      [0.6, -0.09],
+    ],
+    recoilLoopFrom: 1,
+    tiro: {
+      proyectil: 'fang',
+      /**
+       * **Se clava**, que es lo que dice que este vuelo no acaba en nada: acaba
+       * en un objeto. Lo lee quien resuelve el impacto —el motor y el
+       * servidor—, no el modelo de vuelo, que sigue sin saber qué pasa cuando
+       * algo llega (vuelta 85).
+       */
+      clavable: true,
+      /**
+       * **450 ms de armar el brazo.** Menos que una granada (600) y mucho menos
+       * que el arco (750): esto es un golpe de muñeca, y si costara lo que
+       * tensar un arco nadie lo sacaría a bocajarro, que es donde vive.
+       */
+      cargaMs: 450,
+      /**
+       * **De 22 a 40 u/s.** Medido con la gravedad de abajo y desde la altura
+       * de ojos: apuntando **plano** cae a **11.7 u** sin cargar y a **21.3**
+       * cargado, o sea que el tiro rápido es de pasillo y el cargado cruza
+       * media sala de El Espejo. Apuntando **a 20°** llega a 30 y a 90.
+       *
+       * Ese último número asusta y no significa nada: son 2.4 s de vuelo, y en
+       * 2.4 s no hay nadie donde estaba. Es la misma cuenta que sale del arco y
+       * de las granadas —lo que un arma de tiro curvo alcanza en teoría no es
+       * lo que alcanza jugando— y por eso el número que se calibra es el
+       * plano.
+       */
+      vMin: 22,
+      vMax: 40,
+      /**
+       * **12, entre la flecha (10) y la granada (18).** Un cuchillo se lanza
+       * más plano que un bulto y menos que una flecha: la curva se ve, y verla
+       * es lo que permite apuntar a una cabeza a diez unidades.
+       */
+      gravedad: 12,
+      /**
+       * **35 sin cargar y 60 a tope, al torso**, y de ahí sale lo que el arma
+       * es: **un cuchillo a la cabeza**. Al cuerpo y a tope hacen falta **dos
+       * sin chaleco y tres con él** — y tres es exactamente todo lo que se
+       * lleva (uno en la mano y dos de reserva), así que matar a alguien al
+       * pecho a base de cuchillos es gastar el arma entera y acertar las tres.
+       *
+       * A la cabeza es **una**, y eso no sale de este número sino del modelo de
+       * zonas: la cabeza vale 100 de 100 y lo que ya vale una vida entera no se
+       * escala (vuelta 70). Con casco hacen falta dos, como con cualquier otra
+       * cosa: el Fang **no perfora**, que es lo que un casco viene a parar.
+       */
+      danoMin: 35,
+      danoMax: 60,
+      /**
+       * **Tres por vida —uno en la mano y dos de reserva— y no se reponen
+       * matando: se reponen recogiéndolos.** `porBaja` es cero, como en las
+       * granadas; lo que sube esta cuenta es pisar el cuchillo que fallaste,
+       * con el mismo tope. Nunca se llevan más de los que se compraron.
+       */
+      reserva: { inicial: 2, maxima: 2, porBaja: 0, aviso: 'Sin cuchillos: recoge los que has lanzado' },
+    },
+  },
 }
 
 /**
@@ -1745,10 +2080,27 @@ export const PRIMARY_WEAPONS = Object.fromEntries(
  */
 export const WEAPON_ORDER = Object.keys(WEAPONS)
 
-/** La pistola, la única de su ranura. */
-export const SECONDARY_WEAPON = Object.keys(WEAPONS).find(
-  (key) => WEAPONS[key].slot === 'secondary',
+/**
+ * **Las armas de la ranura de pistola** (vuelta 90), derivadas del `slot` como
+ * `PRIMARY_WEAPONS` y por la misma razón.
+ *
+ * Hasta la 89 era **una constante** (`SECONDARY_WEAPON`), porque la ranura
+ * tenía un arma sola — y la nota de `MELEE_WEAPON` decía ya entonces que el día
+ * que hubiera dos esto sería la lista de ellas «y no una constante que alguien
+ * se olvide de tocar». Ese día es éste: el Reaper entra en la misma ranura.
+ */
+export const SECONDARY_WEAPONS = Object.fromEntries(
+  Object.entries(WEAPONS).filter(([, weapon]) => weapon.slot === 'secondary'),
 )
+
+/**
+ * **La pistola de serie**: la que se lleva sin elegir y sin pagar, con la que
+ * se empieza una partida con economía y la que queda al perder el equipo. Sale
+ * de `deSerie` en el propio catálogo de armas — ver la Pulse.
+ */
+export const SECONDARY_WEAPON = Object.keys(SECONDARY_WEAPONS).find(
+  (key) => SECONDARY_WEAPONS[key].deSerie,
+) ?? Object.keys(SECONDARY_WEAPONS)[0]
 
 /**
  * **El cuerpo a cuerpo, la única de su ranura** (vuelta 71). Se deriva igual
@@ -2621,6 +2973,23 @@ export const SETTINGS = {
   weapon: {
     label: 'Arma principal',
     default: 'rift',
+  },
+  /**
+   * **Cuál de las pistolas se lleva** (vuelta 90). Es el hermano de `weapon` y
+   * del `throwable` de abajo: una ranura con catálogo, saneada contra
+   * `SECONDARY_WEAPONS` y elegible en la armería, y **fuera del panel de
+   * opciones** por lo mismo que las otras dos — elegir equipo no es un ajuste
+   * entre la sensibilidad y el tamaño de diana (vuelta 42).
+   *
+   * Hasta aquí no existía porque la ranura tenía un arma sola y «la pistola no
+   * se elige» era literalmente cierto. Con el Reaper deja de serlo en el
+   * entrenamiento; **en el duelo lo sigue siendo**, porque ahí lo que llevas lo
+   * dice el inventario del servidor y la pistola de serie es la que hay hasta
+   * que se compre otra.
+   */
+  secondary: {
+    label: 'Pistola',
+    default: SECONDARY_WEAPON,
   },
   /**
    * **Cuál de las tres granadas se lleva** (vuelta 87). Es el hermano de
@@ -4816,6 +5185,38 @@ export const MARKERS = {
    * `dwellMs`. Una ficha por cada muñeco visible sería una pantalla de rótulos;
    * el gesto de apuntar es lo que dice a cuál estás mirando.
    */
+  /**
+   * **El destello de mira del Titan** (vuelta 90), y es lo único que se dibuja
+   * encima de un cuerpo para contar lo que **ese** jugador está haciendo — la
+   * brújula dice hacia dónde mira y los dos iconos dicen qué sabe de ti.
+   *
+   * **La forma es una raya horizontal**, y eso no es decoración: la regla de la
+   * vuelta 67 es que lo que separa dos cosas es la forma, y aquí compite con
+   * una cuña (brújula), dos glifos (`?` y `!`), una estrella de cuatro puntas
+   * (fogonazo e impacto) y un octaedro (granada). Una raya ancha y fina no se
+   * parece a ninguna, y de paso es lo que una lente hace de verdad con la luz.
+   *
+   * **Y el color es blanco**, que es el único de la paleta que no significa
+   * nada: no es un aviso (rojo), ni una detección (amarillo), ni energía (azul
+   * eléctrico), ni una diana (naranja). Un reflejo no tiene color propio.
+   */
+  destello: {
+    /** A qué altura del cuerpo, en tanto por uno: la de los ojos, que es donde está la lente. */
+    alturaFactor: 0.94,
+    /** Lo ancha y lo alta que es, contra la altura del cuerpo. */
+    anchoFactor: 0.62,
+    altoFactor: 0.05,
+    /**
+     * **Late despacio.** Una lente cogiendo luz no está quieta del todo, y un
+     * pelo de movimiento es lo que la separa de una raya pintada en la pared
+     * de detrás. Lo que no hace es parpadear: apagarse y encenderse sería un
+     * aviso, y esto es una presencia. Va con el **reloj del mundo**, como las
+     * marcas de impacto, así que en pausa se queda quieto.
+     */
+    pulsoPorSegundo: 1.4,
+    /** Lo más flaco que llega a ponerse, en tanto por uno de su ancho. */
+    pulsoMin: 0.7,
+  },
   nameplate: {
     /** Cuánto hay que sostener la mira encima para que salga. */
     dwellMs: 350,
@@ -5616,13 +6017,35 @@ export const ECONOMY = {
    *   lista escrita a mano es una lista donde un día se cuela algo.
    */
   catalogo: [
-    { clave: 'pulse', nombre: 'Pulse', tipo: 'arma', ranura: 'secondary', categoria: 1, codigo: 1, precio: 0, deSerie: true, disponible: true },
+    { clave: 'pulse', nombre: 'Pulse', tipo: 'arma', ranura: 'secondary', categoria: 1, codigo: 1, precio: 0, disponible: true },
+    /**
+     * **El Reaper, y es el primer artículo que compite con algo que ya llevas**
+     * (vuelta 90). Todo lo demás del catálogo llena un hueco: aquí lo que se
+     * compra es **cambiar** la pistola que te dan. Por eso su precio no se
+     * compara con el de un subfusil sino con lo que vale no gastarlo — 900 es
+     * lo que cuesta un chaleco más un casco más un poco, que es justo la
+     * decisión que tiene que doler.
+     *
+     * Y sigue sin poder comprarse en la ronda 1 porque es `arma` y ése es el
+     * techo de esa ronda (`techoRonda1`). No hace falta una excepción: con 800
+     * de saldo inicial tampoco llegaría.
+     */
+    { clave: 'reaper', nombre: 'Reaper', tipo: 'arma', ranura: 'secondary', categoria: 1, codigo: 3, precio: 900, disponible: true },
     { clave: 'volt', nombre: 'Volt', tipo: 'arma', ranura: 'primary', categoria: 3, codigo: 1, precio: 1600, disponible: true },
     { clave: 'rift', nombre: 'Rift', tipo: 'arma', ranura: 'primary', categoria: 4, codigo: 3, precio: 2900, disponible: true },
     // **La Scout cuesta más que el rifle** porque una bala al cuerpo mata a
     // quien no lleve chaleco. Y 3100 deja intacta la regla de la ronda 2: con
     // los 2700 del que pierde no llega, guarde o no los 300 del chaleco.
     { clave: 'scout', nombre: 'Scout', tipo: 'arma', ranura: 'primary', categoria: 5, codigo: 1, precio: 3100, disponible: true },
+    /**
+     * **El Titan es el artículo más caro del catálogo**, por encima del U2
+     * (4200), y el número sale de la economía y no del gusto: ganar una ronda
+     * da 3200 y perderla 2400, así que **4700 no se paga con una ronda** — hay
+     * que haber guardado, o haber encadenado dos. Un arma que mata de un tiro
+     * en cualquier zona y a través de cualquier armadura no puede ser el arma
+     * de todas las rondas; tiene que ser la de la ronda que se prepara.
+     */
+    { clave: 'titan', nombre: 'Titan', tipo: 'arma', ranura: 'primary', categoria: 5, codigo: 3, precio: 4700, disponible: true },
     /**
      * **El arco y el U2** (vueltas 85 y 86), en su propia categoría: no son
      * rifles ni francotiradores, son **armas que lanzan algo**, y meterlos con
@@ -5654,6 +6077,18 @@ export const ECONOMY = {
     { clave: 'core', nombre: 'Core', tipo: 'utilidad', ranura: 'throwable', categoria: 7, codigo: 1, precio: 300, disponible: true },
     { clave: 'ko', nombre: 'KO', tipo: 'utilidad', ranura: 'throwable', categoria: 7, codigo: 2, precio: 250, disponible: true },
     { clave: 'blind', nombre: 'Blind', tipo: 'utilidad', ranura: 'throwable', categoria: 7, codigo: 3, precio: 250, disponible: true },
+    /**
+     * **El Fang es utilidad y no arma**, y eso tiene una consecuencia que es
+     * una decisión: **cabe en la ronda 1**, como las tres granadas. Con 800 de
+     * saldo inicial, 450 es «el cuchillo o el chaleco y el casco», que es
+     * exactamente la clase de disyuntiva que esa ronda viene a ser.
+     *
+     * Cuesta más que la Core (300) porque se recupera: dos cuchillos que se
+     * pueden recoger valen más a lo largo de una ronda que dos granadas que se
+     * gastan. Y sigue costando menos que cualquier arma, porque hace falta
+     * acertar a una cabeza con una parábola.
+     */
+    { clave: 'fang', nombre: 'Fang', tipo: 'utilidad', ranura: 'throwable', categoria: 7, codigo: 5, precio: 450, disponible: true },
   ],
   /** Cómo se llama cada categoría en el panel. */
   categorias: {
@@ -5703,8 +6138,21 @@ export const ECONOMY = {
  * Aquí no puede: la regla sale de `WEAPONS[clave].slot`, que es el mismo dato
  * del que salen `PRIMARY_WEAPONS`, `SECONDARY_WEAPON` y `MELEE_WEAPON`.
  */
+let _catalogo = null
 export function catalogoDeTienda() {
-  return ECONOMY.catalogo.filter((item) => WEAPONS[item.clave]?.slot !== 'melee')
+  /**
+   * **Y «de serie» lo dice el arma, no el renglón del catálogo** (vuelta 90).
+   * Con una sola pistola daba igual escribirlo aquí; con dos, un catálogo que
+   * declarase por su cuenta cuál es gratis podría acabar diciendo una cosa
+   * distinta de la que el saneado te pone en la mano. Se sella al vuelo desde
+   * `WEAPONS[clave].deSerie`, y la lista se calcula una vez.
+   */
+  if (!_catalogo) {
+    _catalogo = ECONOMY.catalogo
+      .filter((item) => WEAPONS[item.clave]?.slot !== 'melee')
+      .map((item) => (WEAPONS[item.clave]?.deSerie ? { ...item, deSerie: true } : item))
+  }
+  return _catalogo
 }
 
 export const ROUNDS = {

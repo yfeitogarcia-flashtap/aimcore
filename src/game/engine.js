@@ -13,7 +13,7 @@
 
 import * as THREE from 'three'
 import { CSS3DRenderer } from 'three/examples/jsm/renderers/CSS3DRenderer.js'
-import { ACCURACY, ACTION_PANEL, AVATAR, CAMERA, COVER, EDITOR, FOOTSTEPS, FRAME_LIMITS, GRENADES, HELP, IMPACTS, LOOK, MELEE_WEAPON, MOVEMENT, NET, OBJECTIVE, PLAYER, PROJECTILES, RECOIL_RESET_MS, RENDER, SCOPE, SECONDARY_WEAPON, SESSION_DURATION_S, SESSION_DURATIONS, SESSION_MODES, SIM, SIM_STEP_MS, SURFACES, TARGET, TEAMS, THROWABLE_WEAPONS, TRAJECTORY, WEAPONS, weaponSpeedFactor } from '../config.js'
+import { ACCURACY, ACTION_PANEL, AVATAR, CAMERA, CLAVADAS, COVER, EDITOR, FOOTSTEPS, FRAME_LIMITS, GRENADES, HELP, IMPACTS, LOOK, MELEE_WEAPON, MOVEMENT, NET, OBJECTIVE, PLAYER, PROJECTILES, RECOIL_RESET_MS, RENDER, SCOPE, SECONDARY_WEAPON, SESSION_DURATION_S, SESSION_DURATIONS, SESSION_MODES, SIM, SIM_STEP_MS, SURFACES, TARGET, TEAMS, THROWABLE_WEAPONS, TRAJECTORY, WEAPONS, weaponSpeedFactor } from '../config.js'
 import { createScene } from './scene.js'
 import { Scenario } from './scenario.js'
 import { Scope } from './scope.js'
@@ -26,7 +26,7 @@ import { createSceneTransition } from './transition.js'
 import { LookControls } from './lookControls.js'
 import { MovementController } from './movement.js'
 import { TargetManager } from './targets.js'
-import { initAudio, playBow, playDamage, playGrenade, playRocket, playDevice, playFootstep, playHeal, playHelmetCrack, playHit, playKill, playLanding, playMelee, playObjectiveDefused, playObjectiveExplosion, playShieldCharge, playUiConfirm } from '../audio/sfx.js'
+import { initAudio, playBow, playDamage, playEquip, playGrenade, playRocket, playDevice, playFootstep, playHeal, playHelmetCrack, playHit, playKill, playLanding, playMelee, playObjectiveDefused, playObjectiveExplosion, playShieldCharge, playUiConfirm } from '../audio/sfx.js'
 import { loadWeaponSamples, playDrySound, playWeaponReload, playWeaponShot } from '../audio/samples.js'
 import { attachListener, createEmitter, detachListener, setSpatialEnabled } from '../audio/spatial.js'
 import { ActionPanel } from './actionPanel.js'
@@ -39,6 +39,7 @@ import { Impacts } from './impacts.js'
 import { Proyectiles, caidaDeArea, lanzamientoDeArma } from './proyectiles.js'
 import { Trayectoria } from './trayectoria.js'
 import { direccionDeMira } from '../../net/disparo.js'
+import { Clavadas } from './clavadas.js'
 import { VueloDeProyectiles } from './vuelo.js'
 import { SpawnCone } from './spawnCone.js'
 import { PickupField } from './pickups.js'
@@ -307,6 +308,17 @@ export class Engine {
      */
     this.proyectiles = new Proyectiles()
     this.vuelo = new VueloDeProyectiles(this.scene)
+    /**
+     * **Los cuchillos clavados** (vuelta 90). Cuelgan del mundo y no del
+     * jugador, por lo mismo que el pool de proyectiles desde la vuelta 85: un
+     * cuchillo que falló sigue ahí aunque quien lo tiró haya muerto — y eso es
+     * justo lo que lo convierte en algo a lo que volver.
+     *
+     * **En red no los planta el motor**: los planta el servidor y llegan por
+     * mensaje (ver `usarRed`). Aquí se dibujan y, en el entrenamiento, también
+     * se recogen.
+     */
+    this.clavadas = new Clavadas(CLAVADAS.pool)
     this.trayectoria = new Trayectoria(this.scene)
     /**
      * **La carga del arma de tiro curvo**, en tiempo de **mundo**: en pausa un
@@ -456,9 +468,17 @@ export class Engine {
      * tecla —la **G**— llevaba reservada sin lógica desde la vuelta 27,
      * exactamente como la 3 hasta que llegó el cuchillo en la 71.
      */
+    /**
+     * **Y desde la vuelta 90 la pistola también sale de un ajuste**, porque hay
+     * dos en su ranura. Lo que no cambia es que **siempre hay una**: la de
+     * serie es el valor de fábrica del ajuste y lo que el saneado devuelve ante
+     * cualquier clave que no sea de esta ranura, así que `slots.secondary` no
+     * puede quedarse vacío ni empuñando algo que no exista — que es justo lo
+     * que la convierte en la ranura a la que se cae cuando falla otra.
+     */
     this.slots = {
       primary: getSettings().weapon,
-      secondary: SECONDARY_WEAPON,
+      secondary: getSettings().secondary || SECONDARY_WEAPON,
       melee: MELEE_WEAPON,
       throwable: getSettings().throwable,
     }
@@ -683,6 +703,24 @@ export class Engine {
      * por detrás de la realidad todo el trayecto. Es la misma cuenta que hace
      * `poseDelRival` con el reloj de las fotos.
      */
+    /**
+     * **Y los cuchillos del mundo los pone el servidor** (vuelta 90). Los tres
+     * verbos del mensaje —plantar, quitar y limpiar— se distinguen por su
+     * forma, que es como llegan del otro lado (ver `MSG.CLAVADA`). Aquí no se
+     * decide nada: esto sólo mantiene el suelo igual al del servidor.
+     *
+     * Se encadena, como `onBienvenida` y `onEconomia`, porque la página del
+     * duelo puede querer escucharlo también: asignarlo sin encadenar se llevó
+     * por delante al motor en la vuelta 67, y es la misma trampa.
+     */
+    const suyaClavada = cliente.onClavada
+    cliente.onClavada = (m) => {
+      suyaClavada?.(m)
+      if (m.l) { this.clavadas.limpiar(); return }
+      if (m.q) { this.clavadas.quitar(m.i); return }
+      this.clavadas.plantar({ id: m.i, x: m.x, y: m.y, z: m.z, dx: m.dx, dy: m.dy, dz: m.dz })
+    }
+
     const suyoProyectil = cliente.onProyectil
     cliente.onProyectil = (m, adelantoS) => {
       suyoProyectil?.(m, adelantoS)
@@ -801,6 +839,30 @@ export class Engine {
      */
     if (inv.reserva) {
       for (const [clave, n] of Object.entries(inv.reserva)) this._reserva[clave] = n
+    }
+    /**
+     * **La pistola va primero, y el orden es la regla** (vuelta 90). Desde el
+     * Reaper la ranura secundaria también la manda el inventario, y el bloque
+     * de la principal de aquí abajo **se cae a ella** cuando te quedas sin arma
+     * larga: leerla después dejaría en la mano la pistola de la ronda anterior
+     * durante un paso, que es exactamente el hueco por el que se empuña algo
+     * que ya no se tiene.
+     *
+     * Y **comprar una pistola no te la pone en la mano**, al revés que la
+     * principal (vuelta 67) y como la granada (vuelta 87): la principal es con
+     * lo que sales a la ronda y una pistola es a lo que te cambias. Lo único
+     * que pasa si la llevabas empuñada es que la ranura cambia de arma, que es
+     * lo que esa ranura significa.
+     */
+    const pistolaAntes = this.slots.secondary
+    this.slots.secondary = inv.secundaria ?? SECONDARY_WEAPON
+    if (pistolaAntes !== this.slots.secondary) {
+      delete this._stowed[pistolaAntes]
+      if (this.slot === 'secondary') {
+        this.weaponKey = this.slots.secondary
+        this._cancelReload()
+        this._refillMagazine()
+      }
     }
     const antes = this.slots.primary
     this.slots.primary = inv.primaria ?? null
@@ -963,6 +1025,7 @@ export class Engine {
     this.impacts.dispose()
     this.dispositivos.dispose()
     this.vuelo.dispose()
+    this.clavadas.limpiar()
     this.trayectoria.dispose()
     this.spawnCone.dispose()
     this.pickups.dispose()
@@ -1119,6 +1182,23 @@ export class Engine {
       this.slots.primary = settings.weapon
       if (this.slot === 'primary') {
         this.weaponKey = settings.weapon
+        this._releaseTrigger()
+        this._cancelReload()
+        this._refillMagazine()
+      }
+    }
+    /**
+     * **Y lo mismo con la pistola** (vuelta 90). La condición de red es la de
+     * siempre y aquí importa más que en ninguna otra ranura: sin ella, tocar
+     * cualquier opción en mitad de un duelo le devolvería al jugador el Reaper
+     * guardado en su navegador aunque en esa partida no lo haya comprado.
+     */
+    if (!this.enRed && settings.secondary && settings.secondary !== this.slots.secondary) {
+      delete this._stowed[this.slots.secondary]
+      delete this._stowed[settings.secondary]
+      this.slots.secondary = settings.secondary
+      if (this.slot === 'secondary') {
+        this.weaponKey = settings.secondary
         this._releaseTrigger()
         this._cancelReload()
         this._refillMagazine()
@@ -1634,6 +1714,15 @@ export class Engine {
     this._reiniciarReservas()
     this._refillMagazine()
     this.granadas?.limpiar()
+    /**
+     * **Y el suelo se limpia de cuchillos** (vuelta 90). Va aquí, en empezar
+     * una **sesión**, y no al reaparecer: un cuchillo se queda donde cayó
+     * mientras dure la partida, que es lo que lo convierte en algo a lo que
+     * volver. Al reaparecer la reserva vuelve a fábrica y los que quedaran en
+     * el suelo siguen ahí — recogerlos no sube por encima del tope, así que no
+     * hay nada que acumular.
+     */
+    this.clavadas.limpiar()
     this._publishWeapon(getSettings())
     this._lastShotAt = -Infinity
     this._nextShotAt = -Infinity
@@ -1800,6 +1889,17 @@ export class Engine {
     const quiere = Boolean(puesta) && Boolean(this.weapon.scope)
     if (quiere === this._scopeOn) return
     this._scopeOn = quiere
+    /**
+     * **Y en red se dice, porque el destello lo tiene que ver el rival**
+     * (vuelta 90). Va aquí, en el único sitio que escribe `_scopeOn`, y no en
+     * un campo que se calcule por frame: así todos los caminos que bajan la
+     * mirilla —cambiar de arma, pausar, morir, soltar el ratón— apagan el
+     * destello sin que ninguno tenga que acordarse.
+     *
+     * **Sólo lo declaran las armas que lo llevan** (`scope.destello`): la
+     * Scout apunta en silencio, y ésa es la mitad de lo que separa a las dos.
+     */
+    if (this.enRed) this.net.mirilla = quiere && Boolean(this.weapon.scope?.destello)
     this.callbacks.onScope?.(quiere)
   }
 
@@ -2138,6 +2238,15 @@ export class Engine {
       // no se ve, y ponerle el de la brújula sería decir que tiene frente.
       instancia.facing = facingDesdeCamara(pose.yaw)
       instancia.weaponKey = this.net.rival.arma ?? instancia.weaponKey
+      /**
+       * **Y si está mirando por un visor que brilla** (vuelta 90). Es el
+       * primer campo de esta instancia que dice lo que el rival **está
+       * haciendo** y no lo que es: la brújula dice hacia dónde mira y la ficha
+       * qué lleva. Va aquí, en el adaptador, para que `markers.js` siga sin
+       * saber que al otro lado hay una red — un muñeco no lo pone nunca y su
+       * marcador sale apagado solo.
+       */
+      instancia.mirilla = this.net.rival.mirilla === true
       this._pisadasDelRival(pose)
     }
     this.markers.update(now, deltaMs, this._rivalInstancias, this.camera, _sinFase)
@@ -3397,7 +3506,15 @@ export class Engine {
     if (now < this._nextShotAt || this.reloading || this.ammo <= 0) return
     this._cargaDesde = now
     this._cargaCorta = corta
-    playBow('tensar')
+    /**
+     * **El Fang no suena, ni al armar el brazo ni al clavarse** (vuelta 90), y
+     * eso no es un detalle de mezcla: es la mitad del arma. Lo que compra un
+     * cuchillo arrojadizo es matar a alguien que no sabía que estabas ahí, y el
+     * oído es el único canal que no hay que apuntar a ninguna parte (vuelta
+     * 73) — un chasquido al tensar sería exactamente el aviso que el arma
+     * promete no dar.
+     */
+    if (!this.armaDeTiro?.clavable) playBow('tensar')
   }
 
   /**
@@ -3506,7 +3623,8 @@ export class Engine {
       this._encenderSilbido(serie)
     } else if (tiro.granada) {
       playGrenade('lanzar')
-    } else {
+    } else if (!tiro.clavable) {
+      // Ver `_empezarCarga`: el Fang es silencioso a propósito.
       playBow('soltar', carga)
     }
     /**
@@ -3784,13 +3902,6 @@ export class Engine {
     // El silbido se apaga **donde revienta**, no donde salió: es lo que
     // convierte un sonido que dura en un sonido que termina.
     this._apagarSilbido(im.serie)
-    // La marca: la misma de una bala, que es lo correcto — lo que dice es
-    // «aquí acabó un tiro», y de qué arma venía no lo cambia.
-    if (!im.porMecha) {
-      _dir.set(im.nx, im.ny, im.nz)
-      _punto.set(im.x, im.y, im.z)
-      this.impacts.spawn(_punto, _dir, this.gameTime)
-    }
     /**
      * **Lo que explota, explota** (vuelta 86), y lo dice el proyectil y no el
      * arma que tengas ahora en la mano: entre que sale y llega puedes haber
@@ -3798,6 +3909,21 @@ export class Engine {
      * con él.
      */
     const tiro = this._tiroDe(im.tipo)
+    const clavable = Boolean(tiro?.clavable)
+    // La marca: la misma de una bala, que es lo correcto — lo que dice es
+    // «aquí acabó un tiro», y de qué arma venía no lo cambia.
+    /**
+     * **Y un cuchillo no deja marca de bala: se deja a sí mismo** (vuelta 90).
+     * La estrella dice «aquí acabó un tiro» y dura 420 ms; aquí lo que queda es
+     * el cuchillo, y queda hasta que alguien lo recoja. Dibujar las dos cosas
+     * sería contar lo mismo dos veces, con la primera desmintiendo a la segunda
+     * en cuanto se apagara.
+     */
+    if (!im.porMecha && !clavable) {
+      _dir.set(im.nx, im.ny, im.nz)
+      _punto.set(im.x, im.y, im.z)
+      this.impacts.spawn(_punto, _dir, this.gameTime)
+    }
     if (tiro?.granada) {
       this._estallarGranada(im, tiro)
       return
@@ -3808,7 +3934,19 @@ export class Engine {
       return
     }
     this._emisorDispositivo.setPosition(im.x, im.y, im.z)
-    playBow('clavar', 1)
+    if (!clavable) playBow('clavar', 1)
+    /**
+     * **Acertar la gasta; fallar la deja clavada** (vuelta 90), y ésa es la
+     * regla entera del Fang. Si la hoja entra en un cuerpo se acabó —está
+     * dentro de alguien— y si se va a una pared se recupera andando por
+     * encima. No es una compensación por fallar: es lo que convierte cada
+     * lanzamiento en una apuesta con dos resultados distintos, y lo que hace
+     * que valga la pena ir a buscarla.
+     */
+    if (clavable && !im.victima) {
+      this._clavar(im)
+      return
+    }
     if (!im.victima) return
     this.hits += 1
     /**
@@ -3825,6 +3963,68 @@ export class Engine {
       this.status.onKill()
     }
     playHit()
+  }
+
+  /**
+   * **Deja el cuchillo donde ha chocado** (vuelta 90).
+   *
+   * **El rumbo con el que se dibuja es la normal de la superficie del revés**,
+   * y no la velocidad con la que llegó. Son casi lo mismo y la normal es la que
+   * está a mano —el impacto ya la trae, porque de ella sale la marca de bala—,
+   * y además da lo que se quiere ver en los dos casos que importan: en una
+   * pared, la hoja metida hacia dentro; en el suelo, clavada de punta.
+   *
+   * **En red esto no planta nada**, y es la regla de la vuelta 64 aplicada a un
+   * objeto del mundo: un cuchillo en el suelo es munición, y lo que se puede
+   * tener lo decide el servidor. Si el cliente lo plantase además por su cuenta
+   * habría dos cuchillos donde hay uno, y recoger el suyo no quitaría el del
+   * otro. Llega por `MSG.CLAVADA`, un viaje más tarde y en el sitio exacto.
+   */
+  _clavar(im) {
+    if (this.enRed) return
+    this.clavadas.plantar({
+      id: this.clavadas.nuevoId(),
+      x: im.x, y: im.y, z: im.z,
+      dx: -im.nx, dy: -im.ny, dz: -im.nz,
+      dueno: im.dueno,
+    })
+  }
+
+  /**
+   * **Recoger un cuchillo es pasar por encima** (vuelta 90), sin tecla y sin
+   * apuntar — que es exactamente lo que hacen los recogibles del escenario
+   * desde la vuelta 33, y por la misma razón: la tecla contextual ya reparte
+   * tres cosas (vuelta 83) y meterle una cuarta es como se pierde una ronda
+   * por un reflejo.
+   *
+   * Dos condiciones, y las dos son reglas:
+   *
+   * - **Hay que llevar Fang.** Recoger es **recargar, no comprar**: un arma no
+   *   se adquiere pisándola, o la tienda pasaría a ser una sugerencia. Quien no
+   *   lo ha comprado pasa por encima y no pasa nada.
+   * - **Y no se llevan más de las que se compraron.** El tope es el mismo
+   *   `reserva.maxima` de siempre, así que tirar dos y recoger las dos te deja
+   *   como estabas y nunca por encima.
+   *
+   * En red no corre: ahí lo decide el servidor, que es quien lleva el
+   * inventario (vuelta 64) y el único que sabe dónde están los dos jugadores.
+   */
+  _recogerClavada() {
+    if (this.enRed || this.clavadas.vivas === 0) return
+    const clave = this._granadas.find((g) => WEAPONS[g]?.tiro?.clavable)
+    if (!clave) return
+    const r = WEAPONS[clave].tiro.reserva
+    if (this.reservaDe(clave) >= r.maxima) return
+    const p = this.camera.position
+    const id = this.clavadas.alAlcanceDe(p.x, this.movement.feetY, p.z)
+    if (!id) return
+    this.clavadas.quitar(id)
+    this._reserva[clave] = Math.min(r.maxima, this.reservaDe(clave) + 1)
+    // **Y suena**, porque recogerlo es lo único del arma que sí tiene que
+    // oírse: el silencio es del lanzamiento, no de la recompensa. Es la voz de
+    // recoger equipo, la misma de la utilidad en la tienda (vuelta 73).
+    playEquip('utilidad')
+    this._publishWeapon(getSettings())
   }
 
   /**
@@ -4085,6 +4285,7 @@ export class Engine {
      */
     this._dibujarTrayectoria()
     this.vuelo.update(this.proyectiles)
+    this.vuelo.updateClavadas(this.clavadas, this.gameTime)
     this._moverSilbidos()
     // Con el reloj del mundo, como las marcas de bala (vuelta 64): en pausa una
     // ceguera se queda quieta en vez de gastarse mirando el menú.
@@ -4292,6 +4493,13 @@ export class Engine {
      * como todo lo que cuelga de `gameTime`.
      */
     this._pasoDeProyectiles(stepMs / 1000)
+    /**
+     * **Y se recoge lo que haya debajo, en el paso y no en el frame** (vuelta
+     * 90): con el jugador ya movido, y sesenta veces por segundo pase lo que
+     * pase con el monitor. En pausa no se recoge nada, que es lo que hace
+     * `_simStep` con todo lo demás del mundo desde la vuelta 44.
+     */
+    this._recogerClavada()
 
     // Dianas y explosivo son del entrenamiento: en red no hay ni una cosa ni
     // otra, y el combate lo sustituye el estado que llega del servidor.

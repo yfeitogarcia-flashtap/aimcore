@@ -437,7 +437,8 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
           </span>
           <span className="field__hint">
             Se equipa en la <strong>armería</strong> (tecla {armouryKey}), con la{' '}
-            {WEAPONS[SECONDARY_WEAPON].label} siempre encima en la tecla 2.
+            {WEAPONS[settings.secondary]?.label ?? WEAPONS[SECONDARY_WEAPON].label} encima en la
+            tecla 2 — que desde la vuelta 90 también se elige ahí.
           </span>
           {/* El silenciador dejó de ser un interruptor del jugador en la vuelta
               43: hay uno por arma y viven en su ficha de la armería, donde

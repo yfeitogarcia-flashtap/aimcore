@@ -27,11 +27,12 @@ Abre la URL que imprime Vite, haz click en el canvas y a disparar.
 - **Click** sobre el canvas: captura el ratón (Pointer Lock) y arranca la sesión.
 - **Click izquierdo**: disparar.
 - **R**: recargar. Funciona también con el cargador a medias.
-- **1** saca el arma principal y **2** la pistola, que se lleva siempre. **Q**
-  alterna entre las dos.
+- **1** saca el arma principal y **2** la pistola. **Q** alterna entre las dos.
+  Las dos se eligen en la armería; la pistola de serie es la Pulse y va sin
+  pagar.
 - **TAB** (mantenida): marcador de la sesión — bajas, muertes, precisión y KD.
-- **B**: abre la **armería** — el panel donde se elige y se equipa el arma
-  principal. Jugando, **pausa** igual que Escape.
+- **B**: abre la **armería** — el panel donde se eligen y se equipan el arma
+  principal, la pistola y la granada. Jugando, **pausa** igual que Escape.
 - **V** conmuta el silenciador, **E** es la acción contextual y **4** aplica una
   carga de escudo. Todo esto se reasigna — ver *Controles reasignables*.
 - La **acción contextual** reparte tres cosas, y siempre en este orden: dentro
@@ -386,14 +387,17 @@ panel abierto eres un blanco.
 
 **Se compra de dos formas, y las dos valen igual:** pinchando el artículo, o
 tecleando su **combinación** — categoría y código, que van escritos en la esquina
-de cada ficha. La Pulse es `1 1`, la Volt `3 1` y la Rift `4 3`. Los códigos
+de cada ficha. La Pulse es `1 1`, el Reaper `1 3`, la Volt `3 1`, la Rift `4 3`,
+el Titan `5 3` y el Fang `7 5`. Los códigos
 dejan huecos a propósito para las armas que faltan: cuando lleguen, lo que ya te
 sabes no cambiará de sitio.
 
 **Con el arma en la mano, el clic derecho pone y quita el silenciador.** No
 cuesta dinero, no está en la tienda y se puede hacer en cualquier momento — es
 tu arma, no un accesorio que se compra. Lo dicen las fichas de la Pulse, la Volt
-y la Rift, que son las tres que lo admiten.
+y la Rift, que son las tres que lo admiten. En las que llevan **mirilla** —la
+Scout y el Titan— ese mismo clic apunta, que es la otra cosa que puede haber
+detrás de ese botón.
 
 **El cuchillo tampoco se compra:** el Vanta va contigo siempre, en cualquier
 mapa, como la pistola.
@@ -1550,7 +1554,7 @@ cambiar de tipo o de tamaño nunca cae dentro del bucle de render.
 
 ## Armas
 
-Seis armas, en el bloque `WEAPONS` de `config.js`. Se llamaban **Scalar-2,
+Trece armas, en el bloque `WEAPONS` de `config.js`. Se llamaban **Scalar-2,
 Axis-7 y Vertex-9** hasta la vuelta 41: el renombrado no tocó ni una estadística,
 y si tenías una elegida, sigue elegida — el ajuste guardado con el nombre viejo
 se traduce al nuevo en vez de caer al valor de fábrica.
@@ -1558,15 +1562,85 @@ se traduce al nuevo en vez de caer al valor de fábrica.
 | arma | ranura | modo | RPM | cargador | recarga | silenciador | peso | marcha | carácter del retroceso |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | **Pulse** | pistola (**2**) | semi | 500 | 18 | 1.2 s | sí | 1.1 kg | 6.50 u/s | ninguno — se dispara como antes de que hubiera armas |
+| **Reaper** | pistola (**2**) | semi | 150 | 6 | 2.4 s | **no** | 1.8 kg | 6.23 u/s | revólver: una patada sola y grande, 1.8° de golpe |
 | **Rift** | principal (**1**) | auto | 600 | 30 | 2.3 s | sí | 3.6 kg | 5.41 u/s | rifle: subida vertical marcada los primeros ocho disparos, luego deriva a la izquierda |
 | **Volt** | principal (**1**) | auto | 800 | 25 | 1.8 s | sí | 2.6 kg | 5.86 u/s | SMG: patada más inmediata pero la mitad de techo vertical, y más bamboleo lateral que vertical |
 | **Scout** | principal (**1**) | semi | 48 | 10 | 2.6 s | **no** | 3.2 kg | 5.59 u/s | francotirador: una patada sola y grande, 2.4° de golpe |
 | **Bow** | principal (**1**) | **carga** | 80 | 12 | 2.2 s | **no** | 2.8 kg | 5.77 u/s | arco: un empujón corto hacia arriba, lo que sacude una cuerda |
 | **U2** | principal (**1**) | semi | 40 | 1 + reserva | 2.0 s | **no** | 5.4 kg | 4.88 u/s | lanzacohetes: una patada sola y grande, más que la Scout |
+| **Titan** | principal (**1**) | semi | 24 | 5 | 4.0 s | **no** | 6.5 kg | 4.88 u/s | francotirador pesado: una coz de 3.8°, y no se vuelve a ver en 2.5 s |
 | **Vanta** | cuchillo (**3**) | — | — | — | — | no | 0.6 kg | 6.50 u/s | cada golpe empuja la cámara: el flojo poco, el fuerte el doble |
 | **Core** | granada (**G**) | **carga** | 50 | 1 + 1 | 1.2 s | **no** | 0.5 kg | 6.50 u/s | el empujón de tirar algo: pequeño y hacia arriba |
 | **Blind** | granada (**G**) | **carga** | 50 | 1 + 1 | 1.2 s | **no** | 0.5 kg | 6.50 u/s | el mismo |
 | **KO** | granada (**G**) | **carga** | 50 | 1 + 1 | 1.2 s | **no** | 0.5 kg | 6.50 u/s | el mismo |
+| **Fang** | granada (**G**) | **carga** | 60 | 1 + 2 | 0.9 s | **no** | 0.4 kg | 6.50 u/s | el empujón de lanzar una hoja: pequeño y hacia arriba |
+
+### Reaper, el revólver
+
+**La alternativa de pago a la Pulse**, en la misma ranura y con la misma tecla
+**2**. No es mejor: es otra cosa. La Pulse es fiable —dieciocho balas, sin
+retroceso, quinientas por minuto— y el Reaper es de precisión: **seis tiros, uno
+cada 400 ms**, una patada que hay que compensar y una recarga del doble.
+
+A cambio, cada bala pesa: **70 al torso** contra los 50 de la Pulse, o sea **dos
+al cuerpo sin chaleco y tres con él**. Y lo único que hace que ningún arma corta
+hace: **atraviesa el casco**, así que a la cabeza mata de una lleve el otro lo
+que lleve. El chaleco sí lo para.
+
+Es además la **primera pistola que cuesta velocidad** (6.23 u/s contra 6.50), y
+eso no rompe la regla de que la pistola es gratis: la regla dice que lo que se
+lleva **sin elegir** no puede costar, y el Reaper se elige y se paga. En el duelo
+cuesta **900** y, como es un arma, no cabe en la ronda 1.
+
+### Titan, el francotirador pesado
+
+**El escalón de arriba de la Scout**, y lo que hace cabe en una frase: **una
+bala a cualquier parte del cuerpo mata, lleves lo que lleves**. Atraviesa
+chaleco y casco. Las piernas también.
+
+Los tres precios se pagan antes de disparar:
+
+- **2500 ms entre tiros**, el doble que la Scout. Fallar es regalar dos segundos
+  y medio a quien tienes delante.
+- **4.88 u/s**, el suelo del peso: se anda un 25% más despacio que con la
+  pistola y un 13% más que con la Scout.
+- **Y un destello de mira que el rival ve.** Mientras apuntas, quien te mire ve
+  una raya de luz donde está tu cabeza. Es lo único del juego que le cuenta a
+  otro lo que estás haciendo, y es lo que hace que un arma que mata de un tiro
+  sea justa: se puede ver venir. **La Scout no lo tiene** — apunta en silencio,
+  y ésa es la mitad de lo que las separa.
+
+La mirilla amplía **5.1×** (14° de encuadre) contra los 3.2× de la Scout. En el
+duelo cuesta **4700**, el artículo más caro del catálogo: ganar una ronda da
+3200, así que no se paga con una — hay que haber guardado.
+
+### Fang, el cuchillo arrojadizo
+
+**Se lanza, se gasta y se queda en el suelo donde cayó.** No es el Vanta: el
+Vanta se lleva siempre y no se agota nunca. El Fang ocupa la ranura de la
+granada —la **G**— y compite con ellas por el tope de dos clases, que es
+justamente la decisión.
+
+Se lanza **cargando**, como una granada, y **sólo con el clic izquierdo**: el
+clic derecho de una granada existe para dejarla caer a tus pies, y un cuchillo a
+tus pies no sirve de nada. Apuntando plano llega a **11.7 u** sin cargar y a
+**21.3** cargado del todo (450 ms).
+
+**Al cuerpo no es gran cosa** —35 sin cargar, 60 a tope, o sea dos sin chaleco y
+tres con él, que es todo lo que llevas—. **A la cabeza mata de uno.** Con casco
+hacen falta dos: el Fang no perfora nada.
+
+**Y es silencioso**, al armar el brazo y al clavarse. Es lo que compra: matar a
+alguien que no sabía que estabas ahí.
+
+**Acertar lo gasta; fallar lo deja clavado.** Si la hoja entra en un cuerpo se
+acabó. Si se va a una pared, se queda ahí a la vista hasta que empiece la ronda
+siguiente — y **se recoge pasando por encima**, sin tecla. Llevas tres por vida
+y no se reponen matando: se reponen yendo a por ellos, y nunca pasas de los que
+compraste. Si no llevas Fang, pasar por encima de uno no hace nada: recogerlo es
+recargar, no comprar.
+
+En el duelo cuesta **450** y, como es utilidad, **cabe en la ronda 1**.
 
 ### Vanta, el cuchillo
 
@@ -1798,14 +1872,18 @@ aciertes.
 No hay precios ni botón de comprar. Comprar depende de rondas y de una economía
 que todavía no existen.
 
-### Dos ranuras: la principal se elige, la pistola se lleva
+### Dos ranuras: la principal y la pistola, las dos se eligen
 
-Se sale siempre con **dos armas**: la principal, que se equipa en la armería y
-sale con la tecla **1**, y la **Pulse**, que va siempre encima y sale con la
-**2**. **Q** alterna entre las dos. Por eso la Pulse **no tiene botón de
-equipar**: ya la llevas, y ofrecerla también como principal sería ofrecer llevar
-dos pistolas. La ranura la declara cada arma (`WEAPONS[x].slot`), así que no hay
-una segunda lista que se pueda quedar vieja.
+Se sale siempre con **dos armas**: la principal, con la tecla **1**, y la
+pistola, con la **2**. **Q** alterna entre las dos. Las dos se equipan en la
+armería — la pistola también **desde la vuelta 90**, porque desde el Reaper hay
+dos en esa ranura. La que no tiene botón es la del cuchillo: es la única ranura
+que sigue teniendo un arma sola, y una ranura sin elección no necesita botón.
+
+**La pistola de serie es la Pulse**, y ésa es la que se lleva sin pagar y la que
+queda cuando pierdes el equipo. La ranura la declara cada arma
+(`WEAPONS[x].slot`), así que no hay una segunda lista que se pueda quedar
+vieja.
 
 **Cada arma lleva su propio cargador y su propia recarga**, y la que dejas atrás
 se congela tal cual estaba. Una recarga a medias **no avanza en segundo plano**:

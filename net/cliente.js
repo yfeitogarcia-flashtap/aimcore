@@ -133,7 +133,7 @@ export class ClienteRed {
      * que la cadencia del arma. `techo` es la lista de tipos comprables en la
      * ronda 1, o `null` si no hay techo.
      */
-    this.economia = { dinero: 0, inv: { primaria: null, granadas: [], supresor: {}, escudo: 0, casco: false }, techo: null, compra: 0 }
+    this.economia = { dinero: 0, inv: { primaria: null, secundaria: null, granadas: [], supresor: {}, escudo: 0, casco: false }, techo: null, compra: 0 }
     /** ¿La partida tiene economía? Lo dice la bienvenida. */
     this.conEconomia = false
     /** Aviso de que la economía ha cambiado: lo escuchan el panel y el motor. */
@@ -175,7 +175,22 @@ export class ClienteRed {
     this._frenados = 0
 
     /** Fotos del rival, para dibujarlo en el pasado. */
-    this.rival = { id: null, buffer: [], pose: null, arma: null, vida: 100 }
+    this.rival = { id: null, buffer: [], pose: null, arma: null, vida: 100, mirilla: false }
+    /**
+     * **Si estoy mirando por un visor de los que brillan** (vuelta 90). Lo
+     * escribe el motor al poner y quitar la mirilla, y viaja en cada entrada
+     * como el arma: es lo único del protocolo que cuenta lo que este jugador
+     * está **haciendo** y no dónde está.
+     *
+     * Y va como **flanco declarado y no deducido**: el servidor no tiene forma
+     * de saber que alguien ha apretado el botón derecho, igual que no sabe que
+     * está tensando un arco (vuelta 87). Lo que sí hace es no creerse un
+     * destello de un arma que no lo lleva, que es lo que impide pintarle uno
+     * falso al rival; **ocultarlo** sí es posible desde un cliente modificado,
+     * y ése es el precio conocido de que la mirilla sea del cliente desde la
+     * vuelta 70.
+     */
+    this.mirilla = false
     /** La última pose autoritativa del jugador local, para el fantasma. */
     this.autoritativo = null
 
@@ -422,6 +437,9 @@ export class ClienteRed {
        */
       w: WEAPON_ORDER.indexOf(this.arma),
     }
+    // **Y sólo cuando la hay**: lo que vale su valor de fábrica no viaja
+    // (vuelta 83), así que una entrada normal pesa exactamente lo que pesaba.
+    if (this.mirilla) entrada.z = 1
     if (d) entrada.d = d
 
     this._aplicar(entrada)
@@ -646,6 +664,15 @@ export class ClienteRed {
       this.onProyectil?.(mensaje, Math.max(0, (this.paso - mensaje.n) * SIM_STEP_MS / 1000))
       return
     }
+    /**
+     * **Un cuchillo del mundo** (vuelta 90). No se adelanta como un proyectil:
+     * lo que llega ya está quieto, así que el viaje no le ha hecho nada. Se
+     * pasa tal cual a quien dibuja el mundo, que es el motor.
+     */
+    if (mensaje.t === MSG.CLAVADA) {
+      this.onClavada?.(mensaje)
+      return
+    }
     if (mensaje.t === MSG.ADIOS) {
       this._desconectar(mensaje.razon || 'el servidor ha cerrado la partida', true)
       return
@@ -868,6 +895,9 @@ export class ClienteRed {
       // etiqueta. La ficha flotante la lee y el HUD no la mira.
       this.rival.vida = foto.p[id].vida
       this.rival.arma = foto.p[id].arma ?? this.rival.arma
+      // El destello es una etiqueta, como el arma: no se interpola, se lee de
+      // la última foto. Su retraso es el del resto de lo que se sabe del rival.
+      this.rival.mirilla = foto.p[id].mir === 1
     }
 
     const mio = foto.p[this.id]
