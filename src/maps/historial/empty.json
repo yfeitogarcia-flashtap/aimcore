@@ -1,0 +1,6 @@
+{
+  "clave": "empty",
+  "versiones": [
+    {"instante":"2026-09-22T15:27:19.924Z","comentario":"cambio nombre mapa","mapa":{"clave":"empty","label":"Entrenamiento con dianas","room":{"width":80,"depth":80,"height":16},"spawn":{"x":0,"z":0},"boxes":[],"ramps":[],"prismas":[],"tubos":[],"ventiladores":[],"tirolinas":[],"spawnZone":[],"teletransportes":[],"anchors":[]}}
+  ]
+}
