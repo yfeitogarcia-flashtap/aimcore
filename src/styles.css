@@ -1818,7 +1818,24 @@ body {
    navegador y no hay número que mantener. */
 .armoury__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(212px, 1fr));
+  /* **Y el ancho mínimo lo pone cuántas armas tiene la categoría más grande**
+     (vuelta 93). La 92 lo dejó en 212 px para que los valores se partieran menos,
+     y eso era correcto con cinco primarias: con el Krakov dentro son **seis**, y
+     a 212 la sexta ficha se iba a una segunda fila —en las cuatro resoluciones
+     medidas, porque el panel está acotado a 1240 px y no depende de la ventana—.
+     Una segunda fila rompe lo único que este panel promete: **con `subgrid` cada
+     fila de fichas se alinea por su cuenta**, así que la sexta arma dejaba de
+     poder compararse con las otras cinco, y de paso el panel pasaba de 1030 a
+     1309 px de alto y estrenaba rueda en todas las resoluciones.
+
+     180 sale de la cuenta y no de un número redondo: la rejilla mide 1158 px a
+     1920 y **1150 a 1280** —el panel se estrecha ocho píxeles ahí—, y seis fichas
+     con cinco huecos de 10 dan 183.3. Con 184 cuadraba en tres resoluciones y se
+     iba a dos filas en la cuarta **por cuatro píxeles**, que es exactamente la
+     clase de número que hay que medir en las cuatro y no en una. Si un día una
+     categoría tiene siete, esto se vuelve a calcular — o se acepta la segunda
+     fila y se dice que ahí ya no se compara. */
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   /* Seis filas de ficha **más las seis de estadística** (vuelta 89; eran cinco
      desde la 71). Las filas de estadística **son filas de la rejilla**, así que
      un valor que ocupe dos líneas empuja el suyo en las once fichas y no sólo
@@ -1934,6 +1951,28 @@ body {
   letter-spacing: 0.1em;
   text-transform: uppercase;
   color: var(--text-muted);
+}
+
+/* **La combinación, en la misma fila que el precio** (vuelta 93). No gasta una
+   fila de la rejilla a propósito: son dos cifras y ya hay once filas
+   compitiendo por el alto del panel (vuelta 89). Apagada, porque lo que se
+   compara de un vistazo es el precio y esto se busca cuando se busca. */
+.armoury__combo {
+  float: right;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+}
+
+/* Lo tecleado, como en la tienda del duelo: sin esto teclear dos cifras y que
+   no pase nada es indistinguible de un atajo que no existe. */
+.armoury__tecleado {
+  margin: 0 0 8px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: var(--action-color);
 }
 
 /* **El raíl de ranuras** (vuelta 92), la lista de lo que hay, siempre puesta.

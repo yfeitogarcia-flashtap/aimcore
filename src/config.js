@@ -2154,6 +2154,128 @@ export const WEAPONS = {
       },
     },
   },
+
+  /**
+   * **El Krakov: el retroceso más difícil del arsenal** (vuelta 93).
+   *
+   * Es la primera arma que se diseña **desde su patrón** y no desde sus
+   * números: lo que la define no es cuánto quita, es que aprender su curva es
+   * la mecánica. De ahí sale todo lo demás, y por eso conviene leerlo junto:
+   *
+   * - **El cuerpo pega como la Rift** (`damageScale` sin declarar, o sea 1: 50
+   *   al torso, dos al cuerpo pelado y tres con chaleco). No se le sube el
+   *   daño, y eso es deliberado: un arma difícil de controlar que además pegue
+   *   más no es difícil, es obligatoria. Lo que se paga por dominarla se cobra
+   *   **arriba**, en la cabeza.
+   * - **Y la cabeza atraviesa el casco** (`perforaArmadura: 'casco'`, la regla
+   *   de la vuelta 90). Como la cabeza vale 100 de 100 y no se escala nunca
+   *   (vuelta 70), eso **es** «mata de un tiro a la cabeza lleves lo que
+   *   lleves» sin tocar un solo número de daño — que es literalmente lo que se
+   *   pidió («mortal tiro a tiro en la cabeza»). El Reaper hace lo mismo con
+   *   seis balas y 400 ms entre ellas; aquí son treinta a 600 RPM, y lo que
+   *   impide que eso sea gratis es que **a esa cadencia la mira no está donde
+   *   la dejaste**.
+   * - **No admite silenciador**, como los dos francotiradores y la escopeta. No
+   *   es una limitación inventada: su referencia no trae variante `ghost-`, y
+   *   una silueta que no existe es un interruptor que enseñaría el arma
+   *   equivocada (vuelta 43).
+   * - **Y su precisión se juzga contra 0.32**, el objetivo más bajo del
+   *   arsenal. Es para lo que existe `precisionTarget` (vuelta 34): medir en
+   *   bruto castigaría elegir el arma difícil, que es justo lo contrario de lo
+   *   que esta arma viene a ofrecer.
+   */
+  'krakov': {
+    label: 'Krakov',
+    character: 'rifle de asalto',
+    /** Ver `slot` de Pulse. */
+    slot: 'primary',
+    mode: 'auto',
+    rpm: 600,
+    magazine: 30,
+    /**
+     * **La recarga más larga de las principales** (2900 ms contra los 2300 de
+     * la Rift). Es el segundo precio del arma y va donde se nota: con un patrón
+     * que obliga a soltar el gatillo para recolocarse, quedarse sin cargador a
+     * media pelea es una decisión de verdad.
+     */
+    reloadMs: 2900,
+    supportsSuppressor: false,
+    /** Ver `precisionTarget` de Pulse. El más bajo: es el arma más difícil. */
+    precisionTarget: 0.32,
+    /**
+     * **Y el chaleco le come menos que a la Rift** (0.38 contra 0.45), que es
+     * lo único que la separa de ella al cuerpo. Lo que compra no es matar en
+     * menos balas —está medido en `krakov93` y son las mismas— sino dejar al
+     * rival más bajo cuando la ráfaga se corta, que es el resultado normal de un
+     * arma que hay que soltar cada tres o cuatro tiros.
+     */
+    shieldAbsorb: 0.38,
+    /**
+     * **Peso, en kilos.** La más pesada de las automáticas: **5.23 u/s** contra
+     * los 5.41 de la Rift y los 5.86 de la Volt, y por encima sólo la escopeta
+     * (5.13) y los dos que van al suelo del peso. Tercer precio, y el que se
+     * paga andando hacia el sitio.
+     */
+    weight: 4.0,
+    /**
+     * **La T invertida, y las cuatro fases son las cuatro que se pidieron.**
+     *
+     * Lo que describe este patrón es exactamente lo que hay que aprender:
+     *
+     * 1. **Las cinco primeras suben en recto** (pitch grande, yaw casi cero):
+     *    6.1° de subida sin desviarse, o sea el palo vertical de la T. Es el
+     *    tramo que decide un intercambio a media distancia, y es el único que
+     *    se puede tirar sin haber practicado.
+     * 2. **De la sexta a la décima sigue subiendo y se va a la izquierda**
+     *    (yaw positivo es izquierda): la subida se apaga —de 1.2° a 0.28° por
+     *    bala— mientras la deriva se abre hasta 1.9°. Ahí está la curva que hay
+     *    que compensar tirando abajo y un poco a la derecha.
+     * 3. **Pasada la décima la vertical se estabiliza y el tiro se va a la
+     *    derecha** (yaw negativo, 2.2° en cinco balas), con el pitch ya por
+     *    debajo de 0.2°: el travesaño de la T. Aquí se arrastra el ratón a la
+     *    izquierda casi sin vertical.
+     * 4. **Y de ahí al final alterna**, que es la cola: ±0.4° de yaw con el
+     *    pitch a cero.
+     *
+     * Techo vertical **9.6°**, el más alto del arsenal (la Rift llega a 7.2 y
+     * la Volt a 3.9). Punto de partida, y de los que **hay que calibrar
+     * jugando**: un patrón que no se puede compensar no es difícil, es
+     * aleatorio, y eso sólo se distingue con las manos.
+     */
+    recoil: [
+      [1.15, 0.00],
+      [1.20, 0.02],
+      [1.25, -0.02],
+      [1.30, 0.01],
+      [1.20, 0.03],
+      [1.00, 0.22],
+      [0.80, 0.34],
+      [0.60, 0.42],
+      [0.42, 0.46],
+      [0.28, 0.44],
+      [0.16, -0.30],
+      [0.10, -0.46],
+      [0.06, -0.52],
+      [0.04, -0.50],
+      [0.03, -0.44],
+      [0.02, 0.40],
+      [0.02, -0.38],
+    ],
+    /**
+     * La cola son los **dos últimos pasos**, que ya alternan el signo: en bucle
+     * eso es el vaivén izquierda/derecha que se pidió, con la vertical apagada.
+     * Y nunca se detiene, que es la regla de la vuelta 61 — un arma que se
+     * autocontrola sobre el disparo 17 es un láser, y eso ya pasó con la Rift.
+     */
+    recoilLoopFrom: 15,
+    /**
+     * **Atraviesa el casco y nada más.** Vive en `encajarImpacto` junto a la
+     * puñalada por la espalda y no en un número (vuelta 90): un daño grande a
+     * la cabeza lo pararía **justo el casco que se quiere atravesar**. Y no lo
+     * rompe, porque lo que no para no se gasta.
+     */
+    perforaArmadura: 'casco',
+  },
 }
 
 /**
@@ -3448,6 +3570,43 @@ export const COVER = {
     atalaya: '#D2D2D2',
   },
 
+  /**
+   * **La paleta cerrada de tintes de pieza** (vuelta 93), y por qué es cerrada.
+   *
+   * Se pidió poder darle color a una pieza, y con la propuesta ya hecha: una
+   * paleta en vez de RGB libre, porque los colores que **ya significan algo** no
+   * pueden acabar en una pared. Eso es correcto y es la mitad; la otra mitad es
+   * lo que no se ve al pedirlo — **el gris de una pieza no es estética, es su
+   * altura** (vuelta 40), y el jugador aprende a leerlo. Un color libre se lleva
+   * por delante esa lectura sin avisar.
+   *
+   * Así que un tinte **no sustituye al gris: lo tiñe**. Lo que se cambia es el
+   * tono; la claridad la sigue poniendo la altura, así que dentro de un mismo
+   * tinte una pieza alta sigue siendo más clara que una baja y la rampa de la
+   * vuelta 40 sigue en pie **dígito a dígito en luminancia** (medido en
+   * `paleta93`). De ahí sale la forma de esta tabla: son **tonos**, no colores
+   * finales, y la claridad que traen escrita aquí sólo sirve para sacarles el
+   * tono.
+   *
+   * Y lo que queda fuera es lo que está cogido (`COLORS`): el naranja de las
+   * dianas, el rojo de que te disparan, el verde de acción, el ámbar del
+   * explosivo, el amarillo limón de que te han visto, el azul eléctrico de la
+   * carga, el amarillo de los dispositivos, los dos de equipo y el blanco del
+   * destello de mira. Lo que hay aquí son **tonos de material**: apagados, de
+   * saturación baja, la clase de color que tiene una pared y no una señal. El
+   * banco lo comprueba en CIELAB contra los reservados, que es donde una
+   * diferencia de color se parece a lo que ve un ojo (vuelta 49).
+   */
+  tintes: {
+    pizarra: '#3A4450',
+    musgo: '#3E4A3A',
+    tierra: '#4A4038',
+    vino: '#4A3438',
+    indigo: '#3A3A52',
+    arena: '#4E4A3E',
+    hueso: '#6E6A64',
+  },
+
   /** Aristas: un tono por encima del relleno, para que el bloque tenga borde. */
   edgeLighten: 0.42,
   edgeOpacity: 0.55,
@@ -3563,8 +3722,54 @@ export function coverColor(kind) {
   return COVER.colors[mejor]
 }
 
-export function coverEdgeColor(kind) {
-  const hex = coverColor(kind)
+/** Luminancia relativa de un hex sRGB, en lineal. La de la norma. */
+function luminanciaDe([r, g, b]) {
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b
+}
+
+const aLineal = (hex) => {
+  const v = parseInt(hex.slice(1), 16)
+  return [16, 8, 0].map((shift) => SRGB_TO_LINEAR(((v >> shift) & 255) / 255))
+}
+
+const aHex = (lineal) => `#${lineal
+  .map((c) => Math.round(Math.min(1, Math.max(0, LINEAR_TO_SRGB(c))) * 255).toString(16).padStart(2, '0'))
+  .join('')}`
+
+/**
+ * **El color de una pieza con tinte: el gris de su altura, con otro tono**
+ * (vuelta 93).
+ *
+ * La cuenta es una multiplicación en **lineal** por el tinte **normalizado a
+ * luminancia 1**, y eso no es un detalle de implementación: es lo que hace que
+ * la luminancia del resultado sea **exactamente** la del gris que le tocaba por
+ * altura. O sea que la rampa de la vuelta 40 sigue diciendo la altura, con tinte
+ * y sin él, y lo único que cambia es el tono.
+ *
+ * Lo que se paga, y está medido: con los grises más claros del vocabulario un
+ * canal puede pasarse de 1 y hay que acotarlo, y ahí la luminancia se queda un
+ * pelo por debajo de la exacta. Por eso los tintes de la paleta son de
+ * saturación baja — no sólo porque un color de material lo sea, sino porque a
+ * más saturación más se recorta arriba. `paleta93` imprime el error de cada
+ * pareja tinte×altura.
+ *
+ * Un tinte desconocido devuelve el gris tal cual: un mapa escrito a mano con un
+ * nombre mal escrito se dibuja como siempre en vez de no dibujarse.
+ */
+export function coverTintedColor(kind, tinte) {
+  const gris = COVER.tintes[tinte] ? coverColor(kind) : null
+  if (!gris) return coverColor(kind)
+  const grisL = aLineal(gris)
+  const objetivo = luminanciaDe(grisL)
+  const tinteL = aLineal(COVER.tintes[tinte])
+  const suya = luminanciaDe(tinteL)
+  if (!(suya > 0) || !(objetivo > 0)) return gris
+  const k = objetivo / suya
+  return aHex(tinteL.map((c) => c * k))
+}
+
+export function coverEdgeColor(kind, tinte = null) {
+  const hex = tinte ? coverTintedColor(kind, tinte) : coverColor(kind)
   const value = parseInt(hex.slice(1), 16)
   let out = ''
   for (const shift of [16, 8, 0]) {
@@ -4007,6 +4212,38 @@ export const TUBES = {
 }
 
 /**
+ * **La escalera prefabricada** (vuelta 93). La segunda macro del formato: **un**
+ * objeto que `Scenario` despliega en escalones al montar
+ * (`src/maps/escalera.js`). Los topes son del formato, como los de `SALA` y los
+ * del tubo: un número fuera de rango no llega al juego venga del editor o de un
+ * fichero escrito a mano.
+ *
+ * **El número de escalones no se acota por gusto: se acota por abajo por la
+ * física.** Cada escalón tiene que medir menos que `COVER.stepHeight` o no se
+ * sube andando, así que pedir cinco para dos metros y medio da trece — y el
+ * editor lo dice. Lo que hay aquí es el techo, para que una escalera no sean
+ * doscientas cajas.
+ */
+export const ESCALERAS = {
+  anchoMin: 0.5,
+  anchoMax: 24,
+  altoMin: 0.25,
+  altoMax: 30,
+  /** La huella: lo que mide un escalón hacia delante. Menos de 0.2 no se pisa. */
+  huellaMin: 0.2,
+  huellaMax: 4,
+  escalonesMin: 1,
+  escalonesMax: 80,
+  /**
+   * Nace con la altura de una plataforma (2.6) porque es la cobertura a la que
+   * más falta hace subir, y con una huella de 0.6 — un escalón que se pisa sin
+   * pensarlo. Con `COVER.stepHeight` a 0.25 eso sale en **once escalones**, así
+   * que los 4 declarados se suben solos y el panel lo cuenta.
+   */
+  porDefecto: { x: 0, z: 0, ancho: 3, alto: 2.6, escalones: 4, huella: 0.6, rumbo: 0, base: 0 },
+}
+
+/**
  * **Los tiradores de la pieza elegida** (vuelta 79). Van aparte de `EDITOR`
  * porque son del gesto y no de la prueba: `EDITOR` es lo que se enciende para
  * medir jugando, y esto es cómo se agarra una caja.
@@ -4028,6 +4265,25 @@ export const GIZMO = {
   distanciaDeReferencia: 25,
   /** Y no crecen sin fin: de cerca son un cubo, no un edificio. */
   escalaMax: 4,
+  /**
+   * **Y tampoco pueden ser más grandes que la pieza que agarran** (vuelta 93).
+   * Conservar el tamaño en pantalla es correcto y es la mitad de la regla: el
+   * tirador de 0.45 u de la vuelta 79 mide más que una plataforma de
+   * dispositivo —que nace con 0.2 de alto y cabe en un metro de lado— así que
+   * los seis tapaban la pieza y pincharla para moverla era pinchar un tirador.
+   *
+   * Un tirador no pasa de esta fracción de la dimensión más corta de la pieza.
+   * La escala de cámara sigue mandando mientras quepa; cuando no cabe, manda
+   * la pieza.
+   */
+  fraccionDePieza: 0.34,
+  /**
+   * Y con suelo, porque el tope de arriba tiene que poder ser agarrado: una
+   * pieza de 0.2 daría un tirador de 7 cm y eso a veinte unidades no se pincha.
+   * Por debajo de aquí se admite tapar algo de la pieza antes que dejar una
+   * manija inservible.
+   */
+  escalaMin: 0.4,
 }
 
 /**
@@ -4111,6 +4367,76 @@ export const FONDOS = {
  * pasa a ser un objeto con su ruta, así que «este mapa depende de un archivo»
  * no hay que deducirlo de nada.
  */
+/**
+ * **Los estampados: logos a color sobre una superficie** (vuelta 93).
+ *
+ * Es **el primer asset externo que entra en el build**, y eso es una decisión de
+ * producto con su precio, no un detalle. Va escrita aquí porque de aquí cuelgan
+ * los límites que la hacen soportable.
+ *
+ * **Por qué se admite la excepción.** Vektor no tiene ni un asset —el audio se
+ * sintetiza, las armas y el logotipo se vectorizan con potrace, la geometría es
+ * procedural— y esa regla ha aguantado noventa vueltas por un motivo que sigue
+ * en pie: que corra en cualquier PC sin descargar nada, y que **verse así sea lo
+ * que es Vektor**. Un logo de marca no puede pasar por ahí, y no por falta de
+ * ganas: vectorizarlo a una paleta lo convierte en otro logo, y un patrocinador
+ * que pone su nombre en un mapa tiene derecho a que sea **su** nombre. Así que
+ * aquí la síntesis no es una alternativa peor: es imposible.
+ *
+ * **Y lo que la acota es que no sea del juego, sino de un mapa.** Cuatro reglas,
+ * y las cuatro están medidas en `estampado93`:
+ *
+ * - **Dos imágenes por mapa y cuatro estampados colocados.** Se pidió así y es
+ *   el número que hace que el precio sea el de un mapa y no el del juego: sólo
+ *   se descargan las que **el mapa que se está jugando** declara, y el resto del
+ *   arsenal de Vektor sigue pesando lo que pesaba.
+ * - **El mundo no las espera.** Si no llega, el mapa se juega sin ella, como el
+ *   fondo fotográfico desde la vuelta 78. Un estampado no puede hacer que una
+ *   partida tarde en empezar.
+ * - **No son geometría.** Fuera de `occluders`, fuera de la colisión, fuera del
+ *   presupuesto y sin recibir un rayo: un logo no puede parar una bala ni tapar
+ *   una aparición. Es la misma disposición que el fondo y que las marcas de
+ *   superficie.
+ * - **Y la ruta va acotada** a `public/estampados/`, como las fotos de fondo:
+ *   un mapa con una URL cualquiera sería un mapa capaz de hacer que el juego
+ *   pida lo que sea con sólo abrirlo.
+ *
+ * **Quién puede ponerlos.** Se pidió «sólo game masters, para no tener que
+ * moderar imágenes de la comunidad», y hoy eso **sale por construcción**: los
+ * estampados se colocan en Alchemist, que es una página de desarrollo y no entra
+ * en `dist/` (vuelta 74), y la imagen tiene que estar en el repositorio. O sea
+ * que ponerlos es tener el repositorio delante. El día que un mapa venga de
+ * fuera, esto necesita una puerta de verdad — y queda escrito aquí porque
+ * entonces el sitio donde mirar es este párrafo.
+ */
+export const ESTAMPADOS = {
+  carpeta: '/estampados/',
+  /** WebP primero, que es lo que se pidió y lo que menos pesa a igual calidad. */
+  extensiones: ['.webp', '.png', '.jpg', '.jpeg', '.avif'],
+  imagenesMax: 2,
+  colocadosMax: 4,
+  anchoMin: 0.2,
+  anchoMax: 40,
+  altoMin: 0.2,
+  altoMax: 20,
+  /**
+   * Lo que se separa de la superficie sobre la que se pega. No es tuning: sin
+   * separación los dos planos pelean por el mismo píxel y el logo parpadea
+   * (*z-fighting*), y con más se ve flotando. Un centímetro.
+   */
+  separacion: 0.01,
+  /** Las seis caras a las que se puede encarar, y `cara` es una de éstas. */
+  caras: ['norte', 'sur', 'este', 'oeste', 'suelo', 'techo'],
+  porDefecto: { imagen: '', cara: 'norte', x: 0, y: 2, z: 0, ancho: 4, alto: 2 },
+}
+
+/** ¿Es una ruta de estampado admisible? Misma forma que `esFotoDeFondo`. */
+export function esImagenDeEstampado(url) {
+  if (typeof url !== 'string' || !url.startsWith(ESTAMPADOS.carpeta)) return false
+  if (url.includes('..')) return false
+  return ESTAMPADOS.extensiones.some((ext) => url.toLowerCase().endsWith(ext))
+}
+
 export const FONDOS_CARPETA = '/fondos/'
 
 /** Extensiones que se admiten como panorama. Nada que haya que decodificar en dos pasos. */
@@ -6291,6 +6617,25 @@ export const ECONOMY = {
     { clave: 'pump', nombre: 'Pump', tipo: 'arma', ranura: 'primary', categoria: 2, codigo: 1, precio: 2400, disponible: true },
     { clave: 'volt', nombre: 'Volt', tipo: 'arma', ranura: 'primary', categoria: 3, codigo: 1, precio: 1600, disponible: true },
     { clave: 'rift', nombre: 'Rift', tipo: 'arma', ranura: 'primary', categoria: 4, codigo: 3, precio: 2900, disponible: true },
+    /**
+     * **El Krakov cuesta 3400**: por encima de la Rift (2900) y de la Scout
+     * (3100), y por debajo del Titan (4700). El número sale de la economía como
+     * el de los otros dos.
+     *
+     * Lo que compra es matar de un tiro a la cabeza **atravesando el casco**
+     * (vuelta 90), y eso ya es lo que cobra la Scout a 3100 con una bala al
+     * cuerpo. La diferencia es que aquí son treinta balas a 600 RPM y no diez a
+     * 48, así que tiene que costar más — y a la vez **se paga con una ronda
+     * ganada** (3200) más algo guardado, que es lo que la separa del Titan
+     * (4700, dos rondas). El arma de quien ha aprendido el patrón no puede ser
+     * la de la ronda excepcional: tiene que ser la que saca cada vez que le
+     * llega, o no hay dónde practicarlo.
+     *
+     * Y comparte categoría con la Rift porque **son lo mismo en la tienda**: un
+     * rifle de asalto. Lo que se elige entre las dos es cuánto se quiere pelear
+     * con el retroceso, y para eso tienen que estar una al lado de la otra.
+     */
+    { clave: 'krakov', nombre: 'Krakov', tipo: 'arma', ranura: 'primary', categoria: 4, codigo: 1, precio: 3400, disponible: true },
     // **La Scout cuesta más que el rifle** porque una bala al cuerpo mata a
     // quien no lleve chaleco. Y 3100 deja intacta la regla de la ronda 2: con
     // los 2700 del que pierde no llega, guarde o no los 300 del chaleco.
@@ -6487,6 +6832,22 @@ export const ROUNDS = {
    * alguien no puede ser un efecto secundario de lo que le pase a otro.
    */
   abandonoDesdeSegundos: 15,
+}
+
+/**
+ * **Cada cuánto se pregunta si hay versión nueva** (vuelta 93), y cuánto se
+ * espera a poder recargar sin molestar. Ver `src/ui/actualizacion.js`.
+ *
+ * Los dos números son de la misma clase: lentos a propósito. Preguntar es una
+ * petición de cuatrocientos bytes a `/salud`, así que cada cinco minutos no se
+ * nota en ninguna parte; y con el cartel puesto se mira cada pocos segundos si
+ * el jugador ya ha salido de la ronda. Bajarlos no arregla nada —quien está
+ * jugando no quiere enterarse antes— y subirlos deja a un tester con una
+ * versión vieja la sesión entera, que es justo el fallo.
+ */
+export const ACTUALIZACION = {
+  compruebaCadaMs: 5 * 60 * 1000,
+  esperaParaRecargarMs: 4000,
 }
 
 export const NET = {

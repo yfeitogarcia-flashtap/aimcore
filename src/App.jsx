@@ -24,6 +24,7 @@ import Hud from './ui/Hud.jsx'
 import Armoury from './ui/Armoury.jsx'
 import Options from './ui/Options.jsx'
 import Training from './ui/Training.jsx'
+import { vigilarActualizaciones } from './ui/actualizacion.js'
 import Summary from './ui/Summary.jsx'
 
 /**
@@ -173,6 +174,18 @@ export default function App() {
       if (import.meta.env.DEV) delete window.aimcore
     }
   }, [])
+
+  /**
+   * **Y si se despliega una versión nueva, se entera sola** (vuelta 93). Lo que
+   * decide **cuándo** se recarga es esta línea y no el módulo: aquí, no estar
+   * jugando. Recargar en mitad de una ronda cuesta la ronda, así que el cartel
+   * espera a la pantalla de inicio, a la pausa o al resumen.
+   */
+  const faseRef = useRef(phase)
+  faseRef.current = phase
+  useEffect(() => vigilarActualizaciones({
+    puedeRecargar: () => faseRef.current !== PHASE.RUNNING,
+  }), [])
 
   /** Captura el ratón: reanuda una pausada o arranca donde toque. */
   const lock = useCallback(() => {

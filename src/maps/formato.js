@@ -10,7 +10,7 @@
  * Nada de geometría: eso es de `scenario.js`, que monta **estos mismos datos**.
  */
 
-import { COVER, FANS, FONDOS, PRIMARY_WEAPONS, PRISMAS, ROOM, ROUNDS, SURFACES, TUBES, ZIPLINES, coverHeight, esFotoDeFondo } from '../config.js'
+import { COVER, ESCALERAS, ESTAMPADOS, FANS, FONDOS, PRIMARY_WEAPONS, PRISMAS, ROOM, ROUNDS, SURFACES, TUBES, ZIPLINES, coverHeight, esFotoDeFondo, esImagenDeEstampado } from '../config.js'
 
 /**
  * **Todos los campos que puede tener un mapa, en el orden en que se escriben.**
@@ -22,7 +22,7 @@ import { COVER, FANS, FONDOS, PRIMARY_WEAPONS, PRISMAS, ROOM, ROUNDS, SURFACES, 
  */
 export const CAMPOS = [
   'clave', 'label', 'card', 'publicado', 'soloDuelo', 'fondo', 'room', 'spawn', 'fisica', 'duelo',
-  'boxes', 'prismas', 'ramps', 'tubos', 'ventiladores', 'tirolinas', 'teletransportes', 'spawnZone', 'objectiveSites', 'pickups', 'routes',
+  'boxes', 'prismas', 'ramps', 'tubos', 'escaleras', 'estampados', 'ventiladores', 'tirolinas', 'teletransportes', 'spawnZone', 'objectiveSites', 'pickups', 'routes',
   'anchors',
 ]
 
@@ -59,6 +59,8 @@ export function mapaNuevo(clave = 'mapa-nuevo') {
     ramps: [],
     prismas: [],
     tubos: [],
+    escaleras: [],
+    estampados: [],
     ventiladores: [],
     tirolinas: [],
     teletransportes: [],
@@ -101,6 +103,21 @@ export function sanearPieza(bruta, problemas = [], donde = 'pieza') {
       return null
     }
     p.base = bruta.base
+  }
+  /**
+   * **El tinte** (vuelta 93), y va **después de `base` y antes de
+   * `superficie`**, que es el orden en que se emite: `sanearMapa` es un punto
+   * fijo también en el orden de las claves, y de eso cuelga que deshacer/rehacer
+   * pueda comparar dos mapas con un `JSON.stringify` (vuelta 83).
+   *
+   * Un tinte desconocido **no tira la pieza**, por lo mismo que una superficie
+   * mal escrita no la tira: una caja sin su color sigue siendo una caja, y
+   * tirarla dejaría un agujero en el suelo por un nombre mal puesto. Se dice y
+   * se sigue.
+   */
+  if (bruta.tinte !== undefined && bruta.tinte !== null) {
+    if (COVER.tintes[bruta.tinte]) p.tinte = bruta.tinte
+    else problemas.push(`${donde}: tinte desconocido (${JSON.stringify(bruta.tinte)})`)
   }
   if (bruta.superficie !== undefined) {
     const sup = sanearSuperficie(bruta.superficie, problemas, donde)
@@ -296,6 +313,114 @@ function sanearTubo(bruto, problemas, donde) {
 }
 
 /**
+ * **Una escalera: la segunda macro** (vuelta 93). Un objeto que se despliega en
+ * escalones al montar (`src/maps/escalera.js`), como el tubo desde la 81.
+ *
+ * `x`/`z` es **el pie de la escalera** —la esquina mínima de su primer
+ * escalón—, no su centro: aquí sí significa algo, porque una escalera tiene un
+ * abajo. Es la convención de `boxes` y no la del tubo.
+ *
+ * El **rumbo** son cuatro posiciones (0 = hacia +Z, y de ahí en sentido del
+ * reloj) porque los escalones son cajas y una caja se choca alineada a los ejes
+ * (vuelta 74). Un ángulo libre prometería un gesto que el motor no sabe chocar.
+ */
+function sanearEscalera(bruta, problemas, donde) {
+  for (const clave of ['x', 'z', 'ancho', 'alto']) {
+    if (!finito(bruta?.[clave])) {
+      problemas.push(`${donde}: ${clave} no es un número`)
+      return null
+    }
+  }
+  const d = ESCALERAS.porDefecto
+  if (!finito(bruta.huella)) problemas.push(`${donde}: sin huella, se pone ${d.huella}`)
+  if (!finito(bruta.escalones)) problemas.push(`${donde}: sin número de escalones, se ponen ${d.escalones}`)
+  const out = {
+    x: bruta.x,
+    z: bruta.z,
+    ancho: acotar(bruta.ancho, ESCALERAS.anchoMin, ESCALERAS.anchoMax),
+    alto: acotar(bruta.alto, ESCALERAS.altoMin, ESCALERAS.altoMax),
+    escalones: Math.round(acotar(
+      finito(bruta.escalones) ? bruta.escalones : d.escalones,
+      ESCALERAS.escalonesMin, ESCALERAS.escalonesMax,
+    )),
+    huella: acotar(finito(bruta.huella) ? bruta.huella : d.huella, ESCALERAS.huellaMin, ESCALERAS.huellaMax),
+    // Cuatro posiciones, y se normaliza en vez de rechazarse: un `rumbo: 7`
+    // escrito a mano es un 3, no un error.
+    rumbo: ((Math.round(finito(bruta.rumbo) ? bruta.rumbo : 0) % 4) + 4) % 4,
+    base: acotar(finito(bruta.base) ? bruta.base : 0, 0, ESCALERAS.altoMax),
+  }
+  if (bruta.tinte !== undefined && bruta.tinte !== null) {
+    if (COVER.tintes[bruta.tinte]) out.tinte = bruta.tinte
+    else problemas.push(`${donde}: tinte desconocido (${JSON.stringify(bruta.tinte)})`)
+  }
+  return out
+}
+
+/**
+ * **Un estampado: un logo pegado a una superficie** (vuelta 93).
+ *
+ * Se sanea aparte de todo lo demás y **no tira nada** si está mal: un mapa sin
+ * su logo sigue siendo el mapa, y tirarlo entero por una ruta mal escrita sería
+ * perder una sala por un adorno.
+ *
+ * Los dos topes son de producto y no del formato, así que **se dicen en voz
+ * alta**: dos imágenes por mapa y cuatro colocados. Un límite que se aplica en
+ * silencio es un límite que parece un fallo (vuelta 88).
+ */
+function sanearEstampado(bruto, problemas, donde) {
+  if (!bruto || typeof bruto !== 'object') {
+    problemas.push(`${donde}: no es un objeto`)
+    return null
+  }
+  if (!esImagenDeEstampado(bruto.imagen)) {
+    problemas.push(`${donde}: la imagen tiene que estar en ${ESTAMPADOS.carpeta} y ser una imagen (${JSON.stringify(bruto.imagen)})`)
+    return null
+  }
+  const cara = ESTAMPADOS.caras.includes(bruto.cara) ? bruto.cara : ESTAMPADOS.porDefecto.cara
+  if (!ESTAMPADOS.caras.includes(bruto.cara)) {
+    problemas.push(`${donde}: cara desconocida (${JSON.stringify(bruto.cara)}), se pone ${cara}`)
+  }
+  for (const eje of ['x', 'y', 'z']) {
+    if (!finito(bruto[eje])) { problemas.push(`${donde}: ${eje} no es un número`); return null }
+  }
+  return {
+    imagen: bruto.imagen,
+    cara,
+    x: bruto.x,
+    y: bruto.y,
+    z: bruto.z,
+    ancho: acotar(finito(bruto.ancho) ? bruto.ancho : ESTAMPADOS.porDefecto.ancho, ESTAMPADOS.anchoMin, ESTAMPADOS.anchoMax),
+    alto: acotar(finito(bruto.alto) ? bruto.alto : ESTAMPADOS.porDefecto.alto, ESTAMPADOS.altoMin, ESTAMPADOS.altoMax),
+  }
+}
+
+/**
+ * Y los topes, que se aplican **sobre la lista ya saneada**: contar los brutos
+ * dejaría fuera uno bueno por culpa de uno roto.
+ */
+function acotarEstampados(lista, problemas) {
+  const buenos = lista.slice(0, ESTAMPADOS.colocadosMax)
+  if (lista.length > buenos.length) {
+    problemas.push(`estampados: sólo caben ${ESTAMPADOS.colocadosMax} colocados, sobran ${lista.length - buenos.length}`)
+  }
+  // Y las imágenes distintas, que es el otro tope: cuatro estampados de la misma
+  // imagen pesan lo que una.
+  const vistas = []
+  const out = []
+  for (const e of buenos) {
+    if (!vistas.includes(e.imagen)) {
+      if (vistas.length >= ESTAMPADOS.imagenesMax) {
+        problemas.push(`estampados: sólo caben ${ESTAMPADOS.imagenesMax} imágenes por mapa, se deja fuera ${e.imagen}`)
+        continue
+      }
+      vistas.push(e.imagen)
+    }
+    out.push(e)
+  }
+  return out
+}
+
+/**
  * **Un teletransporte es un área con destino** (vuelta 80). El área se lee como
  * una caja en planta —la misma convención que `boxes` y `spawnZone`— y el
  * destino lleva **rumbo**, por lo mismo que las salidas de duelo desde la
@@ -357,11 +482,30 @@ function sanearRampa(bruta, problemas, donde) {
   const r = sanearPieza({ ...bruta, kind: bruta?.top }, problemas, donde)
   if (!r) return null
   const out = { x: r.x, z: r.z, w: r.w, d: r.d }
-  for (const eje of ['fromZ', 'toZ']) {
-    if (!finito(bruta[eje])) { problemas.push(`${donde}: ${eje} no es un número`); return null }
-    out[eje] = bruta[eje]
+  /**
+   * **Una rampa sube en un eje, y lo dice por sus extremos** (vuelta 93).
+   *
+   * Hasta aquí sólo existían `fromZ`/`toZ`, o sea rampas norte-sur. Ahora una
+   * rampa que declare `fromX`/`toX` sube en X, y **el eje sale de qué par
+   * declara** en vez de un campo aparte: un `eje: 'x'` con `fromZ` escrito
+   * debajo serían dos verdades sobre lo mismo, y la que ganara decidiría una
+   * rampa distinta en el motor y en el editor.
+   *
+   * Los mapas de hoy declaran `fromZ`/`toZ` y salen **exactamente igual**, que
+   * es lo que `rampa93` mide antes de nada.
+   */
+  const par = finito(bruta.fromX) && finito(bruta.toX) ? ['fromX', 'toX'] : ['fromZ', 'toZ']
+  for (const campo of par) {
+    if (!finito(bruta[campo])) { problemas.push(`${donde}: ${campo} no es un número`); return null }
+    out[campo] = bruta[campo]
+  }
+  if (out[par[0]] === out[par[1]]) {
+    problemas.push(`${donde}: ${par[0]} y ${par[1]} son iguales, así que no sube nada`)
+    return null
   }
   out.top = bruta.top
+  // El tinte también, que una rampa es una pieza y se dibuja igual (vuelta 93).
+  if (r.tinte) out.tinte = r.tinte
   return out
 }
 
@@ -465,6 +609,8 @@ export function sanearMapa(bruto) {
     ramps: (b, i) => sanearRampa(b, problemas, `rampa ${i}`),
     prismas: (b, i) => sanearPrisma(b, problemas, `prisma ${i}`),
     tubos: (b, i) => sanearTubo(b, problemas, `tubo ${i}`),
+    escaleras: (b, i) => sanearEscalera(b, problemas, `escalera ${i}`),
+    estampados: (b, i) => sanearEstampado(b, problemas, `estampado ${i}`),
     ventiladores: (b, i) => sanearVentilador(b, problemas, `ventilador ${i}`),
     tirolinas: (b, i) => sanearTirolina(b, problemas, `tirolina ${i}`),
     spawnZone: (b, i) => sanearArea(b, problemas, `zona ${i}`),
@@ -474,6 +620,7 @@ export function sanearMapa(bruto) {
     const bruta = enLista(bruto[campo])
     mapa[campo] = bruta.map(sanea).filter(Boolean)
   }
+  mapa.estampados = acotarEstampados(mapa.estampados, problemas)
 
   // Sitios del explosivo, recogibles y rutas no se editan todavía (salen de un
   // barrido medido, no de ponerlos a ojo), así que se conservan tal cual.

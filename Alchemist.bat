@@ -85,23 +85,51 @@ rem `npm run editor` levanta Vite y abre el navegador en /editor/. Con el
 rem levantado, el juego tambien esta en la raiz de esa misma direccion.
 rem ---------------------------------------------------------------------------
 :abrir
+rem **Y se avisa tambien al arrancar** (vuelta 93). Subir vive dentro del editor
+rem desde esta vuelta, pero una sesion que se cerro sin pulsarlo —o un mapa
+rem guardado antes de la 93— deja cambios aqui y no en el juego. Enterarse al
+rem abrir es enterarse a tiempo; enterarse al cerrar, ya se ha jugado sin ellos.
+git status --porcelain -- src/maps > "%TEMP%\vektor-mapas.txt" 2>nul
+for %%A in ("%TEMP%\vektor-mapas.txt") do set "PENDIENTE=%%~zA"
+if not "!PENDIENTE!"=="0" (
+  echo.
+  echo   OJO: tienes mapas cambiados en este PC y NO en el juego:
+  echo.
+  type "%TEMP%\vektor-mapas.txt"
+  echo.
+  echo   Subelos desde Alchemist: Archivo ^> Subir al juego.
+)
+del "%TEMP%\vektor-mapas.txt" >nul 2>&1
+
 echo.
 echo [3/3] Abriendo Alchemist...
 echo.
 echo   Se abrira el navegador solo. Si no:  http://localhost:5173/editor/
 echo   El juego, en la misma direccion sin  /editor/
 echo.
-echo   Para cerrarlo: pulsa Ctrl+C aqui, o cierra esta ventana.
+echo   Para que un mapa llegue al juego: boton "Subir al juego", en Archivo.
+echo   La barra de arriba te dice si tienes alguno sin subir.
+echo.
+echo   Para cerrarlo: cierra esta ventana cuando hayas subido.
 echo.
 call npm run editor
 
 rem ---------------------------------------------------------------------------
-rem 4. Al cerrar, que los mapas lleguen al juego (vuelta 91).
+rem 4. Al cerrar, la red (vuelta 91, corregida en la 93).
 rem
 rem Guardar un mapa en Alchemist escribe src\maps\<clave>.js en ESTE PC y nada
 rem mas: el juego que se juega es el que esta desplegado, y ahi llega lo que se
-rem sube al repositorio. O sea que hasta ahora un mapa editado o despublicado se
-rem quedaba aqui si no te acordabas de subirlo a mano.
+rem sube al repositorio.
+rem
+rem Esto era el unico sitio donde se subia, y por eso no subia: esta DETRAS de
+rem `call npm run editor`, que no vuelve hasta que Vite muere, y las dos formas
+rem de cerrar que este script anunciaba lo matan antes de llegar aqui —Ctrl+C
+rem hace que cmd.exe pregunte si terminar el trabajo por lotes y aborte, y
+rem cerrar la ventana se lleva el arbol de procesos entero—. Un paso inalcanzable
+rem justo como se usa es un paso que no existe, y no daba ningun error.
+rem
+rem Desde la 93 se sube desde el editor, con un boton. Esto se queda como red
+rem para cuando el proceso si vuelve por su cuenta.
 rem
 rem Se sube SOLO src\maps: si tienes cualquier otra cosa a medias, se queda
 rem donde esta. Y lo normal es que si: pulsar Enter sube.

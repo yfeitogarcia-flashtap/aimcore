@@ -17,9 +17,11 @@
 
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { COLORS, COVER, FANS, ROUNDS, SURFACES, TELEPORTS, ZIPLINES, claveDeEscenario, coverColor, coverEdgeColor, coverHeight, definicionDeEscenario, fisicaDeEscenario, fondoDeEscenario, scenarioRoom } from '../config.js'
+import { COLORS, COVER, FANS, ROUNDS, SURFACES, TELEPORTS, ZIPLINES, claveDeEscenario, coverColor, coverEdgeColor, coverHeight, coverTintedColor, definicionDeEscenario, fisicaDeEscenario, fondoDeEscenario, scenarioRoom } from '../config.js'
 import { bandaDePrisma, carasDePrisma, dentroDePrisma, envolventeDePrisma, puntosDePrisma } from '../maps/prisma.js'
 import { cajasDeTubos } from '../maps/tubo.js'
+import { cajasDeEscaleras } from '../maps/escalera.js'
+import { Estampados } from './estampados.js'
 import { crearFondo } from './backdrop.js'
 
 /**
@@ -27,19 +29,44 @@ import { crearFondo } from './backdrop.js'
  * arriba, en el lado alto. Se construye a mano porque `BoxGeometry` no hace
  * cuñas, y con `DoubleSide` para no depender del orden de los vértices.
  */
-function buildRampGeometry(ramp) {
-  const x0 = ramp.x
-  const x1 = ramp.x + ramp.w
-  const zLow = ramp.fromZ
-  const zHigh = ramp.toZ
-  const top = coverHeight(ramp.top)
+/**
+ * **Y una rampa puede subir en X o en Z** (vuelta 93).
+ *
+ * Hasta aquí subía **sólo en Z** (`fromZ` → `toZ`) y el ancho iba en X, así que
+ * una rampa era norte-sur y punto. No se notaba porque las dos del Plano A están
+ * escritas a mano y las dos van así; en cuanto el editor ofrece rampas eso es un
+ * mapa al que le falta la mitad de las escaleras.
+ *
+ * Lo que se añade es **un eje declarado**, no una segunda forma: el montaje
+ * normaliza la rampa a `{ eje, desde, hasta }` —como ya normaliza una caja a
+ * `minX/maxX`— y de ahí abajo `_rampHeightAt` y `_rampSlope` leen la coordenada
+ * que toque. La colisión de `resolveAxis` **no se tocó**: ya era agnóstica del
+ * eje, porque lo único que le preguntaba a la rampa era su altura en un punto.
+ */
+function ejeDeRampa(ramp) {
+  return ramp.fromX !== undefined && ramp.toX !== undefined ? 'x' : 'z'
+}
 
-  const a = [x0, 0, zLow]
-  const b = [x1, 0, zLow]
-  const c = [x1, 0, zHigh]
-  const d = [x0, 0, zHigh]
-  const e = [x0, top, zHigh]
-  const f = [x1, top, zHigh]
+function buildRampGeometry(ramp) {
+  const eje = ejeDeRampa(ramp)
+  const top = coverHeight(ramp.top)
+  // Se construye en el eje de subida y se gira al montar en X: las dos caras
+  // son la misma cuña, así que escribirla dos veces sería escribir la ocasión
+  // de que una salga del revés.
+  const lado0 = eje === 'x' ? ramp.z : ramp.x
+  const lado1 = eje === 'x' ? ramp.z + ramp.d : ramp.x + ramp.w
+  const subeLow = eje === 'x' ? ramp.fromX : ramp.fromZ
+  const subeHigh = eje === 'x' ? ramp.toX : ramp.toZ
+  const punto = eje === 'x'
+    ? (sube, y, lado) => [sube, y, lado]
+    : (sube, y, lado) => [lado, y, sube]
+
+  const a = punto(subeLow, 0, lado0)
+  const b = punto(subeLow, 0, lado1)
+  const c = punto(subeHigh, 0, lado1)
+  const d = punto(subeHigh, 0, lado0)
+  const e = punto(subeHigh, top, lado0)
+  const f = punto(subeHigh, top, lado1)
 
   const tris = [
     a, b, c, a, c, d, // suelo
@@ -179,6 +206,37 @@ const _corte = { x: 0, y: 0, z: 0, nx: 0, ny: 0, nz: 0, t: 0, pieza: null }
  * Un escenario ya montado. Mientras `key` sea `empty` no hay geometría, no hay
  * colisión y no hay anclajes: el motor se comporta exactamente como antes.
  */
+/**
+ * **Los montones de dibujo: por altura, y desde la vuelta 93 también por tinte.**
+ *
+ * Las mallas se funden por `kind` para que todo un tipo de pieza sea **una
+ * llamada de dibujo**, y de ahí sale que el presupuesto no lo rompa la geometría
+ * (vuelta 76). Un tinte cambia el color, o sea el material, así que no puede
+ * caer en el mismo montón: la clave pasa a ser `kind|tinte`.
+ *
+ * Lo que eso cuesta es **un montón más por tinte usado**, no por pieza — un mapa
+ * con siete tintes y cinco alturas son treinta y cinco llamadas en el peor caso,
+ * contra las diez de hoy, y eso es exactamente lo que a este motor le sobra
+ * (1500 piezas cuestan 0.0004 ms por paso). Lo que **no** cambia es la colisión,
+ * que no sabe que existe un color.
+ *
+ * Y el separador es una barra porque no puede aparecer en ninguna de las dos
+ * mitades: un `kind` sale del vocabulario o es un número, y un tinte es una
+ * clave de `COVER.tintes`.
+ */
+function apilarPorMonton(byKind, kind, tinte, geometria) {
+  const clave = COVER.tintes[tinte] ? `${kind}|${tinte}` : String(kind)
+  if (!byKind.has(clave)) byKind.set(clave, [])
+  byKind.get(clave).push(geometria)
+}
+
+/** Lo contrario: de la clave del montón, su altura y su tinte. */
+function deMonton(clave) {
+  const barra = clave.indexOf('|')
+  if (barra < 0) return { kind: clave, tinte: null }
+  return { kind: clave.slice(0, barra), tinte: clave.slice(barra + 1) }
+}
+
 export class Scenario {
   /**
    * @param {THREE.Scene} scene
@@ -238,6 +296,15 @@ export class Scenario {
 
     this._build()
     scene.add(this.group)
+
+    /**
+     * **Los estampados van en la escena y no en `this.group`** (vuelta 93), y
+     * eso no es dónde caen los objetos: `this.group` es lo que se mide, se
+     * raycastea y se presupuesta, y un logo no puede entrar en ninguna de las
+     * tres. Colgarlo del grupo de la geometría sería un adorno que un día
+     * aparece en `occluders` porque alguien recorrió el grupo.
+     */
+    this.estampados = new Estampados(scene, this.definition.estampados)
   }
 
   /**
@@ -389,8 +456,18 @@ export class Scenario {
      * presupuesto y los disparos ven cajas alineadas a los ejes y ya está. El
      * porqué de desplegar en vez de escribirlas en el fichero, en
      * `src/maps/tubo.js`.
+     *
+     * **Y una escalera es la segunda macro** (vuelta 93), por la misma puerta y
+     * en la misma línea: lo que baja de aquí son cajas. Quien la despliega
+     * necesita `COVER.stepHeight` —de ahí sale cuántos escalones caben— y se le
+     * pasa como argumento para que `src/maps/escalera.js` no importe
+     * `config.js`, que es lo que deja que lo monte también el servidor.
      */
-    for (const box of [...(definition.boxes ?? []), ...cajasDeTubos(definition.tubos)]) {
+    for (const box of [
+      ...(definition.boxes ?? []),
+      ...cajasDeTubos(definition.tubos),
+      ...cajasDeEscaleras(definition.escaleras, COVER.stepHeight),
+    ]) {
       const height = coverHeight(box.kind)
       const bottom = box.base ? coverHeight(box.base) : 0
       const thickness = height - bottom
@@ -450,8 +527,7 @@ export class Scenario {
 
       const geometry = new THREE.BoxGeometry(box.w, thickness, box.d)
       geometry.translate(box.x + box.w / 2, bottom + thickness / 2, box.z + box.d / 2)
-      if (!byKind.has(box.kind)) byKind.set(box.kind, [])
-      byKind.get(box.kind).push(geometry)
+      apilarPorMonton(byKind, box.kind, box.tinte, geometry)
     }
 
     /**
@@ -480,33 +556,40 @@ export class Scenario {
       })
 
       if (prisma.superficie?.invisible) continue
-      if (!byKind.has(prisma.kind)) byKind.set(prisma.kind, [])
-      byKind.get(prisma.kind).push(geometriaDePrisma(prisma, bottom, thickness))
+      apilarPorMonton(byKind, prisma.kind, prisma.tinte, geometriaDePrisma(prisma, bottom, thickness))
     }
 
     for (const ramp of definition.ramps ?? []) {
       const top = coverHeight(ramp.top)
+      const eje = ejeDeRampa(ramp)
       this.ramps.push({
-        minX: ramp.x,
-        maxX: ramp.x + ramp.w,
+        minX: Math.min(ramp.x, ramp.x + ramp.w),
+        maxX: Math.max(ramp.x, ramp.x + ramp.w),
         minZ: Math.min(ramp.z, ramp.z + ramp.d),
         maxZ: Math.max(ramp.z, ramp.z + ramp.d),
-        fromZ: ramp.fromZ,
-        toZ: ramp.toZ,
+        // **El eje y sus dos extremos, normalizados aquí y no en el bucle
+        // caliente** (vuelta 93): lo que `_rampHeightAt` lee sesenta veces por
+        // segundo son dos números, no una pregunta sobre qué campos trae el
+        // fichero. Es la misma disposición que las cajas, que tampoco guardan
+        // `x`/`w`.
+        eje,
+        desde: eje === 'x' ? ramp.fromX : ramp.fromZ,
+        hasta: eje === 'x' ? ramp.toX : ramp.toZ,
         top,
       })
-      if (!byKind.has('rampa')) byKind.set('rampa', [])
-      byKind.get('rampa').push(buildRampGeometry(ramp))
+      apilarPorMonton(byKind, 'rampa', ramp.tinte, buildRampGeometry(ramp))
     }
 
-    for (const [kind, geometries] of byKind) {
+    for (const [monton, geometries] of byKind) {
+      const { kind, tinte } = deMonton(monton)
       const merged = mergeGeometries(geometries, false)
       for (const geometry of geometries) geometry.dispose()
       if (!merged) continue
 
       // Por `coverColor` y no por la tabla a pelo: una altura en números
-      // coge el gris de la del vocabulario más cercana (vuelta 76).
-      const fill = coverColor(kind)
+      // coge el gris de la del vocabulario más cercana (vuelta 76). Y con
+      // tinte, el mismo gris con otro tono (vuelta 93).
+      const fill = tinte ? coverTintedColor(kind, tinte) : coverColor(kind)
       const material = new THREE.MeshBasicMaterial({
         color: fill,
         side: kind === 'rampa' ? THREE.DoubleSide : THREE.FrontSide,
@@ -521,7 +604,7 @@ export class Scenario {
       // mismo gris se funden entre sí contra el fondo negro.
       const edgeGeometry = new THREE.EdgesGeometry(merged, 20)
       const edgeMaterial = new THREE.LineBasicMaterial({
-        color: coverEdgeColor(kind),
+        color: coverEdgeColor(kind, tinte),
         transparent: true,
         opacity: COVER.edgeOpacity,
       })
@@ -1168,13 +1251,15 @@ export class Scenario {
       if (!rebanada(dx, x0, ramp.minX, ramp.maxX)) continue
       if (!rebanada(dz, z0, ramp.minZ, ramp.maxZ)) continue
       if (!rebanada(dy, y0, 0, ramp.top)) continue
-      const span = ramp.toZ - ramp.fromZ
+      const span = ramp.hasta - ramp.desde
       if (span === 0) continue
       // Altura de la cuña en el punto `t`, acotada a su tramo: es una recta en
-      // `z` mientras no se salga, y una constante fuera.
+      // el eje de subida mientras no se salga, y una constante fuera. El eje lo
+      // dice la rampa desde la vuelta 93; hasta entonces era siempre `z`.
+      const dSube = ramp.eje === 'x' ? dx : dz
+      const sube0 = ramp.eje === 'x' ? x0 : z0
       const alturaEn = (t) => {
-        const z = z0 + dz * t
-        let u = (z - ramp.fromZ) / span
+        let u = (sube0 + dSube * t - ramp.desde) / span
         if (u < 0) u = 0
         else if (u > 1) u = 1
         return ramp.top * u
@@ -1486,9 +1571,10 @@ export class Scenario {
   /** Altura de una rampa en un punto, o null si el punto queda fuera de ella. */
   _rampHeightAt(ramp, x, z) {
     if (x < ramp.minX || x > ramp.maxX || z < ramp.minZ || z > ramp.maxZ) return null
-    const span = ramp.toZ - ramp.fromZ
+    const a = ramp.eje === 'x' ? x : z
+    const span = ramp.hasta - ramp.desde
     if (span === 0) return ramp.top
-    let t = (z - ramp.fromZ) / span
+    let t = (a - ramp.desde) / span
     if (t < 0) t = 0
     else if (t > 1) t = 1
     return ramp.top * t
@@ -1624,7 +1710,7 @@ export class Scenario {
 
   /** Cuánto sube una rampa por unidad recorrida. */
   _rampSlope(ramp) {
-    const span = Math.abs(ramp.toZ - ramp.fromZ)
+    const span = Math.abs(ramp.hasta - ramp.desde)
     return span === 0 ? Infinity : ramp.top / span
   }
 
@@ -1679,6 +1765,8 @@ export class Scenario {
   dispose() {
     this.fondo?.dispose()
     this.fondo = null
+    this.estampados?.dispose()
+    this.estampados = null
     this.scene.remove(this.group)
     for (const geometry of this.geometries) geometry.dispose()
     for (const material of this.materials) material.dispose()

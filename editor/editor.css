@@ -392,6 +392,91 @@ body.jugando #lienzo { display: none; }
 
 #sin-versiones[hidden] { display: none; }
 
+/* --- Estampados (vuelta 93) --------------------------------------------- */
+
+/* La lista de los que hay: **colocar y encontrar son dos problemas** y el
+   segundo se olvida (la lección de los dispositivos, vuelta 81). */
+#est-lista { margin: 6px 0 0; padding: 0; list-style: none; max-height: 120px; overflow-y: auto; }
+#est-lista li { margin: 0 0 2px; }
+#est-lista button {
+  display: grid;
+  gap: 1px;
+  text-align: left;
+  padding: 4px 6px;
+  border-left: 2px solid var(--linea);
+  font-size: 11px;
+}
+#est-lista button span { color: var(--apagado); font-size: 10px; }
+#est-lista li.actual button { border-left-color: var(--accion); }
+#est-vacio[hidden] { display: none; }
+#est-ficha[hidden] { display: none; }
+
+/* --- La paleta de tintes (vuelta 93) ------------------------------------ */
+
+/* Rejilla que crece por filas: un tinte más es una muestra más y la columna del
+   panel no se entera, que es la regla del raíl de la vuelta 78. */
+.tintes {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(46px, 1fr));
+  gap: 4px;
+  margin: 6px 0 0;
+}
+
+/* La muestra **es** el color, así que el nombre va debajo y pequeño: leerlo es
+   lo secundario cuando lo que se elige se ve. */
+.tinte {
+  display: grid;
+  gap: 2px;
+  width: auto;
+  padding: 0;
+  border: 1px solid var(--linea);
+  background: none;
+  cursor: pointer;
+}
+
+.tinte::before {
+  content: '';
+  display: block;
+  height: 22px;
+  background: var(--tinte);
+}
+
+.tinte span {
+  display: block;
+  padding: 0 2px 2px;
+  font-size: 8px;
+  line-height: 1.2;
+  color: var(--apagado);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tinte:hover { border-color: var(--apagado); }
+
+/* Puesto: filo verde, que es el color de la acción en esta herramienta. Y el
+   nombre se enciende, porque un filo solo no se lee en una rejilla de siete. */
+.tinte--puesto { border-color: var(--accion); }
+.tinte--puesto span { color: var(--accion); }
+
+/* --- Subir al juego (vuelta 93) ---------------------------------------- */
+
+/* **En naranja y no en verde.** El verde es la acción que se puede pulsar
+   (vuelta 43); esto es un aviso de que hay algo que no está donde el jugador
+   lo va a buscar, y el naranja es el color de la marca, no de un botón. */
+#barra .aviso { color: var(--naranja); }
+#barra .aviso[hidden] { display: none; }
+
+#pendientes { margin: 6px 0 0; padding: 0; list-style: none; max-height: 110px; overflow-y: auto; }
+#pendientes li {
+  padding: 3px 6px;
+  border-left: 2px solid var(--naranja);
+  font-size: 11px;
+  color: var(--texto);
+  overflow-wrap: anywhere;
+}
+#nada-pendiente[hidden] { display: none; }
+
 /* --- El diálogo de guardar --------------------------------------------- */
 
 #dlg-guardar {

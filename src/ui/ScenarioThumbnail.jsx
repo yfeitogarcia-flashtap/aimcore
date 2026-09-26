@@ -1,4 +1,4 @@
-import { COVER, SCENARIOS, coverEdgeColor, coverHeight, scenarioRoom } from '../config.js'
+import { COVER, SCENARIOS, coverEdgeColor, coverHeight, coverTintedColor, scenarioRoom } from '../config.js'
 import { puntosDePrisma } from '../maps/prisma.js'
 
 /**
@@ -56,8 +56,8 @@ export default function ScenarioThumbnail({ scenarioKey, className = '' }) {
           y={Math.min(ramp.z, ramp.z + ramp.d) + halfD}
           width={ramp.w}
           height={Math.abs(ramp.d)}
-          fill={COVER.colors.rampa}
-          stroke={coverEdgeColor('rampa')}
+          fill={coverTintedColor('rampa', ramp.tinte)}
+          stroke={coverEdgeColor('rampa', ramp.tinte)}
           strokeWidth="0.4"
           opacity="0.75"
         />
@@ -70,10 +70,10 @@ export default function ScenarioThumbnail({ scenarioKey, className = '' }) {
           y={box.z + halfD}
           width={box.w}
           height={box.d}
-          fill={COVER.colors[box.kind] ?? COVER.colors.media}
+          fill={coverTintedColor(box.kind, box.tinte)}
           /* Mismo borde que llevan los bloques en partida. Sin él, las piezas
              bajas —bordillo sobre fondo negro— desaparecen a este tamaño. */
-          stroke={coverEdgeColor(box.kind)}
+          stroke={coverEdgeColor(box.kind, box.tinte)}
           strokeWidth="0.4"
           strokeOpacity={COVER.edgeOpacity}
         />
@@ -90,8 +90,8 @@ export default function ScenarioThumbnail({ scenarioKey, className = '' }) {
           points={puntosDePrisma(prisma)
             .map((p) => `${p.x + halfW},${p.z + halfD}`)
             .join(' ')}
-          fill={COVER.colors[prisma.kind] ?? COVER.colors.media}
-          stroke={coverEdgeColor(prisma.kind)}
+          fill={coverTintedColor(prisma.kind, prisma.tinte)}
+          stroke={coverEdgeColor(prisma.kind, prisma.tinte)}
           strokeWidth="0.4"
           strokeOpacity={COVER.edgeOpacity}
         />

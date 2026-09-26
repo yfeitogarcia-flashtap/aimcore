@@ -368,23 +368,56 @@ async function leer(relativo) {
     // que no pueden cambiar sin cambiar de nombre: se pueden cachear para
     // siempre. El resto, nunca — o un despliegue no se vería.
     inmutable: relativo.startsWith('assets/'),
+    /**
+     * **Y lo que no es inmutable lleva su huella** (vuelta 93). `no-cache`
+     * obliga a revalidar, pero **sin validador una revalidación es bajarse el
+     * fichero entero**: medido, un `If-None-Match` contra `/` devolvía 200 y
+     * no 304. Con el `ETag` puesto, comprobar si hay versión nueva cuesta una
+     * cabecera en vez de una página.
+     */
+    etag: `"${createHash('sha1').update(datos).digest('hex').slice(0, 16)}"`,
   }
   cache.set(relativo, fichero)
   return fichero
 }
 
+/**
+ * **Lo que no lleva hash en el nombre no se guarda, y punto** (vuelta 93).
+ *
+ * Era `no-cache`, que es *correcto* y aun así dejó a un jugador con una versión
+ * vieja hasta que borró la caché a mano. `no-cache` dice «revalida antes de
+ * usarlo» y confía en que el navegador lo haga; `no-store` dice **«no te lo
+ * guardes»**, que no deja nada que revalidar mal. Lo que se pierde es una
+ * descarga de 550 bytes por visita — el `index.html` entero pesa menos que esta
+ * explicación—, y lo que se gana es que la puerta de entrada al juego **no
+ * pueda** quedarse vieja.
+ *
+ * Y sigue siendo **sólo el HTML**: los `assets/` llevan el hash del contenido en
+ * el nombre, así que se cachean para siempre y un despliegue no vuelve a
+ * bajarse lo que no ha cambiado. Ésa es toda la gracia del reparto.
+ */
 function servir(respuesta, peticion, fichero) {
   const aceptaGzip = /\bgzip\b/.test(peticion.headers['accept-encoding'] || '')
   const cuerpo = fichero.gz && aceptaGzip ? fichero.gz : fichero.datos
+  // Revalidación barata: si el navegador ya tiene esta versión, 304 y nada más.
+  if (peticion.headers['if-none-match'] === fichero.etag) {
+    respuesta.writeHead(304, { ETag: fichero.etag, 'Cache-Control': cacheDe(fichero) })
+    return respuesta.end()
+  }
   const cabeceras = {
     'Content-Type': fichero.tipo,
     'Content-Length': cuerpo.length,
-    'Cache-Control': fichero.inmutable ? 'public, max-age=31536000, immutable' : 'no-cache',
+    'Cache-Control': cacheDe(fichero),
+    ETag: fichero.etag,
   }
   if (cuerpo === fichero.gz) cabeceras['Content-Encoding'] = 'gzip'
   respuesta.writeHead(200, cabeceras)
   respuesta.end(cuerpo)
 }
+
+const cacheDe = (fichero) => (fichero.inmutable
+  ? 'public, max-age=31536000, immutable'
+  : 'no-store, no-cache, must-revalidate')
 
 /**
  * La huella de lo que este proceso va a servir: los nombres de los assets, que

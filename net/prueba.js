@@ -30,6 +30,7 @@ import { resolverDisparo } from './disparo.js'
 import { ClienteRed } from './cliente.js'
 import { conRedSimulada, transporteWebSocket } from './transporte.js'
 import { montarCapaDeDuelo } from '../src/ui/duelo.jsx'
+import { vigilarActualizaciones } from '../src/ui/actualizacion.js'
 import { compraAbierta } from './protocolo.js'
 import { codigoDeLaDireccion, direccionDeLaBarra, enlaceDeSala, mapaDeLaDireccion, urlDeSala } from './sala-cliente.js'
 
@@ -552,6 +553,17 @@ $('pausar').addEventListener('click', () => {
 $('pedirVoto').addEventListener('click', () => {
   cliente.pedirVotacion()
   motor.requestLock()
+})
+
+/**
+ * **Y si se despliega una versión nueva, se entera sola** (vuelta 93). Aquí
+ * «se puede recargar» es **el ratón suelto**: con el ratón capturado estás
+ * jugando, y en un duelo recargar no te cuesta la ronda sólo a ti — se la
+ * cuesta también al rival, que se queda mirando a un muñeco quieto los noventa
+ * segundos de la ventana de reconexión. Con el menú o la tienda delante, no.
+ */
+vigilarActualizaciones({
+  puedeRecargar: () => document.pointerLockElement === null,
 })
 
 cliente.conectar()

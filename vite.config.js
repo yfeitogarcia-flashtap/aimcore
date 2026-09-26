@@ -1,7 +1,8 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
-import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { execFileSync } from 'node:child_process'
 /**
  * **La configuración de Vite no importa nada de `src/`, y eso resuelve tres
  * cosas a la vez** (vuelta 75).
@@ -115,6 +116,30 @@ function fondosDisponibles() {
     .map((nombre) => ({ nombre, url: `/fondos/${nombre}` }))
 }
 
+/**
+ * **Y las imágenes de estampado que haya dejadas** (vuelta 93). Misma forma que
+ * las fotos de fondo y por el mismo motivo: dejar el fichero en la carpeta y
+ * abrir Alchemist es todo lo que hay que hacer para verlo puesto. De desarrollo
+ * y sólo de desarrollo — listar un directorio no es algo que un servidor de
+ * producción deba hacer, y ahí las imágenes son las que alguien commiteó.
+ */
+const CARPETA_ESTAMPADOS = resolve(import.meta.dirname, 'public/estampados')
+const EXTENSIONES_ESTAMPADO = ['.webp', '.png', '.jpg', '.jpeg', '.avif']
+
+function estampadosDisponibles() {
+  if (!existsSync(CARPETA_ESTAMPADOS)) return []
+  return readdirSync(CARPETA_ESTAMPADOS)
+    .filter((nombre) => EXTENSIONES_ESTAMPADO.some((ext) => nombre.toLowerCase().endsWith(ext)))
+    .sort()
+    .map((nombre) => ({
+      nombre,
+      url: `/estampados/${nombre}`,
+      // El peso, porque es el precio: es el único asset externo del proyecto y
+      // el panel lo dice para que quien lo deja lo vea antes de commitearlo.
+      kb: Math.round(statSync(resolve(CARPETA_ESTAMPADOS, nombre)).size / 1024),
+    }))
+}
+
 /** Por encima de esto el panel avisa. **No se trunca**: ver `anotarEnHistorial`. */
 const HISTORIAL_AVISO = 100
 
@@ -221,6 +246,88 @@ function alCambiarLosMapas(ruta) {
   regenerarRegistro()
 }
 
+/**
+ * **Los mapas que hay en este PC y no en el juego** (vuelta 93), y subirlos.
+ *
+ * `git` se llama con `execFileSync` y argumentos sueltos, nunca con una cadena
+ * de shell: los nombres de fichero salen del disco, y un mapa que se llamase
+ * con una comilla sería una orden.
+ */
+const git = (donde, ...argumentos) =>
+  execFileSync('git', argumentos, { cwd: donde, encoding: 'utf-8' })
+
+/**
+ * **Y `git status` no se recorta entero.** La primera línea de una salida de
+ * `--porcelain` empieza por un espacio cuando el cambio no está anotado
+ * (« M src/maps/…»), así que un `.trim()` de toda la salida le come ese espacio
+ * y el `slice(3)` que parte el estado del nombre se lleva por delante la
+ * primera letra: medido, «rc/maps/index.js». Se recorta **cada línea por el
+ * final**, que es lo único que sobra.
+ */
+export function estadoDeMapasEn(donde) {
+  try {
+    const salida = git(donde, 'status', '--porcelain', '--', 'src/maps')
+    const rutas = salida.split('\n')
+      .filter((l) => l.length > 3)
+      .map((l) => l.slice(3).trimEnd().replace(/^"|"$/g, ''))
+
+    /**
+     * **Un mapa y el registro no son la misma cosa en pantalla.** Añadir un
+     * mapa cambia también `src/maps/index.js` —es generado (vuelta 74)— y sus
+     * versiones en `historial/`, y las tres tienen que subir o el juego
+     * importaría un fichero que no está. Pero contarlas como mapas haría que
+     * un mapa nuevo se anunciase como «3 mapas sin subir», y ése es el número
+     * que alguien mira para saber si ha perdido trabajo.
+     *
+     * Qué es un mapa lo dice **el mismo dato que el registro**: un `.js` de la
+     * carpeta que declara su `clave`. Borrado no se puede leer, y entonces lo
+     * era.
+     */
+    const esMapa = (ruta) => {
+      const nombre = ruta.slice('src/maps/'.length)
+      if (nombre.includes('/') || !nombre.endsWith('.js')) return false
+      if (NO_SON_MAPAS.has(nombre)) return false
+      try {
+        return /clave:\s*"/.test(readFileSync(resolve(donde, ruta), 'utf8'))
+      } catch { return true }
+    }
+
+    return {
+      // Lo que se enseña es el nombre del mapa, no la línea de `git status`:
+      // «M  src/maps/duelo.js» no es lo que alguien reconoce de su trabajo.
+      mapas: rutas.filter(esMapa).map((r) => r.slice('src/maps/'.length)),
+      otros: rutas.filter((r) => !esMapa(r)).length,
+      rama: git(donde, 'rev-parse', '--abbrev-ref', 'HEAD').trim(),
+    }
+  } catch (error) {
+    // Sin git —una copia descargada en zip— el editor sigue sirviendo. Lo que
+    // no puede es fingir que ha subido algo.
+    return { mapas: [], otros: 0, rama: null, error: error.message }
+  }
+}
+
+/**
+ * **Un commit por subida, no por guardado.** La historia de este repositorio
+ * está curada (vuelta 75): cuarenta commits de «he movido una caja» la
+ * degradarían. Y **sólo `src/maps`**, que es la regla de la 91: cualquier otra
+ * cosa a medias se queda donde está.
+ */
+export function subirMapasEn(donde) {
+  const { mapas, otros, rama } = estadoDeMapasEn(donde)
+  if (!rama) throw new Error('aquí no hay un repositorio de git')
+  if (!mapas.length && !otros) return { subidos: [], nota: 'no había nada que subir' }
+  git(donde, 'add', '--', 'src/maps')
+  git(donde, '-c', 'core.editor=true', 'commit', '-q', '-m', 'mapas: cambios desde Alchemist')
+  // Traer lo de fuera antes de empujar: si mientras editabas ha entrado código
+  // nuevo, empujar sin esto se rechaza y no dice por qué.
+  try { git(donde, 'pull', '--rebase', '--autostash', 'origin', rama) } catch { /* ya lo dirá el push */ }
+  git(donde, 'push', 'origin', rama)
+  return { subidos: mapas, otros, rama }
+}
+
+const estadoDeMapas = () => estadoDeMapasEn(import.meta.dirname)
+const subirMapas = () => subirMapasEn(import.meta.dirname)
+
 const editor = {
   name: 'vektor-editor',
 
@@ -280,6 +387,10 @@ const editor = {
       const { pathname, searchParams } = new URL(url, 'http://editor')
 
       // Las fotos que haya en `public/fondos/`, para el desplegable del editor.
+      if (pathname === '/__editor/estampados' && peticion.method === 'GET') {
+        respuesta.setHeader('content-type', 'application/json')
+        return respuesta.end(JSON.stringify({ imagenes: estampadosDisponibles() }))
+      }
       if (pathname === '/__editor/fondos' && peticion.method === 'GET') {
         respuesta.setHeader('content-type', 'application/json')
         return respuesta.end(JSON.stringify({ fotos: fondosDisponibles() }))
@@ -324,6 +435,45 @@ const editor = {
             piezas: v.mapa?.boxes?.length ?? 0,
           })),
         }))
+      }
+
+      /**
+       * **Subir los mapas al juego, desde el editor** (vuelta 93).
+       *
+       * Guardar escribe `src/maps/<clave>.js` **en este PC** y nada más; el
+       * juego que se juega es el desplegado, y ahí llega lo que se empuja al
+       * repositorio. La vuelta 91 puso esa subida al cerrar `Alchemist.bat`, y
+       * **no llegaba a ejecutarse nunca**: el `.bat` se queda esperando en
+       * `npm run editor`, y las dos formas de salir que él mismo recomendaba
+       * —cerrar la ventana, o Ctrl+C— matan el proceso antes del paso que
+       * subía. Cerrar la ventana se lleva el árbol entero; Ctrl+C hace que cmd
+       * pregunte «¿terminar el trabajo por lotes?» y aborte.
+       *
+       * O sea que la subida estaba colgada de **cómo** cierras el editor, que
+       * es justo lo que un usuario no tiene por qué saber. Ahora es un botón
+       * dentro del editor: una acción que se ve, que se pulsa cuando se quiere,
+       * y que no depende de por dónde salgas.
+       *
+       * Tres reglas:
+       *
+       * - **Sólo `src/maps`.** Lo que tengas a medias en cualquier otro sitio
+       *   se queda donde está — es la regla de la 91 y no cambia.
+       * - **Un commit por subida, no por guardado.** La historia del repo está
+       *   curada (vuelta 75) y cuarenta commits de «he movido una caja» la
+       *   degradan. Se sube cuando se ha terminado, que es lo que un botón
+       *   significa y un guardado automático no.
+       * - **Y sólo en desarrollo**, como todo lo del editor: esto vive en un
+       *   middleware de Vite, así que no existe en `dist/`.
+       */
+      if (pathname === '/__editor/mapas-sin-subir' && peticion.method === 'GET') {
+        return respuesta.end(JSON.stringify(estadoDeMapas()))
+      }
+      if (pathname === '/__editor/subir' && peticion.method === 'POST') {
+        try {
+          return respuesta.end(JSON.stringify(subirMapas()))
+        } catch (error) {
+          return fallar(500, error.message)
+        }
       }
 
       if (pathname !== '/__editor/guardar' || peticion.method !== 'POST') return siguiente()

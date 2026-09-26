@@ -237,7 +237,8 @@ const SLOT_SETTING = {
  * durante la ronda anterior, así que el sitio donde se aprenden los precios es
  * el panel que se abre sin prisa.
  */
-const PRECIOS = Object.fromEntries(catalogoDeTienda().map((item) => [item.clave, item]))
+const CATALOGO = catalogoDeTienda()
+const PRECIOS = Object.fromEntries(CATALOGO.map((item) => [item.clave, item]))
 
 function lineaDePrecio(weaponKey) {
   const item = PRECIOS[weaponKey]
@@ -306,6 +307,17 @@ function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip,
         */}
       <div className={`armoury__precio${precio.gratis ? ' armoury__precio--gratis' : ''}`}>
         {precio.texto}
+        {/**
+          * **Y su combinación, que es lo que se teclea** (vuelta 93). La tienda
+          * del duelo la lleva en la esquina de cada artículo desde la vuelta 64
+          * y aquí no estaba, así que el sitio donde se comparan las armas sin
+          * prisa era el único donde no se podía aprender cómo se piden. Sale del
+          * mismo catálogo que el precio: dos sitios diciendo el código de un
+          * arma es cómo uno acaba diciendo el de otra.
+          */}
+        {PRECIOS[weaponKey] && (
+          <span className="armoury__combo">{PRECIOS[weaponKey].categoria} {PRECIOS[weaponKey].codigo}</span>
+        )}
       </div>
 
       <div className="armoury__action">
@@ -608,6 +620,68 @@ export default function Armoury({ settings, equipped, onChange, onClose, soloFic
     onChange({ suppressor: { ...settings.suppressor, [key]: !settings.suppressor[key] } })
 
   /**
+   * **La combinación numérica también funciona aquí** (vuelta 93).
+   *
+   * Existía sólo en la tienda del duelo, desde la vuelta 64: dos teclas,
+   * categoría y código. En el entrenamiento había que equiparlo todo con el
+   * ratón, así que **el gesto que hay que interiorizar sólo se podía practicar
+   * jugando un 1v1** — que es la convención de la vuelta 63 al revés, un juego
+   * que se maneja distinto según el modo.
+   *
+   * Cuatro cosas:
+   *
+   * - **Aquí equipa, no compra**, porque en el entrenamiento no hay economía
+   *   (§6) y un «comprado» sin dinero sería prometer una mecánica que este modo
+   *   no tiene. El gesto es el mismo y el resultado es el que este modo puede
+   *   dar: el arma en la mano.
+   * - **Los códigos son los del catálogo de la tienda**, no unos propios. Dos
+   *   numeraciones para la misma arma serían dos cosas que aprender, y aprender
+   *   la de aquí valdría para nada.
+   * - **Escucha en captura**, que es lo que la hace determinista. El motor mira
+   *   las teclas de arma en un `keydown` de `window` en burbujeo y se registra
+   *   **antes** que este panel, así que ni `stopPropagation` ni
+   *   `stopImmediatePropagation` en burbujeo lo pararían (vuelta 89: dos
+   *   escuchas del mismo `window` y nadie gana por orden). En captura sobre
+   *   `window` esto corre primero y corta la propagación **sólo de los dígitos
+   *   que consume**: sin eso, el `1` de una combinación sacaba además la
+   *   principal.
+   * - **Y en el modo de consulta no escucha nada.** Ahí este panel se abre
+   *   desde la tienda del duelo, que tiene su propio manejador con los mismos
+   *   dígitos: dos lectores de la misma combinación serían una compra doble.
+   */
+  const [tecleado, setTecleado] = useState('')
+  const [aviso, setAviso] = useState('')
+  useEffect(() => {
+    if (soloFicha) return undefined
+    const onKey = (event) => {
+      if (event.ctrlKey || event.metaKey || event.altKey) return
+      if (!/^[0-9]$/.test(event.key)) return
+      event.preventDefault()
+      event.stopPropagation()
+      setTecleado((antes) => {
+        const ahora = antes + event.key
+        if (ahora.length < 2) { setAviso(''); return ahora }
+        const categoria = Number(ahora[0])
+        const codigo = Number(ahora[1])
+        const item = CATALOGO.find((i) => i.categoria === categoria && i.codigo === codigo)
+        const arma = item && WEAPONS[item.clave]
+        if (!item) setAviso(`${ahora[0]} ${ahora[1]} · no hay nada ahí`)
+        else if (!arma) setAviso(`${ahora[0]} ${ahora[1]} · ${item.nombre} se compra en el duelo`)
+        else {
+          setAviso(`${ahora[0]} ${ahora[1]} · ${item.nombre}`)
+          // Se abre su categoría: equipar algo sin ver qué has equipado es lo
+          // mismo que no enterarse (vuelta 89).
+          setAbierta(arma.slot)
+          onChange({ [SLOT_SETTING[arma.slot]]: item.clave })
+        }
+        return ''
+      })
+    }
+    window.addEventListener('keydown', onKey, true)
+    return () => window.removeEventListener('keydown', onKey, true)
+  }, [soloFicha, onChange])
+
+  /**
    * **Y el foco va al panel, no al botón de cerrar** (vuelta 92, con la lección
    * de la 78). «Cerrar» es el **último** hijo de un panel que además es el
    * contenedor con scroll, así que el navegador lo traía a la vista al montar
@@ -660,10 +734,17 @@ export default function Armoury({ settings, equipped, onChange, onClose, soloFic
 
       <p className="panel__hint">
         {activa.nota}
-        {soloFicha && (
+        {soloFicha ? (
           <> Aquí lo que llevas lo decide el servidor: se compra, o lo reparte el mapa.</>
+        ) : (
+          <> Teclea <b>categoría + código</b> para equipar sin ratón.</>
         )}
       </p>
+
+      {/* Lo tecleado y qué ha salido, como en la tienda del duelo. */}
+      {!soloFicha && (tecleado || aviso) && (
+        <p className="armoury__tecleado">{tecleado ? `${tecleado} _` : aviso}</p>
+      )}
 
       <div
         className="armoury__grid"

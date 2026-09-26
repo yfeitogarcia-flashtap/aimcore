@@ -247,6 +247,26 @@ aplicación de Fly se llama de otra manera, está en `docs/despliegue-fly.md` §
 
 Y sigue funcionando a mano, si hace falta: `fly deploy --ha=false`.
 
+### Y un despliegue nuevo se carga solo
+
+**Desde la vuelta 93 no hay que borrar la caché para ver lo último.** La página
+pregunta cada pocos minutos si el build desplegado ha cambiado y, cuando cambia,
+avisa con un cartel abajo y se recarga sola. Es importante de cara a la beta: un
+tester no sabe forzar un borrado de caché, y antes se quedaba con una versión
+antigua **sin que nada lo dijera**.
+
+Dos cosas que hace bien y conviene saber:
+
+- **Nunca recarga en mitad de una partida.** Espera a que estés fuera de una
+  sesión, y en un duelo a que sueltes el ratón — ahí recargar te cuesta la ronda
+  y **también se la cuesta al rival**, porque el servidor te da noventa segundos
+  para volver.
+- **El cartel se puede cerrar**, y entonces se recarga cuando sea seguro sin
+  volver a molestar.
+
+Si quieres forzarlo, recargar a mano sigue bastando: las cabeceras y el `ETag`
+están puestos, así que lo que no ha cambiado no se vuelve a descargar.
+
 ### Y en tu ordenador: doble clic
 
 El **editor** no entra en el despliegue a propósito —es una herramienta de
@@ -270,14 +290,18 @@ Hace cuatro cosas y las dice por pantalla:
    de dependencias con la copia de la última instalación de verdad.
 3. **Abre Alchemist** en el navegador. Con él levantado, el juego está en esa
    misma dirección sin el `/editor/`.
-4. **Y al cerrarlo, sube tus mapas.** Guardar un mapa en Alchemist lo escribe en
-   tu PC y nada más: el juego que se juega es el desplegado, y ahí llega lo que
-   se sube al repositorio. Así que al cerrar mira `src/maps`, te enseña lo que
-   está cambiado aquí y no en el juego, y **lo sube pulsando Intro**. Si
-   prefieres que no, `n`. Sólo sube `src/maps`: cualquier otra cosa que tengas a
-   medias se queda donde está.
+4. **Y te avisa si tienes mapas sin subir**, al arrancar y al cerrar. Guardar un
+   mapa en Alchemist lo escribe en tu PC y nada más: el juego que se juega es el
+   desplegado, y ahí llega lo que se sube al repositorio.
 
-Para cerrarlo, `Ctrl+C` en la ventana negra, o cerrarla.
+**Subir los mapas se hace desde el editor**, con el botón de **Archivo → Subir al
+juego** — y la barra de arriba te dice si tienes alguno pendiente, así que no hay
+que acordarse. Hasta la vuelta 93 esto vivía al final de este script y **no
+funcionaba**: el paso iba detrás de la llamada que abre el editor, y las dos
+formas de cerrar que el propio script anunciaba lo mataban antes de llegar ahí.
+Sin ningún error: el mapa se quedaba aquí y el juego seguía con el de antes.
+
+Para cerrarlo, cierra la ventana negra **cuando hayas subido**.
 
 ### La app de escritorio
 
@@ -429,10 +453,16 @@ panel abierto eres un blanco.
 
 **Se compra de dos formas, y las dos valen igual:** pinchando el artículo, o
 tecleando su **combinación** — categoría y código, que van escritos en la esquina
-de cada ficha. La Pulse es `1 1`, el Reaper `1 3`, la Volt `3 1`, la Rift `4 3`,
-el Titan `5 3`, la Pump `2 1` y el Fang `7 5`. Los códigos
+de cada ficha. La Pulse es `1 1`, el Reaper `1 3`, la Volt `3 1`, el Krakov `4 1`,
+la Rift `4 3`, el Titan `5 3`, la Pump `2 1` y el Fang `7 5`. Los códigos
 dejan huecos a propósito para las armas que faltan: cuando lleguen, lo que ya te
 sabes no cambiará de sitio.
+
+**Y desde la vuelta 93 esa combinación también funciona en el entrenamiento.**
+Abre la armería con **B** y teclea los dos números: ahí no hay dinero, así que
+**equipa** en vez de comprar, pero es el mismo gesto con los mismos códigos. Así
+se puede practicar `B + categoría + código` sin montar un duelo, que era lo que
+faltaba — y cada ficha de la armería lleva ahora su combinación escrita.
 
 **Con el arma en la mano, el clic derecho pone y quita el silenciador.** No
 cuesta dinero, no está en la tienda y se puede hacer en cualquier momento — es
@@ -514,6 +544,7 @@ Lo que las separa no es el volumen —es **qué capa manda**—:
 | **Scout** | crack alto **con cola**: suena a campo abierto, más cerrojo | 9325 Hz | 59 ms |
 | **Reaper** | lo contrario de la Pulse: cuerpo y casi nada de chasquido | 725 Hz | 32 ms |
 | **Titan** | lo más grave y lo más largo, con su cerrojo pesado detrás | 1525 Hz | 89 ms |
+| **Krakov** | cuerpo grande y grave con el cerrojo ciclando en medio de la ráfaga | 1150 Hz | 75 ms |
 | **Pump** | ruido ancho y grave, y la **corredera a 190 ms** | 975 Hz | 203 ms |
 
 Las silenciadas no son las normales con el volumen bajado: se les quitan el grave
@@ -773,6 +804,15 @@ tiene por qué costarte también la sala.
 - **Seis formas** en el panel —cubo, prisma, muro, bordillo, plataforma y
   parapeto— que ponen una pieza delante de la cámara. Son **la misma caja** con
   otros números: lo que distingue un muro de un bordillo no es su geometría.
+- **Y dos formas más de subir un nivel** (vuelta 93): **Rampa**, un plano
+  inclinado por el que se sube sin tocar nada, y **Escalera**, escalones que se
+  suben andando y que además son cobertura —te puedes asomar por encima de uno—.
+  Las dos se arrastran por su bola, se estiran por la esquina, suben con el cubo
+  de arriba y **giran con el aro, de noventa en noventa**.
+- **La escalera se encarga de que se pueda subir.** Eliges ancho, alto total,
+  huella y cuántos escalones quieres; si con ésos cada escalón mediría más de lo
+  que se sube andando, **pone los que hagan falta y te lo dice** en su ficha.
+  Pedir 4 escalones para 2.6 u monta 11.
 - Se arrastra con el ratón y se ajusta sola a la rejilla. **El incremento se
   elige**: de 1 unidad entera a 1/10, y es el mismo que usan las flechas de los
   tiradores del panel.
@@ -793,12 +833,25 @@ tiene por qué costarte también la sala.
 - **Y un mapa puede tener teletransportes**: un área que te deja en otro sitio,
   con su destino y su rumbo. Se dibujan los dos extremos unidos por una línea y
   se arrastran los dos. Jugando se ven como dos anillos azules en el suelo.
-- **La pieza elegida saca seis tiradores**: las **cuatro esquinas** la estiran
+- **La pieza elegida saca siete tiradores**: las **cuatro esquinas** la estiran
   —la esquina de enfrente se queda clavada, así que estiras hacia donde
   arrastras—, el **cubo de arriba** sube y baja su altura por el vocabulario de
-  siempre, y el **aro verde** la gira 90°. No hay que cambiar de modo para
-  nada: el cuerpo mueve, la esquina estira, el aro gira. Los tiradores crecen
-  con la distancia para que puedas agarrarlos con el mapa entero a la vista.
+  siempre, la **bola de la esquina alta** la escala entera manteniendo la
+  proporción, y el **aro verde** la gira 90°. No hay que cambiar de modo para
+  nada: el cuerpo mueve, la esquina estira, la bola escala, el aro gira. Los
+  tiradores crecen con la distancia para que puedas agarrarlos con el mapa entero
+  a la vista, y **desde la vuelta 93 no pasan de un tercio de la pieza**: en una
+  losa de un metro ya no la tapan.
+- **Duplicar con Ctrl+C / Ctrl+V**, además del botón. Y la copia **siempre cae en
+  un hueco libre cerca de la original**: antes salía justo al lado, que con una
+  pieza pegada a otra más grande significaba *dentro* de la grande, donde no se
+  ve y no se puede coger.
+- **Color de pieza**: siete tintes cerrados —pizarra, musgo, tierra, vino,
+  índigo, arena, hueso— en la ficha de cualquier pieza, prisma, rampa o escalera.
+  Las muestras se pintan **con el color de verdad a la altura de esa pieza**, así
+  que eliges mirando. Y lo importante: **el tinte cambia el tono y la claridad la
+  sigue poniendo el alto**, porque en Vektor el gris de una pieza dice cuánto
+  mide. Dentro de un mismo tinte, una pieza alta se ve más clara que una baja.
 - Cada pieza tiene ancho, fondo y **altura del vocabulario de siempre**
   (`bordillo`, `baja`, `media`, `alta`, `bloque`, `plataforma`, `parapeto`,
   `torre`, `atalaya`), con su gris — que en Vektor no es decoración: **el tono
@@ -1052,6 +1105,29 @@ mapa que tenías abierto y la cámara cruzan la recarga, así que no deberías
 notarlo más que por un parpadeo. Y la dirección lleva el mapa abierto
 (`/editor/#clave`), por si lo quieres en marcadores.
 
+### Y subirlo al juego, que es otra cosa
+
+**Guardar escribe el mapa en tu PC. El juego que se juega es el desplegado**, así
+que hasta que el mapa no llega al repositorio, sólo lo tienes tú.
+
+Eso se hace desde **Archivo → Subir al juego**: un botón que anota los cambios de
+`src/maps`, los trae al día y los empuja. Y **la barra de arriba te dice si tienes
+alguno sin subir**, así que no hay que acordarse de mirar. Alchemist también te lo
+avisa al arrancar, para cazar una sesión que se cerró sin pulsarlo.
+
+Dos cosas del mecanismo:
+
+- **Un commit por subida, no por guardado.** La historia de este repositorio está
+  cuidada y cuarenta commits de «he movido una caja» la llenarían de ruido.
+- **Sólo se sube `src/maps`.** Si tienes cualquier otra cosa a medias, se queda
+  donde está.
+
+Hasta la vuelta 93 esto vivía al final de `Alchemist.bat`, y **no funcionaba**: el
+paso iba detrás de la llamada que levanta el editor, y las dos formas de cerrar
+que el propio script anunciaba —Ctrl+C o cerrar la ventana— lo mataban antes de
+llegar ahí. Sin ningún error: el mapa se quedaba aquí y el juego seguía con el de
+antes.
+
 ### Hacer un mapa de duelo
 
 La pestaña **Duelo** es lo que convierte un montón de cajas en un 1v1:
@@ -1101,24 +1177,47 @@ del paisaje. El suelo se queda, que es con lo que se construye.
 
 **Y se puede probar una foto de verdad.** Deja un `.jpg` panorámico
 (equirectangular, 2:1) en `public/fondos/` y sale en el desplegable junto a los
-cuatro dibujados. Ojo a lo que significa: un panorama fotográfico sería **el
-primer asset externo de Vektor** —que hoy no tiene ninguno, ni de audio ni de
-imagen—, así que el mapa que lo use lo declara con su ruta y el editor lo dice
+cuatro dibujados. El mapa que lo use lo declara con su ruta y el editor lo dice
 en voz alta. La decisión sigue sin tomarse; lo que hay ahora es la forma de
 tomarla con la foto delante.
 
+### Estampados: tu logo en el mapa
+
+Desde la vuelta 93 un mapa puede llevar **logos a color pegados a una
+superficie** — firma del creador o patrocinador. Deja la imagen en
+`public/estampados/` (**WebP a ser posible**, que es lo que menos pesa) y sale en
+el desplegable de la hoja de Mapa; «Colocar un estampado» lo pone delante de la
+cámara y a partir de ahí se arrastra por su cuadro, se le da tamaño con la
+esquina y se sube con el cubo. La **cara** decide hacia dónde mira: los cuatro
+rumbos, el suelo y el techo.
+
+Tres cosas que conviene saber, porque son el precio:
+
+- **Es el único asset externo de Vektor.** Todo lo demás se sintetiza o se
+  dibuja; un logo de marca no puede pasar por ahí sin dejar de ser ese logo. Por
+  eso hay tope: **dos imágenes por mapa y cuatro estampados colocados**, y sólo
+  las descarga quien juegue ese mapa.
+- **No es geometría.** No para balas, no tapa apariciones y no cuenta en el
+  presupuesto: es un dibujo pegado encima. Si la imagen no llega, ahí no hay nada
+  y el mapa se juega igual.
+- **Y hay que subir la imagen al repositorio**, como un mapa. Lo que se juega es
+  lo desplegado: una imagen que esté sólo en tu PC deja el hueco vacío para todos
+  los demás.
+
 ### Lo que todavía no hace
 
-Rampas, vanos y ventanales, y las métricas de mapa que hoy sólo cubren las
-salidas (tiempo de cruce, primer contacto, asomo). Son las fases 4 y 5 de
+Vanos y ventanales, y las métricas de mapa que hoy sólo cubren las salidas
+(tiempo de cruce, primer contacto, asomo). Son las fases 4 y 5 de
 `docs/propuestas/05-editor-de-mapas.md`. Los mapas de hoy conservan sus rutas,
 recogibles y sitios de explosivo al guardarlos, pero el editor no los edita:
 salen de un barrido medido, no de ponerlos a ojo.
 
 **La rotación libre dejó esa lista en la vuelta 83**: el motor ya sabe chocar
 una pieza girada, así que el editor ya la ofrece («Muro girado» y «Columna», más
-abajo). Lo que sigue sin poder construirse hasta que el motor sepa chocarlo son
-los **triángulos sólidos**.
+abajo). **Y las rampas en la 93**: el motor sabía chocarlas desde el primer día
+—el Balcón del Plano A lleva dos— y lo único que faltaba era poder dibujarlas.
+Lo que sigue sin poder construirse hasta que el motor sepa chocarlo son los
+**triángulos sólidos**.
 
 Y de las siete mecánicas triadas en
 `docs/propuestas/06-superficies-y-estructuras.md`, **están construidas las
@@ -1660,6 +1759,7 @@ se traduce al nuevo en vez de caer al valor de fábrica.
 | **Pump** | principal (**1**) | semi | 120 | 8 | 0.55 s/cartucho | **no** | 4.2 kg | 5.13 u/s | escopeta: una coz de 3.4°, y medio segundo de corredera para bajarla |
 | **U2** | especial (**5**) | semi | 40 | 1 + reserva | 2.0 s | **no** | 5.4 kg | 4.88 u/s | lanzacohetes: una patada sola y grande, más que la Scout |
 | **Titan** | principal (**1**) | semi | 24 | 5 | 4.0 s | **no** | 6.5 kg | 4.88 u/s | francotirador pesado: una coz de 3.8°, y no se vuelve a ver en 2.5 s |
+| **Krakov** | principal (**1**) | auto | 600 | 30 | 2.9 s | **no** | 4.0 kg | 5.23 u/s | el retroceso más difícil del arsenal: sube 9.6° en T invertida y no se para |
 | **Vanta** | cuchillo (**3**) | — | — | — | — | no | 0.6 kg | 6.50 u/s | cada golpe empuja la cámara: el flojo poco, el fuerte el doble |
 | **Core** | granada (**G**) | **carga** | 50 | 1 + 1 | 1.2 s | **no** | 0.5 kg | 6.50 u/s | el empujón de tirar algo: pequeño y hacia arriba |
 | **Blind** | granada (**G**) | **carga** | 50 | 1 + 1 | 1.2 s | **no** | 0.5 kg | 6.50 u/s | el mismo |
@@ -1739,6 +1839,35 @@ Los tres precios se pagan antes de disparar:
 La mirilla amplía **5.1×** (14° de encuadre) contra los 3.2× de la Scout. En el
 duelo cuesta **4700**, el artículo más caro del catálogo: ganar una ronda da
 3200, así que no se paga con una — hay que haber guardado.
+
+### Krakov, el rifle de retroceso difícil
+
+**El arma que se aprende.** Al cuerpo pega lo mismo que la Rift —dos balas al
+cuerpo pelado, tres con chaleco— y eso es a propósito: un arma difícil de
+controlar que además pegara más no sería difícil, sería obligatoria. Lo que se
+cobra por dominarla está arriba: **atraviesa el casco**, o sea que una bala a la
+cabeza mata lleve lo que lleve el rival.
+
+Su patrón es una **T invertida**, y son cuatro fases que hay que tener en los
+dedos:
+
+1. **Las cinco primeras suben en recto** — 6.1° sin desviarse. Es el tramo que
+   decide un intercambio a media distancia, y el único que se tira sin práctica.
+2. **De la sexta a la décima sigue subiendo y se va a la izquierda** (1.9°). Aquí
+   se compensa tirando abajo y un poco a la derecha.
+3. **Pasada la décima la vertical se estabiliza y el tiro se va a la derecha**
+   (2.2°): el travesaño. Se arrastra el ratón a la izquierda, casi sin vertical.
+4. **Y de ahí al final alterna** izquierda/derecha, sin subir más.
+
+Techo vertical **9.6°**, el más alto del arsenal (la Rift llega a 7.2), y **la
+cola no se detiene nunca**: no hay disparo a partir del cual el arma se controle
+sola. A media y larga distancia se juega a **ráfagas de tres o cuatro**.
+
+Los tres precios se pagan antes de disparar: **2900 ms de recarga** (la más larga
+de las principales), **5.23 u/s** (la automática más lenta) y **3400** en la
+tienda, en *Rifles de asalto* junto a la Rift — una ronda ganada más algo
+guardado. Lo que se elige entre las dos es cuánto quieres pelear con el
+retroceso.
 
 ### Fang, el cuchillo arrojadizo
 

@@ -342,7 +342,9 @@ export class MovementController {
 
     /** Escenario contra el que se colisiona. Null = sala vacía, suelo en y = 0. */
     this.scenario = null
-    /** Dónde aparece el jugador. Lo fija el escenario. */
+    /** Una salida puesta a mano, que manda sobre la del escenario (vuelta 93). */
+    this._salidaFija = null
+    /** Dónde aparece el jugador. Lo fija el escenario, salvo `_salidaFija`. */
     this.spawnX = 0
     this.spawnZ = 0
 
@@ -687,8 +689,15 @@ export class MovementController {
     // movimiento tiene que ser el mismo que el de las paredes que se dibujan.
     this.room = scenario ? scenario.room : ROOM
     const spawn = scenario ? scenario.spawn : null
-    this.spawnX = spawn ? spawn.x : 0
-    this.spawnZ = spawn ? spawn.z : 0
+    /**
+     * **Y una salida puesta a mano manda sobre la del escenario** (vuelta 93).
+     * Se lee aquí porque `setScenario` es el **único** sitio del que sale el
+     * punto de aparición, y el motor lo vuelve a llamar cada vez que se aplica
+     * un ajuste: escribir el spawn desde fuera, después de arrancar, lo
+     * arreglaba hasta el siguiente `_applySettings` y no más. Ver `ponerSalida`.
+     */
+    this.spawnX = this._salidaFija ? this._salidaFija.x : (spawn ? spawn.x : 0)
+    this.spawnZ = this._salidaFija ? this._salidaFija.z : (spawn ? spawn.z : 0)
     /**
      * **Y su física** (vuelta 72). Un mapa puede pesar menos: la gravedad, el
      * impulso del salto y el techo del aire salen de aquí y no de `MOVEMENT`,
@@ -909,7 +918,15 @@ export class MovementController {
     // Reaparecer dentro de un área de teletransporte no puede mandarte a su
     // destino: el flanco se reinicia y se vuelve a pedir al entrar de verdad.
     this._enTeletransporte = false
-    this.rumboPedido = null
+    /**
+     * **Y con una salida fija, reaparecer vuelve a mirar hacia donde ella dice**
+     * (vuelta 93). Es lo mismo que hace el duelo al reaparecer —posición de la
+     * ranura y `lookAt` de su rumbo (vuelta 66)—, y es lo que hace que la
+     * segunda vida en un mapa de duelo se pruebe igual que la primera: sin esto
+     * el rumbo lo borraba este propio `reset`, que es el que corre al empezar la
+     * sesión, y se salía mirando a −Z.
+     */
+    this.rumboPedido = this._salidaFija?.yaw ?? null
     this.usoDeDispositivo = null
     this._pararDeslizamiento()
     this._airSpeed = this.topSpeed
@@ -2312,6 +2329,41 @@ export class MovementController {
     this.usoDeDispositivo.desdeX = desdeX
     this.usoDeDispositivo.desdeY = desdeY
     this.usoDeDispositivo.desdeZ = desdeZ
+  }
+
+  /**
+   * **Dónde reaparece el jugador, y mirando a dónde** (vuelta 93).
+   *
+   * Lo pone el escenario (`setScenario`), y eso es lo correcto para el
+   * entrenamiento: un mapa tiene un punto de aparición. Un mapa de duelo tiene
+   * **dos salidas** y su `spawn` no significa nada —el sitio lo reparte el
+   * servidor por ranura (vuelta 49)—, así que probarlo desde el editor dejaba al
+   * jugador en el centro del mapa, que no es ninguna de las dos vistas que ese
+   * mapa ofrece.
+   *
+   * Dos cosas que son el diseño y no comodidad:
+   *
+   * - **Escribe el spawn, no la cámara.** Así reaparecer también cae ahí, que es
+   *   lo que hace que probar un mapa de duelo sea probarlo: morir y volver al
+   *   centro sería medir otro mapa. La cámara la mueve `reset()`, que es el
+   *   único sitio donde la posición salta.
+   * - **Y el rumbo se pide, no se escribe.** Sobre `camera.rotation.y` manda
+   *   `LookControls` y lo reescribe en el siguiente movimiento de ratón (vuelta
+   *   66): va por `rumboPedido`, el mismo recado que usa un teletransporte, y lo
+   *   aplica quien tiene los controles. Se pide **después** de `reset()`, que lo
+   *   borra.
+   */
+  ponerSalida(x, z, yaw = null) {
+    // **Se recuerda, no se escribe y ya.** `setScenario` es el único sitio de
+    // donde sale el spawn y el motor lo vuelve a llamar con cada ajuste
+    // aplicado: sin esta marca, la salida duraba hasta el siguiente
+    // `_applySettings` —que es lo que arranca una sesión— y volvía al centro
+    // del mapa sin decir nada.
+    this._salidaFija = { x, z, yaw }
+    this.spawnX = x
+    this.spawnZ = z
+    // El rumbo lo pide el propio `reset`, que es quien lo borraba.
+    this.reset()
   }
 
   /**

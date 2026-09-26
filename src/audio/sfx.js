@@ -471,6 +471,55 @@ export const SHOT_PROFILES = {
     mecaDecay: 0.04,
     mecaDelay: 0.19,
   },
+
+  /**
+   * **El Krakov: cuerpo grande con cerrojo, y el más grave de los automáticos**
+   * (vuelta 93).
+   *
+   * Tiene que separarse de la Rift, que es el arma con la que compite por la
+   * tecla y por la categoría de la tienda, y la Rift es **crack con cuerpo
+   * corto** (2600 Hz, cuerpo 0.55 en 32 ms). Aquí se invierte el reparto: el
+   * crack baja a 1900 y pierde fuerza, y el cuerpo sube a **0.92 arrancando en
+   * 86 Hz** —más grave y medio más largo—. Es la misma regla que separa al
+   * Reaper de la Pulse (vuelta 91), aplicada a las dos automáticas: lo que
+   * cambia es **qué capa manda**, no el volumen.
+   *
+   * Y lleva **cerrojo a 55 ms**, que no es decoración: a 600 RPM entre dos
+   * balas hay 100 ms, así que ese clac cae justo en medio de la ráfaga y lo que
+   * se oye es una máquina cicl-ando. Es lo único que un arma automática puede
+   * decir de su cadencia sin contar balas. Más tarde se pisaría con el disparo
+   * siguiente; más pronto se confundiría con la detonación.
+   *
+   * La relación del metal es **1.62**, que no es ni octava ni quinta y no
+   * coincide con ninguna del arsenal (1.27 Pump, 1.31 Reaper, 1.48 Rift, 1.73
+   * Scout, 1.93 Titan): un tono musical no suena a disparo, y dos armas con la
+   * misma relación suenan a la misma arma.
+   */
+  krakov: {
+    voz: 'seca',
+    crackTipo: 'highpass',
+    crackHz: 1900,
+    crackQ: 0.7,
+    crackGain: 0.78,
+    crackDecay: 0.03,
+    metalHz: 1150,
+    metalTo: 520,
+    metalRatio: 1.62,
+    metalDrive: 4.0,
+    metalBandHz: 2000,
+    metalBandQ: 0.8,
+    metalGain: 0.52,
+    metalDecay: 0.075,
+    bodyFrom: 86,
+    bodyTo: 36,
+    bodyGain: 0.92,
+    bodyDecay: 0.05,
+    mecaHz: 2200,
+    mecaQ: 1.8,
+    mecaGain: 0.28,
+    mecaDecay: 0.035,
+    mecaDelay: 0.055,
+  },
 }
 
 /**

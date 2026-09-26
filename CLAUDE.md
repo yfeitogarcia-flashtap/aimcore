@@ -26,7 +26,14 @@ esta fase.
 **Stack:** Vite 6 + React 18 + Three.js 0.170. Sin librerías de UI, sin router,
 sin gestor de estado. Tres dependencias de producción y nada más.
 
-**Sin assets externos, de ningún tipo:**
+**Sin assets externos, con una excepción medida y acotada** (vuelta 93). La regla
+ha aguantado noventa vueltas y sigue en pie para todo menos una cosa: **los
+estampados**, que son logos a color que un mapa pega en una superficie. Se
+admite porque ahí la síntesis no es una alternativa peor, es **imposible** —
+vectorizar un logo de marca a una paleta lo convierte en otro logo—, y lo que la
+hace soportable es que **no es del juego, es de un mapa**: dos imágenes por mapa,
+sólo se descargan las del mapa que se juega, el mundo no las espera y no son
+geometría. Está entero en §3 y en `docs/decisions.md` §93.8. Para todo lo demás:
 
 - **Audio:** todo sintetizado en tiempo real con la Web Audio API
   (`src/audio/sfx.js`): osciladores + un buffer de ruido pregenerado. **Y se
@@ -91,6 +98,9 @@ sin gestor de estado. Tres dependencias de producción y nada más.
 | Ceguera y aturdimiento | `src/game/granadas.js` | Lo que una Blind y una KO le hacen a **la pantalla**. **Del motor, con su propia hoja de estilos**, para que salga igual en los dos modos. |
 | Recogibles | `src/game/pickups.js` | Cruces de vida, cargas de escudo y casco por el suelo. |
 | Config | `src/config.js` | Todo el tuning, sin excepción. |
+| Estampados | `src/game/estampados.js` | Los logos a color que un mapa pega en una superficie (vuelta 93). **El único asset externo del proyecto.** Un plano con su textura y nada más: fuera de `occluders`, sin colisión, sin recibir rayos y **sin montarse en Node**, que no dibuja. |
+| Escalera | `src/maps/escalera.js` | La segunda macro: **un** objeto en el fichero y escalones en el motor, como el tubo. Garantiza por construcción que cada escalón se sube andando. **Sin `three` y sin `config.js`**, porque lo monta también el servidor. |
+| Actualización | `src/ui/actualizacion.js` | Pregunta a `/salud` si el build desplegado ha cambiado, y recarga **cuando la página dice que se puede**. Lo montan las dos páginas con su propia condición. |
 | Tubo | `src/maps/tubo.js` | Despliega un pozo declarado como **un** objeto en las cajas AABB que el motor sabe chocar. **Lo llaman `Scenario` y el editor**, que es lo que evita que el fichero y el mundo digan cosas distintas. |
 | Prisma | `src/maps/prisma.js` | Un sólido convexo de N caras: sus vértices, **sus caras como semiplanos** y la banda de un eje. Con cuatro lados **es una caja girada**. **Lo llaman `Scenario`, el editor y la miniatura**, que es lo que evita que el mapa se dibuje de una forma y se choque de otra. |
 | Formato de mapa | `src/maps/formato.js` | Qué campos tiene un mapa, el saneado y el serializador. **Lo miran el editor y el cargador**, que es lo que evita que un mapa se guarde con su física y se abra sin ella. |
@@ -735,6 +745,19 @@ comparar, que es lo contrario de lo que la vuelta 43 le pidió. Cuatro reglas:
   servidor, aunque en el entrenamiento no se pague. Una armería que prometiera
   otro precio sería la versión de escaparate del fallo de la 67. Lo que no está
   en el catálogo es lo que no se compra: el cuchillo dice «siempre contigo».
+- **Y una categoría de seis fichas obligó a recalcular el ancho** (vuelta 93). El
+  Krakov es la sexta primaria, y con la columna mínima en 212 px la sexta ficha se
+  iba a **una segunda fila** — en las cuatro resoluciones, porque el panel está
+  acotado a 1240 px y no depende de la ventana. Y con `subgrid` cada fila se
+  alinea por su cuenta (vuelta 89), así que esa arma dejaba de poder compararse
+  con las cinco de arriba: lo contrario de para qué existe esta pantalla. El
+  mínimo baja a **180**, que sale de la cuenta (1150 px de rejilla menos cinco
+  huecos de 10, entre seis) y no de un número redondo — con 184 cuadraba en tres
+  resoluciones y se iba a dos filas en la cuarta por **cuatro píxeles**. Medido
+  después: las cinco categorías en una fila y alineadas, y el panel vuelve a 809
+  px. **Aviso: la séptima arma de una categoría vuelve a romper esto**, y ahí ya
+  no será un número — será aceptar la segunda fila y decir que en ella no se
+  compara.
 - **Y el scroll se midió, con su límite dicho.** Ficha de 695 px y panel de 939
   antes; **583 y 795** ahora, quitando una fila que estaba vacía en trece de las
   catorce («En la mano» pasó a ser un punto verde al lado del nombre) y
@@ -1462,6 +1485,132 @@ teletransporte**. Ahora lo dice la época, que es el dato que de verdad signific
 «no hubo camino» y exactamente la razón por la que existe desde la vuelta 50 en
 vez de mirar cuánto se ha movido alguien.
 
+**Cada despliegue se carga solo en el navegador del jugador** (vuelta 93), y esto
+es una regla permanente de cara a la beta: un tester no sabe borrar la caché, y
+lo que no se recarga se queda con una versión antigua **sin que nada lo diga**.
+
+Lo que hay que retener es qué NO lo arregla, porque el arreglo obvio era un
+no-op: **las cabeceras ya eran correctas** —`no-cache` en el HTML, `immutable` en
+los assets con hash— y el problema no era la caché sino **quién pregunta**. Un
+tester deja la pestaña abierta horas mientras entran tres despliegues, y una
+página que no se vuelve a pedir no se entera de nada. Tres reglas:
+
+- **La página pregunta ella** (`src/ui/actualizacion.js`), contra `/salud`, que
+  publica la huella del build desde la vuelta 61: **no hay un dato nuevo que
+  mantener**. Inventar un endpoint de versión sería una segunda verdad sobre qué
+  está desplegado.
+- **Y nunca recarga en mitad de una partida.** Ofrece, y aplica cuando la página
+  dice que se puede: fuera de una sesión en el entrenamiento, y con el ratón
+  suelto en el duelo — donde recargar cuesta la ronda **al rival también**.
+- **En desarrollo no existe.** Ahí recarga el HMR y el servidor de desarrollo no
+  tiene `/salud`: un vigilante sondeando una ruta que no está es un error por
+  minuto en la consola.
+
+Y el huésped lleva **`ETag` por contenido**, porque `no-cache` sin validador es
+bajarse el fichero entero en cada revalidación: medido, un `If-None-Match`
+devolvía 200. Si algún día se añade otra cosa que se sirva, lleva su huella.
+
+**Un mapa se sube desde Alchemist, con un botón** (vuelta 93), y la lección de
+por qué está en `docs/decisions.md` §93.1: la vuelta 91 puso ese paso al final de
+`Alchemist.bat`, **detrás de la llamada que levanta Vite**, y el propio script
+anunciaba las dos formas de cerrar que lo matan antes de llegar ahí. **Un paso
+detrás de un proceso que bloquea sólo existe si el proceso vuelve por su cuenta**,
+y eso no se arregla documentándolo. Cuatro reglas que se quedan:
+
+- **La cuenta de mapas sin subir va en la barra de arriba**, que es la regla de
+  la 77: la barra dice el estado, y enterarse no puede depender de abrir un panel.
+- **Un commit por subida, no por guardado** (la historia del repo está curada,
+  vuelta 75), y **sólo `src/maps`**: cualquier otra cosa a medias se queda donde
+  está.
+- **`git` se llama con `execFileSync` y argumentos sueltos, nunca con una cadena
+  de shell.** Los nombres salen del disco, y un mapa con una comilla en el nombre
+  sería una orden.
+- **Y el registro no es un mapa en pantalla.** Añadir un mapa cambia también
+  `src/maps/index.js` y el historial, y las tres tienen que subir; contarlas como
+  mapas anunciaría «3 mapas sin subir» por un mapa. Qué es un mapa lo dice el
+  mismo dato que el registro: un `.js` que declara su `clave`.
+
+**El tinte de una pieza no sustituye al gris: lo tiñe** (vuelta 93). Se pidió
+poder dar color a las piezas con una paleta cerrada, y eso es correcto y es la
+mitad. La otra mitad es lo que no se ve al pedirlo: **el gris de una pieza es su
+altura** (vuelta 40) y el jugador aprende a leerlo, así que un color libre se
+lleva por delante esa lectura sin avisar. Cuatro reglas:
+
+- **Cambia el tono y la claridad la sigue poniendo el alto.** Es una
+  multiplicación en lineal por el tinte **normalizado a luminancia 1**, y eso es
+  lo que hace que la luminancia del resultado sea la del gris que tocaba. Medido
+  (`paleta93`): 1.87% de desvío en el peor caso —redondeo a 8 bits— y la escalera
+  bordillo→bloque sigue subiendo en los siete tintes.
+- **La paleta son tonos de material, no colores.** Apagados y de saturación baja,
+  la clase de color que tiene una pared. Lo que la valida es CIELAB **con su
+  control delante**: contra las señales el peor caso de los grises de hoy está a
+  ΔE 8.5 y con tinte a 10.7, o sea que la paleta no acerca nada; y contra la
+  escena el control sale a **ΔE 0.0** —el bordillo gris *es* `COLORS.gridFloor`—
+  contra 2.3 con tinte. Sin ese denominador, una fila de 2.3 habría condenado a
+  un tinte por algo que los grises hacen peor.
+- **Los montones de dibujo pasan a ser `kind|tinte`.** Un tinte cambia el
+  material, así que no puede caer en el montón de su altura. Cuesta un montón más
+  **por tinte usado**, no por pieza, y la colisión no sabe que existe un color.
+- **Y un tinte desconocido no tira la pieza**: se dice y sale gris. Volver al
+  gris **borra la clave**, no la pone en `undefined` (vuelta 83).
+
+**La colisión sí sabe de suelos inclinados, y lo sabía desde el primer día**
+(vuelta 93, contestando la pregunta del encargo). `groundHeightAt` interpola la
+superficie de una rampa, son sólidas **sólo por arriba**, y el Plano A lleva una
+en cada extremo del Balcón; lo único que faltaba era que el editor las ofreciera.
+Construirlo encontró la limitación que no estaba escrita: **una rampa subía sólo
+en Z**. Ahora declara su eje —y **el eje sale de qué par de extremos declara**
+(`fromZ`/`toZ` o `fromX`/`toX`), no de un campo aparte, que serían dos verdades
+sobre lo mismo—, el montaje lo normaliza a `{ eje, desde, hasta }` como ya
+normaliza una caja a `minX/maxX`, y **`resolveAxis` no se tocó**: ya era agnóstica
+del eje. Medido (`rampa93`): los cuatro rumbos dan el mismo perfil dígito a
+dígito y el Plano A sube igual que antes.
+
+**Y una escalera es una macro, con una garantía por construcción** (vuelta 93).
+Es la segunda del formato, con la forma del tubo de la 81: **un** objeto en el
+fichero y cajas en el motor. Lo interesante es lo que garantiza: `COVER.stepHeight`
+(0.25) es lo que se sube sin saltar, así que una escalera con escalones más altos
+**no es una escalera**, es una pared con muescas. En vez de dejar que pase y
+avisar, el despliegue **sube el número de escalones** hasta que cada uno quepa. Lo
+que el creador elige es cuántos quiere; lo que la macro garantiza es que se puedan
+subir andando — y el editor dice cuántos se montan de verdad, porque enterarse
+probando el mapa es enterarse tarde (vuelta 67). Medido: 4 pedidos para 2.6 u dan
+**11 de 0.236**, y andando por ella se llega a 2.600 con un salto máximo de
+0.2364.
+
+**Los estampados son el único asset externo, y lo que los acota es que sean de un
+mapa** (vuelta 93). Un logo a color pegado a una superficie: firma del creador o
+patrocinador. La excepción a la regla de «sin assets» se argumenta en
+`docs/decisions.md` §93.8 y lo que hay que respetar son cinco reglas:
+
+- **Dos imágenes por mapa y cuatro colocados**, y los topes **se dicen** con su
+  motivo: un límite que se aplica en silencio parece un fallo (vuelta 88).
+- **El mundo no las espera**, como el fondo fotográfico de la 78, y **nacen
+  invisibles**: un plano blanco esperando su imagen es un rectángulo blanco en
+  medio del mapa, y con una imagen que no llegue se queda para siempre.
+- **No son geometría.** Fuera de `occluders`, sin colisión, con su `raycast`
+  anulado y en un grupo que **no es el de la geometría**. Medido: el suelo da lo
+  mismo en 900 puntos del Plano A con y sin logos.
+- **Sin pantalla no hay estampado.** `Scenario` lo monta también el servidor y
+  `TextureLoader` pide un `document`, así que un mapa con un logo **tiraba el
+  huésped de Node**. Es la misma decisión que la Blind (vuelta 87): el servidor no
+  dibuja.
+- **Y «sólo game masters» sale hoy por construcción**: se colocan en Alchemist,
+  que no entra en `dist/` (vuelta 74), y la imagen tiene que estar en el
+  repositorio. El día que un mapa venga de fuera, esto necesita una puerta de
+  verdad.
+
+**Y el gesto de comprar es el mismo en los dos modos** (vuelta 93). La
+combinación **categoría + código** existía desde la vuelta 64 y vivía sólo en la
+tienda del duelo, así que el gesto que hay que interiorizar sólo se podía
+practicar jugando un 1v1 — la convención de la 63 al revés. En el entrenamiento
+**equipa** (ahí no hay economía) con los **mismos códigos del catálogo de la
+tienda**, y cada ficha de la armería los lleva escritos. Y escucha **en captura**,
+que es lo que la hace determinista: el motor mira las teclas de arma en un
+`keydown` de `window` en burbujeo y se registra antes, así que ni
+`stopPropagation` ni `stopImmediatePropagation` bastarían (vuelta 89: dos escuchas
+del mismo `window` y nadie gana por orden).
+
 **En Alchemist, todo lo configurable se coloca viendo el efecto** (vuelta 78).
 **Ésta es la convención permanente del editor**, no un arreglo de una fase:
 cualquier cosa que un mapa pueda declarar necesita **una forma 100% visual de
@@ -1820,6 +1969,32 @@ Cuatro reglas:
 - **El giro tiene cuatro posiciones y aun así es un gesto.** El aro se arrastra
   en redondo y **cuadra a 90°**, de modo que lo que se ve girar es exactamente
   lo que el motor va a saber chocar. Medido: 2×8 → 8×2 con el centro clavado.
+- **Y un tirador no puede medir más que la pieza que agarra** (vuelta 93).
+  Conservar el tamaño en pantalla con la distancia de cámara es correcto y es la
+  mitad: sobre una plataforma de dispositivo —0.2 de alto y un metro de lado— los
+  seis tapaban la pieza, así que seleccionarla para moverla era pinchar un
+  tirador. Se acota contra la dimensión más corta
+  (`GIZMO.fraccionDePieza`) con suelo (`escalaMin`) para que el de arriba siga
+  pudiéndose agarrar, y las esquinas van **achatadas**: se agarran mirando desde
+  arriba, que es de donde se construye, así que lo que hace falta es huella y no
+  volumen. Y se mide **en píxeles contra el ancho de la pieza en la misma
+  captura**, que es el denominador (vuelta 46): 18% en una losa de 1×1, 29% en una
+  de 1.2 y 8% en una de 8×8.
+- **Y hay un séptimo tirador que escala los tres lados** (vuelta 93), en la
+  esquina máxima en 3D y clavando la mínima — como una esquina clava la opuesta.
+  Con una regla que no se adivina: **el alto no se escala libre**, porque es una
+  palabra de `COVER.heights`, así que se multiplica por el mismo factor y cae al
+  escalón más cercano. La proporción es exacta en planta y **la más cercana que el
+  vocabulario admite** en vertical; un alto libre sería una segunda forma de decir
+  cuánto mide una pieza, y con ella se cae la rampa de grises.
+- **Y una copia aparece en un hueco libre, y cerca** (vuelta 93). Duplicar ponía
+  la copia en `x + w + paso`, y eso falla exactamente cuando más se usa: para una
+  pieza pequeña pegada a una grande, «justo al lado» está **dentro de la grande**
+  —donde no se ve, porque el clic se lo lleva la grande—. Lo decide una espiral de
+  anillos por la rejilla, contra cajas, prismas y tubos. Y **el botón de forma
+  nueva tenía el mismo fallo de origen**: comparaba la esquina exacta, así que una
+  pieza dentro de una grande no contaba como ocupado — los dos llaman ahora a la
+  misma función, porque arreglar uno solo habría dejado el otro en pie.
 - **Y lo que se pincha del aro no es el aro.** Un toro tiene el centro hueco y
   apuntarle al centro —que es donde apunta cualquiera— era un clic que se colaba
   por el agujero, llegaba al lienzo y **deseleccionaba la pieza**: el gizmo
@@ -1946,6 +2121,19 @@ verdad**. Lo que hay que respetar al seguir construyéndolo:
   libre —medidos contra el reloj del mundo—, se para en **z 8.400** contra una
   pieza cuya cara está en 8.0 (radio 0.4), y un mapa con física propia le llega
   al movimiento con **sus tres números** y despega de verdad.
+
+  **Y en un mapa de duelo se prueba desde una salida** (vuelta 93). El `spawn` de
+  un mapa es el punto de aparición del entrenamiento; un mapa de duelo reparte
+  **dos salidas** y el sitio lo da el servidor por ranura (vuelta 49), así que su
+  `spawn` no significa nada y probarlo dejaba al jugador en el centro — que en El
+  Espejo es justo lo que las dos salidas tienen tapado. Salen de
+  `scenario.salidasDeDuelo`, la misma función de la que las saca el servidor, y
+  **cada «Probar» cambia de lado**, porque *ver* la simetría pide mirar las dos.
+  Dos cosas del mecanismo: **una salida puesta a mano se recuerda en el
+  movimiento** —el spawn sale de `setScenario` y el motor lo vuelve a llamar con
+  cada ajuste aplicado, así que escribirla después de `requestStart` duraba menos
+  de un frame—, y **el rumbo lo vuelve a pedir `reset()`**, que es quien lo
+  borraba, lo que de paso hace lo correcto al reaparecer.
 - **El editor no puede poder construir algo contra lo que el motor no sepa
   chocar.** La colisión es AABB, así que hoy se dibujan cajas alineadas a los
   ejes y el giro es de **90°** —intercambiar ancho y fondo—. Rotación libre,
@@ -5332,11 +5520,24 @@ propia**: si hay muñecos, si **el disparo planta un muñeco** donde acabe el ra
 direcciones, con la colisión puesta— y poder apuntar a una cornisa desde arriba.
 **F3** quita los muñecos plantados.
 
+**Y desde la vuelta 93 se sube al juego desde el propio editor** (Archivo →
+Subir al juego), con la cuenta de mapas sin subir en la barra de arriba. También
+se avisa al arrancar Alchemist, para cazar una sesión que se cerró sin pulsarlo.
+
+**Y desde la 93 hay tres formas más y un color.** **Rampa** —que el motor sabía
+chocar desde el primer día y sube en los cuatro rumbos desde esta vuelta—,
+**Escalera** —una macro que garantiza por construcción que cada escalón se sube
+andando—, y **estampados**: logos a color pegados a una superficie, con su lista
+en la hoja de Mapa y un tope de dos imágenes y cuatro colocados. Y cada pieza,
+prisma, rampa y escalera puede llevar **tinte**, elegido en una rejilla de
+muestras pintadas con el color de verdad a la altura de esa pieza.
+
 Lo que todavía no hace —y son las fases 4 y 5 de
-`docs/propuestas/05-editor-de-mapas.md`—: rampas, vanos y métricas de mapa en
-vivo más allá de la de salidas. **La rotación libre dejó de estar en esa lista
-en la vuelta 83**, porque el motor ya sabe chocar una pieza girada; lo que
-sigue fuera hasta que sepa chocarlo son los **triángulos sólidos**.
+`docs/propuestas/05-editor-de-mapas.md`—: vanos y métricas de mapa en vivo más
+allá de la de salidas. **La rotación libre dejó de estar en esa lista en la
+vuelta 83**, porque el motor ya sabe chocar una pieza girada, y **las rampas en
+la 93**; lo que sigue fuera hasta que el motor sepa chocarlo son los **triángulos
+sólidos**.
 
 **El mundo va a 60 Hz fijos** (`SIM.hz`) desde la vuelta 44, dibuje el monitor lo
 que dibuje: el frame acumula tiempo real y gasta pasos con arrastre del resto, y
@@ -5494,6 +5695,7 @@ con sonido propio.
 | U2 | especial (tecla **5**) | semi | 40 | 1 (+reserva) | 2000 ms | **no** | 5.4 kg | 4.88 u/s |
 | Reaper | secundaria (tecla **2**) | semi | 150 | 6 | 2400 ms | **no** | 1.8 kg | 6.23 u/s |
 | Titan | principal (tecla **1**) | semi | 24 | 5 | 4000 ms | **no** | 6.5 kg | 4.88 u/s |
+| Krakov | principal (tecla **1**) | auto | 600 | 30 | 2900 ms | **no** | 4.0 kg | 5.23 u/s |
 | Vanta | cuerpo a cuerpo (tecla **3**, siempre) | cuchillo | — | — | — | no | 0.6 kg | 6.50 u/s |
 | Fang | granada (tecla **G**) | **carga** | 60 | 1 (+2) | 900 ms | **no** | 0.4 kg | 6.50 u/s |
 | Core | granada (tecla **G**) | **carga** | 50 | 1 (+1) | 1200 ms | **no** | 0.5 kg | 6.50 u/s |
@@ -5556,6 +5758,25 @@ mismo que el U2) y **el destello de mira**, que es lo único del juego que le
 cuenta al rival lo que estás haciendo. Mirilla de 14° (5.1×) contra los 22 de la
 Scout. En la tienda va en *Francotirador*, a **4700**, el artículo más caro del
 catálogo: no se paga con una ronda.
+
+**Krakov** (vuelta 93) es el **rifle de asalto de retroceso difícil**, y la
+primera arma diseñada desde su patrón y no desde sus números. Al cuerpo pega lo
+mismo que la Rift —50 al torso, dos al cuerpo pelado y tres con chaleco— y eso es
+deliberado: un arma difícil que además pegue más no es difícil, es obligatoria.
+Lo que se cobra por dominarla está arriba: **atraviesa el casco**, o sea que una
+bala a la cabeza mata lleve lo que lleve el rival.
+
+Su patrón es una **T invertida** en cuatro fases: las cinco primeras suben
+**6.1° en recto**, de la sexta a la décima la subida se apaga y el tiro se va
+**1.9° a la izquierda**, pasada la décima la vertical se estabiliza y se va
+**2.2° a la derecha**, y de ahí al final alterna. Techo vertical **9.6°**, el más
+alto del arsenal (la Rift llega a 7.2), y la cola no se detiene nunca. Se juega a
+ráfagas de tres o cuatro a media y larga distancia.
+
+Los tres precios se pagan antes de disparar: **2900 ms de recarga** (la más larga
+de las principales), **5.23 u/s** (la automática más lenta) y **3400** en la
+tienda, en *Rifles de asalto* junto a la Rift — una ronda ganada más algo
+guardado.
 
 **Vanta** (vuelta 71) es el **cuchillo**, y ocupa la tercera ranura —la tecla 3,
 reservada desde la vuelta 27—. Se lleva siempre, como la pistola. Clic izquierdo
@@ -5791,6 +6012,13 @@ no está en el catálogo es lo que no se compra, y hoy eso es el cuchillo: dice
 «siempre contigo». Comprar sigue siendo cosa del duelo; en el entrenamiento se
 equipa y ya.
 
+**Y desde la vuelta 93 se equipa sin ratón, con la combinación de la tienda.**
+Cada ficha lleva su **categoría + código** escrito al lado del precio, y
+teclearlos con el panel abierto equipa el arma —los mismos códigos del catálogo
+del duelo, así que lo que se aprende aquí vale allí—. Lo tecleado y lo que sale
+se dicen bajo el raíl; lo que este modo no puede dar (un chaleco) lo dice en vez
+de no hacer nada.
+
 **Pantalla de inicio, en tres pasos** (vuelta 92): el **logotipo y «Jugar
 ahora»**; luego **Entrenamiento** y **Duelo 1v1** en verde con **Armería** y
 **Opciones** debajo en gris; y pulsando Entrenamiento, la pantalla de configurar
@@ -5831,6 +6059,15 @@ el botón no pueda apuntar a un ajuste distinto del que enseña la fila.
 
 Cuentas, guardado en la nube, rankings y minimapa. Si el encargo no
 lo pide explícitamente, no se añade.
+
+**Y lo que la vuelta 93 deja anotado y no construido es una cosa: los
+estampados no tienen puerta de verdad.** Se pidió que fueran sólo para game
+masters y hoy eso sale por construcción —se colocan en Alchemist, que no entra en
+`dist/`, y la imagen tiene que estar en el repositorio—, así que no hay nada que
+moderar. El día que un mapa venga de fuera, ese «por construcción» deja de valer y
+hace falta identidad: o sea la propuesta de cuentas
+(`docs/propuestas/07-cuentas-y-presencia.md`), que sigue sin construir. Hasta
+entonces, **un mapa de comunidad no puede llevar estampados**.
 
 **Cuentas y presencia en vivo están diseñadas por fases y sin construir**
 (vuelta 92): `docs/propuestas/07-cuentas-y-presencia.md`. Son seis fases y la

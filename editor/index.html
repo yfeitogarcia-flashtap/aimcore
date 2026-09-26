@@ -37,6 +37,11 @@
       <span id="cuenta" class="dato"></span>
       <span id="presupuesto" class="dato"></span>
       <span id="estado" class="dato"></span>
+      <!-- **Lo que está en este PC y no en el juego se dice en la barra**
+           (vuelta 93). Guardar escribe src/maps en tu disco; el juego que se
+           juega es el desplegado. Hasta aquí enterarse de que un mapa no había
+           llegado era abrir el juego y no verlo. -->
+      <span id="sin-subir" class="dato aviso" hidden></span>
       <span class="hueco"></span>
       <button id="probar" type="button" class="accion">Probar</button>
       <button id="guardar" type="button" class="accion">Guardar</button>
@@ -142,6 +147,50 @@
                 dibujarse</b>: el decorado viste la pared y una rejilla por delante
                 sería el interior de la caja encima del paisaje.</p>
             </section>
+
+            <!-- **Los estampados** (vuelta 93): logos a color pegados a una
+                 superficie, y **el primer asset externo del proyecto**. Por eso
+                 esta hoja dice lo que cuesta: cuántas imágenes caben, lo que
+                 pesan y que hay que subirlas como un mapa. -->
+            <section>
+              <h2>Estampados <span id="cuenta-estampados" class="nota"></span></h2>
+              <p class="nota">Un logo a color sobre una caja, un muro o el suelo:
+                firma del mapa o patrocinador. <b>Dos imágenes por mapa y cuatro
+                colocados.</b></p>
+              <label>Imagen <select id="est-imagen"></select></label>
+              <div class="botonera">
+                <button id="est-poner" type="button">+ Colocar un estampado</button>
+              </div>
+              <p id="est-vacio" class="nota">Deja una imagen en <b>public/estampados/</b>
+                —WebP a ser posible— y aparecerá aquí.</p>
+              <ul id="est-lista"></ul>
+
+              <div id="est-ficha" hidden>
+                <h3>Estampado seleccionado</h3>
+                <p class="nota">Arrástralo por su <b>cuadro</b>, dale tamaño con
+                  la <b>esquina</b> y súbelo con el <b>cubo</b>. La <b>cara</b>
+                  decide hacia dónde mira.</p>
+                <div class="trio">
+                  <label>X <input id="est-x" type="number" step="0.5" /></label>
+                  <label>Y <input id="est-y" type="number" step="0.5" /></label>
+                  <label>Z <input id="est-z" type="number" step="0.5" /></label>
+                </div>
+                <div class="trio">
+                  <label>Ancho <input id="est-ancho" type="number" step="0.5" /></label>
+                  <label>Alto <input id="est-alto" type="number" step="0.5" /></label>
+                  <label>Cara <select id="est-cara"></select></label>
+                </div>
+                <p id="est-nota" class="nota"></p>
+                <div class="botonera">
+                  <button id="est-borrar" type="button">Borrar el estampado</button>
+                </div>
+              </div>
+
+              <p class="nota">No es geometría: <b>no para balas, no tapa
+                apariciones y no cuenta en el presupuesto</b>. Y la imagen hay que
+                subirla al repositorio como un mapa, o el resto verá el hueco
+                vacío.</p>
+            </section>
           </div>
 
           <!-- -------------------------------------------- CONSTRUIR -->
@@ -208,6 +257,20 @@
                 title="Altura desde el suelo a la que arranca la pieza. 0 = en el suelo." /></label>
               <p id="aviso-aire" class="aviso" hidden></p>
 
+
+              <h3>Color</h3>
+              <!-- **El tinte no sustituye al gris: lo tiñe** (vuelta 93). El
+                   gris de una pieza dice su altura y el jugador lo lee (vuelta
+                   40), así que lo que cambia es el tono y la claridad la sigue
+                   poniendo el alto. De ahí que las muestras se pinten **con el
+                   color de esta pieza a esta altura** y no con el tono a pelo:
+                   es la convención de la 78 —lo que se configura se ve—
+                   aplicada a un color, donde ver el efecto es literalmente
+                   verlo. -->
+              <div id="p-tintes" class="tintes" role="radiogroup" aria-label="Tinte de la pieza"></div>
+              <p class="nota">La <b>claridad</b> la sigue diciendo el alto: dentro
+                de un tinte, una pieza alta se ve más clara que una baja.</p>
+
               <!-- **Lo que la pieza le hace a quien la pisa vive en
                    Dispositivos** (vuelta 81). Aquí sólo se dice que lo es: la
                    ficha de una pieza es su geometría, y un rebote es una
@@ -242,6 +305,9 @@
                 <label>Lados <input id="k-lados" type="number" step="1" /></label>
                 <label>Alto <select id="k-kind"></select></label>
               </div>
+              <h3>Color</h3>
+              <div id="k-tintes" class="tintes" role="radiogroup" aria-label="Tinte del prisma"></div>
+
               <p class="nota"><b>Cuatro lados es una caja girada</b>; de cinco
                 en adelante, el polígono regular inscrito en ese ancho y ese
                 fondo. Y <b>X/Z es el centro</b>, no la esquina: la esquina de
@@ -277,6 +343,65 @@
               <p id="t-nota" class="nota"></p>
               <div class="botonera">
                 <button id="t-borrar" type="button">Borrar el tubo</button>
+              </div>
+            </section>
+
+            <!-- **La rampa** (vuelta 93). Existía en el motor desde el
+                 principio —el Balcón del Plano A lleva una en cada extremo— y
+                 lo único que le faltaba era poder dibujarla. -->
+            <section id="rampa" hidden>
+              <h2>Rampa seleccionada</h2>
+              <p class="nota">Un plano inclinado: se sube <b>sin tocar nada</b>.
+                Arrástrala por la <b>bola</b>, estírala por la <b>esquina</b>,
+                sube su alto con el <b>cubo de arriba</b> y gira su subida con el
+                <b>aro</b> — de noventa en noventa, porque el motor la choca
+                alineada a los ejes.</p>
+              <div class="trio">
+                <label>X <input id="r-x" type="number" /></label>
+                <label>Z <input id="r-z" type="number" /></label>
+                <label>Sube hacia <select id="r-rumbo"></select></label>
+              </div>
+              <div class="trio">
+                <label>Ancho <input id="r-w" type="number" step="0.5" min="0.1" /></label>
+                <label>Fondo <input id="r-d" type="number" step="0.5" min="0.1" /></label>
+                <label>Alto <select id="r-top"></select></label>
+              </div>
+              <h3>Color</h3>
+              <div id="r-tintes" class="tintes" role="radiogroup" aria-label="Tinte de la rampa"></div>
+              <p id="r-nota" class="nota"></p>
+              <div class="botonera">
+                <button id="r-borrar" type="button">Borrar la rampa</button>
+              </div>
+            </section>
+
+            <!-- **La escalera** (vuelta 93): una macro, como el tubo. Un objeto
+                 en el fichero y escalones en el motor. -->
+            <section id="escalera" hidden>
+              <h2>Escalera seleccionada</h2>
+              <p class="nota">Escalones que <b>se suben andando</b>, y cada uno
+                es cobertura. Arrástrala por la <b>bola</b>, dale ancho y huella
+                con la <b>esquina</b>, alto con el <b>cubo</b> y gírala con el
+                <b>aro</b>.</p>
+              <div class="trio">
+                <label>X (pie) <input id="e-x" type="number" /></label>
+                <label>Z (pie) <input id="e-z" type="number" /></label>
+                <label>Sube hacia <select id="e-rumbo"></select></label>
+              </div>
+              <div class="trio">
+                <label>Ancho <input id="e-ancho" type="number" step="0.5" /></label>
+                <label>Alto total <input id="e-alto" type="number" step="0.1" /></label>
+                <label>Base <input id="e-base" type="number" step="0.5" min="0" /></label>
+              </div>
+              <div class="trio">
+                <label>Escalones <input id="e-escalones" type="number" step="1" /></label>
+                <label>Huella <input id="e-huella" type="number" step="0.1" /></label>
+              </div>
+              <h3>Color</h3>
+              <div id="e-tintes" class="tintes" role="radiogroup" aria-label="Tinte de la escalera"></div>
+              <p id="e-nota" class="nota"></p>
+              <p id="e-aviso" class="aviso" hidden></p>
+              <div class="botonera">
+                <button id="e-borrar" type="button">Borrar la escalera</button>
               </div>
             </section>
 
@@ -641,6 +766,24 @@
               <h2>Abrir</h2>
               <label>Mapa <select id="abrir"></select></label>
               <ul id="problemas"></ul>
+            </section>
+
+            <!-- **Subir es una acción del editor, no del script que lo abre**
+                 (vuelta 93). En la 91 vivía al final de Alchemist.bat, detrás
+                 de la llamada que levanta Vite: las dos formas de cerrar que el
+                 propio script anunciaba —Ctrl+C o cerrar la ventana— matan el
+                 .bat antes de llegar ahí, así que el paso era inalcanzable
+                 justo como se usaba. Un botón no se puede saltar cerrando. -->
+            <section>
+              <h2>Subir al juego</h2>
+              <p class="nota">Guardar escribe el mapa en <b>este PC</b>. El juego que
+                se juega es el desplegado: lo que llega ahí es lo que se sube.</p>
+              <ul id="pendientes"></ul>
+              <p id="nada-pendiente" class="nota">Nada que subir: lo que hay aquí es lo que hay en el juego.</p>
+              <div class="botonera">
+                <button id="subir" type="button" class="accion">Subir al juego</button>
+              </div>
+              <p id="subir-nota" class="nota"></p>
             </section>
 
             <section>

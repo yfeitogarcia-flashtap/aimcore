@@ -73,23 +73,45 @@ fi
 # `npm run editor` levanta Vite y abre el navegador en `/editor/`. Con él
 # levantado, el juego también está en la raíz de esa misma dirección.
 # --------------------------------------------------------------------------
+# **Y se avisa también al arrancar** (vuelta 93). Subir vive dentro del editor
+# desde esta vuelta, pero una sesión que se cerró sin pulsarlo —o un mapa
+# guardado antes de la 93— deja cambios aquí y no en el juego.
+sin_subir="$(git status --porcelain -- src/maps 2>/dev/null)"
+if [ -n "$sin_subir" ]; then
+  echo ""
+  echo "  OJO: tienes mapas cambiados en este ordenador y NO en el juego:"
+  echo ""
+  echo "$sin_subir"
+  echo ""
+  echo "  Súbelos desde Alchemist: Archivo > Subir al juego."
+fi
+
 echo ""
 echo "[3/3] Abriendo Alchemist..."
 echo ""
 echo "  Se abrirá el navegador solo. Si no:  http://localhost:5173/editor/"
 echo "  El juego, en la misma dirección sin  /editor/"
 echo ""
-echo "  Para cerrarlo: pulsa Ctrl+C aquí, o cierra esta ventana."
+echo "  Para que un mapa llegue al juego: botón \"Subir al juego\", en Archivo."
+echo "  La barra de arriba te dice si tienes alguno sin subir."
+echo ""
+echo "  Para cerrarlo: cierra esta ventana cuando hayas subido."
 echo ""
 npm run editor
 
 # -----------------------------------------------------------------------------
-# 4. Al cerrar, que los mapas lleguen al juego (vuelta 91).
+# 4. Al cerrar, la red (vuelta 91, corregida en la 93).
 #
 # Guardar un mapa en Alchemist escribe src/maps/<clave>.js en ESTE ordenador y
 # nada más: el juego que se juega es el desplegado, y ahí llega lo que se sube
-# al repositorio. Hasta ahora un mapa editado o despublicado se quedaba aquí si
-# no te acordabas de subirlo a mano.
+# al repositorio.
+#
+# Esto era el único sitio donde se subía, y por eso no subía: está DETRÁS de
+# `npm run editor`, que no vuelve hasta que Vite muere, y las dos formas de
+# cerrar que este script anunciaba lo matan antes de llegar aquí —Ctrl+C va al
+# grupo de procesos entero, incluido este script, y cerrar la ventana también—.
+# Un paso inalcanzable justo como se usa es un paso que no existe, y no daba
+# ningún error. Desde la 93 se sube desde el editor; esto es la red.
 #
 # Se sube SÓLO src/maps: si tienes cualquier otra cosa a medias, se queda donde
 # está. Y lo normal es que sí: pulsar Intro sube.

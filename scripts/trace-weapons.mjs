@@ -92,8 +92,14 @@ for (const { key, file, matchHeightOf } of WEAPONS) {
  * iguala el alto. Va **en el script y no en `WEAPONS`** porque es una
  * propiedad de la foto, no del arma — el día que se vuelva a fotografiar el
  * arsenal con un recorte común, esta tabla se queda vacía.
+ *
+ * **Y ya van dos** (vuelta 93): la del Krakov llega a 1486×508 y se iguala a la
+ * Rift, que es su vecina de ranura y de categoría en la tienda —lo que hay que
+ * poder comparar de un rifle de asalto es con el otro rifle de asalto—. Si la
+ * tercera vuelve a llegar con otro recorte, lo que hay que mirar no es esta
+ * tabla: es de dónde salen las fotos.
  */
-const IGUALAR_ALTO = { pump: 'titan' }
+const IGUALAR_ALTO = { pump: 'titan', krakov: 'rift' }
 for (const [key, comoLa] of Object.entries(IGUALAR_ALTO)) {
   if (!traced[key] || !traced[comoLa]) continue
   const factor = traced[comoLa].bounds.height / traced[key].bounds.height
