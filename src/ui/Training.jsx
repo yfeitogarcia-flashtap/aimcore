@@ -11,6 +11,7 @@ import {
   SIMULTANEOUS_TARGETS,
   TARGET_TYPES,
   TRAINER_SCENARIOS,
+  WEAPONS,
   definicionDeEntrenamiento,
   scenarioHasCover,
 } from '../config.js'
@@ -161,9 +162,11 @@ function difficultyHint(settings) {
  * Es un `<section>` con su encabezado y no un desplegable: plegar esconde, y lo
  * que esta pantalla vino a arreglar es justo que nadie sabía que había más.
  */
-function Grupo({ titulo, children }) {
+function Grupo({ titulo, ancho = false, children }) {
+  // **Cada grupo es una tarjeta de la cabina** (vuelta 99), y las que llevan
+  // más que una fila de segmentos ocupan las dos columnas.
   return (
-    <section className="training__grupo">
+    <section className={`training__grupo cab-superficie${ancho ? ' training__grupo--ancho' : ''}`}>
       <h3 className="training__grupo-titulo">{titulo}</h3>
       {children}
     </section>
@@ -186,7 +189,9 @@ export default function Training({ settings, onChange, onStart, onBack }) {
   useEffect(() => {
     const panel = panelRef.current
     if (!panel) return
-    panel.scrollTop = 0
+    // Desde la vuelta 99 el que desplaza es el contenido de la cabina.
+    const desplaza = panel.closest('.cab-main') ?? panel
+    desplaza.scrollTop = 0
     panel.focus({ preventScroll: true })
   }, [])
 
@@ -237,14 +242,35 @@ export default function Training({ settings, onChange, onStart, onBack }) {
     },
   ]
 
+  const puesto = modos.find((m) => m.clave === settings.trainingMode) ?? modos[0]
+  const cuantas = SIMULTANEOUS_TARGETS[settings.simultaneousTargets]?.count ?? 1
+  const dificultad = ENEMY_DIFFICULTIES[settings.enemyDifficulty]
+  /**
+   * **«Vas a jugar» lo dice todo junto** (vuelta 99, de la maqueta de Cabina).
+   * Son las cinco decisiones de esta pantalla leídas de los mismos ajustes que
+   * las filas de la izquierda, así que no puede decir otra cosa que ellas; lo
+   * que añade es que se leen de una vez, al lado del botón que las arranca.
+   */
+  const resumen = [
+    ['Mapa', TRAINER_SCENARIOS[settings.scenario]?.label ?? '—'],
+    ['Dianas', `${TARGET_TYPES[settings.targetType]?.label ?? '—'} ×${cuantas}`],
+    ['Aprietan', hayQuienDispare && dificultad
+      ? `${dificultad.label} · ${dificultad.spreadDeg}° · ${dificultad.reactionMs} ms`
+      : 'no disparan'],
+    ['Duración', conCobertura && settings.trainingMode === 'timed'
+      ? 'la de la bomba'
+      : elegida.label],
+    ['Arma', WEAPONS[settings.weapon]?.label ?? '—'],
+  ]
+
   return (
     <div
-      className="panel panel--training"
+      className="training"
       ref={panelRef}
       tabIndex={-1}
       onMouseDown={(event) => event.stopPropagation()}
     >
-      <h2 className="panel__title panel__title--small">Entrenamiento</h2>
+      <div className="training__grupos">
 
       {/**
         * **El modo se elige, no se arranca** (vuelta 98). Hasta la 97 eran dos
@@ -258,7 +284,7 @@ export default function Training({ settings, onChange, onStart, onBack }) {
         * Es un `radiogroup` y no dos `aria-pressed`: dos botones «pulsados» que se
         * excluyen se leen con el lector de pantalla como dos interruptores sueltos.
         */}
-      <Grupo titulo="Modo">
+      <Grupo titulo="Modo" ancho>
         <div className="interruptor" role="radiogroup" aria-label="Modo de entrenamiento">
           {modos.map((modo) => {
             const puesto = settings.trainingMode === modo.clave
@@ -280,7 +306,7 @@ export default function Training({ settings, onChange, onStart, onBack }) {
         </div>
       </Grupo>
 
-      <Grupo titulo="Dónde se juega">
+      <Grupo titulo="Dónde se juega" ancho>
         <ScenarioRow value={settings.scenario} onChange={onChange} />
 
         {/* **La duración es de la sesión, no de un modo** (vuelta 78). «La del
@@ -397,21 +423,30 @@ export default function Training({ settings, onChange, onStart, onBack }) {
         />
       </Grupo>
 
+      </div>
+
       {/**
-        * **Volver y Jugar, abajo y pegados** (vuelta 98). Es el par de siempre
-        * de una pantalla de ajustes, y la acción ya no está arriba —arriba se
-        * elige—, así que la regla de la 94 («la acción no se va de la pantalla»)
-        * se cumple aquí: la barra es **pegajosa por abajo** y se ve con la lista
-        * en cualquier punto del scroll.
+        * **Volver y Jugar, en su columna y siempre a la vista** (vuelta 98;
+        * desde la 99, a la derecha). La regla de la 94 —la acción no se va de la
+        * pantalla— la cumple ahora que la columna es pegajosa: los ajustes
+        * desplazan y el resumen con «Jugar» no se mueve.
         *
-        * **Y dice «Jugar» y nada más**, como se pidió. El modo que arranca ya
-        * está escrito en verde encima; repetirlo en el botón era la solución de
-        * la 95 a un problema que era de los dos botones de arriba.
+        * **Y dice «Jugar» y nada más**: el modo que arranca ya está escrito
+        * encima, en verde en el interruptor y en grande aquí.
         */}
-      <div className="panel__actions training__acciones">
-        <button type="button" className="button button--quiet button--pequeno" onClick={onBack}>
-          Volver
-        </button>
+      <aside className="training__resumen">
+        <div className="training__vas cab-superficie">
+          <h3 className="cab-rotulo">Vas a jugar</h3>
+          <p className="training__vas-modo">{puesto.nombre}</p>
+          <dl className="training__vas-lista">
+            {resumen.map(([que, valor]) => (
+              <div key={que} className="training__vas-fila">
+                <dt>{que}</dt>
+                <dd>{valor}</dd>
+              </div>
+            ))}
+          </dl>
+        </div>
         <button
           type="button"
           className="button button--primary button--grande training__jugar"
@@ -419,7 +454,10 @@ export default function Training({ settings, onChange, onStart, onBack }) {
         >
           Jugar
         </button>
-      </div>
+        <button type="button" className="button training__volver" onClick={onBack}>
+          Volver
+        </button>
+      </aside>
     </div>
   )
 }

@@ -75,7 +75,9 @@ geometría. Está entero en §3 y en `docs/decisions.md` §93.8. Para todo lo de
 | Puntuación | `src/game/scoring.js` | Variables normalizadas, media ponderada y estrellas. |
 | Transición | `src/game/transition.js` | **Módulo sustituible entero.** Contrato único: `run(build)` tapa la escena, llama a `build()` y destapa. Nada más del motor sabe qué forma tiene. |
 | React | `src/App.jsx`, `src/ui/` | Sólo conoce la *fase* (inicio / juego / pausa / resumen) y el resumen final. El menú de inicio va en **tres pasos** (vuelta 92) y es estado, no ruta. |
-| Configurar partida | `src/ui/Training.jsx` | La pantalla de **Entrenamiento**: los dos modos arriba y todo lo que decide una partida debajo. Lo que hasta la 91 estaba escondido en opciones. |
+| Cabina (sistema) | `src/ui/cabina.css` | **Los tokens de la interfaz** (vuelta 99): color, letra, escala, espaciado, chaflanes, y las piezas de la carcasa. Lo cargan el juego y el duelo. Una pantalla nueva no declara un color ni un tamaño: usa uno de aquí. |
+| Cabina (carcasa) | `src/ui/Cabina.jsx` | El raíl de secciones, la barra de estado y el contenido de los menús del juego. Recibe la sección puesta y a quién avisar; no sabe qué hace cada una. |
+| Configurar partida | `src/ui/Training.jsx` | La pantalla de **Entrenamiento**: el modo arriba, todo lo que decide una partida en tarjetas, y a la derecha «Vas a jugar» con **Jugar** (vuelta 99). Lo que hasta la 91 estaba escondido en opciones. |
 | Filas de ajuste | `src/ui/fields.jsx` | `SliderRow`, `SegmentedRow`, `ToggleRow` y su cabecera. **Las usan los dos paneles que escriben ajustes**, que es lo que impide que se comporten distinto. |
 | Capa del duelo | `src/ui/duelo.jsx` | Monta **los mismos** `Hud`, `Crosshair`, `Options` y `Armoury` en la página del 1v1 y los publica como un asa imperativa. No dibuja nada propio (vuelta 73). |
 | Tajo | `src/game/slash.js` | El destello de un golpe de cuchillo. **Del motor, con su propia hoja de estilos**: sin arma en la mano, la pantalla es lo único que cuenta el golpe. |
@@ -891,6 +893,63 @@ la actualización y la subida —sin commit local ni nada en el remoto— y se v
 cuando git ya lo da por resuelto; abrir Largo y Puerta sin tocarlo no escribe
 borrador; y el borrador del PC de Yago, con `z:16`, queda apartado con el disco
 delante.
+
+**La interfaz es un sistema, y se llama Cabina** (vuelta 99). **Ésta es la
+convención permanente para cualquier pantalla que se añada, en el juego o en la
+página del duelo.** Es la dirección B de las maquetas de la 98, elegida por Yago, y
+se construyó como sistema y no pantalla a pantalla. Cinco reglas:
+
+- **Los tokens viven en `src/ui/cabina.css` y en ningún otro sitio**: color (con un
+  significado cada uno en los menús —**naranja es lo elegido, verde es la acción,
+  todo lo demás es gris**—), letra, escala de tamaños, espaciado y chaflanes. Las
+  clases de siempre (`.button`, `.panel`, `.segmented__option`, `.field__*`,
+  `.interruptor`, la armería…) **se reescribieron sobre los tokens** en vez de
+  duplicarse en clases nuevas: dos botones es la vuelta 63 por la puerta del
+  aspecto. Una pantalla nueva no escribe un `#hex` ni un `px` de letra.
+- **Sin fuentes descargadas**: la letra de rótulo es **Bahnschrift** (Windows 10 y
+  11, donde vive la app), condensada con `font-stretch`, con las condensadas de Mac
+  y Linux detrás. La maqueta usaba Barlow de Google Fonts, y eso es un asset
+  (§2).
+- **El chaflán es `clip-path`, y por eso nada lleva borde**: un borde o un
+  `outline` se recortarían con la esquina. Lo elegido se marca con el fondo, y **el
+  foco es un anillo por dentro** (`box-shadow: inset`), que es la regla de la 94
+  —el foco dice «estás aquí», no «esto es lo importante»— con la forma nueva.
+- **Los menús del juego viven en una carcasa** (`Cabina.jsx`): raíl de secciones
+  a la izquierda con la palabra bajo cada icono (la regla del raíl de Alchemist,
+  vuelta 78), barra de estado arriba, contenido debajo. **El contenido va sobre la
+  escena, no tapándola**, porque la pantalla de entrenamiento dibuja el cono de
+  aparición en el mundo mientras se mueve su slider (vueltas 78 y 92). El primer
+  paso —el logotipo y «Jugar ahora»— se queda fuera de la carcasa, y la pausa y el
+  resumen siguen siendo paneles sobre el mundo: son las pantallas de **dentro** de
+  una partida.
+- **Y el HUD no entra**, a propósito: se mide píxel a píxel desde la 67 y se lee de
+  reojo con una mano en el ratón. Comparte los colores —son los mismos tokens—, no
+  la letra (`.hud-layer`). F3 del duelo tampoco: es un instrumento y sigue en
+  monoespaciada.
+
+**Alchemist debería adoptarlo, y por partes** (la pregunta de la 99, contestada en
+`docs/decisions.md` §99.4): los tokens y las piezas —botón, segmento, rótulo,
+superficie— sí, para que editor y juego se sientan un producto; su distribución
+no, porque ya es una cabina —el raíl del juego viene del suyo— y lo que la hace
+útil (el panel de ancho arrastrable, la barra de estado del mapa) es de una
+herramienta. Hoy no está hecho.
+
+**Y SALIR sólo existe donde puede cumplirse** (vuelta 99). En la app de escritorio,
+abajo a la izquierda de la pantalla del logotipo, cierra la aplicación: pide
+`salir` a la ventana (`main.rs`, `app.exit(0)`) y, si esa orden no llega, cierra la
+ventana con la de Tauri (`core:window:allow-close`). **En un navegador no se
+enseña**: una página no puede cerrar una pestaña que no abrió ella, y un botón que
+no puede hacer lo que dice es el fallo de la vuelta 67. De paso se arregló el
+repuesto de la pantalla completa de la 97, que mandaba `fullscreen` y Tauri 2 lee
+`value`: no habría hecho nada.
+
+Medido (`cabina99b`, a 1920×1080, 1600×900, 1366×768 y 1280×860): las dos puertas
+de la portada miden y se tiñen igual; con la lista de entrenamiento hasta abajo,
+**Jugar se ve y se pincha** en los cuatro tamaños; dos filas inertes sin admitir
+entrada y 0 «por defecto» encendidos; el raíl lleva a las cuatro secciones y marca
+la puesta; el botón del duelo usa **la misma familia de letra** que los del juego;
+en un navegador no hay Salir, y en la app sale a 32 px del borde izquierdo y pide
+`salir`. Y `menu92` sigue en **430 px y 0 inalcanzables** a 700×460.
 
 **Todo el tuning en `config.js`.** Ninguna constante de juego vive suelta en un
 módulo. Si necesitas un número nuevo, va a `config.js` aunque lo use un solo
@@ -6772,24 +6831,27 @@ del duelo, así que lo que se aprende aquí vale allí—. Lo tecleado y lo que 
 se dicen bajo el raíl; lo que este modo no puede dar (un chaleco) lo dice en vez
 de no hacer nada.
 
-**Pantalla de inicio, en tres pasos** (vuelta 92): el **logotipo y «Jugar
-ahora»**; luego **Entrenamiento** y **Duelo 1v1** en verde —**del mismo tamaño y
-del mismo color desde la vuelta 94**, que es cuando el foco dejó de rellenar uno
-de los dos— con **Armería** y **Opciones** debajo en gris y, debajo, **los
-controles como pares de tecla y verbo**; y pulsando Entrenamiento, la pantalla de
-configurar la partida.
+**Pantalla de inicio, en tres pasos** (vuelta 92), **y desde la 99 dentro de la
+cabina**: el **logotipo y «Jugar ahora»** —con **Salir** abajo a la izquierda, sólo
+en la app—; luego la **portada** de la cabina, con **Entrenamiento** y **Duelo 1v1**
+como dos puertas del mismo tamaño y su acción en verde, y los **controles** como
+pares de tecla y verbo en la franja de abajo; y pulsando Entrenamiento, la pantalla
+de configurar la partida. **Armería** y **Opciones** ya no son botones del paso 2:
+son secciones del **raíl** de la izquierda, igual que Inicio, Entrenar y Duelo, y el
+logotipo de arriba del raíl vuelve al primer paso.
 
 **Configurar entrenamiento** (lo que hasta la 91 estaba dentro de opciones), en
-el orden de la vuelta 98: **Modo** —un interruptor, ronda con explosivo o
-Deathmatch (cronometrada o práctica libre en la sala vacía), sólo el elegido en
-verde y guardado como un ajuste más—, *dónde se juega* (escenario con su plano y
-su ficha, y la duración de la sesión), *contra qué disparas* (tipo de diana),
-*dificultad*, *dianas simultáneas y movimiento* (simultáneas, modo dinámico y
-velocidad de patrulla) y *el resto* (tamaño, cadencia, distancia de aparición y
-**ancho del cono**, que se ve dibujado delante mientras se mueve). Los que no
-significan nada con lo elegido arriba salen **apagados y sin admitir entrada**,
-con su frase diciendo por qué. Y abajo, **pegados**, **«Volver» y «Jugar»** —que
-dice «Jugar» y nada más: el modo ya está en verde encima—.
+el orden de la vuelta 98 y en **tarjetas** desde la 99: **Modo** —un interruptor,
+ronda con explosivo o Deathmatch (cronometrada o práctica libre en la sala vacía),
+sólo el elegido en verde y guardado como un ajuste más—, *dónde se juega*
+(escenario con su plano y su ficha, y la duración de la sesión), *contra qué
+disparas* (tipo de diana), *dificultad*, *dianas simultáneas y movimiento*
+(simultáneas, modo dinámico y velocidad de patrulla) y *el resto* (tamaño,
+cadencia, distancia de aparición y **ancho del cono**, que se ve dibujado delante
+mientras se mueve). Los que no significan nada con lo elegido arriba salen
+**apagados y sin admitir entrada**, con su frase diciendo por qué. Y a la derecha,
+pegada, la columna **«Vas a jugar»** —modo, mapa, dianas, quién aprieta, duración y
+arma, leídos de los mismos ajustes— con **Jugar** y **Volver** debajo.
 
 **Opciones** (desde el menú y desde la pausa, persistidas) se queda con lo que
 es **del jugador y de su máquina**: sensibilidad, **sensibilidad con mirilla**,
@@ -6820,14 +6882,18 @@ el botón no pueda apuntar a un ajuste distinto del que enseña la fila.
 Cuentas, guardado en la nube, rankings y minimapa. Si el encargo no
 lo pide explícitamente, no se añade.
 
-**Y la vuelta 98 fija lo que va delante** (encargo de la vuelta 98): primero se
-construye **el rediseño elegido** de entre las tres maquetas —como un sistema único
-para el juego y la página del duelo, no pantalla a pantalla—; después la **11**, ya
-**aprobada**, empezando por su fase 1 (todos contra todos) **y el cambio de
-protocolo**, con dos condiciones puestas: antes de construirla, **una estimación
-del coste mensual de tráfico en Fly.io con el protocolo nuevo** (por ejemplo, 5
-salas de 10 jugadores, 2 horas al día), y que **Alchemist deje colocar tantas
-salidas como jugadores tenga el modo del mapa**.
+**Y la vuelta 98 fijó lo que va delante, y la 99 cumplió la primera parte**: el
+**rediseño elegido** (Cabina) está construido como sistema, en el juego y en la
+página del duelo (§3). Lo siguiente es la **11**, ya **aprobada**, empezando por su
+fase 1 (todos contra todos) **y el cambio de protocolo**. Las dos condiciones que
+puso la 98: la **estimación de coste** de tráfico en Fly está hecha (propuesta 11,
+§2.1: con el protocolo nuevo, 5 salas de 10 jugadores 2 h al día son **~15 $/mes**,
+contra ~92 con el de hoy) y queda la otra, **que Alchemist deje colocar tantas
+salidas como jugadores tenga el modo del mapa**. Y la visión de después —mapas de
+varias salas unidas por túneles— tiene respuesta en la propuesta 11 §2.2: el
+protocolo de la fase 1 se diseña con **una** función «¿entra B en la foto de A?»
+para que el día de las salas cambie el criterio y no el cable. Detrás, **que
+Alchemist adopte los tokens de Cabina** (§3).
 
 **Y cuatro propuestas están escritas y sin construir, con su orden decidido por el
 encargo de la vuelta 97**: primero la **11** (salas de varios, espectador y lobby

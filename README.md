@@ -771,17 +771,28 @@ que no existen.
 
 Va en **tres pasos**, y cada uno hace una pregunta:
 
-1. El **logotipo** y un solo botón, **Jugar ahora**.
-2. **Entrenamiento** y **Duelo 1v1**, los dos en verde y **del mismo tamaño y
-   el mismo color**; debajo, **Armería** y **Opciones** en gris. El color separa
-   *jugar* de *prepararse*. Y debajo, los controles como **pares de tecla y
-   verbo** —`WASD` moverte, `SPACE` saltar— en vez de los tres renglones de
-   texto de antes: un párrafo de controles no lo lee nadie antes de jugar.
+1. El **logotipo** y un solo botón, **Jugar ahora**. En la app de escritorio,
+   abajo a la izquierda, **Salir** (con su pictograma) cierra la aplicación; en
+   un navegador no sale, porque una página no puede cerrar su pestaña.
+2. La **portada**: **Entrenamiento** y **Duelo 1v1** como dos puertas del mismo
+   tamaño, cada una con su acción en verde, y abajo los controles como **pares de
+   tecla y verbo** —`WASD` moverte, `ESPACIO` saltar—.
 3. Pulsando Entrenamiento, la pantalla donde **se configura la partida**, en
-   este orden desde la vuelta 98: **Modo** (ronda con explosivo o Deathmatch),
+   tarjetas y en este orden: **Modo** (ronda con explosivo o Deathmatch),
    **Dónde se juega**, **Contra qué disparas**, **Dificultad**, **Dianas
-   simultáneas y movimiento** y **El resto**. Y abajo, pegados, **Volver** y
-   **Jugar**.
+   simultáneas y movimiento** y **El resto**. A la derecha, **«Vas a jugar»** lo
+   dice todo junto, con **Jugar** y **Volver** debajo; esa columna no se mueve al
+   bajar por los ajustes.
+
+**Desde la vuelta 99 los menús son una cabina.** A la izquierda, un **raíl** con
+cinco secciones —Inicio, Entrenar, Duelo, Armería y Opciones—, cada una con su
+icono y su nombre; arriba, una barra que dice dónde estás. El logotipo de arriba
+del raíl vuelve a la primera pantalla. Es la dirección **B · Cabina** de las
+maquetas de la vuelta 98, y está hecha **como un sistema**: tipografía, tamaños,
+botones, colores y espaciados se definen una vez (`src/ui/cabina.css`) y los
+usan todas las pantallas del juego y la página del duelo. En los menús el
+**naranja es lo elegido** y el **verde es la acción**; todo lo demás es gris.
+La letra es **Bahnschrift**, que ya trae Windows: no se descarga nada.
 
 **El modo se elige, no se arranca** (vuelta 98). Los dos modos eran dos botones
 que empezaban la partida al pulsarlos, así que no se podía marcar el Deathmatch y

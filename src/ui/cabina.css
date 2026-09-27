@@ -1,0 +1,283 @@
+/*
+ * **Cabina: el sistema de interfaz de Vektor** (vuelta 99).
+ *
+ * Es la dirección B de las tres maquetas de la vuelta 98, elegida por Yago, y
+ * se construye como **un sistema y no pantalla a pantalla**: todo lo que decide
+ * cómo se ve una pantalla —tipografía, tamaños, colores, espaciados, chaflanes y
+ * las piezas que se repiten— se escribe aquí **una vez**, y lo cargan las dos
+ * páginas: el juego (por `styles.css`) y el duelo (por `src/ui/duelo.jsx`, que
+ * importa la misma hoja). Una pantalla nueva no declara un color ni un tamaño:
+ * usa un token de aquí o una clase que ya los usa.
+ *
+ * Es la convención de la vuelta 63 —«una sola fuente de verdad para lo
+ * compartido»— aplicada al aspecto: dos copias de un botón acaban siendo dos
+ * botones, y en un menú eso se ve a la primera.
+ *
+ * Lo que **no** entra es el HUD: la mira, la vida, el bloque de arma y el
+ * dinero se miden píxel a píxel desde la vuelta 67 (`hud67`, `duelo73`) y viven
+ * en su propia tipografía (`.hud-layer`). Comparte los colores —son los mismos
+ * tokens— pero no la letra: lo que se lee de reojo con una mano en el ratón no
+ * es lo mismo que un menú.
+ */
+
+:root {
+  /* ------------------------------------------------------------- color
+     La paleta de siempre (CLAUDE.md §1) más los grises de la cabina. Cada
+     color significa **una** cosa en los menús:
+     - naranja: **lo elegido** (la pestaña, el segmento, el mapa puesto);
+     - verde: **la acción** (lo que pasa al pulsar: jugar, copiar, equipar);
+     - todo lo demás es gris, y la jerarquía la ponen los grises. */
+  --cab-fondo: #0a0a0a;
+  --cab-carcasa: #0e0e0e;
+  --cab-superficie: #111111;
+  --cab-superficie-translucida: rgba(17, 17, 17, 0.9);
+  --cab-hueco: #1a1a1a;
+  --cab-hueco-alto: #222222;
+  --cab-linea: #1f1f1f;
+  --cab-linea-fuerte: #2a2a2a;
+  --cab-velo: rgba(10, 10, 10, 0.72);
+
+  --cab-texto: #e8e8e8;
+  --cab-texto-suave: #b8b8b8;
+  --cab-texto-apagado: #8a8a8a;
+  --cab-texto-rotulo: #7a7a7a;
+  --cab-texto-muerto: #5a5a5a;
+
+  --cab-elegido: #e4462b;
+  --cab-elegido-velo: rgba(228, 70, 43, 0.08);
+  --cab-accion: #2fcb82;
+  --cab-accion-tinta: #08130d;
+  --cab-accion-velo: rgba(47, 203, 130, 0.1);
+  /* Salir no es la acción de ninguna pantalla: se ve, no se invita. */
+  --cab-peligro: #e4462b;
+
+  /* ------------------------------------------------------------ letra
+     **Sin fuentes descargadas** (la regla de «sin assets», CLAUDE.md §2): la
+     maqueta usaba Barlow de Google Fonts y el juego no puede pedirla. La
+     familia que hace de rótulo es **Bahnschrift**, que trae Windows 10 y 11
+     —donde juega casi todo el mundo, y donde vive la app— y es una DIN
+     condensable: con `font-stretch` sale la cabina de la maqueta. Detrás van
+     las condensadas de Mac y Linux y, al final, una sans cualquiera: se ve
+     más ancha, y se sigue leyendo. */
+  --cab-letra-rotulo: 'Bahnschrift SemiCondensed', 'Bahnschrift', 'Avenir Next Condensed',
+    'Roboto Condensed', 'Arial Narrow', 'Liberation Sans Narrow', sans-serif;
+  --cab-letra-texto: 'Bahnschrift', 'Segoe UI', 'Avenir Next', system-ui, 'Liberation Sans', sans-serif;
+  --cab-letra-cifra: ui-monospace, 'SF Mono', 'Cascadia Mono', Consolas, 'Liberation Mono', monospace;
+
+  /* Una escala, no tamaños sueltos. */
+  --cab-t-micro: 11px;
+  --cab-t-pequeno: 13px;
+  --cab-t-texto: 15px;
+  --cab-t-boton: 17px;
+  --cab-t-subtitulo: 22px;
+  --cab-t-titulo: 34px;
+  --cab-t-portada: 64px;
+  --cab-espaciado-rotulo: 0.28em;
+  --cab-espaciado-boton: 0.14em;
+
+  /* ------------------------------------------------------------ espacio */
+  --cab-e1: 4px;
+  --cab-e2: 8px;
+  --cab-e3: 12px;
+  --cab-e4: 16px;
+  --cab-e5: 24px;
+  --cab-e6: 32px;
+  --cab-e7: 48px;
+
+  /* ------------------------------------------------------------ forma
+     El chaflán es la firma de la cabina: una esquina cortada, nunca redonda.
+     Se aplica con `clip-path`, así que **no lleva borde** —un borde se
+     recortaría con la esquina—; lo que marca un elegido es el fondo o un
+     `outline`, que sí sigue al rectángulo. */
+  --cab-chaflan: 14px;
+  --cab-chaflan-grande: 22px;
+  --cab-rail: 96px;
+  --cab-barra: 52px;
+}
+
+/* ============================================================ la carcasa
+   Raíl de iconos a la izquierda, barra de estado arriba y el contenido debajo.
+   Es la regla de Alchemist de la vuelta 78 —un raíl con la palabra debajo de
+   cada icono, porque un raíl de pictogramas es un examen— aplicada al juego:
+   las secciones crecen a lo largo del raíl y el contenido no se entera. */
+.cab {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: var(--cab-rail) minmax(0, 1fr);
+  grid-template-rows: var(--cab-barra) minmax(0, 1fr);
+  color: var(--cab-texto);
+  font-family: var(--cab-letra-texto);
+  font-size: var(--cab-t-texto);
+  cursor: default;
+}
+
+.cab-rail {
+  grid-row: 1 / span 2;
+  display: flex;
+  flex-direction: column;
+  gap: var(--cab-e1);
+  padding-top: var(--cab-e3);
+  background: var(--cab-carcasa);
+  border-right: 1px solid var(--cab-linea);
+}
+
+.cab-rail__marca {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: var(--cab-barra);
+  margin-bottom: 10px;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: pointer;
+}
+
+.cab-rail__logo {
+  width: 36px;
+  height: 36px;
+  fill: var(--cab-texto);
+}
+
+.cab-rail__marca:hover .cab-rail__logo,
+.cab-rail__marca:focus-visible .cab-rail__logo {
+  fill: var(--cab-elegido);
+}
+
+.cab-rail__marca:focus-visible {
+  outline: none;
+}
+
+.cab-rail__item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: var(--cab-e3) 0;
+  border: 0;
+  border-left: 3px solid transparent;
+  background: none;
+  color: var(--cab-texto-apagado);
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: 12px;
+  letter-spacing: var(--cab-espaciado-boton);
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.cab-rail__item:hover {
+  color: var(--cab-texto);
+}
+
+.cab-rail__item:focus-visible {
+  outline: 2px solid var(--cab-texto);
+  outline-offset: -4px;
+}
+
+.cab-rail__item--activo,
+.cab-rail__item--activo:hover {
+  border-left-color: var(--cab-elegido);
+  background: var(--cab-elegido-velo);
+  color: var(--cab-elegido);
+}
+
+.cab-rail__icono {
+  width: 22px;
+  height: 22px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* La barra rayada es lo que hace de techo de la cabina: se lee como carcasa
+   y no como un panel más, así que no compite con lo de debajo. */
+.cab-barra {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--cab-e4);
+  padding: 0 28px;
+  border-bottom: 1px solid var(--cab-linea);
+  background: repeating-linear-gradient(135deg, #0c0c0c 0 8px, #0e0e0e 8px 16px);
+}
+
+.cab-barra__titulo {
+  margin: 0;
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-texto);
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--cab-texto);
+}
+
+.cab-barra__titulo small {
+  margin-left: 0.6em;
+  font-size: inherit;
+  font-weight: 500;
+  color: var(--cab-texto-muerto);
+}
+
+.cab-barra__estado {
+  display: flex;
+  gap: 20px;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  color: var(--cab-texto-rotulo);
+}
+
+/* El contenido va **sobre la escena y no tapándola**: la pantalla de
+   entrenamiento dibuja el cono de aparición en el mundo mientras se mueve su
+   slider (vueltas 78 y 92), y un fondo opaco lo escondería. */
+.cab-main {
+  position: relative;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 26px 32px;
+  background: var(--cab-velo);
+}
+
+/* ======================================================== piezas sueltas */
+
+/* Una superficie con la esquina de arriba a la derecha cortada. */
+.cab-superficie {
+  background: var(--cab-superficie-translucida);
+  clip-path: polygon(0 0, calc(100% - var(--cab-chaflan)) 0, 100% var(--cab-chaflan), 100% 100%, 0 100%);
+}
+
+/* El rótulo de una sección: pequeño, espaciado y gris. Se separa por ser un
+   rótulo, no por robarle un color a la paleta (vuelta 94). */
+.cab-rotulo {
+  margin: 0;
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-pequeno);
+  font-weight: 600;
+  letter-spacing: var(--cab-espaciado-rotulo);
+  text-transform: uppercase;
+  color: var(--cab-texto-rotulo);
+}
+
+/* Una tecla: caja y letra de rótulo. Lo que separa «lo que pulsas» de «lo que
+   pasa» es la caja, sin gastar un color. */
+.cab-tecla {
+  display: inline-block;
+  min-width: 2.4em;
+  padding: 2px 7px;
+  background: var(--cab-hueco);
+  border-bottom: 2px solid var(--cab-linea-fuerte);
+  color: var(--cab-texto);
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-pequeno);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-align: center;
+  text-transform: uppercase;
+}

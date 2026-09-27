@@ -68,8 +68,23 @@ segunda marca sólo se puede poner desde Rust. Ninguna depende del origen. No es
 un parámetro en la dirección a propósito: eso lo podría escribir cualquiera en un
 navegador y se llevaría de premio que `Ctrl` cerrase su pestaña.
 
-**Y se ve si se ha enterado**: al pie de *Opciones* pone «Vektor de escritorio
-0.3.0». Si pone «este navegador» dentro de la app, la app es anterior a la 0.3.
+**Y se ve si se ha enterado**: al pie de *Opciones* —y arriba a la derecha de
+los menús desde la vuelta 99— pone «Vektor de escritorio 0.4.0». Si pone «este
+navegador» dentro de la app, la app es anterior a la 0.3.
+
+### Salir (vuelta 99, 0.4.0)
+
+La pantalla de inicio lleva abajo a la izquierda un botón **Salir** con su
+pictograma, y en la app **cierra la aplicación**: se lo pide a la ventana con la
+orden `salir` (`main.rs`), y si esa orden no llegara, la página le pide a Tauri
+que cierre la ventana (`core:window:allow-close`), que al ser la única también
+termina la app. **En un navegador ese botón no sale**: una página no puede cerrar
+una pestaña que no abrió ella —el navegador ignora `window.close()`—, y un botón
+que no puede hacer lo que dice es peor que no tenerlo.
+
+**Hace falta instalar la 0.4.0 para tenerlo**: con una app anterior el botón
+sale igual (la página es la del despliegue) pero la ventana no sabe la orden
+`salir`; entonces cierra la ventana por la otra puerta, que es el mismo efecto.
 
 Y **lo guardado sobrevive a jugar en los dos sitios**: `localStorage` es por
 origen, así que la app y el navegador comparten el mismo almacén de teclas. Se
@@ -165,11 +180,13 @@ Los seis sitios donde esta ventana puede fallar y no el navegador:
    entero en el lateral de la bienvenida, y abajo «Vektor Installer» con su
    versión en lugar de «Nullsoft Install System».
 5. **F11 y la pantalla completa.** Primero, al pie de *Opciones* tiene que
-   poner «Vektor de escritorio 0.3.0» (si no, es una instalación vieja). Pulsa
+   poner «Vektor de escritorio 0.4.0» (si no, es una instalación vieja). Pulsa
    F11: la ventana se pone a pantalla completa y el interruptor de *Opciones* se
    marca solo. Ciérrala y vuelve a abrirla: tiene que abrir así. En un navegador
    esa fila no sale.
-6. **Se actualiza sola.** Como no contiene el juego, un despliegue nuevo le llega
+6. **Salir.** En la pantalla del logotipo, abajo a la izquierda, **Salir**
+   cierra la app entera. Ábrela otra vez: arranca normal.
+7. **Se actualiza sola.** Como no contiene el juego, un despliegue nuevo le llega
    sin volver a descargar el `.exe`: la propia página lo detecta y recarga
    (vuelta 93). Para verlo, deja la ventana abierta mientras entra un despliegue.
 

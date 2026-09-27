@@ -17,7 +17,7 @@ import {
 import { Engine, PHASE } from './game/engine.js'
 import { disposeAudio } from './audio/sfx.js'
 import { getKeybinds, keyLabel, keysOf, subscribeKeybinds } from './keybinds.js'
-import { montarPantallaCompleta } from './escritorio.js'
+import { esEscritorio, montarPantallaCompleta, salirDeLaApp, versionDeEscritorio } from './escritorio.js'
 import { getSettings, resetSettings, subscribeSettings, updateSettings } from './settings.js'
 import Crosshair from './ui/Crosshair.jsx'
 import { VektorLogo } from './ui/Logo.jsx'
@@ -25,6 +25,7 @@ import Hud from './ui/Hud.jsx'
 import Armoury from './ui/Armoury.jsx'
 import Options from './ui/Options.jsx'
 import Training from './ui/Training.jsx'
+import Cabina, { Icono } from './ui/Cabina.jsx'
 import { vigilarActualizaciones } from './ui/actualizacion.js'
 import Summary from './ui/Summary.jsx'
 
@@ -59,6 +60,13 @@ import Summary from './ui/Summary.jsx'
  * panel. Los dos casos que no son una acción se declaran con su `tecla` escrita
  * y su motivo al lado.
  */
+/** El rótulo de la barra de la cabina para cada sección. */
+const SECCION_TITULO = {
+  entrenamiento: 'Entrenamiento',
+  armeria: 'Armería',
+  opciones: 'Opciones',
+}
+
 const TECLAS_DE_ENTRADA = [
   // WASD no es un bind: son cuatro, y las cuatro juntas son el rótulo. Se
   // compone de sus cuatro acciones más abajo, así que reasignarlas se ve.
@@ -355,6 +363,31 @@ export default function App() {
   const panelOpen = optionsOpen || armouryOpen
 
   /**
+   * **En qué sección de la cabina se está, y cómo se va a otra** (vuelta 99).
+   * El raíl es la única navegación de los menús: cada icono cierra lo que haya
+   * abierto y abre lo suyo, así que no hay dos caminos a la misma pantalla que
+   * puedan dejarla a medias. El duelo es un enlace, como su botón (vuelta 66).
+   */
+  const seccion = armouryOpen
+    ? 'armeria'
+    : optionsOpen
+      ? 'opciones'
+      : menu === 'entrenamiento'
+        ? 'entrenamiento'
+        : 'inicio'
+  const irA = useCallback((destino) => {
+    if (destino === 'duelo') {
+      window.location.assign(NET.rutaDuelo)
+      return
+    }
+    setArmouryOpen(destino === 'armeria')
+    setOptionsOpen(destino === 'opciones')
+    if (destino === 'entrenamiento') setMenu('entrenamiento')
+    else if (destino === 'inicio') setMenu('modos')
+    else setMenu((m) => (m === 'marca' ? 'modos' : m))
+  }, [])
+
+  /**
    * **Y ESC reanuda** (vuelta 89). La 88 le enseñó a cerrar el panel de
    * opciones y ahí se quedó: con el panel ya cerrado, la única salida de la
    * pausa era encontrar «Reanudar» con el ratón, que es lo contrario de lo que
@@ -416,11 +449,66 @@ export default function App() {
         </div>
       )}
 
-      {!engineError && !avatarDebug && phase === PHASE.IDLE && (
-        // Con cualquier panel abierto el overlay deja de capturar el ratón:
-        // sería desconcertante que tocar un slider arrancara la partida. Y con
-        // el menú fuera del primer paso, tampoco: ahí hay botones que pulsar.
-        <div className="overlay" onMouseDown={panelOpen || menu !== 'marca' ? undefined : lock}>
+      {!engineError && !avatarDebug && phase === PHASE.IDLE && menu === 'marca' && !panelOpen && (
+        // **El primer paso se queda fuera de la cabina** (vuelta 99): es el
+        // logotipo y un botón, la pantalla que se ve antes de haber decidido
+        // nada. Un clic en cualquier sitio sigue capturando el ratón.
+        <div className="overlay" onMouseDown={lock}>
+          <div className="panel panel--marca">
+            {/* El logotipo **es** el título: lleva «VEKTOR» dentro, así que
+                repetirlo debajo en texto sería decirlo dos veces. El rótulo
+                sigue siendo un h1 y el SVG lleva su `aria-label`. */}
+            <h1 className="panel__logo">
+              <VektorLogo />
+            </h1>
+            <p className="panel__byline">by FlickLAB</p>
+            <div className="panel__actions panel__actions--solo">
+              <button
+                type="button"
+                className="button button--primary button--grande"
+                onMouseDown={swallowClick}
+                onClick={() => setMenu('modos')}
+                autoFocus
+              >
+                Jugar ahora
+              </button>
+            </div>
+          </div>
+
+          {/**
+            * **Salir, abajo a la izquierda y sólo donde puede cumplirse**
+            * (vuelta 99). En la app de escritorio cierra la aplicación: lo pide
+            * a la ventana, que es quien puede. En un navegador **no se enseña**:
+            * una página no puede cerrar una pestaña que no abrió ella —el
+            * navegador ignora `window.close()`—, así que un botón «Salir» ahí
+            * sería un botón que no hace nada, el fallo de la vuelta 67. Lo que
+            * sí hace un navegador para salir es su propia pestaña, y eso ya lo
+            * sabe todo el mundo.
+            */}
+          {esEscritorio() && (
+            <button
+              type="button"
+              className="button button--quiet salir"
+              onMouseDown={swallowClick}
+              onClick={salirDeLaApp}
+            >
+              <Icono nombre="salir" className="salir__icono" />
+              Salir
+            </button>
+          )}
+        </div>
+      )}
+
+      {!engineError && !avatarDebug && phase === PHASE.IDLE && (menu !== 'marca' || panelOpen) && (
+        <Cabina
+          seccion={seccion}
+          titulo={seccion === 'inicio'
+            ? <>Vektor<small>by FlickLAB</small></>
+            : SECCION_TITULO[seccion]}
+          estado={esEscritorio() ? <span>Vektor de escritorio {versionDeEscritorio() ?? ''}</span> : null}
+          onIr={irA}
+          onMarca={() => { setArmouryOpen(false); setOptionsOpen(false); setMenu('marca') }}
+        >
           {armouryOpen ? (
             armouryPanel
           ) : optionsOpen ? (
@@ -433,122 +521,60 @@ export default function App() {
               onBack={() => setMenu('modos')}
             />
           ) : (
-            <div className="panel">
-              {/* El logotipo **es** el título: lleva «VEKTOR» dentro, así que
-                  repetirlo debajo en texto sería decirlo dos veces. El rótulo
-                  sigue siendo un h1 y el SVG lleva su `aria-label`. */}
-              <h1 className="panel__logo">
-                <VektorLogo />
-              </h1>
-              <p className="panel__byline">by FlickLAB</p>
-
+            <div className="portada">
               {/**
-                * **Bajo el logo no va ningún rótulo destacado** (vuelta 89), y
-                * desde la 92 tampoco van las instrucciones: se pidió que la
-                * primera pantalla fuese el logotipo y un botón, y el motivo
-                * aguanta solo — nadie lee tres líneas de controles antes de
-                * haber decidido que va a jugar. Bajan al paso siguiente, que es
-                * donde por primera vez hay algo que elegir.
-                *
-                * `panel__eyebrow` sigue viva: es de donde cuelga el veredicto
-                * del resumen (`panel__eyebrow--fail`), que ahí sí es un rótulo.
+                * **Los dos modos, como dos puertas del mismo tamaño** (vuelta
+                * 92, con la forma de la cabina desde la 99). Son tarjetas enteras
+                * y no botones sueltos: se pincha donde sea. Las dos llevan su
+                * acción en verde y ninguna destaca sobre la otra (la regla de la
+                * 94: el color no designa un ganador que nadie ha elegido).
                 */}
-              {menu === 'marca' ? (
-                <div className="panel__actions panel__actions--solo">
-                  <button
-                    type="button"
-                    className="button button--primary button--grande"
-                    onMouseDown={swallowClick}
-                    onClick={() => setMenu('modos')}
-                    autoFocus
-                  >
-                    Jugar ahora
-                  </button>
-                </div>
-              ) : (
-                <>
-                  {/**
-                    * **Los dos modos arriba y en verde; lo demás debajo y en
-                    * gris** (vuelta 92). No es decoración: el verde de acción
-                    * es «esto es lo que pasa al pulsar» en todo el juego, y lo
-                    * que pasa aquí es jugar. La armería y las opciones son
-                    * preparativos, así que van en el gris de siempre — cinco
-                    * botones del mismo color obligan a leerlos todos para saber
-                    * cuál es el que hace la cosa (la regla de las fichas de la
-                    * armería, vuelta 43, aplicada a un menú).
-                    */}
-                  <div className="panel__actions panel__actions--duo">
-                    <button
-                      type="button"
-                      className="button button--primary button--grande"
-                      onMouseDown={swallowClick}
-                      onClick={() => setMenu('entrenamiento')}
-                      autoFocus
-                    >
-                      Entrenamiento
-                      <span className="button__sub">Dianas, muñecos y la bomba. Tú solo.</span>
-                    </button>
-                    {/* **El duelo va con los modos, no con los paneles**: es a
-                        lo que se juega, aunque lo que haga sea salir de esta
-                        página. */}
-                    <button
-                      type="button"
-                      className="button button--primary button--grande"
-                      onMouseDown={swallowClick}
-                      onClick={() => window.location.assign(NET.rutaDuelo)}
-                    >
-                      Duelo 1v1
-                      <span className="button__sub">Contra un amigo, por enlace.</span>
-                    </button>
-                  </div>
+              <button
+                type="button"
+                className="portada__modo portada__modo--solo"
+                onClick={() => setMenu('entrenamiento')}
+              >
+                <span className="portada__cuando">01 · Solo</span>
+                <Icono nombre="entrenamiento" className="portada__dibujo" />
+                <span className="portada__nombre">Entrenamiento</span>
+                <span className="portada__sub">Dianas, muñecos que disparan y ronda con explosivo.</span>
+                <span className="portada__cta">Configurar ▸</span>
+              </button>
+              {/* **El duelo va con los modos, no con los paneles**: es a lo que
+                  se juega, aunque lo que haga sea salir de esta página. */}
+              <button
+                type="button"
+                className="portada__modo portada__modo--alguien"
+                onClick={() => window.location.assign(NET.rutaDuelo)}
+              >
+                <span className="portada__cuando">02 · Con alguien</span>
+                <Icono nombre="duelo" className="portada__dibujo" />
+                <span className="portada__nombre">Duelo 1v1</span>
+                <span className="portada__sub">Crea una sala y manda el enlace. Catorce rondas, tienda entre ronda y ronda.</span>
+                <span className="portada__cta">Crear sala ▸</span>
+              </button>
 
-                  <div className="panel__actions panel__actions--duo">
-                    {armouryButton}
-                    {optionsButton}
-                  </div>
-
-                  {/* **Y aquí sí van las instrucciones** (vuelta 92): quien ha
-                      llegado a este paso ya ha decidido jugar, así que es el
-                      primer sitio donde leerlas significa algo.
-
-                      **Pero se miran, no se leen** (vuelta 94). Eran tres
-                      renglones de texto corrido —y el primero, el más
-                      prescindible, era el más grande de los tres—, así que para
-                      saber con qué se agacha uno había que leerse una frase
-                      entera. Una tecla y lo que hace es un par, y un par se
-                      dibuja como un par: la tecla en su recuadro y el verbo al
-                      lado. El que empieza busca «saltar» y lo encuentra sin
-                      leer nada más; el que ya lo sabe no lee nada. */}
-                  {/* Y el disparo también sale del bind (vuelta 97): es
-                      reasignable desde la vuelta 41 y aquí decía «Click
-                      izquierdo» escrito a mano. */}
-                  <p className="panel__body">
-                    Click para capturar el ratón · {keyLabel(keysOf('shoot', binds)[0])} dispara
-                  </p>
-                  <ul className="teclas">
-                    {TECLAS_DE_ENTRADA.filter((t) => t.siempre || MOVEMENT.enabled).map((t) => (
-                      <li key={t.que} className="teclas__par">
-                        <kbd className="teclas__tecla">{teclaDeFila(t, binds)}</kbd>
-                        <span className="teclas__que">{t.que}</span>
-                      </li>
-                    ))}
-                  </ul>
-
-                  <div className="panel__actions">
-                    <button
-                      type="button"
-                      className="button button--quiet button--pequeno"
-                      onMouseDown={swallowClick}
-                      onClick={() => setMenu('marca')}
-                    >
-                      Volver
-                    </button>
-                  </div>
-                </>
-              )}
+              {/* **Los controles se miran, no se leen** (vuelta 94), y la tecla
+                  la dice el bind (vuelta 97). Desde la 99 van en la franja de
+                  abajo de la portada, como en la maqueta. */}
+              <div className="portada__controles">
+                <span className="cab-rotulo">Controles</span>
+                <ul className="teclas">
+                  <li className="teclas__par">
+                    <kbd className="cab-tecla">{keyLabel(keysOf('shoot', binds)[0])}</kbd>
+                    <span className="teclas__que">disparar</span>
+                  </li>
+                  {TECLAS_DE_ENTRADA.filter((t) => t.siempre || MOVEMENT.enabled).map((t) => (
+                    <li key={t.que} className="teclas__par">
+                      <kbd className="cab-tecla">{teclaDeFila(t, binds)}</kbd>
+                      <span className="teclas__que">{t.que}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             </div>
           )}
-        </div>
+        </Cabina>
       )}
 
       {!avatarDebug && phase === PHASE.PAUSED && (

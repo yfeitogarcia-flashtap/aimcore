@@ -7134,6 +7134,8 @@ export const ESCRITORIO = {
    * literales iguales es como uno se queda atrás.
    */
   ordenPantallaCompleta: 'pantalla_completa',
+  /** La orden que cierra la app: el botón «Salir» de la pantalla de inicio (vuelta 99). */
+  ordenSalir: 'salir',
   /**
    * **La marca que la ventana inyecta en cada documento** (vuelta 98), la
    * segunda señal de «estoy en la app». Escrita también en `main.rs`.

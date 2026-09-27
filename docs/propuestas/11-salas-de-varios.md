@@ -124,6 +124,90 @@ mapa de duelo de 40×40 la media cae sola; en uno pensado para diez, más.
 
 ---
 
+### 2.1 Lo que costaría al mes en Fly (vuelta 99)
+
+Pedido antes de abrir salas grandes, con el escenario del encargo: **5 salas de
+10 jugadores, 2 horas al día**, o sea 300 horas de sala al mes. Lo que se paga en
+Fly por tráfico es **lo que sale de la máquina** (lo que entra —las entradas de
+los jugadores— no se cobra), y la máquina está en París (`cdg`), que es la tarifa
+de Europa y Norteamérica: **0.02 $/GB** según la página de precios de Fly (que
+hay que volver a mirar el día de abrir: los precios cambian y esto no se mide
+desde aquí).
+
+| protocolo | una sala de 10 | por hora de sala | al mes (300 h) | coste |
+|---|---|---|---|---|
+| hoy (60 Hz, todos a todos) | 4 147 KiB/s | 15.3 GB | ~4.6 TB | **~92 $/mes** |
+| nuevo (20 Hz + ~4 rivales por foto) | 691 KiB/s | 2.5 GB | ~0.76 TB | **~15 $/mes** |
+
+Tres cosas que acompañan al número:
+
+- **La CPU no cambia la cuenta**: cinco salas de 10 son ~10 % de un paso en el
+  núcleo compartido de hoy (1.93 % por sala, §2), así que la máquina es la misma
+  —`shared-cpu-1x` de 512 MB, unos pocos dólares al mes— y lo que se paga de más
+  es sólo el tráfico.
+- **Por jugador son ~0.55 Mbit/s de bajada** (69 KiB/s), que cabe en cualquier
+  conexión de casa; con el protocolo de hoy serían 3.3 Mbit/s, que no.
+- **Y si los jugadores salen de Europa, la tarifa no cambia**: se cobra por la
+  región de la máquina, no la del jugador. Lo que cambia es el ping.
+
+O sea: con el protocolo de hoy, cinco salas de diez son ~90 $/mes y además no
+caben por ancho de banda; con el nuevo, ~15 $/mes. **El cambio de protocolo va
+primero**, que es lo que ya decía esta propuesta.
+
+### 2.2 Mapas de varias salas: el interés por sala (vuelta 99, respondiendo)
+
+La visión de después del todos contra todos: un mundo grande hecho de **salas**
+—una pieza de Alchemist con sus paredes de rejilla, sus puertas y su tamaño— y
+**túneles** que las conectan, reutilizables entre mapas, para modos tipo KOTH o
+battle royale.
+
+**¿Resuelve parte del tráfico mandar a cada uno sólo su sala y las contiguas?**
+Sí, y es exactamente la palanca de «4 rivales de media por foto» de la tabla de
+§2 con un criterio mejor: en vez de una distancia, un **grafo** que el mapa ya
+declara. Lo que cambia la cuenta es el exponente: hoy la foto es **N × N**
+(cada uno recibe a todos); por salas es **N × (los que hay en tu sala y en las de
+al lado)**, que no crece con el tamaño del mapa sino con la densidad. Para 10
+jugadores en 6 salas, ~3-4 por foto, que es la fila de 691 KiB/s; para 30 en 20
+salas sigue siendo ~3-4, que es lo que haría viable un battle royale.
+
+Tres condiciones, y las tres salen de cosas que ya son reglas del juego:
+
+- **Tiene que ser «sala y contiguas» o distancia, lo que sea mayor**, no sólo la
+  sala. Las pisadas se oyen a través de las paredes hasta 16 u (vueltas 60 y 73),
+  y una granada o un cohete cruzan una puerta: quien está al otro lado de un muro
+  tiene que estar en la foto aunque no se vea. Las contiguas son además el
+  colchón para que quien cruza una puerta no **aparezca de golpe**: ya venía en tu
+  foto desde que entró en la sala de al lado.
+- **Y un túnel es una sala más del grafo**, estrecha. Si no, dos salas unidas por
+  un túnel largo serían «contiguas» aunque estén a 40 u.
+- **El protocolo de la fase 1 se diseña ya con este hueco**: la foto por
+  destinatario pregunta a **una** función `¿entra B en la foto de A?`. En la fase
+  1 contesta por distancia; el día de las salas contesta por el grafo, y el
+  cable no se entera. Es la misma disciplina del transporte (vuelta 46): lo que
+  va a cambiar se pone detrás de una sola puerta.
+
+De regalo, y no es menor: **lo que no te llega no lo puede enseñar un
+programa de trampas**. Filtrar por sala es también el primer anti-*wallhack*.
+
+**¿Qué tamaño de mapa para 10 jugadores?** Con las referencias que ya están
+medidas: El Espejo son 1 600 u² para dos, con el primer contacto a los **3.5 s**;
+se corre a 6.5 u/s. Para que diez se encuentren sin pasar minutos solos:
+
+- **Entre 300 y 500 u² transitables por jugador**: 3 000–5 000 u² en total, o
+  sea una huella de unos **70 × 70** con un 70 % de suelo pisable.
+- En salas: **5-7 salas de 25-30 u de lado** (600-900 u² cada una), unidas por
+  túneles de 8-12 u (1.5 s cada uno), y **ninguna sala a más de tres saltos de
+  otra**. Cruzar de punta a punta queda en ~15 s, y lo normal es tener a alguien
+  en tu sala o en la de al lado cada 10-20 s.
+- **KOTH**: una sala central (la colina) contigua a todas y un anillo de 4-6
+  alrededor, para que llegar a la colina sea siempre un salto.
+- **Battle royale con 10**: empezar más grande (8-10 salas) y **cerrar salas por
+  fases**; con el grafo, «la zona» es cerrar las puertas de una sala, que es más
+  legible que un círculo que encoge.
+
+Nada de esto se construye ahora: está aquí para que el protocolo de la fase 1 no
+lo cierre sin querer.
+
 ## 3. Qué toca del protocolo, y qué no
 
 **No toca:**

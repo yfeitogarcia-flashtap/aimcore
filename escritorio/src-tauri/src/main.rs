@@ -181,7 +181,7 @@ fn main() {
                 escuchar_f11(ventana.app_handle(), *foco);
             }
         })
-        .invoke_handler(tauri::generate_handler![pantalla_completa])
+        .invoke_handler(tauri::generate_handler![pantalla_completa, salir])
         .run(tauri::generate_context!())
         .expect("no se ha podido abrir la ventana de Vektor");
 }
@@ -199,4 +199,16 @@ fn main() {
 fn pantalla_completa(ventana: WebviewWindow, activa: bool) {
     let _ = ventana.set_fullscreen(activa);
     recordar_pantalla_completa(ventana.app_handle(), activa);
+}
+
+/// **Cierra la aplicación** (vuelta 99): el botón «Salir» de la pantalla de
+/// inicio. Una página no puede cerrarse sola —un navegador ignora
+/// `window.close()` en una pestaña que no abrió ella—, así que quien sale es el
+/// proceso. El nombre está escrito también en `src/config.js`
+/// (`ESCRITORIO.ordenSalir`). Si esta orden no llegara, la página pide a Tauri
+/// que cierre la ventana (`core:window:allow-close`), y cerrar la única ventana
+/// también termina la aplicación.
+#[tauri::command]
+fn salir(app: tauri::AppHandle) {
+    app.exit(0);
 }

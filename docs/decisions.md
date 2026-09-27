@@ -14666,3 +14666,95 @@ que el borrador vino a evitar.
 La base de un mapa abierto es **lo que hay en el disco con esa clave**, venga de
 donde venga lo abierto: así una copia, una versión restaurada del historial o un
 mapa nuevo cuentan como pendientes, y abrir un mapa del disco no.
+
+### 99.3 — Cabina, como sistema
+
+La dirección B de las maquetas de la 98 se construyó así:
+
+- **Un fichero de tokens y piezas** (`src/ui/cabina.css`) importado por
+  `styles.css`, que lo cargan el juego y —por `duelo.jsx`— la página del duelo.
+- **Las clases de siempre se reescribieron sobre los tokens** en lugar de crear
+  un juego de clases nuevo. Alternativa descartada: `.cab-boton` al lado de
+  `.button`. Durante la migración serían dos botones, y un botón que se queda con
+  el estilo viejo en una pantalla que nadie revisa es la vuelta 63 por la puerta
+  del aspecto. Reescribir `.button` cambia todos a la vez.
+- **Letra sin descargar**: Bahnschrift (Windows 10/11) con `font-stretch:
+  condensed`, y detrás Avenir Next Condensed, Roboto Condensed y Arial Narrow. La
+  maqueta usaba Barlow de Google Fonts; un asset externo no se admite por esto
+  (§93.8 es la única excepción y es de los mapas). En el contenedor donde se mide
+  cae a Liberation Sans, y se sigue leyendo.
+- **Chaflán con `clip-path`**, y de ahí que nada lleve borde: un borde o un
+  `outline` se recortan con la esquina. El foco pasa a ser un anillo por dentro
+  (`inset`), manteniendo lo que decidió la 94.
+- **La carcasa** (`Cabina.jsx`) envuelve los menús del juego que no son de una
+  partida: portada, entrenamiento, armería y opciones. El primer paso (logotipo)
+  se queda fuera; la pausa y el resumen siguen siendo paneles sobre el mundo. El
+  contenido es translúcido sobre la escena porque el cono de aparición se dibuja
+  en el mundo mientras se toca su slider (vueltas 78 y 92).
+- **Entrenamiento en dos columnas**: tarjetas a la izquierda y, a la derecha,
+  «Vas a jugar» con Jugar y Volver, pegada. Cumple la regla de la 94 (la acción
+  no se va de la pantalla) de otra forma que la barra pegajosa de la 98.
+- **Armería**: las pestañas de ranura siguen **horizontales** y no en una columna
+  a la izquierda como en la maqueta. Una columna de 200 px le quita a la rejilla el
+  ancho que necesita para que las seis primarias quepan en una fila, y con
+  `subgrid` una segunda fila deja de alinearse con la primera (vueltas 89 y 93).
+- **El HUD no entra**: se mide al píxel desde la 67 y se lee de reojo. Comparte
+  los colores, no la letra. F3 del duelo sigue en monoespaciada: es un
+  instrumento.
+
+Los bancos que miraban el DOM viejo se actualizaron a la estructura nueva
+(`flujo92`, `ui92`, `ranura92`, `entreno98`, `controles97`, `arm89`); `menu94`
+medía la cabecera de la 94, que desapareció en la 98, y lo sustituye
+`cabina99b`. `controles97` llevaba desde la 98 buscando la línea de controles
+del duelo, que la 98 convirtió en tabla.
+
+### 99.4 — ¿Debería Alchemist adoptar Cabina?
+
+Sí, **en los tokens y las piezas, no en la distribución**:
+
+- Los tokens (color, letra, escala, chaflán) y las piezas (botón, segmento,
+  rótulo, superficie) sí: el editor y el juego tienen que sentirse un producto,
+  y hoy Alchemist tiene su propia paleta en `editor.css` (`--fondo`, `--naranja`,
+  `--accion`…) con los mismos valores escritos otra vez.
+- La distribución no: Alchemist **ya es una cabina** —el raíl de iconos con la
+  palabra debajo es suyo desde la vuelta 78, y el del juego viene de ahí—, y lo que
+  la hace útil es de herramienta: el panel lateral de ancho arrastrable, la barra
+  con el estado del mapa, los atajos a la vista.
+
+El camino es corto: `editor.css` importa `cabina.css` y sus variables pasan a
+ser alias de los tokens (`--naranja: var(--cab-elegido)`), y sus botones pasan a
+`.button`. No se hizo en esta vuelta por el orden del encargo: primero el juego y
+el duelo.
+
+### 99.5 — Salir
+
+En la app, `salir` en `main.rs` (`app.exit(0)`); de repuesto, `plugin:window|close`
+con su permiso (`core:window:allow-close`), que al cerrar la única ventana termina
+la aplicación. En un navegador **no se enseña**: `window.close()` sólo funciona
+en una ventana abierta por script, y una pestaña que el jugador abrió no lo es.
+Alternativas descartadas para el navegador: un botón que lleve a una página
+«ya puedes cerrar la pestaña» (un paso más para hacer lo que el jugador ya sabe
+hacer) y uno que salga a `about:blank` (pierde el historial de la pestaña).
+
+La app sube a **0.4.0**: la orden `salir` es nueva, y con una instalación
+anterior el botón cierra la ventana por la puerta de repuesto.
+
+Y de paso: el repuesto de pantalla completa de la 97 llamaba
+`plugin:window|set_fullscreen` con `{ fullscreen }`, y el `setter!` de Tauri 2
+lee `value`. Nunca se había necesitado; ahora es correcto.
+
+### 99.6 — Coste de Fly y salas conectadas
+
+La estimación y la respuesta a la visión de mapas por salas están en la
+propuesta 11 (§2.1 y §2.2). Resumen: con el protocolo nuevo (fotos a 20 Hz, ~4
+rivales por foto) cinco salas de diez jugadores dos horas al día son ~0.76 TB de
+salida al mes, **~15 $/mes** a 0.02 $/GB (Europa); con el de hoy, ~4.6 TB y
+~92 $/mes, y además no caben por ancho de banda. Filtrar por «tu sala y las
+contiguas, o por distancia» cambia el tráfico de N×N a N×densidad; el protocolo de
+la fase 1 se escribirá con una sola función que decide quién entra en la foto de
+quién. Para diez jugadores, 3 000–5 000 u² transitables (≈70×70), 5-7 salas de
+25-30 u con túneles de 8-12 u y ninguna a más de tres saltos.
+
+El cambio de protocolo **no está en esta vuelta**: es el trabajo de la siguiente,
+con la medida de cierre que ya fija la propuesta (una sala de 10 por debajo de 700
+KB/s con error de reconciliación cero).

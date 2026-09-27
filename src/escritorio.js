@@ -134,8 +134,22 @@ export function pedirPantallaCompleta(activa) {
   return invocar(
     ESCRITORIO.ordenPantallaCompleta,
     { activa: puesta },
-    () => invocar('plugin:window|set_fullscreen', { fullscreen: puesta }),
+    // El argumento se llama `value` (el `setter!` de Tauri 2); hasta la 99 se
+    // mandaba `fullscreen`, así que este repuesto no habría hecho nada.
+    () => invocar('plugin:window|set_fullscreen', { value: puesta }),
   )
+}
+
+/**
+ * **Salir de la app** (vuelta 99). Lo pide a la ventana, que es la única que
+ * puede: una página no se cierra sola. De repuesto, cierra la ventana con la
+ * orden de Tauri, y cerrar la única ventana termina la aplicación. En un
+ * navegador no hace nada y devuelve `false`, y por eso el botón no se enseña
+ * ahí (ver `App.jsx`).
+ */
+export function salirDeLaApp() {
+  if (!esEscritorio()) return false
+  return invocar(ESCRITORIO.ordenSalir, {}, () => invocar('plugin:window|close', {}))
 }
 
 let puesto = false

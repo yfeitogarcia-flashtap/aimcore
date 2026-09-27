@@ -1,3 +1,5 @@
+@import './ui/cabina.css';
+
 /*
  * Estética minimalista: negro, tipografía monoespaciada y nada de adornos.
  * Los colores no se escriben aquí a mano — llegan como variables CSS desde
@@ -63,9 +65,8 @@ body,
 body {
   background: var(--background-color);
   color: var(--text-primary);
-  font-family: var(--font-mono);
+  font-family: var(--cab-letra-texto);
   overflow: hidden;
-  /* Evita seleccionar texto al hacer click rápido durante la partida. */
   user-select: none;
   -webkit-user-select: none;
 }
@@ -815,31 +816,36 @@ body {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(10, 10, 10, 0.72);
+  background: var(--cab-velo);
   cursor: crosshair;
+  font-family: var(--cab-letra-texto);
 }
 
 .panel {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 10px;
-  padding: 32px 40px;
-  border: 1px solid var(--panel-border);
-  background: rgba(10, 10, 10, 0.9);
+  gap: var(--cab-e3);
+  padding: var(--cab-e6) 40px;
+  background: var(--cab-superficie-translucida);
+  clip-path: polygon(0 0, calc(100% - var(--cab-chaflan-grande)) 0, 100% var(--cab-chaflan-grande), 100% 100%, var(--cab-chaflan-grande) 100%, 0 calc(100% - var(--cab-chaflan-grande)));
   text-align: center;
 }
 
 .panel__title {
   margin: 0;
-  font-size: 30px;
-  font-weight: 500;
-  letter-spacing: 0.28em;
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-titulo);
+  font-weight: 700;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
 }
 
 .panel__title--small {
-  font-size: 20px;
+  font-size: var(--cab-t-subtitulo);
+  letter-spacing: var(--cab-espaciado-rotulo);
+  color: var(--cab-texto-rotulo);
 }
 
 /* El logotipo ocupa el sitio del rótulo de texto en la pantalla de inicio, y a
@@ -871,29 +877,35 @@ body {
  */
 .panel__byline {
   margin: -6px 0 2px;
-  font-size: 12px;
-  letter-spacing: 0.1em;
-  color: var(--text-muted);
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-pequeno);
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--cab-texto-muerto);
 }
 
 .panel__eyebrow {
   margin: 0;
-  font-size: 11px;
-  letter-spacing: 0.2em;
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-pequeno);
+  letter-spacing: var(--cab-espaciado-rotulo);
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--cab-texto-rotulo);
 }
 
 .panel__body {
   margin: 6px 0 0;
-  font-size: 13px;
-  color: var(--text-primary);
+  font-size: var(--cab-t-texto);
+  color: var(--cab-texto);
 }
 
 .panel__hint {
   margin: 0;
-  font-size: 11px;
-  color: var(--text-muted);
+  font-size: var(--cab-t-pequeno);
+  line-height: 1.45;
+  color: var(--cab-texto-apagado);
 }
 
 /* El mismo pie, cuando lo que dice es que algo no va. Naranja de la marca y no
@@ -911,19 +923,7 @@ body {
    en fila. */
 .panel--options,
 .panel--training {
-  gap: 16px;
-  align-items: stretch;
-  min-width: 460px;
-  /* Y tope de ancho: el panel es una columna que se ajusta a su contenido, y el
-     ancho natural de un párrafo es el de su línea sin partir. La pista de
-     Controles, que es larga, lo estiraba a 1165 px y de paso encogía las
-     miniaturas del selector. El texto se parte, el panel no crece. */
-  max-width: 640px;
-  text-align: left;
-  /* Con tantas filas, en pantallas bajas el panel no cabía y quedaban fuera
-     tanto los primeros ajustes como los botones del final. */
-  max-height: calc(100vh - 48px);
-  overflow-y: auto;
+  max-width: 720px;
 }
 
 .panel--training {
@@ -945,19 +945,15 @@ body {
    El fondo es opaco a propósito: el panel es translúcido sobre la escena y con
    la barra translúcida encima las filas se leerían **a través** de los botones. */
 .training__acciones {
-  position: sticky;
-  bottom: -32px; /* compensa el `padding-bottom` del panel, su último hueco */
-  z-index: 1;
-  margin: 0 -40px -32px;
-  padding: 14px 40px 32px;
-  background: var(--background-color);
-  border-top: 1px solid var(--panel-border);
-  align-items: center;
+  display: none;
 }
 
 .training__jugar {
-  min-width: 220px;
+  width: 100%;
   margin-top: 0;
+  padding: 22px;
+  font-size: 30px;
+  letter-spacing: 0.2em;
 }
 
 /* **El interruptor de modo** (vuelta 98): dos posiciones, y **sólo la puesta en
@@ -967,8 +963,10 @@ body {
    hace leerse como interruptor y no como dos botones. */
 .interruptor {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 10px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: var(--cab-e1);
+  padding: var(--cab-e1);
+  background: var(--cab-fondo);
 }
 
 .interruptor__opcion {
@@ -978,23 +976,23 @@ body {
   column-gap: 12px;
   row-gap: 4px;
   align-items: center;
-  padding: 14px 16px;
-  border: 1px solid var(--panel-border);
+  padding: 12px 14px;
+  border: 0;
   background: transparent;
-  color: var(--text-muted);
-  font-family: inherit;
+  color: var(--cab-texto-apagado);
+  font-family: var(--cab-letra-texto);
   text-align: left;
   cursor: pointer;
 }
 
 .interruptor__opcion:hover {
-  border-color: var(--text-muted);
-  color: var(--text-color);
+  background: var(--cab-hueco);
+  color: var(--cab-texto);
 }
 
 .interruptor__opcion:focus-visible {
-  outline: 2px solid var(--text-color);
-  outline-offset: 2px;
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--cab-texto-suave);
 }
 
 .interruptor__luz {
@@ -1006,33 +1004,34 @@ body {
 }
 
 .interruptor__nombre {
-  font-size: 13px;
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: 20px;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
 .interruptor__sub {
   grid-column: 2;
-  font-size: 11px;
+  font-size: var(--cab-t-pequeno);
   line-height: 1.4;
-  opacity: 0.8;
+  opacity: 0.85;
 }
 
 .interruptor__opcion--puesta,
 .interruptor__opcion--puesta:hover {
-  border-color: var(--action-color);
-  background: color-mix(in srgb, var(--action-color) 14%, transparent);
-  color: var(--action-color);
+  background: var(--cab-accion);
+  color: var(--cab-accion-tinta);
 }
 
 .interruptor__opcion--puesta .interruptor__luz {
-  background: var(--action-color);
-  box-shadow: 0 0 10px var(--action-color);
+  background: var(--cab-accion-tinta);
+  box-shadow: none;
 }
 
 .interruptor__opcion--puesta .interruptor__sub {
-  color: var(--text-color);
+  color: var(--cab-accion-tinta);
 }
 
 /* **Los ajustes van en grupos** (vuelta 94): once filas del mismo peso son una
@@ -1043,23 +1042,283 @@ body {
 .training__grupo {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--cab-e4);
+  padding: var(--cab-e4) 18px;
 }
 
 .training__grupo-titulo {
-  margin: 4px 0 0;
-  padding-bottom: 6px;
-  border-bottom: 1px solid var(--panel-border);
-  font-size: 11px;
-  font-weight: 500;
-  letter-spacing: 0.22em;
+  margin: 0;
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-pequeno);
+  font-weight: 600;
+  letter-spacing: var(--cab-espaciado-rotulo);
   text-transform: uppercase;
-  /* **Y no lleva el naranja**: en este mismo panel el naranja es «ésta es la
-     opción elegida» (la fila de segmentos), así que un título en naranja
-     competiría con la única cosa que aquí significa algo por color. Un título
-     se separa por ser un título — más claro que las etiquetas y con su línea
-     debajo—, no por robarle un significado a la paleta. */
-  color: var(--text-color);
+  color: var(--cab-texto-rotulo);
+}
+
+/* **La pantalla de entrenamiento, en dos columnas** (vuelta 99, la maqueta de
+   Cabina): las decisiones en tarjetas a la izquierda y, a la derecha, lo que
+   vas a jugar con «Jugar» debajo. La columna de la derecha es pegajosa: los
+   ajustes desplazan y la acción no se mueve (la regla de la 94). */
+.training {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 300px;
+  gap: 20px;
+  align-items: start;
+  text-align: left;
+  outline: none;
+}
+
+.training__grupos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  align-content: start;
+}
+
+.training__grupo--ancho {
+  grid-column: 1 / -1;
+}
+
+.training__resumen {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.training__vas {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cab-e3);
+  padding: 20px;
+}
+
+.training__vas-modo {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.training__vas-lista {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cab-e2);
+  margin: 0;
+}
+
+.training__vas-fila {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--cab-e3);
+  font-size: 14px;
+}
+
+.training__vas-fila dt {
+  color: var(--cab-texto-rotulo);
+}
+
+.training__vas-fila dd {
+  margin: 0;
+  color: var(--cab-texto-suave);
+  text-align: right;
+}
+
+.training__volver {
+  margin-top: 0;
+}
+
+/* Una pantalla estrecha no cabe en dos columnas: el resumen baja y sigue
+   pegado, ahora por abajo. */
+@media (max-width: 1100px) {
+  .training {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .training__resumen {
+    position: sticky;
+    top: auto;
+    bottom: 0;
+  }
+}
+
+/* **La portada de la cabina** (vuelta 99): los dos modos como dos puertas del
+   mismo tamaño y los controles en la franja de abajo. */
+.portada {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-rows: minmax(360px, 1fr) auto;
+  gap: 18px;
+  min-height: 100%;
+}
+
+.portada__modo {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: flex-start;
+  gap: var(--cab-e3);
+  padding: 30px;
+  border: 0;
+  color: var(--cab-texto);
+  font-family: var(--cab-letra-texto);
+  text-align: left;
+  cursor: pointer;
+  clip-path: polygon(0 0, calc(100% - var(--cab-chaflan-grande)) 0, 100% var(--cab-chaflan-grande), 100% 100%, var(--cab-chaflan-grande) 100%, 0 calc(100% - var(--cab-chaflan-grande)));
+  transition: filter 120ms ease;
+}
+
+/* Dos fondos apenas teñidos: verdoso el que se juega solo y cálido el que se
+   juega con alguien. No es un color que signifique algo, es luz de sala. */
+.portada__modo--solo { background: rgba(17, 25, 21, 0.94); }
+.portada__modo--alguien { background: rgba(23, 19, 15, 0.94); }
+
+.portada__modo:hover {
+  filter: brightness(1.25);
+}
+
+.portada__modo:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--cab-texto-suave);
+}
+
+.portada__cuando {
+  position: absolute;
+  top: 26px;
+  left: 30px;
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-pequeno);
+  font-weight: 600;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--cab-accion);
+}
+
+.portada__dibujo {
+  position: absolute;
+  top: 30px;
+  right: 30px;
+  width: 120px;
+  height: 120px;
+  fill: none;
+  stroke: var(--cab-texto-muerto);
+  stroke-width: 0.8;
+  opacity: 0.7;
+}
+
+.portada__nombre {
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-portada);
+  font-weight: 700;
+  line-height: 0.9;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.portada__sub {
+  max-width: 380px;
+  font-size: var(--cab-t-texto);
+  line-height: 1.5;
+  color: var(--cab-texto-suave);
+}
+
+/* La acción de cada puerta, con la forma de un botón de acción y sin serlo:
+   la puerta entera es el botón. */
+.portada__cta {
+  margin-top: 10px;
+  padding: 12px 22px;
+  background: var(--cab-accion);
+  color: var(--cab-accion-tinta);
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-boton);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
+}
+
+.portada__controles {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--cab-e3) 22px;
+  padding: 14px 18px;
+  background: var(--cab-superficie-translucida);
+}
+
+.portada__controles .teclas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cab-e2) 20px;
+  width: auto;
+  margin: 0;
+}
+
+/* **Salir, abajo a la izquierda** (vuelta 99), con su pictograma. Sólo existe en
+   la app de escritorio: ver el porqué en `App.jsx`. */
+.salir {
+  position: absolute;
+  left: var(--cab-e6);
+  bottom: var(--cab-e6);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.salir__icono {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.salir:hover {
+  color: var(--cab-peligro);
+}
+
+/* **Un panel dentro de la cabina ya no flota: ocupa el contenido** (vuelta 99).
+   Opciones y la armería son los mismos componentes que se abren desde la pausa,
+   donde siguen siendo un panel centrado sobre el mundo; aquí la barra ya dice
+   en qué sección se está, así que su título sobra. */
+.cab-main > .panel {
+  align-items: stretch;
+  max-width: none;
+  max-height: none;
+  min-height: 100%;
+  margin: 0;
+  padding: var(--cab-e5) var(--cab-e6);
+  overflow: visible;
+  text-align: left;
+}
+
+/* Opciones es una columna de filas: a todo el ancho, un slider de 1.400 px no se
+   lee. Se acota a un ancho de lectura, pegado a la izquierda como el resto. */
+.cab-main > .panel--options {
+  max-width: 920px;
+}
+
+/* Y en la portada de la cabina la armería no necesita su propia caja: el
+   contenido ya es la caja. */
+.cab-main > .panel--armoury {
+  width: auto;
+}
+
+.cab-main > .panel > .panel__title {
+  display: none;
 }
 
 .field {
@@ -1102,9 +1361,10 @@ body {
   padding: 3px 0;
   border: none;
   background: transparent;
-  color: var(--text-muted);
-  font-family: inherit;
-  font-size: 9px;
+  color: var(--cab-texto-apagado);
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-micro);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   cursor: pointer;
@@ -1127,10 +1387,13 @@ body {
 }
 
 .field__label {
-  font-size: 10px;
-  letter-spacing: 0.18em;
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-pequeno);
+  font-weight: 600;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--cab-texto-suave);
 }
 
 .field__control {
@@ -1142,39 +1405,41 @@ body {
 .field__value {
   min-width: 62px;
   text-align: right;
-  font-size: 13px;
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-subtitulo);
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
 .field__hint {
-  font-size: 11px;
-  line-height: 1.4;
-  color: var(--text-muted);
+  font-size: var(--cab-t-pequeno);
+  line-height: 1.45;
+  color: var(--cab-texto-apagado);
 }
 
 .field__range {
   flex: 1;
   appearance: none;
-  height: 2px;
-  background: var(--panel-border);
+  height: 6px;
+  background: var(--cab-hueco-alto);
   cursor: pointer;
 }
 
 .field__range::-webkit-slider-thumb {
   appearance: none;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: var(--text-primary);
+  width: 16px;
+  height: 16px;
+  background: var(--cab-texto);
   cursor: pointer;
 }
 
 .field__range::-moz-range-thumb {
-  width: 12px;
-  height: 12px;
+  width: 16px;
+  height: 16px;
   border: none;
-  border-radius: 50%;
-  background: var(--text-primary);
+  border-radius: 0;
+  background: var(--cab-texto);
   cursor: pointer;
 }
 
@@ -1189,13 +1454,13 @@ body {
 }
 
 .field__number {
-  width: 72px;
-  padding: 6px 8px;
-  border: 1px solid var(--panel-border);
-  background: transparent;
-  color: var(--text-primary);
-  font-family: inherit;
-  font-size: 13px;
+  width: 76px;
+  padding: 7px 8px;
+  border: 0;
+  background: var(--cab-fondo);
+  color: var(--cab-texto);
+  font-family: var(--cab-letra-rotulo);
+  font-size: var(--cab-t-texto);
   font-variant-numeric: tabular-nums;
   text-align: right;
 }
@@ -1206,16 +1471,16 @@ body {
 }
 
 .field__select {
-  min-width: 148px;
-  padding: 8px 10px;
-  border: 1px solid var(--panel-border);
-  background: transparent;
-  color: var(--text-primary);
-  font-family: inherit;
-  font-size: 12px;
+  min-width: 160px;
+  padding: 9px 10px;
+  border: 0;
+  background: var(--cab-hueco);
+  color: var(--cab-texto);
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-texto);
   letter-spacing: 0.06em;
   cursor: pointer;
-  transition: border-color 120ms ease, color 120ms ease;
 }
 
 .field__select:hover,
@@ -1227,29 +1492,35 @@ body {
 
 .segmented {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
 }
 
 .segmented__option {
   flex: 1;
-  padding: 9px 6px;
-  border: 1px solid var(--panel-border);
-  background: transparent;
-  color: var(--text-muted);
-  font-family: inherit;
-  font-size: 11px;
-  letter-spacing: 0.06em;
+  padding: 8px 10px;
+  border: 0;
+  background: var(--cab-hueco);
+  color: var(--cab-texto-apagado);
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-texto);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  white-space: nowrap;
   cursor: pointer;
-  transition: border-color 120ms ease, color 120ms ease;
+  transition: color 120ms ease, background 120ms ease;
 }
 
 .segmented__option:hover {
-  color: var(--text-primary);
+  color: var(--cab-texto);
+  background: var(--cab-hueco-alto);
 }
 
 .segmented__option[aria-pressed='true'] {
-  border-color: var(--accent-color);
-  color: var(--accent-color);
+  background: var(--cab-elegido);
+  color: var(--cab-fondo);
+  font-weight: 700;
 }
 
 /* La vista del avatar no es un menú: sólo deja un rótulo abajo y no tapa nada,
@@ -1271,12 +1542,14 @@ body {
 }
 
 .binds__group {
-  margin: 8px 0 2px;
-  font-size: 9px;
-  letter-spacing: 0.18em;
+  margin: 12px 0 2px;
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-micro);
+  font-weight: 600;
+  letter-spacing: var(--cab-espaciado-rotulo);
   text-transform: uppercase;
-  color: var(--text-muted);
-  opacity: 0.7;
+  color: var(--cab-texto-rotulo);
 }
 
 .bind {
@@ -1292,7 +1565,7 @@ body {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  font-size: 12px;
+  font-size: var(--cab-t-pequeno);
 }
 
 /* «sin efecto todavía», «contextual»: son notas sobre la acción, no parte de su
@@ -1317,13 +1590,16 @@ body {
 }
 
 .bind__key {
-  min-width: 104px;
-  padding: 5px 10px;
-  border: 1px solid var(--panel-border);
-  background: transparent;
-  color: var(--text-primary);
-  font-family: inherit;
-  font-size: 11px;
+  min-width: 110px;
+  padding: 6px 10px;
+  border: 0;
+  border-bottom: 2px solid var(--cab-linea-fuerte);
+  background: var(--cab-hueco);
+  color: var(--cab-texto);
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-pequeno);
+  font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
   cursor: pointer;
@@ -1366,24 +1642,24 @@ body {
   display: flex;
   flex-direction: column;
   gap: 7px;
-  padding: 7px;
-  border: 1px solid var(--panel-border);
-  background: transparent;
-  color: var(--text-muted);
-  font-family: inherit;
-  font-size: 11px;
-  letter-spacing: 0.06em;
+  padding: 6px;
+  border: 0;
+  outline: 1px solid var(--cab-linea-fuerte);
+  background: var(--cab-fondo);
+  color: var(--cab-texto-apagado);
+  font-family: var(--cab-letra-texto);
+  font-size: var(--cab-t-pequeno);
   cursor: pointer;
-  transition: border-color 120ms ease, color 120ms ease;
+  transition: outline-color 120ms ease, color 120ms ease;
 }
 
 .scenarios__option:hover {
-  color: var(--text-primary);
+  color: var(--cab-texto);
 }
 
 .scenarios__option[aria-pressed='true'] {
-  border-color: var(--accent-color);
-  color: var(--accent-color);
+  outline: 2px solid var(--cab-elegido);
+  color: var(--cab-elegido);
 }
 
 .scenario-thumb {
@@ -1404,16 +1680,18 @@ body {
   gap: 4px 12px;
   margin: 2px 0 0;
   padding: 10px 12px;
-  border-left: 1px solid var(--panel-border);
-  font-size: 11px;
-  line-height: 1.4;
+  background: var(--cab-fondo);
+  font-size: var(--cab-t-pequeno);
+  line-height: 1.45;
 }
 
 .scenario-card dt {
-  font-size: 10px;
-  letter-spacing: 0.14em;
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-micro);
+  letter-spacing: 0.18em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--cab-texto-rotulo);
   padding-top: 1px;
 }
 
@@ -1425,20 +1703,22 @@ body {
 .toggle {
   min-width: 116px;
   padding: 8px 14px;
-  border: 1px solid var(--panel-border);
-  background: transparent;
-  color: var(--text-muted);
-  font-family: inherit;
-  font-size: 11px;
+  border: 0;
+  background: var(--cab-hueco);
+  color: var(--cab-texto-apagado);
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-texto);
   letter-spacing: 0.14em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: border-color 120ms ease, color 120ms ease;
+  transition: color 120ms ease, background 120ms ease;
 }
 
 .toggle[aria-pressed='true'] {
-  border-color: var(--accent-color);
-  color: var(--accent-color);
+  background: var(--cab-elegido);
+  color: var(--cab-fondo);
+  font-weight: 700;
 }
 
 .panel__actions {
@@ -1477,7 +1757,8 @@ body {
 }
 
 .button--quiet {
-  color: var(--text-muted);
+  background: transparent;
+  color: var(--cab-texto-apagado);
 }
 
 /* ---------- Resumen ---------- */
@@ -1501,47 +1782,54 @@ body {
 }
 
 .summary__value {
-  font-size: 26px;
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-titulo);
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
   line-height: 1;
 }
 
 .summary__cell--primary .summary__value {
-  font-size: 44px;
-  color: var(--accent-color);
+  font-size: 56px;
+  color: var(--cab-elegido);
 }
 
 .summary__label {
-  font-size: 10px;
-  letter-spacing: 0.18em;
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-micro);
+  letter-spacing: var(--cab-espaciado-rotulo);
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--cab-texto-rotulo);
 }
 
 .summary__detail {
   margin: 0;
-  font-size: 12px;
-  color: var(--text-muted);
+  font-size: var(--cab-t-pequeno);
+  color: var(--cab-texto-apagado);
 }
 
 .button {
   margin-top: 4px;
-  padding: 11px 26px;
-  border: 1px solid var(--panel-border);
-  background: transparent;
-  color: var(--text-primary);
-  font-family: inherit;
-  font-size: 12px;
-  letter-spacing: 0.16em;
+  padding: 11px 24px;
+  border: 0;
+  background: var(--cab-hueco);
+  color: var(--cab-texto);
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-boton);
+  font-weight: 600;
+  letter-spacing: var(--cab-espaciado-boton);
   text-transform: uppercase;
   cursor: pointer;
-  transition: border-color 120ms ease, color 120ms ease;
+  transition: background 120ms ease, color 120ms ease;
 }
 
 .button:hover,
 .button:focus-visible {
-  border-color: var(--accent-color);
-  color: var(--accent-color);
+  background: var(--cab-hueco-alto);
+  color: var(--cab-texto);
   outline: none;
 }
 
@@ -1554,31 +1842,35 @@ body {
   flex-direction: column;
   align-items: center;
   gap: 5px;
-  padding: 16px 26px;
-  font-size: 13px;
+  padding: 18px 28px;
+  font-size: var(--cab-t-subtitulo);
 }
 
 /* El renglón de debajo dice qué es ese modo, en minúsculas y sin espaciar: si
    se pareciera al rótulo del botón serían dos rótulos y no un botón con
    explicación. */
 .button__sub {
-  font-size: 10px;
-  letter-spacing: 0.02em;
+  font-family: var(--cab-letra-texto);
+  font-stretch: normal;
+  font-size: var(--cab-t-pequeno);
+  font-weight: 400;
+  letter-spacing: 0.01em;
   text-transform: none;
-  opacity: 0.72;
+  opacity: 0.78;
   line-height: 1.35;
 }
 
 /* Acción principal: verde de marca. No se usa en ningún otro sitio. */
 .button--primary {
-  border-color: var(--action-color);
-  color: var(--action-color);
+  background: var(--cab-accion);
+  color: var(--cab-accion-tinta);
+  font-weight: 700;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--cab-chaflan)), calc(100% - var(--cab-chaflan)) 100%, 0 100%);
 }
 
 .button--primary:hover {
-  border-color: var(--action-color);
-  background: var(--action-color);
-  color: var(--background-color);
+  background: #45d892;
+  color: var(--cab-accion-tinta);
 }
 
 /* **El foco no elige por ti** (vuelta 94). Relleno, `:focus-visible` hacía que
@@ -1590,21 +1882,999 @@ body {
    —se navega con el teclado— así que es un anillo, que dice «estás aquí» sin
    decir «esto es lo importante». */
 .button--primary:focus-visible {
-  /* Y conserva su color: `.button:focus-visible` tiñe de naranja —que es el
-     color de las dianas— y con la misma especificidad gana la regla de después.
-     Un botón de acción que al enfocarse cambia de significado de color es el
-     mismo fallo que el relleno, con otro disfraz. */
-  border-color: var(--action-color);
-  color: var(--action-color);
-  background: transparent;
-  outline: 2px solid var(--action-color);
-  outline-offset: 3px;
+  background: var(--cab-accion);
+  color: var(--cab-accion-tinta);
+  outline: none;
+  box-shadow: inset 0 0 0 3px var(--cab-accion-tinta);
+}
+
+/* **El foco es un anillo por dentro** (vuelta 99). La 94 lo hizo anillo para que
+   no designase un ganador; con Cabina los botones llevan chaflán, y
+   `clip-path` recorta todo lo que sale de la caja —un `outline` incluido—, así
+   que el anillo va **dentro** (`inset`). Mismo significado: «estás aquí». */
+.button:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--cab-texto-suave);
+}
+
+.button--quiet:hover {
+  background: var(--cab-hueco);
+  color: var(--cab-texto);
 }
 
 /* Pequeño: para lo que no es la acción de la pantalla — volver, sobre todo. */
 .button--pequeno {
-  padding: 7px 14px;
+  padding: 8px 16px;
+  font-size: var(--cab-t-texto);
+}
+
+/* ---------- Vida, escudo y casco ---------- */
+
+/* Abajo a la izquierda: lejos de la mira y lejos del cargador, que es lo otro
+   que se mira de reojo. Sólo aparece donde hay quien dispare. */
+.vitals {
+  z-index: 2;
+  position: absolute;
+  left: 24px;
+  /* Un poco más arriba que el resto de esquinas: debajo de las dos filas cuelga
+     la barra de la carga de escudo, y a 24 px se quedaba pegada al borde. */
+  bottom: 34px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+}
+
+.vitals__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.vitals__row--gear {
+  gap: 10px;
+}
+
+/* La cruz de vida, en CSS puro: dos barras cruzadas. No hay iconos que cargar,
+   como no hay assets de nada en este proyecto. */
+.vitals__cross {
+  position: relative;
+  display: block;
+  width: 11px;
+  height: 11px;
+  flex: none;
+}
+
+.vitals__cross::before,
+.vitals__cross::after {
+  content: '';
+  position: absolute;
+  background: var(--health-color);
+}
+
+.vitals__cross::before {
+  left: 4px;
+  top: 0;
+  width: 3px;
+  height: 11px;
+}
+
+.vitals__cross::after {
+  left: 0;
+  top: 4px;
+  width: 11px;
+  height: 3px;
+}
+
+/* Barra fina: el mismo grosor que la de recarga, que es la otra barra del HUD. */
+.vitals__track {
+  display: block;
+  width: 148px;
+  height: 3px;
+  background: var(--panel-border);
+}
+
+.vitals__bar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--health-color);
+  transform: scaleX(1);
+  transform-origin: left center;
+}
+
+.vitals__value {
+  min-width: 26px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--text-soft);
+}
+
+/* Aviso de vida baja: el mismo mecanismo del cargador corto —una clase y un
+   parpadeo por pasos—, y sólo salta si además no queda escudo. */
+.vitals--low .vitals__bar,
+.vitals--low .vitals__cross::before,
+.vitals--low .vitals__cross::after {
+  background: var(--accent-color);
+  animation: ammo-blink 900ms steps(1, end) infinite;
+}
+
+.vitals--low .vitals__value {
+  color: var(--accent-color);
+}
+
+/* El escudo: la silueta trazada de la referencia con tres segmentos recortados
+   dentro. Lo que se ve encendido es lo que queda, y son tres porque el tope son
+   tres cargas. El recorte va dentro del SVG (ver Hud.jsx). */
+.shield {
+  display: block;
+  width: 17px;
+  height: 21px;
+  flex: none;
+  overflow: visible;
+}
+
+.shield__segment {
+  fill: #2a2a2a;
+}
+
+.shield__segment--on {
+  fill: var(--electric-color);
+}
+
+.vitals__charges {
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  color: var(--electric-color);
+}
+
+/* Sin cargas en el inventario el contador se apaga, en lugar de desaparecer:
+   el hueco se queda, así que nada se mueve al recoger una. */
+.vitals__charges--empty {
+  color: var(--text-muted);
+  opacity: 0.55;
+}
+
+/* El casco no tiene barra: o está o no está. Media cúpula, apagada mientras no
+   se lleve — que también es información: dice que hay uno por el mapa. */
+/* El casco: trazado con potrace desde la referencia y pintado con `evenodd`,
+   que es lo que deja la visera hueca. El anterior era un arco de borde CSS y no
+   se leía como casco: era media píldora. */
+.vitals__helmet {
+  display: block;
+  width: 15px;
+  height: 18px;
+  flex: none;
+  fill: #2a2a2a;
+}
+
+.vitals__helmet--on {
+  fill: var(--text-soft);
+}
+
+.vitals__apply {
+  display: block;
+  width: 148px;
+  height: 2px;
+  margin-left: 19px;
+  background: var(--panel-border);
+}
+
+.vitals__apply-bar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--electric-color);
+  transform: scaleX(0);
+  transform-origin: left center;
+}
+
+/* Abatido: el rótulo y cuánto falta. Centrado y por encima de la mira, que es
+   donde ya están puestos los ojos. */
+.downed {
+  z-index: 4;
+  position: absolute;
+  left: 50%;
+  top: 34%;
+  margin: 0;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  pointer-events: none;
+}
+
+.downed__title {
+  font-size: 46px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  /* El interletrado abre por la derecha y descentra la palabra: se compensa con
+     la misma sangría, que es de donde sale el hueco. */
+  text-indent: 0.22em;
+  line-height: 1;
+  color: var(--accent-color);
+  text-transform: uppercase;
+}
+
+.downed__count {
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-soft);
+}
+
+/* Viñeta de abatido: oscurece los **bordes**, no la pantalla. Un negro total
+   taparía justo lo que hay que ver —quién te ha matado y desde dónde—, y el
+   propio aclarado es la cuenta atrás de la reaparición. */
+.vignette {
+  z-index: 3;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: radial-gradient(
+    ellipse 72% 62% at 50% 50%,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0.35) 52%,
+    rgba(0, 0, 0, 0.88) 100%
+  );
+  opacity: 1;
+  transition: opacity 120ms linear;
+}
+
+/* La ficha flotante sobre un muñeco: silueta del arma arriba y nick debajo.
+   Es DOM en el espacio (CSS3DRenderer), como lo era el tablero de acciones, y
+   por el mismo motivo: reutiliza la tipografía y la silueta del arma que ya
+   existen en vez de repintarlas en WebGL. Sin fondo opaco — lo que hay detrás
+   es el mapa, y taparlo para poner un nombre es justo lo contrario de lo que
+   sirve. */
+.nameplate {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  pointer-events: none;
+  user-select: none;
+  white-space: nowrap;
+  background: rgba(10, 10, 10, 0.52);
+  border: 1px solid rgba(234, 234, 234, 0.18);
+  border-radius: 3px;
+}
+
+.nameplate__weapon {
+  display: block;
+  width: 46px;
+  height: 16px;
+  fill: none;
+  stroke: var(--text-primary);
+  /* El trazado viene en las coordenadas del encuadre común, no en píxeles: a
+     46 px de ancho contra los 136 del HUD, el grosor se compensa por la misma
+     proporción (1.5 × 136/46). */
+  stroke-width: 4.4;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.nameplate__nick {
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  line-height: 1;
+  color: #eaeaea;
+}
+
+/* Segundos de gracia tras reaparecer: un marco encendido y lo que queda. Va
+   arriba del todo y en el borde para no tapar nada de lo que se está mirando,
+   pero **nunca invisible**: una invulnerabilidad que no se ve no se aprovecha. */
+.grace {
+  z-index: 3;
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  /* El tinte del borde es el mismo azul del escudo: todo lo que protege al
+     jugador va por ese canal. */
+  box-shadow: inset 0 0 120px rgba(111, 224, 255, 0.16);
+  animation: grace-pulse 1s ease-in-out infinite;
+}
+
+/* La lectura va **con el bloque de vida**, no en el centro: es estado del
+   jugador, y arriba en medio ya están el cronómetro y las estrellas. */
+.grace__badge {
+  position: absolute;
+  left: 24px;
+  bottom: 96px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.grace__label {
+  font-size: 11px;
+  letter-spacing: 0.24em;
+  color: var(--electric-color);
+}
+
+.grace__track {
+  display: block;
+  width: 120px;
+  height: 2px;
+  background: var(--panel-border);
+}
+
+.grace__bar {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--electric-color);
+  transform: scaleX(1);
+  transform-origin: left center;
+}
+
+@keyframes grace-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.62;
+  }
+}
+
+/* Anillo de daño: alrededor de la mira y no un tinte de pantalla, que taparía
+   justo lo que hay que mirar cuando te están disparando. */
+.crosshair__ring {
+  position: absolute;
+  left: -21px;
+  top: -21px;
+  width: 42px;
+  height: 42px;
+  border: 2px solid var(--accent-color);
+  border-radius: 50%;
+  opacity: 0;
+}
+
+/* ---------------------------------------------------------------------------
+   Armería (vuelta 42)
+
+   Una rejilla de fichas, una por arma: silueta, nombre y lo que cuesta. Usa las
+   mismas piezas que el resto de paneles —`.panel`, `.button`, la silueta del
+   HUD— porque es el mismo juego: una armería con tipografía propia parecería
+   pegada de otro sitio.
+--------------------------------------------------------------------------- */
+.teclas {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--cab-e2) 20px;
+  width: auto;
+  margin: 0;
+}
+
+/* **Salir, abajo a la izquierda** (vuelta 99), con su pictograma. Sólo existe en
+   la app de escritorio: ver el porqué en `App.jsx`. */
+.salir {
+  position: absolute;
+  left: var(--cab-e6);
+  bottom: var(--cab-e6);
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.salir__icono {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.salir:hover {
+  color: var(--cab-peligro);
+}
+
+/* **Un panel dentro de la cabina ya no flota: ocupa el contenido** (vuelta 99).
+   Opciones y la armería son los mismos componentes que se abren desde la pausa,
+   donde siguen siendo un panel centrado sobre el mundo; aquí la barra ya dice
+   en qué sección se está, así que su título sobra. */
+.cab-main > .panel {
+  align-items: stretch;
+  max-width: none;
+  max-height: none;
+  min-height: 100%;
+  margin: 0;
+  padding: var(--cab-e5) var(--cab-e6);
+  overflow: visible;
+  text-align: left;
+}
+
+.cab-main > .panel > .panel__title {
+  display: none;
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* **Un ajuste que el juego va a ignorar se apaga** (vuelta 94). No se esconde:
+   vuelve a valer en cuanto se cambia lo de arriba, y aparecer y desaparecer
+   movería la lista entera con cada clic. Su frase se queda legible —es la que
+   dice por qué—, y por eso el atenuado no la toca. */
+.field--inerte .field__head,
+.field--inerte .field__control,
+.field--inerte .segmented,
+.field--inerte .scenarios {
+  opacity: 0.38;
+}
+
+.field--inerte .field__control,
+.field--inerte .segmented {
+  pointer-events: none;
+}
+
+/* Etiqueta y botón de restablecer de la fila, en la misma línea y a los dos
+   extremos: el botón queda siempre en el mismo sitio caiga lo que caiga debajo. */
+.field__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* **Y deja de competir con la etiqueta de su propia fila** (vuelta 94). Tenía
+   caja, y once cajas grises a la altura de once rótulos se leen como once
+   controles: en una captura de la pantalla de entrenamiento, lo más repetido
+   era el botón que casi nunca se usa. Sin caja es lo que es —un enlace— y sólo
+   se enciende cuando hay algo que restablecer. */
+.field__default {
+  padding: 3px 0;
+  border: none;
+  background: transparent;
+  color: var(--cab-texto-apagado);
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-micro);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 120ms ease, opacity 120ms ease;
+}
+
+.field__default:hover:not(:disabled),
+.field__default:focus-visible:not(:disabled) {
+  color: var(--accent-color);
+  outline: none;
+  text-decoration: underline;
+}
+
+/* Ya está en su valor de fábrica: se queda **en su sitio** y casi invisible,
+   para que la fila no cambie de alto cada vez que se toca un slider (vuelta 92)
+   pero tampoco pese cuando no hay nada que deshacer. */
+.field__default:disabled {
+  opacity: 0.16;
+  cursor: default;
+}
+
+.field__label {
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-pequeno);
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--cab-texto-suave);
+}
+
+.field__control {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.field__value {
+  min-width: 62px;
+  text-align: right;
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-subtitulo);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.field__hint {
+  font-size: var(--cab-t-pequeno);
+  line-height: 1.45;
+  color: var(--cab-texto-apagado);
+}
+
+.field__range {
+  flex: 1;
+  appearance: none;
+  height: 6px;
+  background: var(--cab-hueco-alto);
+  cursor: pointer;
+}
+
+.field__range::-webkit-slider-thumb {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  background: var(--cab-texto);
+  cursor: pointer;
+}
+
+.field__range::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: none;
+  border-radius: 0;
+  background: var(--cab-texto);
+  cursor: pointer;
+}
+
+.field__range:hover::-webkit-slider-thumb,
+.field__range:focus-visible::-webkit-slider-thumb {
+  background: var(--accent-color);
+}
+
+.field__range:hover::-moz-range-thumb,
+.field__range:focus-visible::-moz-range-thumb {
+  background: var(--accent-color);
+}
+
+.field__number {
+  width: 76px;
+  padding: 7px 8px;
+  border: 0;
+  background: var(--cab-fondo);
+  color: var(--cab-texto);
+  font-family: var(--cab-letra-rotulo);
+  font-size: var(--cab-t-texto);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.field__number:focus-visible {
+  border-color: var(--accent-color);
+  outline: none;
+}
+
+.field__select {
+  min-width: 160px;
+  padding: 9px 10px;
+  border: 0;
+  background: var(--cab-hueco);
+  color: var(--cab-texto);
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-texto);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.field__select:hover,
+.field__select:focus-visible {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+  outline: none;
+}
+
+.segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.segmented__option {
+  flex: 1;
+  padding: 8px 10px;
+  border: 0;
+  background: var(--cab-hueco);
+  color: var(--cab-texto-apagado);
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-boton);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.segmented__option:hover {
+  color: var(--cab-texto);
+  background: var(--cab-hueco-alto);
+}
+
+.segmented__option[aria-pressed='true'] {
+  background: var(--cab-elegido);
+  color: var(--cab-fondo);
+  font-weight: 700;
+}
+
+/* La vista del avatar no es un menú: sólo deja un rótulo abajo y no tapa nada,
+   que para eso se abre — para mirar el modelo. */
+.overlay--bare {
+  align-items: flex-end;
+  padding-bottom: 42px;
+  background: none;
+  pointer-events: none;
+}
+
+/* ---------- Controles ---------- */
+
+.binds {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+}
+
+.binds__group {
+  margin: 12px 0 2px;
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-micro);
+  font-weight: 600;
+  letter-spacing: var(--cab-espaciado-rotulo);
+  text-transform: uppercase;
+  color: var(--cab-texto-rotulo);
+}
+
+.bind {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0;
+}
+
+.bind__label {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: var(--cab-t-pequeno);
+}
+
+/* «sin efecto todavía», «contextual»: son notas sobre la acción, no parte de su
+   nombre, así que se leen más bajo y más pequeño. */
+.bind__tag {
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  opacity: 0.75;
+}
+
+.bind__keys {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bind__extra {
   font-size: 10px;
+  color: var(--text-muted);
+}
+
+.bind__key {
+  min-width: 110px;
+  padding: 6px 10px;
+  border: 0;
+  border-bottom: 2px solid var(--cab-linea-fuerte);
+  background: var(--cab-hueco);
+  color: var(--cab-texto);
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-pequeno);
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease;
+}
+
+.bind__key:hover,
+.bind__key:focus-visible {
+  border-color: var(--accent-color);
+  outline: none;
+}
+
+/* Capturando: el botón se enciende con el acento para que quede claro que la
+   siguiente tecla se la lleva él y no el juego. */
+.bind__key[aria-pressed='true'] {
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+}
+
+.bind__error {
+  flex-basis: 100%;
+  font-size: 10px;
+  color: var(--accent-color);
+}
+
+/* ---------- Selector de escenario ---------- */
+
+/* Rejilla de columna fija en lugar de una fila que se reparte el ancho: con dos
+   escenarios los planos salían a media columna cada uno —casi 280 px— y cada
+   escenario nuevo los habría ido encogiendo a un tamaño distinto. Con la columna
+   fija el plano mide siempre 140 px, la mitad que antes, y el selector crece
+   hacia abajo en filas en vez de estrujar lo que ya había. */
+.scenarios {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, 158px);
+  gap: 8px;
+}
+
+.scenarios__option {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 6px;
+  border: 0;
+  outline: 1px solid var(--cab-linea-fuerte);
+  background: var(--cab-fondo);
+  color: var(--cab-texto-apagado);
+  font-family: var(--cab-letra-texto);
+  font-size: var(--cab-t-pequeno);
+  cursor: pointer;
+  transition: outline-color 120ms ease, color 120ms ease;
+}
+
+.scenarios__option:hover {
+  color: var(--cab-texto);
+}
+
+.scenarios__option[aria-pressed='true'] {
+  outline: 2px solid var(--cab-elegido);
+  color: var(--cab-elegido);
+}
+
+.scenario-thumb {
+  display: block;
+  width: 100%;
+  height: auto;
+  /* El plano es cuadrado como la sala; sin esto se estira en pantallas raras. */
+  aspect-ratio: 1;
+}
+
+.scenarios__name {
+  text-align: center;
+}
+
+.scenario-card {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 2px 0 0;
+  padding: 10px 12px;
+  background: var(--cab-fondo);
+  font-size: var(--cab-t-pequeno);
+  line-height: 1.45;
+}
+
+.scenario-card dt {
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-micro);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--cab-texto-rotulo);
+  padding-top: 1px;
+}
+
+.scenario-card dd {
+  margin: 0;
+  color: var(--text-primary);
+}
+
+.toggle {
+  min-width: 116px;
+  padding: 8px 14px;
+  border: 0;
+  background: var(--cab-hueco);
+  color: var(--cab-texto-apagado);
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-texto);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 120ms ease, background 120ms ease;
+}
+
+.toggle[aria-pressed='true'] {
+  background: var(--cab-elegido);
+  color: var(--cab-fondo);
+  font-weight: 700;
+}
+
+.panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.panel--options .panel__hint,
+.panel--training .panel__hint {
+  text-align: center;
+}
+
+/* **Un botón solo se centra; dos se reparten** (vuelta 92). La pantalla de la
+   marca tiene uno y el paso siguiente tiene dos filas de dos, y lo que hace
+   que las dos filas se lean como dos filas es que sus botones midan lo mismo:
+   con `flex-wrap` y ancho de contenido, «Armería» y «Opciones» salían de dos
+   tamaños distintos debajo de dos que sí eran iguales. */
+.panel__actions--solo {
+  justify-content: center;
+}
+
+.panel__actions--duo {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  width: min(460px, 100%);
+  align-self: center;
+}
+
+.panel__actions--duo .button {
+  margin-top: 0;
+  width: 100%;
+}
+
+.button--quiet {
+  background: transparent;
+  color: var(--cab-texto-apagado);
+}
+
+/* ---------- Resumen ---------- */
+
+.panel--summary {
+  gap: 18px;
+  min-width: 400px;
+}
+
+.summary__grid {
+  display: flex;
+  gap: 40px;
+  align-items: flex-end;
+}
+
+.summary__cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+}
+
+.summary__value {
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-titulo);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.summary__cell--primary .summary__value {
+  font-size: 56px;
+  color: var(--cab-elegido);
+}
+
+.summary__label {
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-micro);
+  letter-spacing: var(--cab-espaciado-rotulo);
+  text-transform: uppercase;
+  color: var(--cab-texto-rotulo);
+}
+
+.summary__detail {
+  margin: 0;
+  font-size: var(--cab-t-pequeno);
+  color: var(--cab-texto-apagado);
+}
+
+.button {
+  margin-top: 4px;
+  padding: 11px 24px;
+  border: 0;
+  background: var(--cab-hueco);
+  color: var(--cab-texto);
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-boton);
+  font-weight: 600;
+  letter-spacing: var(--cab-espaciado-boton);
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.button:hover,
+.button:focus-visible {
+  background: var(--cab-hueco-alto);
+  color: var(--cab-texto);
+  outline: none;
+}
+
+/* **El botón grande de los modos** (vuelta 92). Lo que lo separa de los demás
+   no es el color —eso ya lo hace `--primary`— sino el tamaño y el renglón de
+   debajo: es la regla de la vuelta 43 en un menú, un botón grande por decisión
+   y lo demás pequeño. */
+.button--grande {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 18px 28px;
+  font-size: var(--cab-t-subtitulo);
+}
+
+/* El renglón de debajo dice qué es ese modo, en minúsculas y sin espaciar: si
+   se pareciera al rótulo del botón serían dos rótulos y no un botón con
+   explicación. */
+.button__sub {
+  font-family: var(--cab-letra-texto);
+  font-stretch: normal;
+  font-size: var(--cab-t-pequeno);
+  font-weight: 400;
+  letter-spacing: 0.01em;
+  text-transform: none;
+  opacity: 0.78;
+  line-height: 1.35;
+}
+
+/* Acción principal: verde de marca. No se usa en ningún otro sitio. */
+.button--primary {
+  background: var(--cab-accion);
+  color: var(--cab-accion-tinta);
+  font-weight: 700;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - var(--cab-chaflan)), calc(100% - var(--cab-chaflan)) 100%, 0 100%);
+}
+
+.button--primary:hover {
+  background: #45d892;
+  color: var(--cab-accion-tinta);
+}
+
+/* **El foco no elige por ti** (vuelta 94). Relleno, `:focus-visible` hacía que
+   de dos modos del mismo tamaño y del mismo color uno saliera macizo y el otro
+   en contorno — y cuál era dependía de dónde estuviera el foco, que lo pone un
+   `autoFocus`. Medido en la captura de la pantalla de inicio: «Entrenamiento»
+   verde entero y «Duelo 1v1» hueco, o sea un menú que designa un ganador que
+   nadie decidió (la regla de la vuelta 43 en un menú). El foco tiene que verse
+   —se navega con el teclado— así que es un anillo, que dice «estás aquí» sin
+   decir «esto es lo importante». */
+.button--primary:focus-visible {
+  background: var(--cab-accion);
+  color: var(--cab-accion-tinta);
+  outline: none;
+  box-shadow: inset 0 0 0 3px var(--cab-accion-tinta);
+}
+
+/* **El foco es un anillo por dentro** (vuelta 99). La 94 lo hizo anillo para que
+   no designase un ganador; con Cabina los botones llevan chaflán, y
+   `clip-path` recorta todo lo que sale de la caja —un `outline` incluido—, así
+   que el anillo va **dentro** (`inset`). Mismo significado: «estás aquí». */
+.button:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--cab-texto-suave);
+}
+
+.button--quiet:hover {
+  background: var(--cab-hueco);
+  color: var(--cab-texto);
+}
+
+/* Pequeño: para lo que no es la acción de la pantalla — volver, sobre todo. */
+.button--pequeno {
+  padding: 8px 16px;
+  font-size: var(--cab-t-texto);
 }
 
 /* ---------- Vida, escudo y casco ---------- */
@@ -2042,14 +3312,15 @@ body {
   justify-items: center;
   align-content: start;
   padding: 11px 10px;
-  border: 1px solid var(--panel-border);
-  background: rgba(255, 255, 255, 0.015);
+  background: var(--cab-superficie-translucida);
+  clip-path: polygon(0 0, calc(100% - var(--cab-chaflan)) 0, 100% var(--cab-chaflan), 100% 100%, 0 100%);
 }
 
 /* La equipada se marca con el verde de acción, que es el color de «esto es lo
    que pasa al pulsar» en todo el juego. */
 .armoury__card--equipped {
-  border-color: var(--action-color);
+  /* Con chaflán no hay borde que teñir (lo recortaría): el filo va por dentro. */
+  box-shadow: inset 0 0 0 2px var(--cab-accion);
 }
 
 .armoury__art {
@@ -2067,10 +3338,13 @@ body {
 }
 
 .armoury__name {
-  font-family: var(--font-mono);
-  font-size: 15px;
-  letter-spacing: 0.08em;
-  color: var(--text-primary);
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--cab-texto);
 }
 
 /* La tecla, como una tecla: cuadrada y con borde. */
@@ -2078,12 +3352,13 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  height: 18px;
-  border: 1px solid var(--panel-border);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  color: var(--text-muted);
+  width: 20px;
+  height: 20px;
+  background: var(--cab-hueco);
+  font-family: var(--cab-letra-rotulo);
+  font-size: var(--cab-t-micro);
+  font-weight: 600;
+  color: var(--cab-texto-apagado);
 }
 
 
@@ -2115,17 +3390,20 @@ body {
    gratis se apaga, porque un «De serie» que compite con un número se lee como
    un precio más. */
 .armoury__precio {
-  font-family: var(--font-mono);
-  font-size: 14px;
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-boton);
+  font-weight: 700;
   letter-spacing: 0.06em;
-  color: var(--text-primary);
+  color: var(--cab-accion);
 }
 
 .armoury__precio--gratis {
-  font-size: 10px;
+  font-size: var(--cab-t-pequeno);
+  font-weight: 600;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--cab-texto-apagado);
 }
 
 /* **La combinación, en la misma fila que el precio** (vuelta 93). No gasta una
@@ -2134,10 +3412,13 @@ body {
    compara de un vistazo es el precio y esto se busca cuando se busca. */
 .armoury__combo {
   float: right;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.12em;
-  color: var(--text-muted);
+  margin-left: 8px;
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-boton);
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  color: var(--cab-elegido);
 }
 
 /* Lo tecleado, como en la tienda del duelo: sin esto teclear dos cifras y que
@@ -2165,27 +3446,29 @@ body {
 .armoury__ranura {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 14px;
-  border: 1px solid var(--panel-border);
-  background: transparent;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  letter-spacing: 0.1em;
+  gap: 10px;
+  padding: 10px 16px;
+  border: 0;
+  background: var(--cab-superficie);
+  color: var(--cab-texto-apagado);
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-boton);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   cursor: pointer;
 }
 
 .armoury__ranura:hover {
-  color: var(--text-primary);
-  border-color: var(--text-muted);
+  color: var(--cab-texto);
+  background: var(--cab-hueco);
 }
 
 .armoury__ranura--activa,
 .armoury__ranura--activa:hover {
-  color: var(--action-color);
-  border-color: var(--action-color);
+  background: var(--cab-elegido);
+  color: var(--cab-fondo);
+  font-weight: 700;
 }
 
 /* **El número de la categoría es lo grande; la tecla, lo pequeño** (vuelta 98).
@@ -2195,18 +3478,19 @@ body {
    como el primer dígito de la Pulse. */
 .armoury__ranura-cat {
   min-width: 18px;
-  padding: 1px 0;
-  border: 1px solid currentColor;
-  font-size: 11px;
+  font-size: 26px;
   font-weight: 700;
+  line-height: 1;
   text-align: center;
 }
 
 .armoury__ranura-tecla {
-  font-size: 9px;
-  opacity: 0.7;
+  font-family: var(--cab-letra-texto);
+  font-stretch: normal;
+  font-size: var(--cab-t-micro);
+  opacity: 0.75;
   text-transform: none;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.02em;
 }
 
 .armoury__actions {
@@ -2312,17 +3596,20 @@ body {
 }
 
 .armoury__stat-label {
-  font-family: var(--font-mono);
-  font-size: 10px;
-  letter-spacing: 0.1em;
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-micro);
+  font-weight: 600;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
-  color: var(--text-muted);
+  color: var(--cab-texto-rotulo);
 }
 
 .armoury__stat-value {
-  font-family: var(--font-mono);
-  font-size: 12px;
-  color: var(--text-soft);
+  font-family: var(--cab-letra-texto);
+  font-size: var(--cab-t-pequeno);
+  font-variant-numeric: tabular-nums;
+  color: var(--cab-texto-suave);
 }
 
 /* Barra comparativa: el tope es el máximo del arsenal, así que lo que se lee es
@@ -2433,16 +3720,19 @@ body {
    que pasa» sin gastar un color, que en esta paleta ya significan todos algo. */
 .teclas__tecla {
   min-width: 46px;
-  padding: 3px 6px;
-  border: 1px solid var(--panel-border);
-  font-family: inherit;
-  font-size: 9px;
-  letter-spacing: 0.1em;
+  padding: 2px 7px;
+  background: var(--cab-hueco);
+  border-bottom: 2px solid var(--cab-linea-fuerte);
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-pequeno);
+  font-weight: 600;
+  letter-spacing: 0.08em;
   text-align: center;
-  color: var(--text-color);
+  color: var(--cab-texto);
 }
 
 .teclas__que {
-  font-size: 10px;
-  color: var(--text-muted);
+  font-size: var(--cab-t-pequeno);
+  color: var(--cab-texto-apagado);
 }

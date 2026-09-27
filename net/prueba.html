@@ -4,13 +4,18 @@
 <style>
   :root { color-scheme: dark; }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: #0A0A0A; color: #E8E8E8;
-    font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; overflow: hidden; }
+  /* **La letra es la de la cabina** (vuelta 99): los tokens de
+     `src/ui/cabina.css`, que esta página carga con el HUD (`duelo.jsx`). Hasta
+     aquí era monoespaciada a 12 px, o sea otra página del mismo juego. */
+  html, body { margin: 0; height: 100%; background: var(--cab-fondo, #0A0A0A); color: var(--cab-texto, #E8E8E8);
+    font: 14px/1.5 var(--cab-letra-texto, system-ui, sans-serif); overflow: hidden; }
   canvas { display: block; width: 100%; height: 100%; }
-  .apagado { color: #6A6A6A; }
+  .apagado { color: var(--cab-texto-apagado); }
   .bien { color: #2FCB82; } .mal { color: #E4462B; }
-  kbd { border: 1px solid #333; border-bottom-width: 2px; border-radius: 3px; padding: 1px 5px; color: #FFF; }
-  hr { border: 0; border-top: 1px solid #222; margin: 9px 0; }
+  kbd { background: var(--cab-hueco); border-bottom: 2px solid var(--cab-linea-fuerte); padding: 1px 6px;
+    color: var(--cab-texto); font-family: var(--cab-letra-rotulo); font-stretch: condensed; font-weight: 600;
+    letter-spacing: .06em; text-transform: uppercase; }
+  hr { border: 0; border-top: 1px solid var(--cab-linea); margin: 10px 0; }
 
   /* ---------------------------------------------- lo que se ve jugando
      **Ya no se dibuja aquí** (vuelta 73). La mira, la vida, el escudo, el
@@ -83,8 +88,9 @@
   #pausa em { margin-left: 10px; font-style: normal; color: #FFF; font-weight: 700;
     letter-spacing: .1em; font-variant-numeric: tabular-nums; }
   #pausa small { display: block; margin-top: 3px; font-weight: 400; color: #9A9A9A; letter-spacing: .04em; }
-  #pausa button { margin: 7px 4px 0; background: #2FCB82; color: #08130D; border: 0;
-    border-radius: 3px; padding: 6px 14px; font: inherit; font-weight: 700; cursor: pointer; }
+  #pausa button { margin: 7px 4px 0; background: var(--cab-accion); color: var(--cab-accion-tinta); border: 0;
+    padding: 7px 16px; font-family: var(--cab-letra-rotulo); font-stretch: condensed; font-size: var(--cab-t-texto);
+    font-weight: 700; letter-spacing: var(--cab-espaciado-boton); text-transform: uppercase; cursor: pointer; }
 
   /* **El cartel de la votación** (vuelta 55). Entra deslizándose desde el borde
      derecho: uno que aparece de golpe en el borde se confunde con un fogonazo.
@@ -107,9 +113,9 @@
   #votacion small { display: block; margin-top: 5px; font-weight: 400; color: #9A9A9A;
     letter-spacing: .04em; line-height: 1.45; }
   #votacion .acciones { display: flex; gap: 7px; margin-top: 11px; }
-  #votacion button { flex: 1; border: 0; border-radius: 3px; padding: 7px 8px; font: inherit;
-    font-weight: 700; cursor: pointer; pointer-events: auto;
-    background: #2FCB82; color: #08130D; }
+  #votacion button { flex: 1; border: 0; padding: 8px 8px; font-family: var(--cab-letra-rotulo); font-stretch: condensed;
+    font-size: var(--cab-t-texto); font-weight: 700; letter-spacing: .1em; text-transform: uppercase;
+    cursor: pointer; pointer-events: auto; background: var(--cab-accion); color: var(--cab-accion-tinta); }
   /* Declinar no es rojo —el rojo dice «te están disparando»— ni reutiliza
      ningún otro tono de la paleta: ver `COLORS.decline` y su medida en CIELAB. */
   #votacion button.declinar { background: #7C8899; color: #0B1015; }
@@ -127,7 +133,8 @@
     pointer-events: none; text-shadow: 0 1px 3px #000; }
   body.jugando #ronda { display: block; }
   #ronda b { color: #EDEDED; font-size: 13px; }
-  #ronda em { display: block; font-style: normal; font-size: 26px; font-weight: 700;
+  #ronda em { display: block; font-style: normal; font-family: var(--cab-letra-rotulo); font-stretch: condensed;
+    font-size: 30px; font-weight: 700;
     color: #FFF; letter-spacing: .04em; line-height: 1.1; }
   #ronda span { font-size: 17px; font-weight: 700; color: #EDEDED; letter-spacing: .18em; }
   #ronda small { display: block; margin-top: 2px; font-size: 10px; letter-spacing: .22em; }
@@ -143,7 +150,8 @@
   #fin { display: none; position: fixed; inset: 0; place-items: center; z-index: 8;
     background: rgba(10,10,10,.86); text-align: center; }
   #fin.puesto { display: grid; }
-  #fin b { font-size: 40px; letter-spacing: .12em; }
+  #fin b { font-family: var(--cab-letra-rotulo); font-stretch: condensed; font-size: 56px; letter-spacing: .12em;
+    text-transform: uppercase; }
   #fin p { margin-top: 8px; letter-spacing: .1em; }
 
   /* ---------------------------------------------- la pantalla de menú */
@@ -161,30 +169,40 @@
   #aviso { position: fixed; inset: 0; display: grid; place-items: safe center;
     overflow-y: auto; cursor: pointer;
     padding: 10px 0 14px; padding-top: calc(var(--pausaAlto, 0px) + 10px); box-sizing: border-box;
-    background: rgba(10,10,10,.78); text-align: center; letter-spacing: .06em; }
+    background: var(--cab-velo); text-align: center; }
   #aviso[hidden] { display: none !important; }
-  #sala { display: inline-block; text-align: left; margin-bottom: 18px; padding: 14px 16px;
-    background: rgba(10,10,10,.9); border: 1px solid #2A2A2A; border-radius: 6px; cursor: auto; }
-  #sala h1 { margin: 0 0 10px; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: #E4462B; }
-  #codigo { font-size: 30px; letter-spacing: .3em; color: #FFF; }
+  /* **El cuadro de la sala es una superficie de la cabina** (vuelta 99): fondo
+     de superficie y la esquina cortada, como las tarjetas del juego. */
+  #sala { display: inline-block; text-align: left; margin-bottom: 18px; padding: 18px 22px;
+    background: var(--cab-superficie-translucida); cursor: auto;
+    clip-path: polygon(0 0, calc(100% - var(--cab-chaflan)) 0, 100% var(--cab-chaflan), 100% 100%, 0 100%); }
+  #sala h1 { margin: 0 0 10px; font-family: var(--cab-letra-rotulo); font-stretch: condensed;
+    font-size: var(--cab-t-pequeno); font-weight: 600; letter-spacing: var(--cab-espaciado-rotulo);
+    text-transform: uppercase; color: var(--cab-texto-rotulo); }
+  #codigo { font-family: var(--cab-letra-rotulo); font-stretch: condensed; font-size: 40px; font-weight: 700;
+    line-height: 1; letter-spacing: .18em; color: var(--cab-texto); }
   .linea { display: flex; gap: 6px; align-items: center; margin: 7px 0; width: 340px; }
   /* **El rótulo del enlace** (vuelta 92): dice para qué sirve el campo de
      debajo. En verde de acción porque eso es lo que hay que hacer aquí, y
      pegado al campo —margen de abajo a cero— para que se lean como una cosa y
      no como una frase suelta encima de otra. */
-  .invita { margin: 12px 0 0; color: #2FCB82; font-size: 11px; line-height: 1.4; width: 340px; }
-  .linea input { flex: 1; min-width: 0; background: #141414; color: #E8E8E8; border: 1px solid #333;
-    border-radius: 3px; padding: 5px 7px; font: inherit; }
+  .invita { margin: 12px 0 0; color: var(--cab-accion); font-size: var(--cab-t-pequeno); line-height: 1.4; width: 340px; }
+  .linea input { flex: 1; min-width: 0; background: var(--cab-fondo); color: var(--cab-texto-suave); border: 0;
+    padding: 8px 10px; font: inherit; }
+  .linea select, #mapaSel, #compraSel { background: var(--cab-hueco); color: var(--cab-texto); border: 0;
+    padding: 6px 8px; font-family: var(--cab-letra-rotulo); font-stretch: condensed; font-size: var(--cab-t-texto); }
   /* **Un control que no es tuyo se ve apagado** (vuelta 67): el desplegable de
      la fase de compra sólo lo maneja quien creó la partida, y al que se une por
      el enlace tiene que decírselo la forma, no un intento fallido. */
   #compraSel:disabled, #mapaSel:disabled { opacity: .45; cursor: not-allowed; border-style: dashed; }
-  .linea button { background: #2FCB82; color: #08130D; border: 0; border-radius: 3px;
-    padding: 6px 10px; font: inherit; font-weight: 700; cursor: pointer; }
+  .linea .button { margin: 0; }
   #otro { text-transform: uppercase; letter-spacing: .12em; }
 
   /* ---------------------------------------------- depuración (F3) */
+  /* F3 es un instrumento, no una pantalla: se queda en monoespaciada, que es la
+     letra de los números que se comparan columna a columna. */
   #panel { position: fixed; top: 12px; right: 12px; width: 352px; padding: 12px 14px; z-index: 3;
+    font: 12px/1.5 var(--cab-letra-cifra);
     background: rgba(10,10,10,.88); border: 1px solid #2A2A2A; border-radius: 6px; cursor: auto; }
   #panel[hidden] { display: none !important; }
   #panel h1 { margin: 0 0 8px; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; color: #E4462B; }
@@ -206,27 +224,30 @@
   #tienda[hidden] { display: none !important; }
   #tiendaCab { display: flex; align-items: baseline; gap: 14px; margin: 0 auto 10px;
     max-width: 980px; }
-  #tiendaCab b { font-size: 12px; letter-spacing: .16em; color: #E4462B; }
-  #tiendaDinero { font-size: 20px; font-weight: 700; color: #2FCB82;
-    font-variant-numeric: tabular-nums; }
+  #tiendaCab b { font-family: var(--cab-letra-rotulo); font-stretch: condensed; font-size: var(--cab-t-texto);
+    letter-spacing: var(--cab-espaciado-rotulo); text-transform: uppercase; color: var(--cab-texto); }
+  #tiendaDinero { font-family: var(--cab-letra-rotulo); font-stretch: condensed; font-size: 26px; font-weight: 700;
+    color: var(--cab-accion); font-variant-numeric: tabular-nums; }
   #tiendaFase { margin-left: auto; color: #9A9A9A; font-style: normal; }
   #tiendaTecleado { color: #FFF; letter-spacing: .12em; }
   #tiendaGrid { display: grid; gap: 10px; max-width: 980px; margin: 0 auto;
     grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
-  .cat { border: 1px solid #222; border-radius: 5px; padding: 8px 9px 9px;
-    background: rgba(18,18,18,.9); }
-  .cat h2 { margin: 0 0 7px; font-size: 10px; letter-spacing: .14em;
-    text-transform: uppercase; color: #8A8A8A; font-weight: 600; }
+  .cat { padding: 10px 11px 11px; background: var(--cab-superficie-translucida);
+    clip-path: polygon(0 0, calc(100% - var(--cab-chaflan)) 0, 100% var(--cab-chaflan), 100% 100%, 0 100%); }
+  .cat h2 { margin: 0 0 8px; font-family: var(--cab-letra-rotulo); font-stretch: condensed;
+    font-size: var(--cab-t-pequeno); letter-spacing: var(--cab-espaciado-rotulo);
+    text-transform: uppercase; color: var(--cab-texto-rotulo); font-weight: 600; }
   /* Un artículo: nombre, precio y **su combinación en una esquina**, que es lo
      que enseña a comprarlo sin ratón. */
   .art { position: relative; display: flex; justify-content: space-between; gap: 8px;
     width: 100%; margin: 3px 0; padding: 7px 8px 7px 9px; text-align: left;
-    background: #141414; color: #E8E8E8; border: 1px solid #2A2A2A;
-    border-radius: 3px; font: inherit; cursor: pointer; }
+    background: var(--cab-hueco); color: var(--cab-texto); border: 1px solid transparent;
+    font: inherit; font-family: var(--cab-letra-rotulo); font-stretch: condensed; font-size: var(--cab-t-texto);
+    letter-spacing: .04em; cursor: pointer; }
   .art:hover { border-color: #2FCB82; color: #FFF; }
-  .art .precio { color: #2FCB82; font-variant-numeric: tabular-nums; }
-  .art .codigo { position: absolute; top: 3px; right: 5px; font-size: 9px;
-    letter-spacing: .1em; color: #6A6A6A; }
+  .art .precio { color: var(--cab-accion); font-weight: 700; font-variant-numeric: tabular-nums; }
+  .art .codigo { position: absolute; top: 3px; right: 6px; font-size: var(--cab-t-micro); font-weight: 700;
+    letter-spacing: .14em; color: var(--cab-elegido); }
   /* Lo que no se puede comprar se ve, con su precio y su código, y no se puede
      pulsar: esconderlo sería no poder aprenderse la combinación. */
   .art:disabled { cursor: not-allowed; opacity: .45; }
@@ -263,25 +284,22 @@
       #E4462B 0 10px, #C2371F 10px 20px);
     box-shadow: 0 0 0 1px rgba(10,10,10,.8); }
 
-  #finSalir { margin-top: 14px; background: #2FCB82; color: #08130D; border: 0;
-    border-radius: 3px; padding: 9px 20px; font: inherit; font-weight: 700;
-    letter-spacing: .06em; cursor: pointer; }
-  #pausar, #pedirVoto, #salir, #opciones, #reconectar, #volver { background: #1A1A1A; color: #E8E8E8;
-    border: 1px solid #3A3A3A; border-radius: 3px; padding: 8px 16px; font: inherit;
-    letter-spacing: .06em; cursor: pointer; }
-  #salir, #volver { padding: 8px 12px; font-size: 11px; color: #9A9A9A; }
+  /* **Los botones de esta página son los del juego** (vuelta 99): `.button` y
+     sus variantes, de `styles.css` sobre los tokens de la cabina. Aquí sólo
+     queda cómo se colocan. Salir no es la acción de esta pantalla: se ve y no
+     se invita, y al pasar por encima se tiñe del color de «esto te lo hacen a
+     ti». Reconectar sí lo es, mientras exista. */
   .botones-menu { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
-  .botones-menu button[hidden] { display: none !important; }
-  #volver, #teclado { background: #1A1A1A; border: 1px solid #3A3A3A; border-radius: 3px;
-    font: inherit; letter-spacing: .06em; cursor: pointer; }
-  #volver { font-size: 11px; }
-  #teclado { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; color: #C8C8C8; }
-  #teclado[aria-expanded="true"], #teclado:hover, #volver:hover { border-color: #2FCB82; color: #FFF; }
-  #tablaControles { margin: 12px auto 0; border-collapse: collapse; min-width: 320px; text-align: left;
-    font-size: 11px; letter-spacing: .06em; background: rgba(10,10,10,.92); border: 1px solid #2A2A2A; }
+  .botones-menu .button { margin-top: 0; }
+  .botones-menu button[hidden], #reconectar[hidden], #pausar[hidden], #pedirVoto[hidden] { display: none !important; }
+  #salir:hover { color: var(--cab-peligro); }
+  #teclado { display: inline-flex; align-items: center; gap: 8px; }
+  #teclado[aria-expanded="true"] { background: var(--cab-elegido); color: var(--cab-fondo); }
+  #tablaControles { margin: 12px auto 0; border-collapse: collapse; min-width: 340px; text-align: left;
+    font-size: var(--cab-t-pequeno); background: var(--cab-superficie-translucida); }
   #tablaControles[hidden] { display: none; }
-  #tablaControles td { padding: 5px 12px; border-bottom: 1px solid #242424; }
-  #tablaControles td:first-child { color: #9A9A9A; }
+  #tablaControles td { padding: 5px 14px; border-bottom: 1px solid var(--cab-linea); }
+  #tablaControles td:first-child { color: var(--cab-texto-apagado); }
   #tablaControles td:last-child { text-align: right; white-space: nowrap; }
   #fichas { background: #1A1A1A; color: #C8C8C8; border: 1px solid #3A3A3A;
     border-radius: 3px; padding: 6px 12px; font: inherit; letter-spacing: .06em;
@@ -314,7 +332,7 @@
 <div id="fin"><div><b id="finQuien">—</b><p id="finDetalle" class="apagado">&nbsp;</p>
   <!-- **Y una salida.** El cartel tapa la pantalla entera, así que sin un botón
        el jugador se queda mirándolo sin nada que pulsar: el menú está debajo. -->
-  <p><button id="finSalir">Salir al menú</button></p></div></div>
+  <p><button id="finSalir" class="button button--primary">Salir al menú</button></p></div></div>
 
 <div id="aviso"><div>
   <div id="sala" class="control">
@@ -323,14 +341,14 @@
          partida a medias, y lleva su código escrito para que no haya que
          creerse nada. Vive aquí y no en la pantalla de inicio del juego: la red
          no entra en `App.jsx` (vuelta 45). -->
-    <p style="margin:0 0 10px"><button id="reconectar" hidden>Reconectar</button></p>
+    <p style="margin:0 0 10px"><button id="reconectar" class="button button--primary button--pequeno" hidden>Reconectar</button></p>
     <div class="fila"><span class="apagado">código de partida</span><span id="codigo">—</span></div>
     <!-- **El enlace dice para qué es** (vuelta 92). Era un campo de texto y un
          botón «copiar» sin una palabra alrededor, y lo que hay detrás —«así es
          como se invita a alguien»— es justo lo que un jugador nuevo no puede
          adivinar mirando una URL. -->
     <p class="invita">Copia y comparte este link para retar a tus amigos a un duelo</p>
-    <div class="linea"><input id="enlace" readonly /><button id="copiar">copiar</button></div>
+    <div class="linea"><input id="enlace" readonly /><button id="copiar" class="button button--primary button--pequeno">Copiar</button></div>
     <!-- **Y el campo de código a mano se retira** (vuelta 92). Existía desde la
          47 como la otra puerta de entrada a una sala, y lo que se comparte es
          el enlace entero: tecleando seis caracteres no se llega a ningún sitio
@@ -401,15 +419,15 @@
        **pausa de una partida**, y ahí van pausar y abandonar. Lo decide
        `pintarBotonesDelMenu`, con el mismo `ocupadas` que ya cierra las opciones
        de la sala (vuelta 67). Todo en una fila: `menu92` mide que quepa. -->
-  <p class="botones-menu"><button id="volver" class="control">Volver</button><button
-     id="pausar" class="control" hidden>Pausar la partida</button><button
-     id="opciones" class="control">Opciones</button><button
-     id="teclado" class="control" aria-expanded="false" aria-controls="tablaControles"
+  <p class="botones-menu"><button id="volver" class="control button button--quiet button--pequeno">Volver</button><button
+     id="pausar" class="control button button--pequeno" hidden>Pausar la partida</button><button
+     id="opciones" class="control button button--pequeno">Opciones</button><button
+     id="teclado" class="control button button--pequeno" aria-expanded="false" aria-controls="tablaControles"
      title="Controles"><svg viewBox="0 0 24 16" width="20" height="14" aria-hidden="true"><rect
      x="0.75" y="0.75" width="22.5" height="14.5" rx="2" fill="none" stroke="currentColor"
      stroke-width="1.5"/><path d="M4 4.5h2M8 4.5h2M12 4.5h2M16 4.5h2M4 8h2M8 8h2M12 8h2M16 8h4M6 11.5h12"
      stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Controles</button><button
-     id="salir" class="control" hidden>Salir de la partida</button></p>
+     id="salir" class="control button button--quiet button--pequeno" hidden>Salir de la partida</button></p>
   <!-- **Los controles, en una tabla que se abre** (vuelta 98). Eran un renglón
        corrido bajo la ventana —«WASD mover · SPACE saltar · …»— que no casaba
        con nada del resto del juego y crecía con cada tecla. Ahora es un botón con
@@ -420,7 +438,7 @@
   </table>
   <!-- Es un `.control`: se pincha con el ratón suelto y su clic no cuenta como
        el clic que captura. Sale sólo sin pausas libres; lo decide `pintarPausa`. -->
-  <p><button id="pedirVoto" class="control" hidden>Solicitar pausa por votación</button></p>
+  <p><button id="pedirVoto" class="control button button--pequeno" hidden>Solicitar pausa por votación</button></p>
 </div></div>
 
 <!-- **La armería, dentro de la partida** (vuelta 64). No es una pantalla de
@@ -445,7 +463,7 @@
        conversación que la tienda —qué llevo y qué hace—, y porque ese menú no
        puede crecer una fila más (vuelta 62). -->
   <p style="text-align:center;margin:6px 0 0">
-    <button id="fichas" class="control">Ver fichas de las armas</button>
+    <button id="fichas" class="control button button--pequeno">Ver fichas de las armas</button>
   </p>
 </div>
 
