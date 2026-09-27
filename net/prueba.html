@@ -374,9 +374,15 @@
        ayuda repetida —las teclas están en las opciones del juego— y una nota
        para probar en dos pestañas que dejó de hacer falta el día que hubo un
        botón en el menú y una dirección de red que pasar. -->
-  <p class="apagado"><kbd>WASD</kbd> mover · <kbd>Espacio</kbd> saltar ·
-     <kbd>C</kbd> agachar · <kbd>Shift</kbd> andar · <kbd>clic</kbd> disparar ·
-     <kbd>F3</kbd> números de red</p>
+  <!-- **Y las teclas las escribe el script, no este fichero** (vuelta 97). Estaban
+       aquí a mano —`C` agachar, `Shift` andar— y son binds reasignables desde la
+       vuelta 41: quien se los cambiaba leía en el menú del duelo los controles de
+       otro. Y desde esta vuelta no hay una sola respuesta correcta que escribir,
+       porque en la app de escritorio agacharse sale de fábrica en `Ctrl`. Lo
+       rellena `prueba.js` con `keysOf`, la misma función de la que sale la lista
+       del panel de opciones. La F3 se queda escrita: es de esta página, como las
+       F1/F2/F3 del editor, y no está en `KEYBINDS`. -->
+  <p class="apagado" id="controles"><kbd>F3</kbd> números de red</p>
   <p class="apagado"><kbd>Esc</kbd> abre este menú — <b>no pausa por sí solo</b>.
      Te quedan <b id="libresMenu">3</b> pausas sin pedir permiso</p>
   <!-- **Pausar es un botón, no un gesto** (vuelta 60). Hasta la 58 soltar el
@@ -413,7 +419,7 @@
   </div>
   <div id="tiendaGrid"></div>
   <p class="apagado" style="max-width:980px;margin:9px auto 0">
-    <kbd>B</kbd> cierra · clic para comprar · o teclea <b>categoría + código</b>
+    <kbd id="tiendaCierra">B</kbd> cierra · clic para comprar · o teclea <b>categoría + código</b>
     (la Rift es <kbd>4</kbd><kbd>3</kbd>) · <kbd>clic derecho</kbd> pone y quita el
     silenciador, que es del arma y no cuesta nada
   </p>

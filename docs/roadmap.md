@@ -270,6 +270,15 @@ hay que guardar es mucho menos.
 
 ## Fase 3 — Más de dos, y que importe
 
+**Desde la vuelta 97 esta fase tiene propuesta escrita y medida**:
+`docs/propuestas/11-salas-de-varios.md`, que es lo que el encargo puso por delante
+de las propuestas 08 y 09. Lo que hay debajo sigue valiendo como inventario; lo
+que la propuesta añade es el orden, los cortes y **el número que decide el plan**:
+una sala de diez cuesta hoy **4 147 KB/s** —el 100 % la foto— contra 0.32 ms de
+CPU por paso, así que el techo es el tráfico y el protocolo tiene que cambiar
+**antes** de que haya diez jugadores. Y añade el modo espectador y el lobby de
+evento para zonas LAN, que el encargo pidió con esto y dependen de lo mismo.
+
 ### 3.1 Modo de eliminación, todos contra todos
 
 Varios jugadores en el mismo mapa, se cae el que cae, gana el que queda. **Sin
@@ -466,10 +475,24 @@ como se plantearon y **sin elegir**:
   ves en el mapa, no pide progresión y no cierra la puerta a quien no paga. Si hay
   que empezar por una, es ésta.
 
+**Y en la vuelta 97 dos de las cuatro dejaron de estar sin decidir.** El encargo
+acepta las dos objeciones, así que pasan de objeciones a reglas:
+
+- **Si hay skins, serán de forma, efectos o animaciones, nunca de color.** El
+  color es información, así que una skin de color cambia lo que el jugador lee.
+  Queda viva con esa regla puesta, y con el aviso de la 38 encima: la forma que
+  hoy se puede vender es la que no promete información que el modelo no da.
+- **Y una cuota nunca será para poder jugar.** O sea que **la tercera vía queda
+  descartada**, y la promesa que protege el enlace por código —se puede jugar sin
+  cuenta y en igualdad— deja de estar en discusión.
+
+Quedan tres: **skins de forma**, **pase de temporada** y **membresía de
+comunidad**. Las dos últimas no tocan el juego; la primera sí y ya sabe cómo.
+
 Lo que **no** hay y hace falta antes de escribir una sola línea: qué se vende, a
-quién, y qué pasa con quien no paga. La respuesta a la última condiciona todo lo
-demás, y la única regla que este proyecto ya tiene de fábrica es la de arriba
-—nada que cambie lo que ves en el mapa—.
+quién, y qué pasa con quien no paga. La respuesta a la última ya está dada —se
+sigue pudiendo jugar—, y la única regla que este proyecto ya tiene de fábrica es
+la de arriba: nada que cambie lo que ves en el mapa.
 
 - **Bloqueante:** 2.2/2.3 y 5. No se cobra sin cuentas y sin economía.
 

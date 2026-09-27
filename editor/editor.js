@@ -38,6 +38,7 @@ import { cajasDeEscalera, medidasDeEscalera } from '../src/maps/escalera.js'
 import { envolventeDePrisma } from '../src/maps/prisma.js'
 import { montarCapaDeDuelo } from '../src/ui/duelo.jsx'
 import { LOGO } from '../src/ui/logoPaths.js'
+import { getKeybinds, keyLabel, keysOf } from '../src/keybinds.js'
 
 const $ = (id) => document.getElementById(id)
 
@@ -6417,6 +6418,21 @@ const ATAJOS = [
   ['ESC', 'cierra el panel · y vuelve de «probar»'],
   ['F1 / F2 / F3', 'plantar muñecos · volar · limpiar (probando)'],
 ]
+
+/**
+ * **Y la tecla del juego que aparece en una ficha sale del bind** (vuelta 97).
+ *
+ * Los atajos de arriba son **del editor** y van escritos: son suyos y no están en
+ * `KEYBINDS` (vuelta 78). La de la tirolina no: es la acción contextual del
+ * juego, reasignable, y la ficha la tenía escrita como «E» — o sea la única
+ * tecla del panel que podía estar mintiendo.
+ */
+function pintarTeclasDelJuego() {
+  const contextual = $('tecla-contextual')
+  if (contextual) contextual.textContent = keyLabel(keysOf('use', getKeybinds())[0])
+}
+
+pintarTeclasDelJuego()
 
 function pintarAtajos() {
   $('atajos-lista').innerHTML = ATAJOS

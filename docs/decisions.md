@@ -14180,3 +14180,248 @@ el color es información** —naranja es una diana, el tinte de un jugador es su
 la **cuota mensual para jugar** contradice la promesa que protege el enlace por
 código: se puede jugar sin cuenta y en igualdad. Ninguna de las dos es un precio que
 decidir: son decisiones de diseño que van antes del precio.
+
+---
+
+## §97 — La app deja de ser una pestaña sin pestañas, y las teclas dejan de estar escritas a mano
+
+La vuelta 96 cerró Alchemist y entregó el `.exe`. Jugándolo salieron cuatro cosas
+de la app y una revisión pendiente, y lo que las une es una frase: **la ventana de
+escritorio no es «el juego en una ventana», es un sitio con reglas distintas**, y
+hasta aquí el juego no sabía en cuál de los dos estaba.
+
+### §97.1 — Cómo sabe la página dónde está, y por qué no es un parámetro
+
+Tres cosas de esta vuelta cuelgan de contestar *¿soy la app?*: la tecla de
+agacharse, el interruptor de pantalla completa y a quién redirige el huésped.
+Había tres formas de contestarlo y las tres se evaluaron:
+
+- **`?escritorio=1` en la dirección.** Es lo que la página dice de sí misma, así
+  que **lo puede escribir cualquiera en un navegador** — y lo que se lleva por
+  escribirlo es que `Ctrl` pase a ser agacharse en un sitio donde `Ctrl+W` cierra
+  la pestaña. O sea el fallo de la vuelta 27 servido a mano. Descartada.
+- **El puente de Tauri (`window.__TAURI_INTERNALS__`).** Es verdad y no se puede
+  fingir, pero **está atado al origen**: sólo se inyecta si la URL cargada está en
+  la lista de la capacidad. Colgar de ahí la tecla de agacharse la ataría al
+  dominio, que es exactamente lo que el punto 4 del encargo pide poder cambiar.
+- **El agente de usuario** (`ESCRITORIO.marcaUA`). Lo pone la ventana al nacer, no
+  se teclea, y **viaja con la ventana vaya a donde vaya**. Es la que entró.
+
+De ahí una regla que hay que respetar al añadir la siguiente cosa que sólo exista
+en la app: **saber dónde estamos no depende del origen; pedirle algo a la ventana,
+sí.** Un cambio de dominio mal acompañado deja la tecla de agacharse funcionando y
+la pantalla completa muda — que es el orden correcto de los dos fallos.
+
+Lo que se paga: **la marca está escrita dos veces**, aquí y en `tauri.conf.json`,
+que es JSON y no puede importar `config.js`. Lo guarda `escritorio97` comparando
+los dos ficheros, igual que compara el nombre de la orden nativa y el origen de la
+capacidad contra la URL de la ventana.
+
+### §97.2 — `Ctrl` es una tecla del juego, y sólo ahí
+
+La prohibición de la vuelta 27 **no era una preferencia, era un hecho de un sitio
+concreto**: `Ctrl+W` cierra la pestaña y el navegador lo resuelve antes que la
+página. En una ventana nativa no hay pestaña que cerrar, así que ahí no protege de
+nada. `ControlLeft` y `ControlRight` pasan a ser asignables **sólo en la app**, y
+agacharse nace ahí en `Ctrl` (`defaultEscritorio`).
+
+Alt y la tecla de Windows **no entran en la excepción**, y no es un olvido: `Alt`
+se lleva el foco al menú del sistema y `Meta` abre el inicio **también en una
+ventana nativa**. Ahí la prohibición sigue protegiendo de algo.
+
+**Y de eso salió la regla que hace que las dos cosas convivan**, que es lo
+interesante de esta vuelta: `localStorage` **es por origen**, así que la app y el
+navegador comparten el almacén de teclas. Con el saneado escribiendo su resultado,
+abrir el juego **una vez** en un navegador le habría borrado el `Ctrl` a la app,
+sin un error en ninguna pantalla.
+
+> **Lo guardado es la elección del jugador; lo vigente es lo que este sitio
+> admite.**
+
+Es la misma separación que `movement.input` contra `movement.keys` (vuelta 56) y
+la misma que `escenario` contra `escenarioMedido` (vuelta 96): dos cosas que
+coinciden casi siempre y que no son la misma. Se guarda lo crudo y **sólo lo que
+se ha asignado a mano** —un mapa completo con los valores de fábrica dentro sería
+la otra forma del mismo fallo: fijaría la `C` de hoy y la app leería una elección
+que nadie hizo—. De ahí también que **restablecer borre en vez de escribir**: lo
+de fábrica es distinto en cada sitio.
+
+Medido (`escritorio97`, dos procesos con dos agentes de usuario y un
+`localStorage` de mentira): la app elige `Ctrl`, el navegador juega con la `C`,
+reasignar otra tecla en el navegador **no toca** lo guardado, la app lo recupera
+entero, y restablecer en el navegador deja la `C` allí y el `Ctrl` aquí.
+
+### §97.3 — Todos los rótulos de controles leen el bind
+
+El encargo lo pidió y la vuelta 94 había escrito lo contrario a propósito: los
+controles de la pantalla de inicio iban **a mano** con el argumento de que «este
+paso es el primer contacto con el juego y se lee antes de que nadie haya
+reasignado nada». Era verdad **de la primera partida de alguien** y falso de todas
+las demás — y desde esta vuelta es falso incluso sin reasignar nada, porque **el
+valor de fábrica ya no es uno**.
+
+> Un rótulo que no puede acertar ni con los ajustes de fábrica es un rótulo que
+> hay que borrar.
+
+Lo que se cambió, y era más de lo que parecía: la pantalla de inicio (las cuatro
+direcciones compuestas, andar, agacharse, saltar, recargar, armería y disparar),
+la línea de controles del menú del duelo, la tecla que cierra la tienda, **la
+tecla de cada categoría de la armería** —`'1'`, `'2'`, `'5'`, `'G'`, `'3'`
+escritas en una tabla, en el panel donde se aprende el mapa de controles del
+equipo—, las dos frases del panel de opciones, los avisos del HUD («Pulsa R para
+recargar», «pulsa 4 para aplicarla») y la ficha de la tirolina en Alchemist.
+
+La regla que se queda, para no volver a escribir ninguna: **la fila declara la
+acción, no la tecla**, y quien pinta la saca de `keysOf`. Y las dos excepciones
+van declaradas con su motivo al lado: **`Escape`**, que está en `FORBIDDEN_KEYS`
+porque es la salida del pointer lock, y **las teclas de herramienta del editor y
+de la página del duelo** (F1/F2/F3), que son suyas y no están en `KEYBINDS`
+(vuelta 78).
+
+Medido (`controles97`, contra la página y con el bind cambiado de verdad): de
+fábrica dice `C`; con agacharse en la `Z` dicen `Z` los tres sitios; con el agente
+de usuario de la app dice `CTRL IZQ` sin tocar nada.
+
+### §97.4 — Pantalla completa: un valor, dos dueños y una copia en frío
+
+`SETTINGS.pantallaCompleta` es **el mismo valor que alterna F11**, no un segundo
+ajuste al lado. Si fueran dos —«arrancar así» y «estoy así ahora»— habría que
+decidir cuál gana cuando difieren, y el encargo pide justo que no haya que
+decidirlo: «que recuerde la elección».
+
+Tres cosas del mecanismo:
+
+- **La página manda y la ventana obedece.** F11 escribe el ajuste; una suscripción
+  al store se lo pide a la ventana. Llamar a la ventana desde la tecla además sería
+  pedírselo dos veces.
+- **Y la ventana lo copia aparte**, en un fichero junto a su configuración. No es
+  una segunda verdad: es que **el arranque nativo ocurre antes de que la página
+  exista** y no hay a quién preguntar. Por eso la ventana nace invisible y se
+  muestra después de decidirlo — ponerla a pantalla completa ya en pantalla es un
+  parpadeo en cada arranque, y un parpadeo al abrir se lee como un fallo.
+- **En un navegador la fila no se enseña.** No es un ajuste que hoy no aplique y
+  mañana sí (que es lo que la vuelta 94 atenúa en vez de esconder): ahí F11 es del
+  navegador y la API de pantalla completa **exige un gesto**, así que «arrancar
+  así» es imposible por construcción. Un interruptor que no puede funcionar nunca
+  es el fallo de la vuelta 67.
+
+Medido (`controles97`): F11 pasa el ajuste de `false` a `true` y la ventana recibe
+`pantalla_completa {activa: true}`. Que la ventana obedezca es de Rust y se
+comprueba abriéndola — está en los seis sitios de `escritorio/README.md`.
+
+### §97.5 — La dirección de la app puede cambiar sin que nadie reinstale
+
+Se pidió asegurarlo y había dos caminos. **El actualizador de Tauri** pide clave de
+firma, manifiesto publicado y firmar cada versión, y lo único que compraría es
+empujar un cambio a una ventana **que no contiene el juego**. **La redirección** es
+una variable de entorno.
+
+Entró la redirección, con una vuelta de tuerca que es la que la hace una promesa y
+no un apaño: **a la app no se la redirige**. Se la reconoce por la marca de su
+agente de usuario y se le sirve el juego en la dirección vieja para siempre. El
+motivo es §97.1: su canal con el proceso nativo está atado al origen, así que
+mandarla a un dominio que su capacidad no nombra la dejaría **jugando y sin
+pantalla completa**, sin un error en ninguna pantalla. Redirigirla sería romperle
+algo a cambio de nada, porque lo que se sirve en los dos sitios es el mismo juego.
+
+Cuatro cosas no se redirigen nunca y cada una por su motivo: **`/salud`**, porque
+el despliegue la pide tres veces exigiendo que conteste siempre la misma máquina
+(vuelta 81) y un 302 dejaría esa comprobación midiendo otra cosa; **`localhost` y
+las IP de red**, que es como se juega en casa con `npm run host`; **las salas**,
+que entran por `upgrade` y además no pueden seguir un 302; y **la app**.
+
+Y es **302 y no 301** a propósito: un 301 se lo queda el navegador para siempre, y
+desandar una mudanza mal hecha pasaría por pedirle a cada jugador que borre su
+caché — lo que la vuelta 93 acaba de quitar de en medio.
+
+Lo que se paga va escrito porque no se adivina: **`localStorage` es por origen**,
+así que a partir de ese día la app y el navegador guardan sus ajustes por
+separado. Es la misma factura anotada desde la vuelta 60 para cualquier mudanza de
+dominio, con una diferencia: aquí no se paga una vez, se queda.
+
+Medido (`escritorio97`, contra el huésped de verdad): un navegador en la dirección
+vieja recibe 302 con su ruta y su consulta enteras, el nombre bueno se sirve con
+200 —o sea que no hay bucle—, y **la app recibe 200 en la dirección vieja**.
+
+### §97.6 — El instalador con la identidad de Vektor
+
+El rótulo de abajo del asistente —«Nullsoft Install System v3.11»— no necesitaba
+una plantilla propia: la plantilla de Tauri lo saca de `bundle.copyright`, que
+estaba vacío. Con eso puesto son **cero ficheros vendorizados**, que es lo que
+importa: una plantilla de NSIS copiada a mano se queda vieja con la CLI.
+
+Las dos imágenes (cabecera 150×57 y lateral 164×314) **se generan**, por la misma
+regla que el icono de la ventana y las siluetas de las armas: material derivado de
+`Reference/Logo/`, fuera de git, hecho en la compilación. Y una decisión de forma
+que salió mirándolo: **la cabecera lleva la marca sola, no el logotipo.** El
+lockup de Vektor tiene «VEKTOR» *dentro* del símbolo, así que en una tira de 57 px
+la palabra sale a cuatro píxeles — está en la imagen y no se lee, que es la
+distinción de la vuelta 89.
+
+### §97.7 — La revisión de `u286`: un renglón midiendo el mapa y otro caducado
+
+Los dos rojos que venían de la vuelta 92 no eran el arma.
+
+**[2] «reventar más cerca hace más daño» medía la cobertura de El Espejo.** Ese
+mapa tiene el centro tapado a propósito (vuelta 66), así que un cohete plano de un
+extremo al otro **choca con una pieza** y revienta a media sala: las dos filas
+daban `0` y `0`, y una comparación entre dos ceros sale falsa sin decir por qué. Es
+la vuelta 46 otra vez — **una comparación necesita que se vea su denominador**, y
+aquí el denominador es *dónde revienta*. Se mide en una sala pelada y el banco
+imprime la distancia del reventón al rival: 0.5 u → 100, 3.3 u → 54, 11.8 u → 0.
+
+**[6] «la reserva no se mueve» estaba caducado, no roto.** Se escribió en la 86,
+cuando el servidor **sólo subía** la reserva; la vuelta 90 arregló justo eso —
+`inv.reserva` medía lo que te dieron y no lo que te queda, así que un cohete que
+mataba repartía de más— y desde entonces lanzar **gasta una**. El `1 → 0` que
+salía en rojo era el arreglo de la 90 funcionando. El renglón pasa a medir lo que
+venía a guardar, con su control: sin baja no vuelve, con baja sí, y con la reserva
+a cero se queda en cero.
+
+La lección vale para cualquier banco viejo: **un rojo que lleva vueltas puesto
+puede ser una aserción que envejeció**. Lo que lo distingue es leer qué cambió en
+el producto entre la vuelta que lo escribió y hoy.
+
+### §97.8 — Lo que cuesta una sala de diez, antes de diseñar nada
+
+La propuesta 11 se escribió con una medida delante (`salas97`), porque la pregunta
+del encargo —cuántas salas de 10 aguanta la máquina— tiene respuesta hoy:
+
+- **La CPU no es el problema**: 0.32 ms por paso con diez dentro, o sea ~50 salas
+  en el núcleo compartido de hoy.
+- **El tráfico sí**: **4 147 KB/s por sala**, el 100 % la foto. Son 33 Mbit/s para
+  **una** sala de diez.
+
+O sea que el protocolo tiene que cambiar **antes** de que haya diez jugadores. Y
+las dos palancas que lo arreglan ya existen a medias: bajar el ritmo de la foto
+—el cliente ya interpola entre fotos desde la vuelta 45— y mandarle a cada uno la
+suya —que es lo que ya se hace en la fase de compra desde la vuelta 62—. Juntas,
+20 Hz y cuatro rivales de media, dejan la sala de diez en **691 KB/s**.
+
+Con un aviso que no es evidente: **el criterio no puede ser «lo que ves»**. Las
+pisadas se oyen a través de las paredes hasta 16 u y el oído es el único canal que
+no hay que apuntar a ninguna parte (vueltas 60 y 73), así que la regla es **por
+distancia y no por línea de visión**.
+
+Y un muro que apareció al levantar el tope de butacas y no estaba escrito en
+ninguna parte: **`Partida` reparte `salidas[ranura]` y un mapa de duelo declara
+exactamente dos**. El tercero que entra revienta. Un mapa de N jugadores tiene que
+declarar N salidas, y eso es formato, no protocolo.
+
+### §97.9 — Monetización: dos cosas decididas
+
+El encargo acepta las dos objeciones de la vuelta 96, y con eso dejan de ser
+objeciones y pasan a ser reglas:
+
+- **Si hay skins, serán de forma, efectos o animaciones, nunca de color.** El
+  color es información —naranja es una diana, el tinte de un jugador es su equipo—
+  y una skin de color no es decoración, es cambiar lo que el jugador lee.
+- **Y una cuota nunca será para poder jugar.** Se sigue pudiendo jugar sin cuenta
+  y en igualdad.
+
+La segunda tiene una consecuencia que conviene ver escrita: **de las cuatro vías,
+la de la cuota para jugar queda descartada**, y el pase de temporada y la
+membresía de comunidad se quedan como las dos que no tocan el juego. La primera
+—skins— se queda viva con su regla puesta. Lo que falta sigue siendo lo mismo: un
+sitio donde cobrar y una identidad a la que atar lo comprado, o sea la propuesta
+07.

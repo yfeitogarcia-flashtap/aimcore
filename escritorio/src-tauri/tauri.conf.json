@@ -1,12 +1,13 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Vektor",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "identifier": "com.flicklab.vektor",
   "build": {
     "frontendDist": "../ventana"
   },
   "app": {
+    "withGlobalTauri": true,
     "windows": [
       {
         "title": "Vektor",
@@ -16,9 +17,11 @@
         "minHeight": 540,
         "resizable": true,
         "fullscreen": false,
+        "visible": false,
         "decorations": true,
         "center": true,
-        "url": "https://ancient-violet-678.fly.dev/"
+        "url": "https://ancient-violet-678.fly.dev/",
+        "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 VektorEscritorio/0.2"
       }
     ],
     "security": {
@@ -34,6 +37,7 @@
       "nsis"
     ],
     "publisher": "FlickLAB",
+    "copyright": "Vektor Installer 0.2.0 · FlickLAB",
     "shortDescription": "Aim trainer y duelo 1v1",
     "longDescription": "Vektor by FlickLAB. Ventana nativa del juego desplegado.",
     "icon": [
@@ -42,6 +46,17 @@
       "icons/128x128@2x.png",
       "icons/icon.icns",
       "icons/icon.ico"
-    ]
+    ],
+    "windows": {
+      "nsis": {
+        "installerIcon": "icons/icon.ico",
+        "headerImage": "instalador/cabecera.bmp",
+        "sidebarImage": "instalador/lateral.bmp",
+        "languages": [
+          "Spanish"
+        ],
+        "displayLanguageSelector": false
+      }
+    }
   }
 }

@@ -16,13 +16,27 @@
  *
  * Y lo que no entra jamás, venga de donde venga: Escape y las teclas del
  * navegador (`FORBIDDEN_KEYS`), los modificadores y cualquier cosa que no tenga
- * pinta de código de tecla. **Ctrl no es una preferencia**: Ctrl+W cierra la
- * pestaña y el navegador lo resuelve antes que la página (`docs/decisions.md`
- * §27), así que ninguna acción puede acabar ahí ni editando el almacenamiento a
- * mano.
+ * pinta de código de tecla.
+ *
+ * **Con una excepción que depende de dónde corre esto, y es la de la vuelta 97:
+ * `Ctrl` en la app de escritorio.** La prohibición de la vuelta 27 no era una
+ * preferencia, era un hecho de un sitio concreto —`Ctrl+W` cierra la pestaña y
+ * el navegador lo resuelve antes que la página (`docs/decisions.md` §27)— y en
+ * una ventana nativa no hay pestaña que cerrar. Así que `ControlLeft` y
+ * `ControlRight` son asignables **sólo ahí**, y agacharse sale de fábrica en
+ * `Ctrl` **sólo ahí** (`defaultEscritorio`, en `config.js`).
+ *
+ * De eso sale la otra regla de esta vuelta, y es la que hace que las dos cosas
+ * puedan convivir: **lo guardado es la elección del jugador; lo vigente es lo
+ * que este sitio admite.** `localStorage` es por origen, así que la app y el
+ * navegador comparten almacén: si el saneado del navegador **escribiera** su
+ * resultado, abrir el juego una vez en el navegador le borraría el `Ctrl` a la
+ * app. Se guarda lo crudo (`bruto`) y se usa lo saneado (`current`), que es la
+ * misma separación que `movement.input` contra `movement.keys` (vuelta 56).
  */
 
 import { FORBIDDEN_KEYS, KEYBINDS, LEGACY_KEYBINDS } from './config.js'
+import { esEscritorio } from './escritorio.js'
 
 const STORAGE_KEY = 'aimcore.keybinds.v1'
 
@@ -34,24 +48,47 @@ const FORBIDDEN = new Set(FORBIDDEN_KEYS)
  * esto es lo que se usa de él; cualquier otra cosa en localStorage es basura o
  * un intento de colar algo raro.
  */
-const CODE_PATTERN = /^(Key[A-Z]|Digit[0-9]|Numpad[0-9]|F[1-9]|F1[0-2]|Arrow(Up|Down|Left|Right)|Space|Enter|Backspace|Minus|Equal|BracketLeft|BracketRight|Semicolon|Quote|Backquote|Comma|Period|Slash|Backslash|Shift(Left|Right)|Mouse[0-4])$/
+const CODE_PATTERN = /^(Key[A-Z]|Digit[0-9]|Numpad[0-9]|F[1-9]|F1[0-2]|Arrow(Up|Down|Left|Right)|Space|Enter|Backspace|Minus|Equal|BracketLeft|BracketRight|Semicolon|Quote|Backquote|Comma|Period|Slash|Backslash|Shift(Left|Right)|Control(Left|Right)|Mouse[0-4])$/
 
 /** Un modificador no puede ser una acción, ni suelto ni acompañado. */
 export function isModifierCode(code) {
   return typeof code === 'string' && /^(Control|Alt|Meta|OS)/.test(code)
 }
 
-/** ¿Este código se puede asignar a algo? */
+/**
+ * **Las dos teclas que sólo son asignables en la app** (vuelta 97). Alt y Meta
+ * no entran en la lista y no es un olvido: `Alt` mueve el foco al menú del
+ * sistema y `Meta` abre el inicio de Windows **también en una ventana nativa**,
+ * así que ahí la prohibición sigue protegiendo de algo. La de `Ctrl` no.
+ */
+const TECLAS_SOLO_DE_ESCRITORIO = new Set(['ControlLeft', 'ControlRight'])
+
+/** ¿Este código se puede asignar aquí? */
 export function isAssignable(code) {
   if (typeof code !== 'string') return false
+  if (TECLAS_SOLO_DE_ESCRITORIO.has(code)) return esEscritorio() && CODE_PATTERN.test(code)
   if (FORBIDDEN.has(code) || isModifierCode(code)) return false
   return CODE_PATTERN.test(code)
+}
+
+/**
+ * **El valor de fábrica de una acción, aquí.** Una sola función porque la miran
+ * cuatro —el mapa de fábrica, el saneado, restablecer y el botón «por defecto»
+ * del panel— y cuatro condiciones iguales es como una se queda atrás.
+ */
+export function defaultDe(action) {
+  const spec = KEYBINDS[action]
+  if (!spec) return undefined
+  const propio = esEscritorio() ? spec.defaultEscritorio : null
+  // Y sigue pasando por `isAssignable`: un `defaultEscritorio` mal escrito cae
+  // al de siempre en vez de dejar la acción sin tecla.
+  return propio && isAssignable(propio) ? propio : spec.default
 }
 
 /** Binds por defecto, recién salidos de config.js. */
 export function defaultKeybinds() {
   const result = {}
-  for (const action of ACTIONS) result[action] = KEYBINDS[action].default
+  for (const action of ACTIONS) result[action] = defaultDe(action)
   return result
 }
 
@@ -85,7 +122,7 @@ export function sanitizeKeybinds(raw) {
     // con el viejo por defecto. Ver `LEGACY_KEYBINDS` en config.js.
     const moved = LEGACY_KEYBINDS[action]
     const stored = source[action] === moved ? undefined : source[action]
-    const fallback = KEYBINDS[action].default
+    const fallback = defaultDe(action)
     const candidate = isAssignable(stored) && !taken.has(stored) ? stored : null
     if (candidate) {
       result[action] = candidate
@@ -108,8 +145,12 @@ export function sanitizeKeybinds(raw) {
  * Devuelve el motivo ya redactado: lo enseña el panel tal cual.
  */
 export function bindConflict(action, code, binds) {
-  if (isModifierCode(code)) {
-    return 'Ninguna acción puede ir en Ctrl, Alt o Meta.'
+  // `Ctrl` en la app pasa de largo: ahí es una tecla como otra cualquiera y lo
+  // dice `isAssignable`, que es el único sitio que conoce la excepción.
+  if (isModifierCode(code) && !isAssignable(code)) {
+    return esEscritorio()
+      ? 'Ninguna acción puede ir en Alt ni en la tecla de Windows.'
+      : 'Ninguna acción puede ir en Ctrl, Alt o Meta.'
   }
   if (FORBIDDEN.has(code)) {
     return code === 'Escape'
@@ -146,20 +187,44 @@ export function bindConflict(action, code, binds) {
  */
 export function captureConflict(action, event, binds) {
   const code = eventCode(event)
-  if (event.ctrlKey || event.metaKey) {
-    return 'Nada de combinaciones con Ctrl: Ctrl+W cierra la pestaña y el navegador no deja impedirlo.'
+  // **Y `Ctrl` se deja pasar cuando *es* la tecla** (vuelta 97), exactamente como
+  // Shift: pulsando `Ctrl` a secas el evento llega con `ctrlKey` puesto, así que
+  // sin esta línea la tecla que la app quiere de fábrica sería la única que el
+  // panel no deja reasignar. Lo que sigue prohibido ahí es la **combinación**:
+  // `Ctrl+Z` manda `KeyZ` y quien lo pulsó no quería asignar la Z.
+  const esLaPropiaCtrl = isAssignable(code) && TECLAS_SOLO_DE_ESCRITORIO.has(code)
+  if ((event.ctrlKey && !esLaPropiaCtrl) || event.metaKey) {
+    return esEscritorio()
+      ? 'Nada de combinaciones: asigna la tecla sola.'
+      : 'Nada de combinaciones con Ctrl: Ctrl+W cierra la pestaña y el navegador no deja impedirlo.'
   }
   if (event.altKey) return 'Nada de combinaciones con Alt.'
   if (event.shiftKey && !code.startsWith('Shift')) return 'Nada de combinaciones con Mayús.'
   return bindConflict(action, code, binds)
 }
 
+/**
+ * **Lo guardado, tal cual** (vuelta 97). No es lo mismo que `current`: eso es lo
+ * que *este* sitio admite, y esto es lo que el jugador eligió — incluida una
+ * tecla que aquí no vale y en la app sí. Ver la cabecera del fichero: guardar lo
+ * saneado le borraría el `Ctrl` a la app en cuanto alguien abriera el juego una
+ * vez en un navegador.
+ *
+ * Sólo lleva lo que se ha asignado a mano. Un mapa completo con los valores de
+ * fábrica dentro sería la otra forma del mismo fallo: fijaría la C de hoy y la
+ * app leería una elección que nadie hizo.
+ */
+let bruto = {}
+
 function load() {
   try {
     const stored = window.localStorage.getItem(STORAGE_KEY)
-    return sanitizeKeybinds(stored ? JSON.parse(stored) : null)
+    const leido = stored ? JSON.parse(stored) : null
+    bruto = leido && typeof leido === 'object' ? { ...leido } : {}
+    return sanitizeKeybinds(bruto)
   } catch {
     // localStorage bloqueado o JSON corrupto: se juega con los de fábrica.
+    bruto = {}
     return defaultKeybinds()
   }
 }
@@ -180,7 +245,8 @@ export function setKeybind(action, code) {
   if (!Object.prototype.hasOwnProperty.call(KEYBINDS, action)) return 'Acción desconocida.'
   const conflict = bindConflict(action, code, current)
   if (conflict) return conflict
-  current = sanitizeKeybinds({ ...current, [action]: code })
+  bruto = { ...bruto, [action]: code }
+  current = sanitizeKeybinds(bruto)
   save()
   publish()
   return null
@@ -188,22 +254,29 @@ export function setKeybind(action, code) {
 
 /** Devuelve una acción a su tecla de fábrica. */
 export function resetKeybind(action) {
-  const fallback = KEYBINDS[action]?.default
+  const fallback = defaultDe(action)
   if (!fallback) return
-  // Si la de fábrica la tiene otra acción, esa otra se queda sin asignar: el
-  // que pide restablecer gana, y el panel enseña el hueco.
-  const next = { ...current }
+  // Si la de fábrica la tiene otra acción, esa otra la suelta: el que pide
+  // restablecer gana. Se mira en los dos mapas —lo guardado y lo vigente—
+  // porque una tecla puede estar ocupada sin estar escrita en lo guardado.
+  const next = { ...bruto }
   for (const other of ACTIONS) {
-    if (other !== action && next[other] === fallback) next[other] = null
+    if (other === action) continue
+    if (next[other] === fallback || current[other] === fallback) next[other] = null
   }
   next[action] = fallback
-  current = sanitizeKeybinds(next)
+  bruto = next
+  current = sanitizeKeybinds(bruto)
   save()
   publish()
 }
 
 /** Todas las acciones a sus teclas de fábrica. */
 export function resetKeybinds() {
+  // Se borra lo guardado en vez de escribir el mapa de fábrica, que es lo que
+  // hace que restablecer en un navegador **no** le quite a la app su `Ctrl`: lo
+  // de fábrica es distinto en cada sitio, así que lo que se guarda es «nada».
+  bruto = {}
   current = defaultKeybinds()
   save()
   publish()
@@ -212,7 +285,7 @@ export function resetKeybinds() {
 
 function save() {
   try {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(current))
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(bruto))
   } catch {
     // Sin persistencia se juega igual; sólo se pierde al recargar.
   }
@@ -233,6 +306,10 @@ const LABELS = {
   Space: 'ESPACIO',
   ShiftLeft: 'MAYÚS IZQ',
   ShiftRight: 'MAYÚS DER',
+  // Sólo se ven en la app de escritorio (vuelta 97), que es donde `Ctrl` puede
+  // ser una tecla del juego. Sin entrada aquí el panel enseñaría «ControlLeft».
+  ControlLeft: 'CTRL IZQ',
+  ControlRight: 'CTRL DER',
   ArrowUp: '↑',
   ArrowDown: '↓',
   ArrowLeft: '←',

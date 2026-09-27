@@ -37,7 +37,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as THREE from 'three'
 import { WebSocketServer } from 'ws'
-import { NET, SIM, SIM_STEP_MS, escenarioDeDuelo } from '../src/config.js'
+import { ESCRITORIO, NET, SIM, SIM_STEP_MS, escenarioDeDuelo } from '../src/config.js'
 import { Scenario } from '../src/game/scenario.js'
 import { MSG } from './protocolo.js'
 import { Partida } from './partida.js'
@@ -45,6 +45,65 @@ import { normalizarCodigo, rutaDeSala } from './codigo.js'
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const PUBLICO = path.join(RAIZ, 'dist')
+
+/**
+ * **La dirección buena, si algún día hay una** (vuelta 97).
+ *
+ * Vektor se juega hoy en el subdominio que reparte Fly. El día que haya dominio
+ * propio, esto se pone a `vektor.gg` (o lo que sea) **como variable de entorno de
+ * la máquina** y todo lo que llegue por otro nombre se manda ahí con un 302. Sin
+ * ella —o sea hoy, y siempre en local— no se redirige nada y el huésped se
+ * comporta exactamente como antes.
+ *
+ * Cuatro cosas no se redirigen nunca, y cada una por su motivo:
+ *
+ * - **`/salud`**, porque es la salud **de esta máquina**: el despliegue la pide
+ *   tres veces exigiendo que conteste siempre la misma (vuelta 81), y un 302
+ *   dejaría esa comprobación midiendo el otro huésped.
+ * - **`localhost` y las IP de red**, que es como se juega en casa con
+ *   `npm run host`: ahí «el nombre bueno» no significa nada.
+ * - **Las salas**, que no pasan por aquí —el WebSocket entra por `upgrade`— y
+ *   además un 302 no se puede seguir en un apretón de manos de WebSocket.
+ * - **Y la app de escritorio**, que es la que de verdad decide la forma de esto.
+ *   Ver abajo.
+ *
+ * **Por qué la app no se redirige, que es la respuesta al punto 4 del encargo.**
+ * Lo que se pidió es que cambiar la dirección **no obligue a reinstalar a quien
+ * ya la tenga**. La ventana de Tauri habla con su proceso nativo por un canal
+ * atado al origen: el permiso está escrito en
+ * `escritorio/src-tauri/capabilities/principal.json`, así que una ventana
+ * instalada hace meses que acabe en un dominio que ese fichero no nombra sigue
+ * jugando **y se queda sin pantalla completa**, sin un error en ninguna pantalla.
+ * Redirigirla sería romperle algo a cambio de nada: lo que se sirve en los dos
+ * sitios es el mismo juego.
+ *
+ * Así que el trato es: **la dirección vieja sigue siendo la de la app, para
+ * siempre**, y el 302 es para las personas. Se reconoce por la marca que la
+ * ventana lleva en su agente de usuario, que es la misma que usa la página para
+ * saber dónde está (`ESCRITORIO.marcaUA`).
+ *
+ * Lo que se paga va escrito porque no se adivina: **`localStorage` es por
+ * origen**, así que a partir del día del cambio la app y el navegador guardan sus
+ * ajustes por separado. Es la misma factura que ya estaba anotada desde la vuelta
+ * 60 para cualquier mudanza de dominio, y aquí no se paga una vez: se queda.
+ */
+const DOMINIO = (process.env.VEKTOR_DOMINIO || '').trim().toLowerCase()
+
+/** El host de la petición, sin puerto y en minúsculas. */
+function hostDe(peticion) {
+  return (peticion.headers.host || '').toLowerCase().replace(/:\d+$/, '')
+}
+
+/** A dónde habría que mandar esta petición, o `null` si se sirve aquí. */
+function destinoCanonico(peticion, url) {
+  if (!DOMINIO) return null
+  if (url.pathname === '/salud') return null
+  if ((peticion.headers['user-agent'] || '').includes(ESCRITORIO.marcaUA)) return null
+  const host = hostDe(peticion)
+  if (!host || host === DOMINIO) return null
+  if (host === 'localhost' || host.endsWith('.local') || /^[\d.]+$/.test(host) || host.includes(':')) return null
+  return `https://${DOMINIO}${url.pathname}${url.search}`
+}
 
 const ESCENARIO = process.env.VEKTOR_ESCENARIO || NET.escenario
 /**
@@ -477,6 +536,17 @@ function codigoDeRuta(ruta) {
 const servidor = http.createServer(async (peticion, respuesta) => {
   const url = new URL(peticion.url, `http://${peticion.headers.host || 'localhost'}`)
 
+  // **Y antes que nada, el nombre bueno** (vuelta 97). Va arriba del todo porque
+  // no tiene sentido servir un fichero desde un nombre que se está abandonando; y
+  // es 302 y no 301 a propósito: un 301 se lo queda el navegador para siempre, y
+  // desandar una mudanza mal hecha pasaría por pedirle a cada jugador que borre
+  // su caché — que es exactamente lo que la vuelta 93 quitó de en medio.
+  const canonico = destinoCanonico(peticion, url)
+  if (canonico) {
+    respuesta.writeHead(302, { Location: canonico, 'Cache-Control': 'no-store' })
+    return respuesta.end()
+  }
+
   const codigo = codigoDeRuta(url.pathname)
   if (codigo === false) return texto(respuesta, 400, 'Ese código de partida no existe.')
   if (codigo) return texto(respuesta, 426, 'Esto es una sala de Vektor: se entra por WebSocket.')
@@ -508,6 +578,10 @@ const servidor = http.createServer(async (peticion, respuesta) => {
        * `dist/`, el huésped está sirviendo otra cosa.
        */
       build: HUELLA,
+      // **Y a qué nombre se manda a la gente**, si es que hay uno (vuelta 97).
+      // Un redirector que no se puede comprobar desde fuera es un redirector que
+      // se descubre roto abriendo la página.
+      dominio: DOMINIO || null,
       maquina: process.env.FLY_MACHINE_ID || 'local',
       region: process.env.FLY_REGION || 'local',
       escenario: ESCENARIO,

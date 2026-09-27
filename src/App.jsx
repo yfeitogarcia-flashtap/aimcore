@@ -16,7 +16,8 @@ import {
 } from './config.js'
 import { Engine, PHASE } from './game/engine.js'
 import { disposeAudio } from './audio/sfx.js'
-import { getKeybinds, subscribeKeybinds } from './keybinds.js'
+import { getKeybinds, keyLabel, keysOf, subscribeKeybinds } from './keybinds.js'
+import { montarPantallaCompleta } from './escritorio.js'
 import { getSettings, resetSettings, subscribeSettings, updateSettings } from './settings.js'
 import Crosshair from './ui/Crosshair.jsx'
 import { VektorLogo } from './ui/Logo.jsx'
@@ -36,26 +37,52 @@ import Summary from './ui/Summary.jsx'
  * de React, no miles.
  */
 /**
- * **Los controles, como pares de tecla y verbo** (vuelta 94).
+ * **Los controles, como pares de tecla y verbo** (vuelta 94), **y la tecla la
+ * dice el bind** (vuelta 97).
  *
  * `siempre` marca los que existen aunque el movimiento esté apagado
  * (`MOVEMENT.enabled`), que es la misma condición que ya gateaba el renglón de
  * antes — no una segunda idea de qué teclas hay.
  *
- * Y son **los valores de fábrica escritos aquí a propósito**, no los binds del
- * jugador: este paso es el primer contacto con el juego y se lee antes de que
- * nadie haya reasignado nada. Dónde se cambian lo dice el propio panel de
- * opciones, que es donde se cambian.
+ * La vuelta 94 las escribió aquí a mano con este argumento: «este paso es el
+ * primer contacto con el juego y se lee antes de que nadie haya reasignado
+ * nada». Era verdad **de la primera partida de alguien** y falso de todas las
+ * demás: quien se pone agacharse en la Z vuelve a esta pantalla cien veces y lee
+ * la C. Y desde esta vuelta es falso incluso sin reasignar nada, porque **el
+ * valor de fábrica ya no es uno**: en la app de escritorio agacharse nace en
+ * `Ctrl`. Un rótulo que no puede acertar ni con los ajustes de fábrica es un
+ * rótulo que hay que borrar.
+ *
+ * Cómo se cumple, y es lo que hay que respetar al añadir un renglón: **la fila
+ * declara la acción, no la tecla** (`accion`), y quien pinta la saca de
+ * `keysOf`, que es la misma función de la que sale la lista de controles del
+ * panel. Los dos casos que no son una acción se declaran con su `tecla` escrita
+ * y su motivo al lado.
  */
 const TECLAS_DE_ENTRADA = [
-  { tecla: 'WASD', que: 'moverte', siempre: false },
-  { tecla: 'SHIFT', que: 'andar', siempre: false },
-  { tecla: 'C', que: 'agacharte', siempre: false },
-  { tecla: 'SPACE', que: 'saltar', siempre: false },
-  { tecla: 'R', que: 'recargar', siempre: true },
-  { tecla: 'B', que: 'armería', siempre: true },
+  // WASD no es un bind: son cuatro, y las cuatro juntas son el rótulo. Se
+  // compone de sus cuatro acciones más abajo, así que reasignarlas se ve.
+  { direcciones: true, que: 'moverte', siempre: false },
+  { accion: 'walk', que: 'andar', siempre: false },
+  { accion: 'crouch', que: 'agacharte', siempre: false },
+  { accion: 'jump', que: 'saltar', siempre: false },
+  { accion: 'reload', que: 'recargar', siempre: true },
+  { accion: 'armoury', que: 'armería', siempre: true },
+  // Escape es lo único de esta lista que no es un bind y no puede serlo: está en
+  // `FORBIDDEN_KEYS` porque es la salida del pointer lock (vuelta 27).
   { tecla: 'ESC', que: 'pausa', siempre: true },
 ]
+
+/** El rótulo de una fila de controles, con la tecla que hay puesta ahora. */
+function teclaDeFila(fila, binds) {
+  if (fila.tecla) return fila.tecla
+  if (fila.direcciones) {
+    return ['forward', 'left', 'back', 'right']
+      .map((accion) => keyLabel(keysOf(accion, binds)[0]))
+      .join('')
+  }
+  return keyLabel(keysOf(fila.accion, binds)[0])
+}
 
 export default function App() {
   const canvasRef = useRef(null)
@@ -208,6 +235,14 @@ export default function App() {
   useEffect(() => vigilarActualizaciones({
     puedeRecargar: () => faseRef.current !== PHASE.RUNNING,
   }), [])
+
+  /**
+   * **Y la pantalla completa de la app** (vuelta 97). Se monta aquí por lo mismo
+   * que el vigilante de arriba: es de la ventana, no de un modo, así que la
+   * montan las dos páginas llamando a la misma función. En un navegador no hace
+   * nada y no se entera nadie — F11 ya es del navegador.
+   */
+  useEffect(() => montarPantallaCompleta(), [])
 
   /** Captura el ratón: reanuda una pausada o arranca donde toque. */
   const lock = useCallback(() => {
@@ -478,13 +513,16 @@ export default function App() {
                       dibuja como un par: la tecla en su recuadro y el verbo al
                       lado. El que empieza busca «saltar» y lo encuentra sin
                       leer nada más; el que ya lo sabe no lee nada. */}
+                  {/* Y el disparo también sale del bind (vuelta 97): es
+                      reasignable desde la vuelta 41 y aquí decía «Click
+                      izquierdo» escrito a mano. */}
                   <p className="panel__body">
-                    Click para capturar el ratón · Click izquierdo dispara
+                    Click para capturar el ratón · {keyLabel(keysOf('shoot', binds)[0])} dispara
                   </p>
                   <ul className="teclas">
                     {TECLAS_DE_ENTRADA.filter((t) => t.siempre || MOVEMENT.enabled).map((t) => (
                       <li key={t.que} className="teclas__par">
-                        <kbd className="teclas__tecla">{t.tecla}</kbd>
+                        <kbd className="teclas__tecla">{teclaDeFila(t, binds)}</kbd>
                         <span className="teclas__que">{t.que}</span>
                       </li>
                     ))}

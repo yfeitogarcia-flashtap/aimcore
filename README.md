@@ -95,20 +95,30 @@ Sólo con la variante de movimiento activa (`MOVEMENT.enabled`):
   mientras se mantiene. Con SHIFT y C a la vez manda la marcha más lenta de las
   dos, o sea agachado.
 
-> **Agacharse es C, no CTRL, y no es una preferencia.** Agacharse avanzando era
-> Ctrl+W, y Ctrl+W **cierra la pestaña** en Chrome y en Edge: es un atajo que
-> resuelve el navegador antes de que el evento llegue a la página, así que no
-> hay forma de impedirlo desde aquí. Se manifestaba como un cierre intermitente
-> «sin motivo» — sólo pasaba con W pulsada en el instante de agacharse.
-> Ctrl+A/S/D sí se pueden neutralizar, pero con W no. Si aun así prefieres CTRL,
-> es añadir `'ControlLeft'` y `'ControlRight'` a `MOVEMENT.keys.crouch`, con lo
-> que vuelve el cierre.
+> **En el navegador agacharse es C, no CTRL, y no es una preferencia.** Agacharse
+> avanzando era Ctrl+W, y Ctrl+W **cierra la pestaña** en Chrome y en Edge: es un
+> atajo que resuelve el navegador antes de que el evento llegue a la página, así
+> que no hay forma de impedirlo desde aquí. Se manifestaba como un cierre
+> intermitente «sin motivo» — sólo pasaba con W pulsada en el instante de
+> agacharse. Ctrl+A/S/D sí se pueden neutralizar, pero con W no.
+>
+> **En la app de escritorio agacharse es CTRL**, que es lo de siempre en un
+> shooter. Ahí sí se puede: no hay pestaña que cerrar. Sale así de fábrica y el
+> panel de controles lo acepta si lo reasignas. Y lo que elijas en un sitio **no
+> se pierde por jugar en el otro**: se guarda tu elección y en cada sitio se usa
+> la que ahí vale.
 
 ## Controles reasignables
 
 Todo lo que se pulsa está en un solo sitio, `KEYBINDS` en `src/config.js`, y se
 puede cambiar desde **Opciones → Controles**: se pulsa la tecla actual y se
 captura la siguiente pulsación. Cada acción tiene su botón **por defecto**.
+
+**Y todo lo que el juego escribe sobre una tecla sale de ahí**: la pantalla de
+inicio, la armería, las frases de opciones, la línea de controles del duelo y los
+avisos del HUD dicen **la tecla que tengas puesta**, no una escrita a mano. Las
+dos excepciones son `Escape`, que no es reasignable, y las teclas de herramienta
+del editor (F1/F2/F3), que son suyas y no están en esta tabla.
 
 | grupo | acciones |
 | --- | --- |
@@ -135,11 +145,15 @@ tecla de *usar* algo, no la de *sacarlo*.
 Cuatro reglas que el sistema no se salta:
 
 - **Dos acciones no comparten tecla.** Ni reasignando, ni editando localStorage.
-- **Nada va en Ctrl, Alt o Meta**, ni suelto ni en combinación: **Ctrl+W cierra
-  la pestaña** y el navegador lo resuelve antes que la página. **TAB sí se
-  puede**, y se comprobó pulsándola de verdad en vez de suponerlo: jugando no
-  mueve el foco, ni con la tecla mantenida. Fuera de la partida se deja pasar,
-  porque es como se recorren los paneles con el teclado.
+- **En el navegador, nada va en Ctrl, Alt o Meta**, ni suelto ni en combinación:
+  **Ctrl+W cierra la pestaña** y el navegador lo resuelve antes que la página.
+  **En la app de escritorio, Ctrl sí** —ahí no hay pestaña—, y Alt y la tecla de
+  Windows siguen fuera porque son del sistema también en una ventana nativa. Lo
+  que sigue prohibido en los dos sitios es la **combinación**: Ctrl+Z manda `KeyZ`
+  y quien lo pulsó no quería asignar la Z. **TAB sí se puede**, y se comprobó
+  pulsándola de verdad en vez de suponerlo: jugando no mueve el foco, ni con la
+  tecla mantenida. Fuera de la partida se deja pasar, porque es como se recorren
+  los paneles con el teclado.
 - **Escape no se reasigna**: es la pausa. El panel lo dice.
 - Lo guardado se **sanea** al cargar: un bind corrupto, desconocido o repetido
   cae a su valor de fábrica.
@@ -311,6 +325,19 @@ juego dentro**, y eso es justo lo que se quería — se actualiza solo, porque l
 que mira es el despliegue de siempre. Y de paso resuelve el `Ctrl+W` que cierra
 una pestaña sin querer: aquí no hay pestaña.
 
+Hace dos cosas que una pestaña no puede:
+
+- **Pantalla completa de verdad.** **F11** la alterna, y lo que dejes puesto es lo
+  que se recuerda: la ventana vuelve a abrir así. Es el mismo interruptor que sale
+  en *Opciones → Arrancar en pantalla completa*, que en un navegador no aparece
+  porque ahí F11 es del navegador y «arrancar así» no se puede.
+- **CTRL para agacharse**, de fábrica. Ver *Controles*.
+
+**El día que Vektor tenga dominio propio, nadie tendrá que reinstalar.** El
+servidor sabe mandar a la dirección nueva a quien llegue por la vieja, y a la app
+**no la manda**: se le sigue sirviendo el juego donde siempre, porque su enlace
+con la ventana está atado a esa dirección. El detalle, en `escritorio/README.md`.
+
 **El `.exe` lo compila GitHub, no tú** (vuelta 94). Compilarlo a mano pedía
 instalar Rust y las herramientas de compilación de Windows —varios gigas—, y un
 corredor de Windows de GitHub ya las tiene. Lo que sale queda en un **enlace
@@ -333,8 +360,11 @@ cuando cambia `escritorio/`.
 El ejecutable sale **sin firmar**, así que Windows enseña un aviso de «editor
 desconocido» la primera vez (*Más información → Ejecutar de todas formas*). El
 icono sí es la marca: se genera en la compilación desde `Reference/Logo/`, igual
-que las siluetas de las armas. Los cinco sitios donde hay que probarla y el paso a
-paso, en `escritorio/README.md`.
+que las siluetas de las armas. **Y el instalador también lleva la identidad de
+Vektor**: la marca en la cabecera, el logotipo entero en el lateral de la
+bienvenida, y abajo «Vektor Installer» con su versión en vez de «Nullsoft Install
+System». Los seis sitios donde hay que probarla y el paso a paso, en
+`escritorio/README.md`.
 
 ## El duelo 1v1: rondas y reconexión
 

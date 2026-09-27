@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   CAMERA,
   GRENADES,
@@ -10,6 +10,7 @@ import {
   weaponSpeedFactor,
 } from '../config.js'
 import { zoneDamage } from '../game/player.js'
+import { getKeybinds, keyLabel, keysOf, subscribeKeybinds } from '../keybinds.js'
 import WeaponSilhouette from './WeaponSilhouette.jsx'
 
 /**
@@ -179,42 +180,48 @@ const FILAS_DE_FICHA = BLOQUES_DE_FICHA + FILAS_DE_STATS
  * Lo que **no** se escribe aquí es qué armas tiene cada una: eso se filtra del
  * catálogo por su `slot`, como `PRIMARY_WEAPONS` y sus hermanas. Una lista de
  * miembros a mano es una lista donde un día falta un arma.
+ *
+ * **Ni con qué tecla sale** (vuelta 97). Estaba escrita aquí —`'1'`, `'2'`,
+ * `'5'`, `'G'`, `'3'`— y son binds reasignables desde la vuelta 41, así que este
+ * panel, que es justo donde se aprende el mapa de controles del equipo, era el
+ * que lo enseñaba mal. El nombre de la ranura **es** el nombre de la acción en
+ * `KEYBINDS`, así que no hay nada que emparejar: sale de `keysOf(ranura.slot)`.
  */
 const RANURAS = [
   {
     slot: 'primary',
     label: 'Primarias',
-    tecla: '1',
     nota: 'Con lo que sales a la ronda. Es la decisión que más pesa, literalmente: lo que carga se nota al andar.',
   },
   {
     slot: 'secondary',
     label: 'Pistolas',
-    tecla: '2',
     nota: 'Siempre llevas una. La Pulse es la de serie y no cuesta nada; el Reaper se compra y se paga al morir.',
   },
   {
     slot: 'special',
     label: 'Especiales',
-    tecla: '5',
     nota: 'Se llevan ADEMÁS de un arma principal, no en vez de ella. Lo que las acota es el precio: un cohete y un rifle son dos rondas buenas.',
   },
   {
     slot: 'throwable',
     label: 'Arrojadizas',
-    tecla: 'G',
     nota: 'La tecla cicla entre las que lleves. Clic izquierdo lanza lejos; clic derecho, corto y a ras de suelo.',
   },
   {
     slot: 'melee',
     label: 'Cuerpo a cuerpo',
-    tecla: '3',
     nota: 'Se lleva siempre y no se elige. Clic izquierdo flojo, clic derecho fuerte, y por la espalda mata.',
   },
 ]
 
 /** La ranura de un arma, por su clave de `slot`. */
 const RANURA = Object.fromEntries(RANURAS.map((r) => [r.slot, r]))
+
+/** Con qué tecla sale una ranura, según lo que el jugador tenga puesto. */
+function teclaDeRanura(slot, binds) {
+  return keyLabel(keysOf(slot, binds)[0])
+}
 
 /**
  * **Qué ajuste escribe cada ranura.** La de cuerpo a cuerpo no tiene: el
@@ -588,6 +595,15 @@ export default function Armoury({ settings, equipped, onChange, onClose, soloFic
    * fichas cada fila cuadra por su cuenta, y CADENCIA dejaba de estar a la
    * misma altura en las catorce—.
    */
+  /**
+   * **Las teclas, del store y no de una prop** (vuelta 97). Este panel lo montan
+   * dos páginas —el entrenamiento y el duelo— y ninguna de las dos le pasaba los
+   * binds; hacerlo obligaría a tocar los dos sitios y a que uno se olvide. El
+   * store está fuera de React justo para esto, y es el mismo patrón con el que
+   * `App.jsx` lee los ajustes.
+   */
+  const binds = useSyncExternalStore(subscribeKeybinds, getKeybinds)
+
   const porRanura = RANURAS.map((ranura) => ({
     ...ranura,
     armas: Object.keys(WEAPONS).filter((key) => WEAPONS[key].slot === ranura.slot),
@@ -727,7 +743,7 @@ export default function Armoury({ settings, equipped, onChange, onClose, soloFic
             onClick={() => setAbierta(ranura.slot)}
           >
             <span className="armoury__ranura-nombre">{ranura.label}</span>
-            <span className="armoury__ranura-tecla">{ranura.tecla}</span>
+            <span className="armoury__ranura-tecla">{teclaDeRanura(ranura.slot, binds)}</span>
           </button>
         ))}
       </div>
@@ -760,7 +776,7 @@ export default function Armoury({ settings, equipped, onChange, onClose, soloFic
             equipped={!soloFicha && key === settings[SLOT_SETTING[WEAPONS[key].slot]]}
             inHand={key === equipped?.weaponKey}
             suppressed={Boolean(settings.suppressor[key])}
-            slotKey={RANURA[WEAPONS[key].slot]?.tecla ?? '1'}
+            slotKey={teclaDeRanura(WEAPONS[key].slot, binds)}
             onEquip={(next) => onChange({ [SLOT_SETTING[WEAPONS[next].slot]]: next })}
             onSuppressor={toggleSuppressor}
             soloFicha={soloFicha}

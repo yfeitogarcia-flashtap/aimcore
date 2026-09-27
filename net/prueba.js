@@ -31,6 +31,8 @@ import { ClienteRed } from './cliente.js'
 import { conRedSimulada, transporteWebSocket } from './transporte.js'
 import { montarCapaDeDuelo } from '../src/ui/duelo.jsx'
 import { vigilarActualizaciones } from '../src/ui/actualizacion.js'
+import { montarPantallaCompleta } from '../src/escritorio.js'
+import { getKeybinds, keyLabel, keysOf, subscribeKeybinds } from '../src/keybinds.js'
 import { compraAbierta } from './protocolo.js'
 import { codigoDeLaDireccion, direccionDeLaBarra, enlaceDeSala, mapaDeLaDireccion, urlDeSala } from './sala-cliente.js'
 
@@ -565,6 +567,58 @@ $('pedirVoto').addEventListener('click', () => {
 vigilarActualizaciones({
   puedeRecargar: () => document.pointerLockElement === null,
 })
+
+/**
+ * **Y la pantalla completa de la app** (vuelta 97), montada aquí por lo mismo que
+ * el vigilante de arriba: es de la ventana y no de un modo, así que las dos
+ * páginas llaman a la misma función. En un navegador no hace nada.
+ */
+montarPantallaCompleta()
+
+/**
+ * **Los controles del menú los escribe esto, con la tecla que hay puesta**
+ * (vuelta 97). Ver el comentario de `#controles` en `prueba.html`: estaban a mano
+ * y son reasignables. Se repinta al cambiar un bind —se pueden cambiar sin salir
+ * de la partida desde la vuelta 73, que es cuando el menú de ESC ganó su botón de
+ * opciones— y se construye con nodos y no con una cadena de HTML: el rótulo de
+ * una tecla sale de un catálogo cerrado, pero pegar texto en `innerHTML` es una
+ * costumbre que un día se lleva una comilla.
+ */
+const CONTROLES_DEL_DUELO = [
+  { direcciones: true, que: 'mover' },
+  { accion: 'jump', que: 'saltar' },
+  { accion: 'crouch', que: 'agachar' },
+  { accion: 'walk', que: 'andar' },
+  { accion: 'shoot', que: 'disparar' },
+]
+
+function pintarControles(binds) {
+  // La tienda se cierra con la tecla de armería, que también es un bind: aquí
+  // decía «B» en duro (vuelta 97).
+  const cierra = document.getElementById('tiendaCierra')
+  if (cierra) cierra.textContent = keyLabel(keysOf('armoury', binds)[0])
+
+  const fila = document.getElementById('controles')
+  if (!fila) return
+  fila.textContent = ''
+  const pares = CONTROLES_DEL_DUELO.map((c) => [
+    c.direcciones
+      ? ['forward', 'left', 'back', 'right'].map((a) => keyLabel(keysOf(a, binds)[0])).join('')
+      : keyLabel(keysOf(c.accion, binds)[0]),
+    c.que,
+  ])
+  // La F3 es de esta página y no un bind, así que va al final y escrita.
+  pares.push(['F3', 'números de red'])
+  pares.forEach(([tecla, que], i) => {
+    if (i > 0) fila.append(document.createTextNode(' · '))
+    const kbd = document.createElement('kbd')
+    kbd.textContent = tecla
+    fila.append(kbd, document.createTextNode(` ${que}`))
+  })
+}
+
+pintarControles(getKeybinds())
+subscribeKeybinds(pintarControles)
 
 cliente.conectar()
 

@@ -11,6 +11,7 @@
     "trace:weapons": "node scripts/trace-weapons.mjs",
     "trace:icons": "node scripts/trace-icons.mjs",
     "trace:logo": "node scripts/trace-logo.mjs",
+    "escritorio:instalador": "node scripts/escritorio-instalador.mjs",
     "audio:weapons": "node scripts/import-weapon-audio.mjs",
     "net": "node net/servidor.mjs",
     "host": "npm run build && node net/servidor.mjs",

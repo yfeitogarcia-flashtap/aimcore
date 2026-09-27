@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { KEYBINDS } from '../config.js'
-import { captureConflict, eventCode, keyLabel, keysOf, resetKeybind, setKeybind } from '../keybinds.js'
+import { captureConflict, defaultDe, eventCode, keyLabel, keysOf, resetKeybind, setKeybind } from '../keybinds.js'
+import { esEscritorio } from '../escritorio.js'
 
 /**
  * Sección de **Controles** del panel de opciones: qué tecla hace qué, y cómo
@@ -35,7 +36,12 @@ function KeybindRow({ action, binds, capturing, onCapture, onCancel, error }) {
   const spec = KEYBINDS[action]
   const code = binds[action]
   const extra = spec.extra ?? []
-  const atDefault = code === spec.default
+  // **El valor de fábrica sale de `defaultDe` y no de `spec.default`** (vuelta
+  // 97): en la app agacharse nace en `Ctrl`, así que con el campo crudo el botón
+  // «por defecto» saldría encendido con la tecla de fábrica ya puesta y
+  // prometería devolverla a la C.
+  const porDefecto = defaultDe(action)
+  const atDefault = code === porDefecto
 
   return (
     <div className={`bind${capturing ? ' bind--capturing' : ''}`}>
@@ -61,7 +67,7 @@ function KeybindRow({ action, binds, capturing, onCapture, onCancel, error }) {
           type="button"
           className="field__default"
           disabled={atDefault}
-          title={`Devuelve «${spec.label}» a ${keyLabel(spec.default)}`}
+          title={`Devuelve «${spec.label}» a ${keyLabel(porDefecto)}`}
           onClick={() => resetKeybind(action)}
         >
           por defecto
@@ -136,11 +142,31 @@ export default function Controls({ binds }) {
         </div>
       ))}
 
-      <span className="field__hint">
-        Dos acciones no pueden compartir tecla, y nada se puede asignar a Ctrl,
-        Alt o Meta: <strong>Ctrl+W cierra la pestaña</strong> y el navegador no
-        deja impedirlo. <strong>Escape</strong> pausa y no es reasignable.
-      </span>
+      {/*
+        **Y la frase dice la regla de este sitio, no la de los dos** (vuelta 97).
+        Hasta aquí decía que Ctrl no se puede asignar, y en la app de escritorio
+        eso es falso —ahí agacharse nace justo en Ctrl—: una nota que contradice
+        lo que el panel está enseñando dos centímetros más arriba es peor que no
+        tenerla. Sale del mismo `esEscritorio()` del que sale el valor de fábrica,
+        así que no puede decir una cosa y el panel hacer otra.
+      */}
+      {esEscritorio() ? (
+        <span className="field__hint">
+          Dos acciones no pueden compartir tecla. Aquí <strong>Ctrl</strong> sí se
+          puede usar —no hay pestaña que cerrar—, pero <strong>Alt</strong> y la
+          tecla de Windows son del sistema. <strong>Escape</strong> pausa y{' '}
+          <strong>F11</strong> es la pantalla completa: ninguna de las dos es
+          reasignable.
+        </span>
+      ) : (
+        <span className="field__hint">
+          Dos acciones no pueden compartir tecla, y nada se puede asignar a Ctrl,
+          Alt o Meta: <strong>Ctrl+W cierra la pestaña</strong> y el navegador no
+          deja impedirlo. <strong>Escape</strong> pausa y no es reasignable. En la{' '}
+          <strong>app de escritorio</strong> Ctrl sí vale, y agacharse sale ahí de
+          fábrica en Ctrl.
+        </span>
+      )}
     </div>
   )
 }

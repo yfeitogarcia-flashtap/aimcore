@@ -70,7 +70,9 @@ jobs:
         with:
           node-version: '22'
           cache: npm
-          cache-dependency-path: escritorio/package-lock.json
+          cache-dependency-path: |
+            package-lock.json
+            escritorio/package-lock.json
 
       - name: Preparar Rust
         uses: dtolnay/rust-toolchain@stable
@@ -87,6 +89,14 @@ jobs:
         working-directory: escritorio
         run: npm ci
 
+      # **Y las herramientas de la raíz** (vuelta 97), que es de donde sale el
+      # generador de las imágenes del instalador: `jimp` ya estaba ahí para el
+      # trazado de las siluetas, así que no hay una dependencia nueva, sólo un
+      # `npm ci` más. Va con `--ignore-scripts` porque aquí no se compila el
+      # juego: lo único que se necesita del árbol de la raíz es poder leer un PNG.
+      - name: Instalar las herramientas de la raíz
+        run: npm ci --ignore-scripts
+
       # **El icono se genera, no se guarda** (vuelta 94). `src-tauri/icons/` está
       # en `.gitignore` porque es material derivado: sale de la marca de
       # `Reference/Logo/`, que es exactamente lo que ya hacen las siluetas de las
@@ -97,6 +107,14 @@ jobs:
       - name: Generar los iconos desde la marca
         working-directory: escritorio
         run: npx tauri icon ../Reference/Logo/vektor-mark-orange.png
+
+      # **Las dos imágenes del instalador, por la misma regla que el icono**
+      # (vuelta 97): material derivado de `Reference/Logo/`, no ficheros
+      # guardados. El script dice qué ha sacado y **falla si no sale a 24 bits**,
+      # que es lo único que NSIS admite — un BMP con alfa se acepta al compilar y
+      # se ve roto en el asistente, o sea el peor orden de los dos fallos.
+      - name: Generar las imágenes del instalador
+        run: npm run escritorio:instalador
 
       - name: Compilar
         working-directory: escritorio

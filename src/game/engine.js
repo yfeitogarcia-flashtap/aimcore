@@ -45,7 +45,7 @@ import { SpawnCone } from './spawnCone.js'
 import { PickupField } from './pickups.js'
 import { PlayerStatus, esPorLaEspalda, hitPlayer, playerBody } from './player.js'
 import { getSettings, subscribeSettings, updateSettings } from '../settings.js'
-import { eventCode, getKeybinds, keysOf, subscribeKeybinds, typingInField } from '../keybinds.js'
+import { eventCode, getKeybinds, keyLabel, keysOf, subscribeKeybinds, typingInField } from '../keybinds.js'
 
 /** Centro exacto de la pantalla: el crosshair no se mueve, así que es constante. */
 const SCREEN_CENTER = new THREE.Vector2(0, 0)
@@ -1696,6 +1696,19 @@ export class Engine {
   }
 
   /** Lanza un aviso temporal al HUD, si el jugador los tiene activados. */
+  /**
+   * **El nombre de la tecla de una acción, para un mensaje** (vuelta 97). Los
+   * avisos del HUD decían «Pulsa R para recargar» y «pulsa 4 para aplicarla» con
+   * la tecla escrita dentro de la frase, y las dos son reasignables desde la
+   * vuelta 41: a quien las cambiara, el juego le daba instrucciones falsas justo
+   * en el momento en que necesitaba una. Sale de `this._binds`, que es la misma
+   * asignación con la que el motor decide qué hace cada pulsación, así que el
+   * aviso no puede nombrar una tecla distinta de la que funciona.
+   */
+  _tecla(accion) {
+    return keyLabel(keysOf(accion, this._binds)[0])
+  }
+
   _showHelp(text) {
     if (!this.helpMessagesEnabled) return
     this.callbacks.onHelp?.(text, HELP.messageDurationMs)
@@ -2133,7 +2146,7 @@ export class Engine {
       playDrySound()
       // Pedir R mientras la recarga ya corre sería un mal consejo: el HUD
       // enseña su barra y no hay nada que pulsar.
-      if (!this.reloading) this._showHelp('Pulsa R para recargar')
+      if (!this.reloading) this._showHelp(`Pulsa ${this._tecla('reload')} para recargar`)
       return
     }
     /**
@@ -2719,7 +2732,7 @@ export class Engine {
     }
     if (!status.addCharge()) return false
     playUiConfirm()
-    this._showHelp('Carga de escudo · pulsa 4 para aplicarla')
+    this._showHelp(`Carga de escudo · pulsa ${this._tecla('shield')} para aplicarla`)
     return true
   }
 
@@ -3417,7 +3430,7 @@ export class Engine {
     const lowThreshold = Math.max(1, Math.floor(weapon.magazine * HELP.lowAmmoRatio))
     if (this.ammo > lowThreshold) return
     this._lowAmmoWarned = true
-    this._showHelp('Pulsa R para recargar')
+    this._showHelp(`Pulsa ${this._tecla('reload')} para recargar`)
   }
 
   /**

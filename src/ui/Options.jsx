@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react'
 import Controls from './Controls.jsx'
 import { keyLabel, keysOf } from '../keybinds.js'
+import { esEscritorio } from '../escritorio.js'
 import { persistenciaDisponible } from '../settings.js'
 import { FieldHead, SegmentedRow, SliderRow, ToggleRow } from './fields.jsx'
 import {
@@ -56,9 +57,18 @@ function weaponHint(weaponKey) {
 }
 
 export default function Options({ settings, binds, onChange, onReset, onClose }) {
-  // La tecla de la armería sale del store de binds, no escrita a mano: es
-  // reasignable y una «B» en duro se quedaría mintiendo al primer cambio.
+  /**
+   * **Las teclas salen del store de binds, ninguna escrita a mano** (la de la
+   * armería desde la 42; las otras dos, en la vuelta 97).
+   *
+   * Aquí decía «con la Pulse en la tecla 2 y el arma especial en la 5», y las dos
+   * eran literales: quien reasignara cualquiera de las dos se quedaba con un
+   * panel de opciones explicándole el mapa de controles de otro. Es el mismo
+   * fallo que la «B» en duro, que ya estaba arreglado al lado.
+   */
   const armouryKey = keyLabel(keysOf('armoury', binds)[0])
+  const secondaryKey = keyLabel(keysOf('secondary', binds)[0])
+  const specialKey = keyLabel(keysOf('special', binds)[0])
 
   /**
    * **El panel abre por arriba** (vuelta 78).
@@ -157,8 +167,8 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
           </span>
           <span className="field__hint">
             Se equipa en la <strong>armería</strong> (tecla {armouryKey}), con la{' '}
-            {WEAPONS[settings.secondary]?.label ?? WEAPONS[SECONDARY_WEAPON].label} en la tecla 2
-            y, desde la vuelta 92, el arma especial en la <strong>5</strong>.
+            {WEAPONS[settings.secondary]?.label ?? WEAPONS[SECONDARY_WEAPON].label} en la
+            tecla {secondaryKey} y el arma especial en la {specialKey}.
           </span>
           {/* El silenciador dejó de ser un interruptor del jugador en la vuelta
               43: hay uno por arma y viven en su ficha de la armería, donde
@@ -184,6 +194,31 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
             : 'Al ritmo del monitor, sin limitar.'
         }
       />
+
+      {/*
+        **Pantalla completa, y sólo en la app** (vuelta 97). Va aquí al lado del
+        límite de FPS porque es la misma clase de ajuste: no configura una
+        partida, configura **esta máquina**.
+
+        Y no se enseña apagada en un navegador, que es lo que la vuelta 94 hace
+        con un ajuste que hoy no aplica: aquello se atenúa porque vuelve a valer
+        en cuanto se cambia lo de arriba, y esto no puede valer nunca —en una
+        pestaña F11 es del navegador y la API de pantalla completa exige un gesto,
+        así que «arrancar así» es imposible por construcción—. Un interruptor que
+        no puede funcionar es el fallo de la vuelta 67.
+      */}
+      {esEscritorio() ? (
+        <ToggleRow
+          setting="pantallaCompleta"
+          value={settings.pantallaCompleta}
+          onChange={onChange}
+          hint={
+            settings.pantallaCompleta
+              ? 'La ventana abre a pantalla completa. F11 la alterna, y lo que dejes puesto es lo que se recuerda.'
+              : 'La ventana abre en su tamaño normal. F11 alterna la pantalla completa en cualquier momento.'
+          }
+        />
+      ) : null}
 
       <ToggleRow
         setting="spatialAudio"

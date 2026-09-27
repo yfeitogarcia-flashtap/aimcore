@@ -273,7 +273,10 @@ lista de once cosas iguales no hay ninguna que sea *la* que hay que tocar, que
 es literalmente el diagnóstico con el que la 92 los sacó de opciones; y **los
 controles se miran, no se leen**: eran tres renglones de texto corrido bajo los
 modos y pasan a ser pares de tecla y verbo (`.teclas`), porque nadie se lee un
-párrafo de controles antes de jugar.
+párrafo de controles antes de jugar. **La tecla de cada par salía escrita a mano y
+desde la vuelta 97 sale del bind** — ver «Un rótulo de control dice el bind, no una
+tecla», más abajo: el argumento de entonces («se lee antes de que nadie haya
+reasignado nada») valía sólo para la primera partida de alguien.
 
 Medido (`menu94`, a 1920×1080, 1600×900, 1366×768 y 1280×860): los dos modos con
 **el mismo fondo y el mismo color** y 225×81 los dos; con la lista hasta abajo
@@ -608,6 +611,140 @@ fila elige ese elemento, el ojo quita una pieza del dibujo **y de lo pinchable**
 dejando el mapa igual, lo medido sigue contando **14 contra las 13 dibujadas**, un
 mapa que no es de duelo **no lista ni se inventa salidas**, y «ver todo» las
 devuelve y vuelve a hacer de los dos escenarios **un solo objeto**.
+
+**La app de escritorio es otro sitio, y la página lo sabe** (vuelta 97). **Ésta es
+la convención permanente para cualquier cosa que sólo tenga sentido en la ventana
+de Tauri.** La app no contiene el juego —abre la URL del despliegue—, así que el
+código que corre dentro es el mismo, y hasta aquí no había forma de preguntarle
+*¿dónde estoy?*. Ahora la hay, y la contesta **una sola función**
+(`esEscritorio()`, en `src/escritorio.js`): dos ideas de «estoy en la app» se
+separan el día que una cambie de señal.
+
+**Lo contesta el agente de usuario**, y las otras dos formas se descartaron con su
+motivo:
+
+- **Un parámetro en la dirección** (`?escritorio=1`) es lo que la página dice de sí
+  misma, así que lo escribe cualquiera en un navegador — y lo que se lleva por
+  escribirlo es que `Ctrl` pase a ser agacharse **donde `Ctrl+W` cierra la
+  pestaña**: el fallo de la vuelta 27 servido a mano.
+- **El puente de Tauri** (`window.__TAURI_INTERNALS__`) es verdad y no se puede
+  fingir, pero **está atado al origen**: sólo se inyecta si la URL cargada está en
+  la lista de la capacidad. Colgar de ahí la tecla de agacharse la ataría al
+  dominio.
+
+De ahí la regla que hay que respetar al añadir la siguiente: **saber dónde estamos
+no depende del origen; pedirle algo a la ventana, sí.** Un cambio de dominio mal
+acompañado deja la tecla de agacharse funcionando y la pantalla completa muda, que
+es el orden correcto de los dos fallos. Lo que se paga va escrito: la marca está
+**escrita dos veces** —`config.js` y `tauri.conf.json`, que es JSON y no puede
+importar nada—, y `escritorio97` compara los dos ficheros.
+
+De esa función cuelgan tres cosas y ninguna más:
+
+- **`Ctrl` es asignable, y agacharse nace ahí** (`defaultEscritorio`, en
+  `KEYBINDS`). **Alt y la tecla de Windows no**, y no es un olvido: `Alt` se lleva
+  el foco al menú del sistema y `Meta` abre el inicio **también en una ventana
+  nativa**, así que ahí la prohibición sigue protegiendo de algo.
+- **La pantalla completa es de la ventana**, no de un elemento del documento.
+- **Y el huésped no la redirige** al dominio nuevo, por lo de arriba.
+
+**Y de ahí sale la regla que hace que las dos cosas convivan, que es la que vale
+fuera de aquí**: `localStorage` **es por origen**, así que la app y el navegador
+comparten el almacén de teclas. Con el saneado escribiendo su resultado, abrir el
+juego **una vez** en un navegador le borraba el `Ctrl` a la app, sin un error en
+ninguna pantalla.
+
+> **Lo guardado es la elección del jugador; lo vigente es lo que este sitio
+> admite.**
+
+Es la misma separación que `movement.input` contra `movement.keys` (vuelta 56) y
+que `escenario` contra `escenarioMedido` (vuelta 96). Dos consecuencias que **son**
+el mecanismo: se guarda **sólo lo asignado a mano** —un mapa completo con los
+valores de fábrica dentro fijaría la `C` de hoy y la app leería una elección que
+nadie hizo— y **restablecer borra en vez de escribir**, porque lo de fábrica es
+distinto en cada sitio.
+
+Medido (`escritorio97`, dos procesos con dos agentes de usuario): la app elige
+`Ctrl`, el navegador juega con la `C`, reasignar otra tecla en el navegador no toca
+lo guardado, la app lo recupera entero, y restablecer en el navegador deja la `C`
+allí y el `Ctrl` aquí.
+
+**Un rótulo de control dice el bind, no una tecla** (vuelta 97, enmendando la 94).
+**Ésta es la convención permanente para cualquier texto que nombre una tecla.** La
+94 escribió los controles de la pantalla de inicio a mano con este argumento: «este
+paso es el primer contacto con el juego y se lee antes de que nadie haya
+reasignado nada». Era verdad **de la primera partida de alguien** y falso de todas
+las demás; y desde la 97 es falso incluso sin reasignar nada, porque **el valor de
+fábrica ya no es uno** —en la app agacharse nace en `Ctrl`—.
+
+> Un rótulo que no puede acertar ni con los ajustes de fábrica es un rótulo que hay
+> que borrar.
+
+Cómo se cumple, y es lo que hay que respetar al añadir un renglón: **la fila
+declara la acción, no la tecla**, y quien pinta la saca de `keysOf`, que es la
+misma función de la que sale la lista del panel de opciones. Lo que se tocó era
+más de lo que parecía: la pantalla de inicio (las cuatro direcciones compuestas en
+un solo rótulo, andar, agacharse, saltar, recargar, armería y disparar), la línea
+de controles del menú del duelo, la tecla que cierra la tienda, **la tecla de cada
+categoría de la armería** —escritas en una tabla, en el panel donde se aprende el
+mapa de controles del equipo—, dos frases del panel de opciones, los avisos del
+HUD («Pulsa R para recargar», «pulsa 4 para aplicarla») y la ficha de la tirolina
+en Alchemist.
+
+Y **las dos excepciones van declaradas con su motivo al lado**: `Escape`, que está
+en `FORBIDDEN_KEYS` porque es la salida del pointer lock, y **las teclas de
+herramienta** del editor y de la página del duelo (F1/F2/F3), que son suyas y no
+están en `KEYBINDS` (vuelta 78).
+
+Medido (`controles97`, contra la página y con el bind cambiado de verdad): de
+fábrica dice `C`; con agacharse en la `Z` lo dicen los tres sitios; con el agente
+de usuario de la app dice `CTRL IZQ` sin tocar nada.
+
+**La pantalla completa es un valor con dos dueños, y una copia en frío** (vuelta
+97). `SETTINGS.pantallaCompleta` es **el mismo valor que alterna F11**, no un
+segundo ajuste al lado: con dos —«arrancar así» y «estoy así ahora»— habría que
+decidir cuál gana cuando difieren, y lo que se pidió es justo que no haya que
+decidirlo. Tres reglas:
+
+- **La página manda y la ventana obedece.** F11 escribe el ajuste y una suscripción
+  al store se lo pide a la ventana; llamar a la ventana desde la tecla además sería
+  pedírselo dos veces.
+- **La ventana lo copia aparte**, en un fichero junto a su configuración, y **no es
+  una segunda verdad**: el arranque nativo ocurre **antes de que la página exista**
+  y no hay a quién preguntar. Por eso la ventana nace invisible y se muestra
+  después de decidirlo — ponerla a pantalla completa ya en pantalla es un parpadeo
+  en cada arranque, y un parpadeo al abrir se lee como un fallo.
+- **Y en un navegador la fila no se enseña.** No es un ajuste que hoy no aplique y
+  mañana sí (lo que la vuelta 94 atenúa en vez de esconder): ahí F11 es del
+  navegador y la API de pantalla completa **exige un gesto**, así que «arrancar
+  así» es imposible por construcción, y un interruptor que no puede funcionar nunca
+  es el fallo de la vuelta 67.
+
+**La dirección vieja sigue siendo la de la app, para siempre** (vuelta 97).
+`VEKTOR_DOMINIO` en el huésped manda con un **302** todo lo que llegue por otro
+nombre, para que el día que haya dominio propio cambiar la dirección sea una
+variable de entorno y no un `.exe` nuevo en el PC de cada uno. Con una vuelta de
+tuerca que es la que lo convierte en una promesa: **a la app no se la redirige**.
+Se la reconoce por la marca de su agente de usuario, porque su canal con el proceso
+nativo está atado al origen y mandarla a un dominio que su capacidad no nombra la
+dejaría **jugando y sin pantalla completa**, sin un error en ninguna pantalla.
+
+Cuatro cosas no se redirigen nunca: **`/salud`** —el despliegue la pide tres veces
+exigiendo que conteste siempre la misma máquina (vuelta 81), y un 302 dejaría esa
+comprobación midiendo otra—, **`localhost` y las IP de red** (`npm run host`),
+**las salas** —entran por `upgrade` y un apretón de manos de WebSocket no puede
+seguir un 302— y **la app**. Y es 302 y no 301 a propósito: un 301 se lo queda el
+navegador para siempre, y desandar una mudanza mal hecha pasaría por pedirle a cada
+jugador que borre su caché, que es lo que la vuelta 93 quitó de en medio.
+
+Lo que se paga va escrito: **`localStorage` es por origen**, así que a partir de
+ese día la app y el navegador guardan sus ajustes por separado. Es la factura
+anotada desde la vuelta 60 para cualquier mudanza, con una diferencia: aquí no se
+paga una vez, se queda.
+
+Medido (`escritorio97`): un navegador en la dirección vieja recibe 302 con su ruta
+y su consulta enteras, el nombre bueno se sirve con 200 —o sea que no hay bucle— y
+la app recibe 200 en la dirección vieja.
 
 **Todo el tuning en `config.js`.** Ninguna constante de juego vive suelta en un
 módulo. Si necesitas un número nuevo, va a `config.js` aunque lo use un solo
@@ -4523,14 +4660,19 @@ contra toda la geometría del escenario y no cabe en el presupuesto de un frame.
 Si no hay ningún punto visible se reintenta tras `SPAWN.pointRetryMs`, jamás al
 frame siguiente.
 
-**Ninguna acción del juego se mapea a un modificador, y CTRL no agacha.**
-Agacharse avanzando era Ctrl+W, y **Ctrl+W cierra la pestaña** en Chrome y en
-Edge: el navegador resuelve ese atajo antes de que el evento llegue a la página,
-así que `preventDefault` no lo toca —sí neutraliza Ctrl+A/S/D, las otras tres
-direcciones, pero con W no hay nada que hacer—. Se manifestaba como un cierre
-intermitente «sin motivo»: sólo pasaba con W pulsada en el instante de agacharse.
-Agacharse es **C**. `estabilidad.mjs` lo guarda: ninguna tecla de `MOVEMENT.keys`
-puede ser un modificador.
+**Ninguna acción del juego se mapea a un modificador, y CTRL no agacha —en un
+navegador** (vuelta 27, matizada en la 97). Agacharse avanzando era Ctrl+W, y
+**Ctrl+W cierra la pestaña** en Chrome y en Edge: el navegador resuelve ese atajo
+antes de que el evento llegue a la página, así que `preventDefault` no lo toca
+—sí neutraliza Ctrl+A/S/D, las otras tres direcciones, pero con W no hay nada que
+hacer—. Se manifestaba como un cierre intermitente «sin motivo»: sólo pasaba con
+W pulsada en el instante de agacharse. Agacharse es **C**. `estabilidad.mjs` lo
+guarda: ninguna tecla de `MOVEMENT.keys` puede ser un modificador.
+
+**Y en la app de escritorio agacharse es `Ctrl`**, que es lo que esta regla nunca
+dijo y llevaba nueve años de shooters diciendo lo contrario: lo de arriba **no era
+una preferencia, era un hecho de un sitio concreto**, y en una ventana nativa no
+hay pestaña que cerrar. Ver «La app de escritorio es otro sitio» más abajo.
 
 **Ningún frame sale del movimiento con un valor que no sea finito.**
 `_guardState()` comprueba posición, pies, velocidad vertical, altura de ojos,
@@ -5672,8 +5814,21 @@ reloj y cable:
   compatible por semver rompe la app sin que nadie toque nada y el registro
   culpa al último commit. Lo que sale queda en un **enlace fijo** —una
   publicación rodante, `escritorio-ultima`— y como artefacto de la ejecución; el
-  paso a paso y los cinco sitios donde hay que probarla, en
+  paso a paso y los seis sitios donde hay que probarla, en
   `escritorio/README.md`.
+  **Y desde la vuelta 97 hace dos cosas que una pestaña no puede**: **pantalla
+  completa de verdad** —F11 la alterna y el mismo valor es el ajuste de *Opciones
+  → Arrancar en pantalla completa*, así que «recordar la elección» no necesita un
+  segundo estado— y **`Ctrl` como tecla de agacharse**, que es la de toda la vida
+  en un shooter y que en un navegador no se puede tener. Las dos cuelgan de que la
+  página sepa dónde está (§3, «La app de escritorio es otro sitio»). El instalador
+  lleva además la identidad de Vektor: icono, cabecera y lateral generados desde
+  `Reference/Logo/` como el icono de la ventana, y abajo «Vektor Installer» con su
+  versión en vez de «Nullsoft Install System» —que sale de `bundle.copyright` y no
+  de una plantilla de NSIS copiada a mano, que es lo que se habría quedado vieja—.
+  **Y cambiar la dirección que abre no obliga a nadie a reinstalar**: el huésped
+  redirige al dominio nuevo con `VEKTOR_DOMINIO` y **a la app no la redirige**,
+  porque su canal con el proceso nativo está atado al origen.
 - **En Cloudflare**, un **Durable Object por código de partida**
   (`worker/sala.js`), con el mismo Worker sirviendo el juego y las salas.
   **Desde la 58 es respaldo, no producción**, y se queda en pie unas semanas. Se
@@ -6043,6 +6198,15 @@ ninguna tecla de equipo sin efecto.** Sección **Controles** en opciones: tecla 
 capturando la siguiente pulsación, botón por acción y por lo general.
 Persistido en `aimcore.keybinds.v1` con saneado. **Escape queda fuera del
 sistema** y el panel lo dice.
+
+**Y en la app de escritorio agacharse sale de fábrica en `Ctrl`** (vuelta 97), que
+ahí se puede asignar porque no hay pestaña que cerrar. Lo guardado es por origen y
+lo comparten los dos sitios, así que se guarda **la elección** y se usa **lo que
+este sitio admite**: abrir el juego en un navegador no le quita el `Ctrl` a la app,
+y restablecer allí tampoco. **Y todos los rótulos del juego que nombran una tecla
+leen el bind** —pantalla de inicio, armería, opciones, menú del duelo, avisos del
+HUD y la ficha de la tirolina de Alchemist—, con dos excepciones declaradas:
+`Escape` y las teclas de herramienta del editor.
 
 **Avatar del jugador (sólo visual):** **el mismo cuerpo que una diana** —cápsula
 con cabeza ovalada, tres piezas, una por zona del hitbox— tintado con el color de
@@ -6479,7 +6643,9 @@ arriba.
 **Opciones** (desde el menú y desde la pausa, persistidas) se queda con lo que
 es **del jugador y de su máquina**: sensibilidad, **sensibilidad con mirilla**,
 la fila informativa del arma, **límite de FPS**, **audio espacial**, mensajes de
-ayuda y la sección de **Controles**.
+ayuda y la sección de **Controles**. **Y, sólo en la app de escritorio,
+«Arrancar en pantalla completa»** (vuelta 97) — el mismo valor que alterna F11, y
+que en un navegador no se enseña porque ahí no puede funcionar.
 
 **Y el panel abre por arriba** (vuelta 78). Abría por el final, y no porque
 recordara nada: el `autoFocus` estaba en «Volver», que es el **último** elemento
@@ -6503,8 +6669,30 @@ el botón no pueda apuntar a un ajuste distinto del que enseña la fila.
 Cuentas, guardado en la nube, rankings y minimapa. Si el encargo no
 lo pide explícitamente, no se añade.
 
-**Y tres propuestas están escritas y sin construir, las dos de la 95 aprobadas y
-en cola.** Están en `docs/propuestas/`; lo que hay que saber sin abrirlas:
+**Y cuatro propuestas están escritas y sin construir, con su orden decidido por el
+encargo de la vuelta 97**: primero la **11** (salas de varios, espectador y lobby
+de evento), detrás la **fase 2 de la 10** (agrupar y bloquear), y detrás las dos de
+la 95 (**08** y **09**). Están en `docs/propuestas/`; lo que hay que saber sin
+abrirlas:
+
+- **11 — salas de varios, espectador y lobby de evento** (vuelta 97). Las tres
+  cosas dependen de lo mismo: que una sala pueda tener más de dos dentro. Se
+  escribió **con una medida delante** (`salas97`), y la medida cambia el plan: una
+  sala de diez cuesta **0.32 ms de CPU por paso** —o sea ~50 salas en el núcleo de
+  hoy— y **4 147 KB/s de bajada**, el 100 % la foto. O sea 33 Mbit/s para **una**
+  sala, así que **el protocolo tiene que cambiar antes de que haya diez
+  jugadores**. Las dos palancas ya existen a medias —bajar el ritmo de la foto (el
+  cliente interpola entre fotos desde la 45) y mandarle a cada uno la suya (lo que
+  ya hace la fase de compra desde la 62)— y juntas dejan la sala de diez en 691
+  KB/s. Con un aviso: **el criterio no puede ser «lo que ves»**, porque las pisadas
+  se oyen a través de las paredes hasta 16 u (vueltas 60 y 73), así que es por
+  distancia. Y un muro que salió midiendo: **`Partida` reparte `salidas[ranura]` y
+  un mapa de duelo declara exactamente dos**, así que un mapa de N tiene que
+  declarar N salidas — eso es formato, no protocolo. El orden de las fases sale de
+  que **el todos contra todos es el barato**: no tiene rondas, así que es N
+  butacas, N salidas y la foto por destinatario, y de paso prueba el protocolo
+  nuevo sin tener que decidir una sola regla de juego.
+
 
 - **10 — el panel de capas.** Su **fase 1 está hecha** en la vuelta 96 (la lista y
   el ojo, en §3 y §5). Lo que queda son **agrupar y bloquear**, y las dos esperan
@@ -6515,8 +6703,8 @@ en cola.** Están en `docs/propuestas/`; lo que hay que saber sin abrirlas:
   byte— y con una decisión explícita sobre los mapas que ya están en disco. La
   propuesta recomienda **escribirlo sólo cuando algo lo usa**, que los deja byte a
   byte iguales mientras no se agrupe nada.
-- **Y las dos de la vuelta 95 están aprobadas y van justo después** (08 y 09), que
-  es lo que dijo el encargo de la 96.
+- **Y las dos de la vuelta 95 van al final de la cola** (08 y 09): la 96 las puso
+  detrás de cerrar Alchemist y la 97 les metió delante el bloque de las salas.
 
 - **08 — el arsenal del mapa** (peanas de arma y dotación completa). La mitad está
   hecha: `duelo.dotacion` existe desde la vuelta 72 y le faltan dos campos

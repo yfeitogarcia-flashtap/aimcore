@@ -2482,7 +2482,22 @@ export const KEYBINDS = {
   left: { label: 'Izquierda', default: 'KeyA', extra: ['ArrowLeft'], group: 'Movimiento' },
   right: { label: 'Derecha', default: 'KeyD', extra: ['ArrowRight'], group: 'Movimiento' },
   jump: { label: 'Saltar', default: 'Space', group: 'Movimiento' },
-  crouch: { label: 'Agacharse', default: 'KeyC', group: 'Movimiento' },
+  /**
+   * **Agacharse es C en el navegador y `Ctrl` en la app** (vuelta 97).
+   *
+   * `Ctrl` es la tecla de agacharse de toda la vida en un shooter, y la vuelta
+   * 27 la prohibió por un motivo que sigue siendo verdad **y sólo en un sitio**:
+   * `Ctrl+W` cierra la pestaña y el navegador lo resuelve antes que la página.
+   * En la ventana de escritorio no hay pestaña que cerrar —comprobado jugando— y
+   * la prohibición dejaba de proteger de nada.
+   *
+   * `defaultEscritorio` es el valor de fábrica **donde se puede**, y de él
+   * cuelgan las tres cosas que cambian: la tecla con la que se sale de fábrica,
+   * que el panel la acepte al reasignarla y que el aviso naranja no salga. Lo
+   * resuelve `defaultDe()`, en `keybinds.js`, que es el único sitio que sabe
+   * dónde está corriendo esto.
+   */
+  crouch: { label: 'Agacharse', default: 'KeyC', defaultEscritorio: 'ControlLeft', group: 'Movimiento' },
   walk: { label: 'Caminar', default: 'ShiftLeft', extra: ['ShiftRight'], group: 'Movimiento' },
 
   shoot: { label: 'Disparar', default: 'Mouse0', pointer: true, group: 'Combate' },
@@ -3427,6 +3442,34 @@ export const SETTINGS = {
   helpMessages: {
     label: 'Mensajes de ayuda',
     default: true,
+  },
+  /**
+   * **Arrancar en pantalla completa** (vuelta 97), y sólo existe en la app de
+   * escritorio.
+   *
+   * Es un ajuste **de esta máquina** y no de una partida, así que vive en
+   * opciones por lo mismo que el límite de FPS (vuelta 92): quien juega en un
+   * monitor grande no quiere volver a pulsar F11 cada vez que abre el juego.
+   *
+   * Tres cosas que son el mecanismo:
+   *
+   * - **Es el mismo valor que alterna F11**, no un segundo ajuste al lado. Si
+   *   fueran dos —«arrancar así» y «estoy así ahora»— habría que decidir cuál
+   *   gana cuando difieren, y el encargo pide justo que no haya que decidirlo:
+   *   «que recuerde la elección».
+   * - **En un navegador no se enseña.** No es un ajuste que hoy no aplique y
+   *   mañana sí (que es lo que la vuelta 94 atenúa en vez de esconder): ahí F11
+   *   es del navegador y la API de pantalla completa **exige un gesto**, así que
+   *   «arrancar» es imposible por construcción. Un interruptor que no puede
+   *   funcionar nunca es el fallo de la vuelta 67.
+   * - **Y la ventana lo copia aparte.** El arranque nativo ocurre antes de que
+   *   la página exista, así que no hay a quién preguntar: lo que la página deja
+   *   escrito al cambiarlo es lo que la ventana lee en frío. La verdad sigue
+   *   siendo ésta; aquello es una copia para el primer instante.
+   */
+  pantallaCompleta: {
+    label: 'Arrancar en pantalla completa',
+    default: false,
   },
   /**
    * **Cuánto dura la sesión**, en el modo que sea (vuelta 78). El catálogo es
@@ -6922,6 +6965,48 @@ export const ROUNDS = {
  * jugando no quiere enterarse antes— y subirlos deja a un tester con una
  * versión vieja la sesión entera, que es justo el fallo.
  */
+/**
+ * **La ventana de escritorio, vista desde la página** (vuelta 97).
+ *
+ * La app de Tauri **no contiene el juego**: abre la URL del despliegue, así que
+ * lo que corre dentro es esta misma página. Y aun así hay dos cosas que sólo
+ * tienen sentido ahí —la pantalla completa de verdad y que `Ctrl` pueda ser una
+ * tecla del juego—, así que la página necesita poder contestar *¿estoy en la
+ * app?*.
+ *
+ * **Lo contesta el agente de usuario, y no un parámetro en la dirección.** Las
+ * dos cosas se probaron sobre el papel y la diferencia decide:
+ *
+ * - **`?escritorio=1` es lo que la página dice de sí misma**, así que cualquiera
+ *   puede escribirlo en un navegador — y lo que se lleva por escribirlo es que
+ *   `Ctrl` pase a ser agacharse **en un sitio donde `Ctrl+W` cierra la pestaña**,
+ *   o sea justo el fallo de la vuelta 27 servido a mano.
+ * - **Y el IPC de Tauri (`window.__TAURI_INTERNALS__`) está atado al origen**: la
+ *   ventana sólo puede hablar con el proceso nativo si su URL está en la lista de
+ *   la capacidad (`escritorio/src-tauri/capabilities/principal.json`). Colgar de
+ *   ahí la tecla de agacharse la ataría al dominio, que es exactamente lo que el
+ *   punto 4 del encargo pide que se pueda cambiar.
+ *
+ * El agente de usuario lo pone la ventana al nacer, no se puede teclear y no
+ * depende de a dónde apunte. Lo que se paga va escrito: **está escrito dos veces**
+ * —aquí y en `tauri.conf.json`, que es JSON y no puede importar esto—, así que
+ * `escritorio97.mjs` compara los dos ficheros y se pone rojo si se separan.
+ */
+export const ESCRITORIO = {
+  /**
+   * La marca que la ventana de Tauri añade a su agente de usuario. Cualquier
+   * cosa que no aparezca en el de un navegador de verdad sirve; ésta dice de
+   * quién es.
+   */
+  marcaUA: 'VektorEscritorio',
+  /**
+   * El nombre de la orden nativa que alterna la pantalla completa. Está aquí por
+   * lo mismo que `rutaDuelo`: lo miran la página y el fichero de Rust, y dos
+   * literales iguales es como uno se queda atrás.
+   */
+  ordenPantallaCompleta: 'pantalla_completa',
+}
+
 export const ACTUALIZACION = {
   compruebaCadaMs: 5 * 60 * 1000,
   esperaParaRecargarMs: 4000,
