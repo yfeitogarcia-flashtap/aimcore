@@ -50,9 +50,13 @@ export function esEscritorio() {
  * Devuelve `false` **sin tirar nada** si no hay puente: en un navegador esto no
  * es un error, es que no hay ventana a la que pedirle nada.
  */
-function invocar(orden, argumentos) {
-  const puente = typeof window === 'undefined' ? null : window
-  const fn = puente?.__TAURI__?.core?.invoke ?? puente?.__TAURI_INTERNALS__?.invoke
+function puenteDeTauri() {
+  const w = typeof window === 'undefined' ? null : window
+  return w?.__TAURI__?.core?.invoke ?? w?.__TAURI_INTERNALS__?.invoke ?? null
+}
+
+function invocar(orden, argumentos, deRepuesto = null) {
+  const fn = puenteDeTauri()
   if (typeof fn !== 'function') return false
   try {
     // Se lanza y no se espera: lo que contesta el proceso nativo no cambia nada
@@ -61,6 +65,7 @@ function invocar(orden, argumentos) {
     // `try/catch` de localStorage.
     Promise.resolve(fn(orden, argumentos)).catch((error) => {
       console.warn('[vektor] la ventana no ha atendido', orden, error)
+      if (deRepuesto) deRepuesto()
     })
     return true
   } catch (error) {
@@ -75,7 +80,23 @@ function invocar(orden, argumentos) {
  */
 export function pedirPantallaCompleta(activa) {
   if (!esEscritorio()) return false
-  return invocar(ESCRITORIO.ordenPantallaCompleta, { activa: Boolean(activa) })
+  const puesta = Boolean(activa)
+  /**
+   * **Y un seguro, por si la orden propia no llega** (vuelta 97). La ventana
+   * atiende dos cosas: `pantalla_completa`, que es nuestra y además **recuerda**
+   * la elección, y la del propio Tauri, que sólo mueve la ventana. La segunda
+   * está permitida explícitamente en la capacidad
+   * (`core:window:allow-set-fullscreen`), así que si un día la nuestra se
+   * quedara fuera por un cambio del modelo de permisos, lo que se pierde es
+   * *arrancar así* y no *ponerse a pantalla completa*. El orden es ése y no el
+   * contrario: se pide la que hace las dos cosas, y sólo si falla la que hace
+   * una.
+   */
+  return invocar(
+    ESCRITORIO.ordenPantallaCompleta,
+    { activa: puesta },
+    () => invocar('plugin:window|set_fullscreen', { fullscreen: puesta }),
+  )
 }
 
 let puesto = false
