@@ -441,6 +441,14 @@ export class Scenario {
     const definition = this.definition
     /** Geometrías agrupadas por tipo de pieza, para fusionarlas de una vez. */
     const byKind = new Map()
+    /**
+     * **Y los cristales van aparte, en un montón solo** (vuelta 95). No pueden
+     * caer en `byKind`: ahí la clave es la altura, que es de dónde sale el gris
+     * (vuelta 40), y un cristal no tiene gris — todos los del mapa comparten un
+     * material, porque el cristal es el mismo mida lo que mida la barrera. Así
+     * que cuestan **una** llamada de dibujo por mapa, no una por altura.
+     */
+    const cristales = []
 
     /**
      * **Un mapa puede no traer geometría, y eso no puede tumbar la escena**
@@ -502,6 +510,29 @@ export class Scenario {
        * cae la marca de impacto; con una pieza alta sería una pared invisible
        * que no para balas, y por eso el editor lo avisa.
        */
+      /**
+       * **Una barrera para el cuerpo y nada más** (vuelta 95). La caja ya está
+       * en `this.boxes`, así que se choca como cualquier pieza —y se pisa por
+       * arriba, que es lo que hace que un límite tenga que ser **más alto que
+       * un salto** para ser un límite—. Lo que esta rama decide es lo otro:
+       * **no entra en `occluders`**, ni dibujada ni sin dibujar.
+       *
+       * De ahí salen las cuatro cosas que una barrera no hace, y son la razón
+       * por la que existe (el argumento entero está en `COVER.barrera`): no
+       * corta la vista, no para balas, no esconde a nadie de la brújula y no
+       * deja un puesto de aparición «tapado» a la vista de todos. Y por eso
+       * cristal e invisible se comportan igual: lo que el creador elige es si
+       * se ve, no a qué se juega.
+       */
+      if (box.barrera) {
+        if (box.barrera === 'cristal') {
+          const cristal = new THREE.BoxGeometry(box.w, thickness, box.d)
+          cristal.translate(box.x + box.w / 2, bottom + thickness / 2, box.z + box.d / 2)
+          cristales.push(cristal)
+        }
+        continue
+      }
+
       if (box.superficie?.invisible) continue
 
       /**
@@ -611,6 +642,45 @@ export class Scenario {
       this.group.add(new THREE.LineSegments(edgeGeometry, edgeMaterial))
       this.materials.push(edgeMaterial)
       this.geometries.push(edgeGeometry)
+    }
+
+    /**
+     * **El cristal de las barreras: un montón, dos materiales** (vuelta 95).
+     *
+     * `depthWrite: false` y `DoubleSide` son las dos mitades de que se lea como
+     * cristal: sin lo primero un cristal esconde lo que hay detrás —que es lo
+     * contrario de un cristal— y sin lo segundo, visto desde dentro de la zona
+     * que delimita, no se ve nada.
+     *
+     * Y **no se toca `this.occluders`**, que es toda la decisión de esta pieza.
+     */
+    if (cristales.length) {
+      const merged = mergeGeometries(cristales, false)
+      for (const geometry of cristales) geometry.dispose()
+      if (merged) {
+        const material = new THREE.MeshBasicMaterial({
+          color: COVER.barrera.color,
+          transparent: true,
+          opacity: COVER.barrera.opacidad,
+          depthWrite: false,
+          side: THREE.DoubleSide,
+        })
+        this.group.add(new THREE.Mesh(merged, material))
+        this.materials.push(material)
+        this.geometries.push(merged)
+
+        // La arista es lo que de verdad se ve de un cristal, así que va casi
+        // entera y no al `edgeOpacity` de una pieza gris.
+        const edgeGeometry = new THREE.EdgesGeometry(merged, 20)
+        const edgeMaterial = new THREE.LineBasicMaterial({
+          color: COVER.barrera.color,
+          transparent: true,
+          opacity: COVER.barrera.aristaOpacidad,
+        })
+        this.group.add(new THREE.LineSegments(edgeGeometry, edgeMaterial))
+        this.materials.push(edgeMaterial)
+        this.geometries.push(edgeGeometry)
+      }
     }
 
     /**

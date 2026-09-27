@@ -2580,6 +2580,20 @@ function elegirMarca(marca) {
 function pintarTintes(caja, pieza, alto = pieza?.kind) {
   const nodo = $(caja)
   if (!pieza) { nodo.innerHTML = ''; return }
+  /**
+   * **Y una barrera no enseña muestras** (vuelta 95). Su color es el del
+   * cristal, así que el saneado tira el tinte al guardar: dejar las siete
+   * muestras pinchables sería un control que promete un color que el fichero va
+   * a borrar, o sea el fallo de la vuelta 67 en pequeño. Se dice y se quita, que
+   * es lo que la 94 hizo con los ajustes que el juego iba a ignorar — con la
+   * diferencia de que aquí no hay nada que atenuar: no es que estas muestras no
+   * signifiquen nada **ahora mismo**, es que en una barrera no significan nunca.
+   */
+  if (pieza.barrera) {
+    nodo.innerHTML = '<p class="nota">Una <b>barrera</b> no lleva tinte: su color '
+      + 'es el del cristal.</p>'
+    return
+  }
   const actual = pieza.tinte ?? ''
   const opciones = [['', 'sin tinte (gris del alto)'], ...Object.keys(COVER.tintes).map((t) => [t, t])]
   nodo.innerHTML = opciones.map(([clave, nombre]) => {
@@ -2758,6 +2772,7 @@ function pintarPanel() {
     avisarDeAire(pieza)
   }
   pintarTintes('p-tintes', pieza)
+  pintarBarrera(pieza)
   pintarSuperficieDePieza(pieza)
   pintarTubo()
   pintarEstampados()
@@ -2771,6 +2786,43 @@ function pintarPanel() {
   $('deshacer').disabled = pila.atras.length === 0
   $('rehacer').disabled = pila.adelante.length === 0
   pintarPorDefecto()
+}
+
+/**
+ * **El acabado de una barrera, y el número que decide si delimita** (vuelta 95).
+ *
+ * Lo que la ficha dice no es el alto otra vez: es **si con ese alto se salta
+ * por encima**, calculado con la física **de este mapa** y no con la de fábrica
+ * — Los Pilares sube 3.26 u donde el resto sube 1.25, así que un límite de 2 u
+ * delimita en cuatro mapas y no en el quinto. Enterarse probando el mapa es
+ * enterarse tarde (vuelta 67), y es además la convención de la 78: lo que se
+ * configura se ve.
+ */
+function pintarBarrera(pieza) {
+  const nota = $('p-barrera-nota')
+  const aviso = $('p-barrera-aviso')
+  $('p-barrera').value = pieza?.barrera ?? ''
+  nota.hidden = !pieza?.barrera
+  aviso.hidden = true
+  if (!pieza?.barrera) return
+  const fisica = fisicaDeEscenario(mapa)
+  // El ápice de un salto sale de la parábola, no de una tabla: v²/2g con los
+  // números del mapa. Es la misma cuenta que la ficha de un rebote.
+  const apice = (fisica.jumpSpeed * fisica.jumpSpeed) / (2 * fisica.gravity)
+  const alto = coverHeight(pieza.kind) - (pieza.base ? coverHeight(pieza.base) : 0)
+  aviso.hidden = false
+  // La clase se escribe **en las dos ramas**: dejarla puesta de la vez anterior
+  // es cómo un aviso rojo se queda en rojo diciendo que todo está bien.
+  if (alto <= apice) {
+    aviso.className = 'aviso'
+    aviso.innerHTML = `Con <b>${alto.toFixed(2)} u</b> se salta por encima: en este `
+      + `mapa un salto sube <b>${apice.toFixed(2)} u</b>. Súbela o no delimita nada.`
+    return
+  }
+  aviso.className = 'nota'
+  aviso.innerHTML = `Con ${alto.toFixed(2)} u no se salta por encima `
+    + `(un salto sube ${apice.toFixed(2)} u en este mapa). Por arriba <b>se pisa</b>, `
+    + `como cualquier pieza.`
 }
 
 /**
@@ -3385,6 +3437,22 @@ campo('p-base', (v) => {
 })
 
 /**
+ * **El acabado de la barrera** (vuelta 95). Poner una barrera **le quita el
+ * tinte y el dispositivo**, que es exactamente lo que el saneado haría al
+ * guardar: dejarlos puestos sería enseñar dos campos que el fichero va a tirar
+ * —el fallo de la vuelta 67 por la puerta del panel— y quitarlos aquí es que el
+ * creador vea el efecto en el mismo clic.
+ */
+campo('p-barrera', (v) => {
+  const pieza = mapa.boxes[seleccion]
+  if (!pieza) return
+  if (!v) { delete pieza.barrera; return }
+  pieza.barrera = v
+  delete pieza.tinte
+  delete pieza.superficie
+})
+
+/**
  * **La superficie de una pieza, por el panel** (vuelta 80). Lo que se escribe
  * aquí es lo mismo que mueve la flecha del mapa: un solo dato, dos puertas.
  */
@@ -3609,6 +3677,7 @@ function ponerDispositivo(cual) {
   // lo que decide dónde va el botón, no cómo está guardado el dato.
   if (cual === 'ventilador') { anadirVentilador(); return }
   if (cual === 'tirolina') { anadirTirolina(); return }
+  if (cual === 'barrera') { anadirBarrera(); return }
   const w = ladoDeDispositivo
   const d = ladoDeDispositivo
   // Se aparta de lo que ya haya ahí, como una forma nueva desde la vuelta 76:
@@ -3630,6 +3699,30 @@ function ponerDispositivo(cual) {
   // mapa, que es con lo que se coloca (convención de la 78); y sus números
   // salen justo debajo, en esta misma hoja. Mandar a quien acaba de pulsar un
   // botón a otra pestaña es perderle el sitio.
+  elegir(mapa.boxes.length - 1)
+}
+
+/**
+ * **Una barrera nace fina y alta** (vuelta 95), y por eso no pasa por el camino
+ * de las losas: las otras dos plataformas nacen por debajo de un escalón para
+ * que se pueda entrar andando (vuelta 80) y aquí eso sería lo contrario de lo
+ * que se quiere. Lo que delimita es **la cara**, así que el grosor es lo de
+ * menos y el alto lo es todo — y nace por encima del ápice de la física más
+ * saltarina del juego, que es lo que hace que la primera que pongas ya
+ * delimite en vez de tener que descubrir por qué no.
+ *
+ * Y nace **de cristal**, no invisible: una barrera invisible recién puesta es
+ * una pieza que hay que buscar a ciegas.
+ */
+function anadirBarrera() {
+  const base = COVER.barrera.porDefecto
+  const w = ladoDeDispositivo
+  const x = aRejilla(orbita.centro.x - w / 2)
+  let z = aRejilla(orbita.centro.z - base.grosor / 2)
+  // Se aparta de lo que ya haya ahí, como cualquier forma nueva desde la 76.
+  while (mapa.boxes.some((pieza) => pieza.x === x && pieza.z === z)) z += base.grosor + paso
+  mapa.boxes.push({ x, z, w, d: base.grosor, kind: base.alto, barrera: 'cristal' })
+  sucio = true
   elegir(mapa.boxes.length - 1)
 }
 
@@ -3694,6 +3787,18 @@ document.querySelector('[data-hoja="dispositivos"] .formas').addEventListener('c
 function pintarDispositivos() {
   const filas = []
   for (const [i, pieza] of mapa.boxes.entries()) {
+    /**
+     * **Y las barreras también se encuentran** (vuelta 95). Es el otro medio
+     * problema de la vuelta 81 y aquí aprieta más: una barrera **invisible** no
+     * se ve en el mapa **por definición**, así que sin esta fila la única forma
+     * de dar con ella sería pinchar a ciegas donde el jugador se choca.
+     */
+    if (pieza.barrera) {
+      const alto = (coverHeight(pieza.kind) - (pieza.base ? coverHeight(pieza.base) : 0)).toFixed(1)
+      filas.push(`<li data-pieza="${i}"><b>Barrera</b> · ${pieza.barrera}, `
+        + `${pieza.w}×${pieza.d} y ${alto} u de alto @ ${pieza.x},${pieza.z}</li>`)
+      continue
+    }
     if (!pieza.superficie) continue
     const sup = pieza.superficie
     // El nombre sale del catálogo y no de un `if` por tipo: añadir uno más a

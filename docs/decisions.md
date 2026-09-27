@@ -13645,11 +13645,12 @@ cuenta**) aplicada a algo que el saneado no tira sino que reemplaza.
 Recuperar la Sala vacía es **cambiarle la clave a ese mapa en Alchemist** y
 volver a subirlo; el fichero viejo se borra solo al regenerarse el registro.
 
-## §95 — Cinco cosas que sólo se ven usándolo
+## §95 — Cinco cosas que sólo se ven usándolo, una pieza nueva y dos propuestas
 
-Una sesión de feedback de Alchemist y de la armería. Lo que tienen en común los
-cuatro arreglos: **ninguno se ve leyendo el código y ninguno da un error**. Tres
-salieron de jugar y construir, y uno de mirar una captura.
+Una sesión de feedback de Alchemist y de la armería, más una mecánica construida
+—la **barrera**— y dos propuestas escritas y sin construir (las 08 y 09). Lo que
+tienen en común los cuatro arreglos: **ninguno se ve leyendo el código y ninguno
+da un error**. Tres salieron de jugar y construir, y uno de mirar una captura.
 
 ### §95.1 — La pieza que se elevaba sola eran dos fallos, no uno
 
@@ -13766,3 +13767,136 @@ El botón se queda, y no por duplicar: **un gesto deducido no puede ser la únic
 puerta**. Quien copie la imagen con la ventana ya delante no produce ninguna
 vuelta que detectar, y entonces el editor volvería a no enterarse. Es la misma
 pareja que el aviso de la barra y el botón de subir de la vuelta 93.
+
+### §95.5 — Una barrera no es cobertura, y de ahí sale todo lo demás
+
+Se pidió «un dispositivo de barrera para delimitar zonas del mapa, configurable en
+alto, ancho y grosor, y que el creador elija si es invisible o visible; si es
+visible, muy translúcida, como un cristal».
+
+Lo configurable era gratis: una pieza ya tiene ancho y fondo, y su altura puede
+ser **un número** y no una palabra del vocabulario desde la vuelta 76. Así que lo
+único que había que decidir de verdad es una cosa, y no se preguntaba en el
+encargo: **¿un cristal para balas?**
+
+#### La decisión, y por qué no es de gusto
+
+`occluders` es una sola lista, y de ella cuelgan cuatro cosas: la línea de visión
+que decide dónde nace un muñeco (vuelta 42), la brújula sobre un rival, el
+destello de mira del Titan (vuelta 90) y el rayo que resuelve un disparo (vuelta
+64). Meter el cristal ahí sale un cristal antibalas, y con él **cinco sistemas
+diciendo «ahí no hay nadie» de un rival que se ve perfectamente**: sin brújula,
+sin destello, invisible para los muñecos y con puestos de aparición «tapados» a la
+vista de todos. Es el problema de la vuelta 89 —«está en pantalla» y «se ve» son
+dos medidas distintas— al revés y multiplicado por cinco.
+
+Fuera de `occluders`, en cambio, **las dos variantes se comportan igual**. Y eso es
+lo que hace que elegir cristal o invisible sea lo que el encargo pedía —una
+decisión de aspecto— en vez de cambiar sin querer a qué se juega: con el cristal
+parando balas, marcar una casilla de «visible» convertiría un límite en cobertura
+antibalas, que es una mecánica que nadie pidió.
+
+Así que: **una barrera para el cuerpo y nada más.** Lo que se paga va en la ficha
+del editor porque no se adivina: no es cobertura, y para taparse están las piezas.
+
+#### Lo que sí se choca, y el número que lo hace servir
+
+La caja sigue en `this.boxes`, así que se choca como cualquier pieza y **se pisa
+por arriba** — es una pared, y una pared tiene techo. Hacer que no se pudiera pisar
+era la tentación, y se descartó: con `groundHeightAt` ignorándola, saltar sobre una
+barrera baja te dejaría caer dentro y `resolveAxis` te escupiría por la cara más
+cercana, que es peor que poder subirse.
+
+De ahí el único número que importa, y **no es tuning**: una barrera sólo delimita
+si mide más que un salto. Con la física de fábrica el ápice son 1.25 u y en Los
+Pilares 3.26, así que el valor de fábrica es **4 u** —por encima de los dos— y la
+ficha del editor dice, con la física **de ese mapa**, si con ese alto se salta por
+encima. Enterarse probando el mapa es enterarse tarde (vuelta 67).
+
+#### Dos cosas de forma
+
+**El cristal es su arista, no su cara.** Sin luces, lo único que dice dónde está un
+plano es su silueta (vuelta 38): la cara va a 0.08 de opacidad y el contorno a 0.92.
+Con la cara más opaca deja de ser un cristal y pasa a ser una pared de color, o sea
+una pieza que miente sobre lo que hace. Y `depthWrite: false` con `DoubleSide` son
+las dos mitades de que se lea como cristal — sin lo primero esconde lo que hay
+detrás, y sin lo segundo desde dentro de la zona que delimita no se ve nada.
+
+**Y va en su propio montón de dibujo.** No puede caer en el de su altura: la clave
+de un montón es `kind|tinte` porque de la altura sale el gris (vuelta 40), y un
+cristal no tiene gris. Todas las barreras de un mapa comparten material, así que
+cuestan **una** llamada de dibujo, no una por altura.
+
+#### Y no es un dispositivo, aunque su botón esté ahí
+
+La norma permanente de la vuelta 82 dice que **cada dispositivo nace con su sonido y
+su efecto visual de uso**. Una barrera no los lleva, y eso no la incumple: un
+dispositivo es algo que *te hace algo*, y aquí no pasa nada — te chocas, como con
+cualquier pared del juego, y todas las paredes del juego son silenciosas. Añadirle
+un golpe sería inventar un canal para el único muro que lo tuviera.
+
+Lo que sí hereda de los dispositivos son sus **dos puertas** (vuelta 81): el botón
+que la pone y la lista que la vuelve a encontrar. Y la segunda aquí aprieta más que
+en un rebote: **una barrera invisible no se ve en el mapa por definición**, así que
+sin esa fila la única forma de dar con ella sería pinchar a ciegas donde el jugador
+se choca. Su acabado, en cambio, vive en la ficha de la pieza, junto al tinte: es
+la misma clase de campo —cómo se dibuja— y no una mecánica.
+
+#### Y lo que el banco cazó, que es la lección repetible
+
+`barrera95` [3] salió **verde midiendo nada**. La firma de `resolveAxis` es
+`(eje, de, a, otroEje, pies, cabeza)` y el banco le pasaba siete argumentos con el
+radio al final, así que `from` valía 0 y el jugador «andaba» desde dentro del muro
+hacia fuera: control y barrera daban **8.0000 contra 8.0000**, que es el punto de
+partida, y la fila afirmaba que se paraban en el mismo sitio. Dos números iguales y
+los dos equivocados, o sea el 100 % sin denominador de la vuelta 46 otra vez.
+
+Lo que lo delató fue mirar el número y preguntarse **qué debería valer**: la cara
+del muro está en 0.5 y el radio del cuerpo es 0.4, así que la respuesta es 0.9 y no
+8. Con la firma buena sale 0.9000 en los tres casos. Si una fila afirma que dos
+cosas coinciden, la fila de antes tiene que decir **en qué** coinciden.
+
+### §95.6 — Las dos propuestas, y la que la medida cambió
+
+Las dos se escribieron sin construir nada, y la segunda es la que merece la pena
+leer antes de tocarla.
+
+**La 08 (el arsenal del mapa)** contesta las tres preguntas del encargo y la mitad
+del trabajo estaba hecha: `duelo.dotacion` existe desde la vuelta 72 y le faltan dos
+campos. Lo que sí aporta es un encuadre que la abarata entera —**un mapa de peanas
+es un mapa sin economía**, porque una peana es lo primero del juego que da un arma
+sin cobrarla, y con tienda abierta el catálogo pasa a ser decoración— y una respuesta
+que no necesita campo: si las peanas van en zona de cada jugador o compartidas **lo
+dice dónde se ponen**, porque el mapa de duelo es simétrico por giro (vuelta 66) y
+una peana declarada en una mitad sale con su gemela por construcción.
+
+**La 09 (perforación) es la que cambió con la medida.** El encargo proponía resolver
+por grosor atravesado, que es correcto y además casi gratis —el *slab test* de
+`cortarSegmento` ya calcula la entrada y la salida y tira la segunda—. Lo que la
+auditoría (`perfora95`, 13.206 parejas tapadas en el Plano A y 8.039 en El Espejo)
+dice es que la intuición de partida es falsa:
+
+**Una esquina no es «poco material».** Para pasar de un lado al otro de una caja hay
+que cruzar entera una de sus dos bandas en planta, así que el material es **por lo
+menos su grosor**: medido contra la pieza más fina del Plano A, rozando su vértice a
+0.05, 0.1, 0.2, 0.4, 0.6 y 1.0 u, sale **1.000, 1.000, 1.000, 1.001, 1.003 y 1.008
+u**. No baja acercándose al vértice; sólo sube con el ángulo.
+
+Dónde sí sale poco material es cuando la bala **roza y sale por el mismo lado**, o
+sea cuando la víctima estaba *a punto* de ser visible. Así que el umbral no controla
+«esquinas sí o no»: controla **a cuántos centímetros de ser visible empiezas a estar
+en peligro** — una mecánica real y distinta de la pedida.
+
+Y la tabla pone el precio de cada escalón: a 0.5 u dejan de esconder el **2.9 %** de
+los escondites del Plano A y el 4.5 % de los de El Espejo; a 1.0 u el 8.6 y el 13.3;
+a **1.5 u el 34.5 %**, que ya no es una mecánica añadida sino otro mapa. Con el tope
+puesto por el mapa más fino —El Espejo y Los Pilares tienen cinco piezas de 0.50 u
+cada uno— el umbral global no puede pasar de **0.45**.
+
+De ahí la recomendación, que es al revés de lo que parecía: **primero que la pieza
+declare que se atraviesa** (`perforable`, hermano de `barrera`), porque el efecto en
+los mapas de hoy es **ninguno por construcción**, se aprende —dos hechos en vez de
+uno por pieza y por ángulo— y se puede **ver**; y el umbral global después, con su
+auditoría publicada. Y **empezando por el Titan y sólo el Titan**, que es la única
+arma del arsenal que se delata antes de disparar (vuelta 90): la única donde «te han
+matado a través de una esquina» viene con un aviso previo.

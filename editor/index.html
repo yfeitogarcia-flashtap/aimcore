@@ -251,7 +251,8 @@
               <div class="accion-grande">
                 <button id="p-apilar" type="button"
                   title="Pone la base en el techo de la pieza de debajo">⬒ Apilar sobre lo de debajo</button>
-                <span class="nota">También con <kbd>clic derecho</kbd> sobre la pieza, o <kbd>F</kbd>.</span>
+                <span class="nota">También con <kbd>clic derecho</kbd> sobre la
+                  pieza —un clic, sin arrastrar— o con <kbd>Av Pág</kbd> estando en el suelo.</span>
               </div>
 
               <div class="trio">
@@ -277,7 +278,7 @@
               <!-- **Base es «desde qué altura empieza»**, no «sobre qué pieza
                    se apoya»: un número, como el alto. -->
               <p class="nota">Una pieza va del suelo a su <b>Alto</b>. Súbela con
-                <kbd>R</kbd>/<kbd>F</kbd> o escribiendo desde qué altura empieza, y
+                <kbd>Re Pág</kbd>/<kbd>Av Pág</kbd> o escribiendo desde qué altura empieza, y
                 apóyala en la de debajo con Apilar.</p>
               <label>Base: empieza a <input id="p-base" type="number" step="0.1" min="0"
                 title="Altura desde el suelo a la que arranca la pieza. 0 = en el suelo." /></label>
@@ -296,6 +297,27 @@
               <div id="p-tintes" class="tintes" role="radiogroup" aria-label="Tinte de la pieza"></div>
               <p class="nota">La <b>claridad</b> la sigue diciendo el alto: dentro
                 de un tinte, una pieza alta se ve más clara que una baja.</p>
+
+              <!-- **La barrera va aquí y no en Dispositivos** (vuelta 95),
+                   aunque su botón esté allí. Lo que decide es **cómo se dibuja
+                   la pieza**, que es la misma clase de campo que el tinte: no es
+                   una mecánica —no te hace nada—, así que el argumento de la
+                   vuelta 81 para sacar los dispositivos de aquí no le aplica. En
+                   Dispositivos están el botón que la pone y la lista que la
+                   vuelve a encontrar, que son los dos problemas de la 81. -->
+              <h3>Barrera</h3>
+              <label>Acabado
+                <select id="p-barrera">
+                  <option value="">Ninguno (una pieza normal)</option>
+                  <option value="cristal">Cristal · se ve, muy translúcido</option>
+                  <option value="invisible">Invisible · no se dibuja nada</option>
+                </select>
+              </label>
+              <p id="p-barrera-nota" class="nota" hidden>Una barrera <b>sólo para
+                el cuerpo</b>: no corta la vista ni para balas, y no esconde al
+                rival de la brújula. Sirve para decir por dónde no se pasa, no
+                para taparse — para eso están las piezas.</p>
+              <p id="p-barrera-aviso" class="aviso" hidden></p>
 
               <!-- **Lo que la pieza le hace a quien la pisa vive en
                    Dispositivos** (vuelta 81). Aquí sólo se dice que lo es: la
@@ -493,10 +515,18 @@
                 <button type="button" data-dispositivo="teletransporte" class="macro">
                   <b>Teletransporte</b><span>área y destino</span>
                 </button>
+                <button type="button" data-dispositivo="barrera" class="macro">
+                  <b>Barrera</b><span>límite de zona</span>
+                </button>
               </div>
               <p class="nota">Las dos plataformas nacen con un alto por debajo
                 de un escalón (0.25) para que <b>se pueda entrar andando</b>, no
                 sólo cayendo encima. Con un bordillo de 0.6 te chocas.</p>
+              <p class="nota">La <b>barrera</b> es la excepción: nace <b>fina y
+                alta</b>, porque lo que delimita es su cara y un límite por
+                debajo de un salto no delimita nada. Se estira por sus esquinas
+                como cualquier pieza, y su acabado —cristal o invisible— está en
+                la ficha de la pieza, en <b>Construir</b>.</p>
 
               <h3>Tamaño</h3>
               <!-- **Los presets son atajos, no el catálogo** (vuelta 82). Lo

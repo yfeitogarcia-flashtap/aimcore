@@ -115,13 +115,41 @@ export function sanearPieza(bruta, problemas = [], donde = 'pieza') {
    * tirarla dejaría un agujero en el suelo por un nombre mal puesto. Se dice y
    * se sigue.
    */
+  /**
+   * **La barrera** (vuelta 95), y va **antes del tinte y de la superficie**
+   * porque decide si esos dos significan algo. El orden de estas tres
+   * asignaciones **es** el orden en que se emiten, y de eso cuelga que el
+   * saneado sea un punto fijo también en el orden de las claves (vuelta 83).
+   *
+   * Un acabado desconocido **no tira la pieza**, como un tinte desconocido: una
+   * caja sigue siendo una caja y tirarla dejaría un agujero en el mapa por una
+   * palabra mal escrita.
+   */
+  if (bruta.barrera !== undefined && bruta.barrera !== null) {
+    if (COVER.barrera.acabados.includes(bruta.barrera)) p.barrera = bruta.barrera
+    else problemas.push(`${donde}: barrera desconocida (${JSON.stringify(bruta.barrera)})`)
+  }
   if (bruta.tinte !== undefined && bruta.tinte !== null) {
-    if (COVER.tintes[bruta.tinte]) p.tinte = bruta.tinte
+    /**
+     * **Una barrera no lleva tinte, y se dice.** Su color es el del cristal, así
+     * que un tinte aquí es un color que no se pinta en ninguna parte — o sea el
+     * fallo de la vuelta 67 por la puerta del formato: un campo que el mapa
+     * guarda y el juego ignora. Se tira y se anota, que es lo que ya se hace con
+     * un tinte desconocido.
+     */
+    if (p.barrera) problemas.push(`${donde}: una barrera no lleva tinte (su color es el del cristal)`)
+    else if (COVER.tintes[bruta.tinte]) p.tinte = bruta.tinte
     else problemas.push(`${donde}: tinte desconocido (${JSON.stringify(bruta.tinte)})`)
   }
   if (bruta.superficie !== undefined) {
-    const sup = sanearSuperficie(bruta.superficie, problemas, donde)
-    if (sup) p.superficie = sup
+    // Y tampoco lleva dispositivo, por lo mismo: una barrera no es una pieza del
+    // mapa, es un límite. Prometer que además te lanza es prometer dos cosas de
+    // una que hace una.
+    if (p.barrera) problemas.push(`${donde}: una barrera no lleva dispositivo`)
+    else {
+      const sup = sanearSuperficie(bruta.superficie, problemas, donde)
+      if (sup) p.superficie = sup
+    }
   }
   return p
 }

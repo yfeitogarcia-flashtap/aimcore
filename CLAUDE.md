@@ -381,6 +381,54 @@ botón se queda porque un gesto deducido no puede ser la única puerta — quien
 copie el fichero con la ventana ya delante no produce ninguna vuelta que
 detectar.
 
+**Una barrera para el cuerpo y nada más, y eso es lo que hace que su acabado sea
+aspecto** (vuelta 95). `barrera: 'cristal' | 'invisible'` en una pieza: delimita
+zonas de un mapa. Es el primer atributo de una pieza que cambia **contra qué
+existe** y no sólo su color, y la decisión entera es una: **no entra en
+`occluders`**.
+
+De esa lista cuelgan cuatro cosas —la línea de visión que decide dónde nace un
+muñeco (vuelta 42), la brújula, el destello de mira del Titan (vuelta 90) y el
+rayo que resuelve un disparo (vuelta 64)—, así que un cristal antibalas serían
+cinco sistemas diciendo «ahí no hay nadie» de un rival que se ve perfectamente.
+Fuera de `occluders`, **cristal e invisible se comportan igual**, y por eso elegir
+uno u otro es lo que se pidió —una decisión de aspecto— en vez de convertir un
+límite en cobertura que nadie decidió. Cuatro reglas:
+
+- **Se choca y se pisa por arriba, como cualquier pieza.** La caja sigue en
+  `this.boxes`. Que no se pudiera pisar era la tentación y es peor: con
+  `groundHeightAt` ignorándola, saltar sobre una barrera baja te deja caer dentro
+  y `resolveAxis` te escupe por la cara más cercana.
+- **De ahí el único número que importa, y no es tuning: sólo delimita si mide más
+  que un salto.** Nace con **4 u**, por encima del ápice de fábrica (1.25) y del de
+  Los Pilares (3.26), y la ficha del editor lo dice **con la física de ese mapa** —
+  enterarse probando el mapa es enterarse tarde (vuelta 67).
+- **El cristal es su arista, no su cara.** Sin luces, lo único que dice dónde está
+  un plano es su silueta (vuelta 38): cara a 0.08 y contorno a 0.92, con
+  `depthWrite: false` y `DoubleSide`. Y va en **su propio montón de dibujo**: la
+  clave de un montón es `kind|tinte` porque de la altura sale el gris (vuelta 40), y
+  un cristal no tiene gris — todas las del mapa son una llamada.
+- **Y no lleva tinte ni dispositivo, y se dice.** Su color es el del cristal y un
+  límite no te hace nada, así que el saneado los tira anotándolo y el editor los
+  quita en el mismo clic: enseñar un campo que el fichero va a borrar es el fallo de
+  la vuelta 67 por la puerta del panel.
+
+**Y no es un dispositivo, aunque su botón esté en su hoja.** La norma permanente de
+la vuelta 82 —cada dispositivo nace con su sonido y su destello— no le aplica: un
+dispositivo es algo que *te hace algo*, y aquí te chocas, como con cualquier pared
+del juego, y todas son silenciosas. Lo que sí hereda son las **dos puertas** de la
+vuelta 81, y la segunda aprieta más aquí: **una barrera invisible no se ve en el
+mapa por definición**, así que sin su fila en la lista la única forma de dar con
+ella sería pinchar a ciegas donde el jugador se choca. Su acabado vive en la ficha
+de la pieza, junto al tinte, porque es la misma clase de campo: cómo se dibuja.
+
+Medido (`barrera95`, sin navegador, y `barrera95ed`, contra el editor): los mapas de
+hoy se montan idénticos y el control **corta la vista de verdad**; las dos variantes
+dan **0 montones en `occluders`**, no cortan la vista y no paran el rayo de un
+disparo; las dos montan **exactamente la misma colisión**; y las dos paran al jugador
+en **0.9000**, que es la cara del muro más el radio del cuerpo — el mismo sitio que
+una pieza normal.
+
 **Todo el tuning en `config.js`.** Ninguna constante de juego vive suelta en un
 módulo. Si necesitas un número nuevo, va a `config.js` aunque lo use un solo
 sitio.
@@ -5710,6 +5758,14 @@ sola vez al arrancar. Y cada pieza,
 prisma, rampa y escalera puede llevar **tinte**, elegido en una rejilla de
 muestras pintadas con el color de verdad a la altura de esa pieza.
 
+**Y desde la 95 hay un dispositivo más: la barrera.** Un botón en la hoja de
+Dispositivos deja una pieza **fina y alta** delante de la cámara para delimitar una
+zona, y su acabado —**cristal** muy translúcido o **invisible**— se elige en la
+ficha de la pieza, junto al tinte. Sólo para el cuerpo: no corta la vista, no para
+balas y no esconde a nadie de la brújula, así que elegir el acabado es una decisión
+de aspecto y no de mecánica. Su ficha dice, con la física de ese mapa, si con ese
+alto se salta por encima.
+
 Lo que todavía no hace —y son las fases 4 y 5 de
 `docs/propuestas/05-editor-de-mapas.md`—: vanos y métricas de mapa en vivo más
 allá de la de salidas. **La rotación libre dejó de estar en esa lista en la
@@ -6247,6 +6303,33 @@ el botón no pueda apuntar a un ajuste distinto del que enseña la fila.
 
 Cuentas, guardado en la nube, rankings y minimapa. Si el encargo no
 lo pide explícitamente, no se añade.
+
+**Y la vuelta 95 deja dos propuestas escritas y sin construir.** Las dos salieron
+del mismo encargo y las dos están en `docs/propuestas/`; lo que hay que saber sin
+abrirlas:
+
+- **08 — el arsenal del mapa** (peanas de arma y dotación completa). La mitad está
+  hecha: `duelo.dotacion` existe desde la vuelta 72 y le faltan dos campos
+  —granadas y arrojadizo—, así que **la fase 1 no tiene mecánica nueva**. Lo que la
+  acota es un encuadre: **un mapa de peanas es un mapa sin economía**, porque una
+  peana es lo primero del juego que daría un arma sin cobrarla y con tienda abierta
+  el catálogo entero pasa a ser decoración. Y si las peanas van en zona de cada
+  jugador o compartidas **no es un campo: lo dice dónde se ponen**, porque el mapa
+  de duelo es simétrico por giro (vuelta 66).
+- **09 — perforación** (disparar a través de una esquina), y ésta **es la que la
+  medida cambió**. «Por grosor atravesado» es el modelo correcto y es casi gratis
+  —el *slab test* de `cortarSegmento` ya calcula entrada y salida y tira la
+  segunda—, pero la auditoría (`perfora95`: 13.206 parejas tapadas en el Plano A y
+  8.039 en El Espejo) dice que **una esquina no es «poco material»**: para pasar de
+  un lado al otro de una caja hay que cruzar entera una de sus dos bandas, así que
+  el material es **por lo menos su grosor** —1.000 u rozando el vértice del Plano A
+  a 0.05, 0.1, 0.2, 0.4, 0.6 y 1.0 u de distancia—. El umbral no controla
+  «esquinas sí o no»: controla a cuántos centímetros de ser visible empiezas a estar
+  en peligro. Y el precio de cada escalón está medido: a 0.5 u dejan de esconder el
+  **2.9 %** de los escondites del Plano A, a 1.0 el 8.6 y a **1.5 el 34.5 %**, que
+  ya es otro mapa. De ahí que la recomendación sea al revés: **primero que la pieza
+  declare que se atraviesa** (efecto cero en los mapas de hoy, por construcción), y
+  **empezando por el Titan**, la única arma que se delata antes de disparar.
 
 **Y lo que la vuelta 93 deja anotado y no construido es una cosa: los
 estampados no tienen puerta de verdad.** Se pidió que fueran sólo para game

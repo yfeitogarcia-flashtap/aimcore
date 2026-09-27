@@ -3607,6 +3607,60 @@ export const COVER = {
     hueso: '#6E6A64',
   },
 
+  /**
+   * **Una barrera delimita, no cubre** (vuelta 95).
+   *
+   * Es el primer atributo de una pieza que cambia **contra qué existe**, y no
+   * sólo su color. Una barrera **para el cuerpo y nada más**: no entra en
+   * `occluders`, así que no tapa la vista, no para balas y no oculta a nadie de
+   * la brújula ni del destello del Titan. Lo que hace es decir por dónde no se
+   * pasa, que es exactamente lo que se pidió — delimitar zonas de un mapa.
+   *
+   * **Y eso es lo que hace que elegir cristal o invisible sea una decisión de
+   * aspecto y no una mecánica.** Metiendo el cristal en `occluders` habría
+   * salido un cristal antibalas, y con él cinco sistemas diciendo «ahí no hay
+   * nadie» de un rival que se ve perfectamente: sin brújula (vuelta 42), sin
+   * destello de mira (vuelta 90), invisible para los muñecos y con puestos de
+   * aparición «tapados» a la vista de todos. Así, las dos variantes se
+   * comportan **igual**, y quien construye elige si se ve o no sin cambiar sin
+   * querer a qué se juega.
+   *
+   * Lo que se paga, y va escrito en la ficha del editor porque no se adivina:
+   * **una barrera no es cobertura**. Para taparse están las piezas, que es lo
+   * que llevan siendo desde la vuelta 23.
+   */
+  barrera: {
+    /** Los dos acabados que el motor sabe dibujar. Fuera de aquí, se dice y se tira. */
+    acabados: ['cristal', 'invisible'],
+    /**
+     * **El cristal es su arista, no su cara** (vuelta 95). Sin luces en la
+     * escena, lo único que dice dónde está un plano es su silueta (vuelta 38),
+     * así que la cara va casi a cero y el contorno entero: se ve el marco y se
+     * ve a través. Con la cara más opaca dejaría de ser un cristal y pasaría a
+     * ser una pared de color, o sea una pieza que miente sobre lo que hace.
+     */
+    opacidad: 0.08,
+    aristaOpacidad: 0.92,
+    /**
+     * **Y el color es el azul eléctrico**, que es la tercera vez que un tono de
+     * la paleta significa dos cosas y se admite por lo de siempre: lo que
+     * separa las cosas es la forma (vuelta 67). `electric` es un color de
+     * material —«esto es energía»— y lo llevan el escudo, el anillo de una
+     * puerta y la carga; un anillo está tumbado en el suelo y esto es un plano
+     * de pie. Y **no podía ser otro**: ámbar es la bomba, rojo es que te
+     * disparan, amarillo que te han visto y naranja son las dianas.
+     */
+    color: '#6FE0FF',
+    /**
+     * Con qué nace una barrera en el editor. **Fina y alta**, que es lo que la
+     * hace un límite: el grosor es lo de menos —lo que delimita es la cara— y
+     * el alto tiene que estar por encima de un salto o no delimita nada. Cuatro
+     * unidades pasan el ápice de la física de fábrica (1.25) y también el de
+     * Los Pilares (3.26), que es el mapa que salta más alto.
+     */
+    porDefecto: { grosor: 0.4, alto: 4 },
+  },
+
   /** Aristas: un tono por encima del relleno, para que el bloque tenga borde. */
   edgeLighten: 0.42,
   edgeOpacity: 0.55,

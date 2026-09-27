@@ -939,7 +939,7 @@ Cuatro cosas que conviene saber al usarlo:
   29% del hueco justo en las diagonales, o sea un pozo que por dentro no es
   redondo.
 
-### Dispositivos: rebote, velocidad, hielo, ventilador, tirolina y teletransportes
+### Dispositivos: rebote, velocidad, hielo, ventilador, tirolina, teletransportes y barrera
 
 Tienen **su propio icono** en la tira, en azul. Dentro hay un botón por cada uno
 y deja el suyo delante de la cámara, ya montado y ya elegido:
@@ -964,6 +964,19 @@ y deja el suyo delante de la cámara, ya montado y ya elegido:
   dice cuánto se tarda en recorrerla.
 - **Teletransporte** — un área que te deja en otro sitio, con su destino y su
   rumbo, unidos por una línea.
+- **Barrera** *(vuelta 95)* — un **límite de zona**. Nace **fina y alta** —al
+  contrario que las plataformas— porque lo que delimita es su cara, y porque un
+  límite por el que se salta no delimita nada: nace con 4 u, que está por encima
+  de lo que sube un salto en cualquier mapa de hoy. Se estira por sus esquinas
+  como cualquier pieza, y su **acabado** se elige en la ficha de la pieza, en
+  Construir: **cristal** (se ve, muy translúcido) o **invisible** (no se dibuja
+  nada).
+
+  **Sólo para el cuerpo**, y eso es lo que hace que elegir el acabado sea una
+  decisión de aspecto: una barrera **no corta la vista, no para balas y no
+  esconde al rival de la brújula**, así que el cristal y la invisible se
+  comportan igual. Para taparse están las piezas. Su ficha te dice, con la
+  **física de ese mapa**, si con ese alto se salta por encima.
 
 Las dos plataformas nacen con **0.2 de alto**, por debajo de un escalón (0.25),
 que es lo que hace que **se pueda entrar andando** en ellas y no sólo cayendo
