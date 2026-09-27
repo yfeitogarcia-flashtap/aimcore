@@ -170,13 +170,25 @@
               </div>
               <p id="est-vacio" class="nota">Deja una imagen en <b>public/estampados/</b>
                 —WebP a ser posible— y aparecerá aquí.</p>
+              <p class="nota">La lista se rehace <b>al volver a esta ventana</b>,
+                así que dejar el fichero y volver al navegador basta. Y con el
+                botón, cuando quieras.</p>
+              <div class="botonera">
+                <button id="est-buscar" type="button">Buscar imágenes nuevas</button>
+              </div>
               <ul id="est-lista"></ul>
 
               <div id="est-ficha" hidden>
                 <h3>Estampado seleccionado</h3>
-                <p class="nota">Arrástralo por su <b>cuadro</b>, dale tamaño con
-                  la <b>esquina</b> y súbelo con el <b>cubo</b>. La <b>cara</b>
-                  decide hacia dónde mira.</p>
+                <p class="nota">Arrástralo por su <b>cuadro</b>, súbelo con el
+                  <b>cubo</b> y gíralo con el <b>aro</b>. Las dos esquinas de
+                  abajo le dan tamaño: la <b>derecha</b> estira ancho y alto por
+                  separado y la <b>izquierda</b> escala <b>sin deformarlo</b>.</p>
+                <p class="nota">No va pegado a una pieza: es un <b>plano
+                  suelto</b>. «Mira hacia» es la dirección del mapa a la que
+                  encara —arrímalo a la cara de una caja y elige la dirección
+                  hacia la que esa cara da—, y el giro lo rueda dentro de su
+                  propio plano.</p>
                 <div class="trio">
                   <label>X <input id="est-x" type="number" step="0.5" /></label>
                   <label>Y <input id="est-y" type="number" step="0.5" /></label>
@@ -185,8 +197,15 @@
                 <div class="trio">
                   <label>Ancho <input id="est-ancho" type="number" step="0.5" /></label>
                   <label>Alto <input id="est-alto" type="number" step="0.5" /></label>
-                  <label>Cara <select id="est-cara"></select></label>
+                  <label>Giro <input id="est-giro" type="number" step="5" /></label>
                 </div>
+                <!-- **«Cara» pasa a ser «Mira hacia»** (vuelta 95). Se reportó
+                     entendido como el giro, y de ahí la pregunta de cuál es
+                     cada cara de una pieza: un estampado **no va pegado a una
+                     pieza**, es un plano suelto que se coloca donde sea y mira
+                     a una de las seis direcciones del mapa. El nombre lo dice
+                     ahora, y el giro existe. -->
+                <label>Mira hacia <select id="est-cara"></select></label>
                 <p id="est-nota" class="nota"></p>
                 <div class="botonera">
                   <button id="est-borrar" type="button">Borrar el estampado</button>

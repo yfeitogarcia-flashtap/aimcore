@@ -13644,3 +13644,125 @@ cuenta**) aplicada a algo que el saneado no tira sino que reemplaza.
 
 Recuperar la Sala vacía es **cambiarle la clave a ese mapa en Alchemist** y
 volver a subirlo; el fichero viejo se borra solo al regenerarse el registro.
+
+## §95 — Cinco cosas que sólo se ven usándolo
+
+Una sesión de feedback de Alchemist y de la armería. Lo que tienen en común los
+cuatro arreglos: **ninguno se ve leyendo el código y ninguno da un error**. Tres
+salieron de jugar y construir, y uno de mirar una captura.
+
+### §95.1 — La pieza que se elevaba sola eran dos fallos, no uno
+
+Se reportó como «a veces una pieza cualquiera se eleva flotando sin querer y
+tengo que hacer Ctrl+Z», con dos sospechosos nombrados: R/F y el clic derecho de
+apilar. Los dos eran culpables, y por razones distintas.
+
+**El clic derecho apilaba en el `pointerdown`.** La vuelta 78 le dio al clic
+derecho dos trabajos —orbitar la cámara y, sobre una pieza, apilarla— y los
+resolvía al pulsar: raycast, y si había pieza debajo, `elegir` + `apilar` +
+`return`. De ahí salen dos cosas y la segunda no se había visto: **cualquier
+órbita que empiece con el puntero sobre una pieza la apila**, y esa órbita no
+llega a empezar, porque la rama sale antes. En un mapa de cuarenta piezas eso es
+media pantalla.
+
+La regla que lo cierra vale para cualquier control que comparta botón con un
+arrastre: **quién es un gesto no se sabe hasta que el puntero se levanta.** Se
+orbita siempre, se guarda la pieza candidata, y sólo cuenta como clic si el
+puntero se movió menos de cuatro píxeles — que es lo que tiembla una mano al
+pulsar un botón del ratón. Un `pointercancel` no es un clic y no apila.
+
+**Y la R era la R de recargar.** Subir y bajar una pieza eran R y F desde la
+misma vuelta 78, y ahí hay una asimetría que aquella vuelta no vio: escribió que
+«las teclas de herramienta son suyas y no se sobrecargan» —es decir, que el
+editor no le quite teclas al panel— y **no escribió la mitad contraria**, que es
+que tampoco puede quedarse con las del juego. Quien construye un mapa es quien
+más lo juega: la R se pulsa por costumbre, con una pieza elegida, y la pieza
+sube.
+
+Pasan a **Re Pág / Av Pág**, que no están en `KEYBINDS` ni pueden estarlo y que
+dicen arriba y abajo sin aprenderse nada. Lo que se paga es que la mano sale de
+WASD, y es la decisión correcta: cambiar una pieza de altura no es un gesto que
+se repita cien veces seguidas, y **un atajo cómodo que se dispara solo no es
+cómodo**. Con un segundo seguro que vale para lo que venga: **subir o bajar se
+dice en la barra**, porque mover una pieza en altura no cambia su huella y desde
+arriba —que es de donde se construye— no se nota.
+
+### §95.2 — La armería se salía por los lados, y no era culpa del texto
+
+Se reportó que «Escudo · Precisión» y descripciones como «Semiautomática ·
+escopeta» invadían la ficha de al lado, con la sospecha de que fuera la tensión
+que la vuelta 93 dejó anotada al meter la sexta primaria. No lo era: la sexta
+arma sólo lo hizo visible.
+
+Medido antes de tocar nada (`arm95`): **88 textos fuera de su ficha**, y casi
+todos exactamente **16 px**, que es la pista. Un desbordamiento por texto largo
+da números distintos en cada fila; uno igual en todas es la caja. La ficha mide
+185 px con 165 de caja de contenido, y las estadísticas de dentro medían **190**:
+26 fuera del borde derecho y 16 dentro de la ficha vecina.
+
+La causa es de rejilla y no de tipografía: **una rejilla sin
+`grid-template-columns` tiene una columna implícita `auto`**, o sea
+`minmax(auto, max-content)`. Se estira hasta el texto más largo que lleve dentro
+en vez de acotarse a su contenedor, y como `.armoury__stats` declara
+`width: 100%`, ese cien por cien era el de la columna inflada. `minmax(0, 1fr)`
+es lo que deja a la columna bajar de su `max-content`, y entonces el texto se
+parte.
+
+Lo que hay que retener, porque es lo que hace el arreglo seguro: **no toca la
+alineación entre fichas**. Lo que alinea las filas es `subgrid`, que es de las
+**filas** (vueltas 43 y 89); esto es la columna. Lo que sí cambia es que un valor
+largo ocupa dos renglones y **sube su fila en las seis a la vez**, que es
+exactamente lo que `subgrid` promete. Medido después: **0 de 88**.
+
+### §95.3 — «Cara» no era el nombre de lo que hacía
+
+Se reportó sin rodeos: «el campo Cara no se entiende, pensé que era el giro». Y
+la pregunta que venía detrás —«¿cómo diferencio cuál es cada cara de una
+pieza?»— **no tiene respuesta**, porque la pregunta no es ésa: un estampado no
+va pegado a una pieza. Es un plano suelto que se coloca donde sea y encara una de
+las seis direcciones del mapa. El nombre prometía una relación con una pieza que
+no existe.
+
+Pasa a llamarse **«Mira hacia»**, cada opción dice a qué eje da, y la ficha
+explica lo que el nombre escondía. Y lo que se entendió que era —el giro— pasa a
+existir, porque era un grado de libertad que faltaba de verdad: un banner
+vertical en una pared es la misma imagen a noventa grados. Tres cosas del
+mecanismo:
+
+- **Se aplica en local y después de encarar la cara** (`rotateZ`). Como tercer
+  ángulo de la Euler dependería del orden, y un logo del techo saldría girado por
+  otro eje.
+- **No se escribe si vale cero** (vuelta 83), así que los estampados que ya están
+  en disco se abren y se guardan byte a byte iguales y el saneado sigue siendo un
+  punto fijo, también en el orden de las claves.
+- **Y su aro se mide en pantalla, no en el mundo.** El plano de un estampado
+  puede ser vertical, y el punto del ratón proyectado contra el suelo no dice
+  nada de un ángulo dentro de una pared. Lo que se paga queda escrito porque no
+  se adivina: **mirándolo desde detrás gira al contrario del ratón**, porque
+  desde ahí su plano se ve espejado. Es el precio de cualquier gizmo plano, y se
+  arregla dando la vuelta a la cámara.
+
+**Y escalar sin deformar** es el séptimo tirador de la vuelta 93 aplicado a un
+logo, con una razón más fuerte que allí: una pieza deformada sigue siendo una
+caja, pero **un logo estirado es otro logo** — que es el motivo entero por el que
+los estampados son la excepción a «sin assets» (§93.8). Se mide el factor de
+alejarse del centro **en pantalla**, para que funcione mire la cámara desde donde
+mire, y **el tope se aplica al factor y no a cada lado**: acotando ancho y alto
+por separado, el primero que llegara a su límite dejaría de crecer y el otro
+seguiría, o sea deformándolo justo en el tirador que existe para no deformarlo.
+
+### §95.4 — Una lista que sale de una carpeta hay que volver a mirarla
+
+«Al subir un WebP nuevo, Alchemist no lo reconoce hasta cerrarlo y volver a
+abrirlo.» Exacto: la lista se pedía **una vez, al arrancar**.
+
+Lo interesante es cuál es el disparador correcto. Un temporizador sondeando una
+carpeta es una petición por segundo para algo que pasa dos veces al día. El
+gesto lo dice: **dejar un fichero en una carpeta se hace fuera del navegador**,
+así que volver a la ventana *es* la señal de que puede haber algo nuevo. Cuesta
+una petición por vuelta y sólo existe con servidor de desarrollo detrás.
+
+El botón se queda, y no por duplicar: **un gesto deducido no puede ser la única
+puerta**. Quien copie la imagen con la ventana ya delante no produce ninguna
+vuelta que detectar, y entonces el editor volvería a no enterarse. Es la misma
+pareja que el aviso de la barra y el botón de subir de la vuelta 93.

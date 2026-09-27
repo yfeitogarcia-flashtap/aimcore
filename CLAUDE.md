@@ -296,6 +296,91 @@ que la vuelta 92 construyó para enseñar que hay más de un escenario. El edito
 avisa ahora al ver la clave (`CLAVES_INTEGRADAS`), antes de guardar. Lo que no
 se ha tocado es el mapa: es de quien lo hizo.
 
+**Un gesto que puede ser un clic o un arrastre se decide al soltar** (vuelta
+95). El clic derecho del editor orbita la cámara **y** apila la pieza que haya
+debajo (vuelta 78), y las dos cosas se resolvían en el `pointerdown`: mirando el
+raycast y, si había pieza, apilando y saliendo con un `return`. O sea que
+**cualquier órbita que empezara con el puntero encima de una pieza la apilaba**,
+y además esa órbita no llegaba a empezar. En un mapa lleno eso es media
+pantalla, y se reportó como «una pieza se eleva flotando sin querer».
+
+La regla vale para cualquier control que quiera compartir botón con un
+arrastre: **quién es un gesto no se sabe hasta que el puntero se levanta.** Se
+orbita siempre, se guarda la pieza candidata, y sólo cuenta como clic si el
+puntero se movió menos de `APILAR_UMBRAL_PX` (4, que es lo que tiembla una mano
+al pulsar). Un `pointercancel` no es un clic y no apila.
+
+**Y una tecla de herramienta tampoco puede ser una tecla del juego** (vuelta
+95). Es la otra mitad de la regla de la 78 —«las teclas de herramienta son suyas
+y no se sobrecargan»—, y la que faltaba: subir y bajar una pieza eran **R y F**,
+y **la R es recargar**. Quien construye un mapa es quien más lo juega, así que
+la pulsa por costumbre con una pieza elegida y la pieza se va hacia arriba. Pasan
+a **Re Pág / Av Pág**, que no están en `KEYBINDS` ni pueden estarlo. Lo que se
+paga es que la mano sale de WASD, y es lo correcto: cambiar una pieza de altura
+no es un gesto que se repita cien veces seguidas, y **un atajo cómodo que se
+dispara solo no es cómodo**.
+
+Con un segundo seguro que vale para cualquier cosa que se añada: **subir o bajar
+se dice en la barra**. Mover una pieza en altura no cambia su huella, así que
+mirando el mapa desde arriba —que es de donde se construye— no se nota; lo que
+convierte un cambio silencioso en uno que se ve es que lo cuente quien lo hace.
+
+**Una ficha con `subgrid` necesita que su columna pueda encogerse** (vuelta 95).
+Las fichas de la armería se salían por los lados: medido, ficha de 185 px con
+165 de caja de contenido y las estadísticas dentro midiendo **190** — 26 px
+fuera del borde y **16 dentro de la ficha de al lado**, que es como «3.2× con el
+clic derecho sin destello» de la Scout se leía por encima de la Pump. La causa
+no es el texto: es que una rejilla sin `grid-template-columns` tiene **una
+columna implícita `auto`**, o sea `minmax(auto, max-content)`, que se estira
+hasta el texto más largo en vez de acotarse a la ficha. `minmax(0, 1fr)` es lo
+que la deja bajar de su `max-content`, y entonces el texto **se parte**.
+
+No toca la alineación entre fichas y conviene ver por qué: lo que alinea las
+filas es `subgrid`, que es de las **filas** (vueltas 43 y 89), y esto es la
+columna. Lo que sí cambia es que un valor largo ocupa dos renglones y sube su
+fila **en las seis a la vez**, que es exactamente lo que `subgrid` promete.
+Medido (`arm95`): 88 textos fuera de su ficha antes, **0** después.
+
+**Un estampado no va pegado a una pieza, y ahora lo dice** (vuelta 95). El
+campo se llamaba `cara` y se leía como el giro; de ahí salió la pregunta de cuál
+es cada cara de una pieza, que no tiene respuesta porque **la pregunta no es
+ésa**: un estampado es un plano suelto que se coloca donde sea y encara una de
+las seis direcciones del mapa. Se llama «Mira hacia», cada opción dice hacia qué
+eje da, y la ficha lo explica.
+
+Y con ello llega **el grado de libertad que faltaba**: `giro`, dentro de su
+propio plano. Tres cosas del mecanismo:
+
+- **Se aplica en local y después de encarar la cara** (`rotateZ`), no como un
+  tercer ángulo de la Euler: ahí dependería del orden y un logo del techo saldría
+  girado por otro eje.
+- **No se escribe si vale cero** (vuelta 83), así que los estampados que ya están
+  en disco se abren y se vuelven a guardar byte a byte iguales, y el saneado
+  sigue siendo un punto fijo también en el orden de las claves.
+- **Y su aro se mide en pantalla, no en el mundo.** El plano de un estampado
+  puede ser vertical, así que el punto del ratón proyectado contra el suelo no
+  dice nada de un ángulo dentro de una pared. Lo que se paga va escrito porque no
+  se adivina: **mirándolo desde detrás gira al contrario del ratón**, porque
+  desde ahí su plano se ve espejado. Es el precio de cualquier gizmo plano.
+
+**Y escalar sin deformar es un factor, no dos números** (vuelta 95). El séptimo
+tirador de una pieza (vuelta 93) aplicado a un logo, y aquí con una razón más
+fuerte: una pieza deformada sigue siendo una caja, pero **un logo estirado es
+otro logo** — que es el motivo entero por el que los estampados son la excepción
+a «sin assets». El tope se aplica **al factor y no a cada lado**: acotando ancho
+y alto por separado, el primero que llegara a su límite dejaría de crecer y el
+otro seguiría, o sea deformándolo justo en el tirador que existe para no
+deformarlo.
+
+**Y una lista que sale de una carpeta se vuelve a mirar al volver a la ventana**
+(vuelta 95). Las imágenes de estampado se pedían **una vez, al arrancar**, así
+que dejar un WebP nuevo no servía de nada hasta cerrar Alchemist y volver a
+abrirlo. El disparador no es un temporizador: **dejar un fichero en una carpeta
+se hace fuera del navegador**, así que volver a la ventana *es* la señal. El
+botón se queda porque un gesto deducido no puede ser la única puerta — quien
+copie el fichero con la ventana ya delante no produce ninguna vuelta que
+detectar.
+
 **Todo el tuning en `config.js`.** Ninguna constante de juego vive suelta en un
 módulo. Si necesitas un número nuevo, va a `config.js` aunque lo use un solo
 sitio.
@@ -5618,7 +5703,10 @@ se avisa al arrancar Alchemist, para cazar una sesión que se cerró sin pulsarl
 chocar desde el primer día y sube en los cuatro rumbos desde esta vuelta—,
 **Escalera** —una macro que garantiza por construcción que cada escalón se sube
 andando—, y **estampados**: logos a color pegados a una superficie, con su lista
-en la hoja de Mapa y un tope de dos imágenes y cuatro colocados. Y cada pieza,
+en la hoja de Mapa y un tope de dos imágenes y cuatro colocados. **Desde la 95
+se giran** con su aro, **se escalan sin deformarse** con la esquina de la
+izquierda, y la lista de imágenes se rehace al volver a la ventana en vez de una
+sola vez al arrancar. Y cada pieza,
 prisma, rampa y escalera puede llevar **tinte**, elegido en una rejilla de
 muestras pintadas con el color de verdad a la altura de esa pieza.
 
@@ -6127,7 +6215,11 @@ tamaño, cadencia, distancia de aparición y **ancho del cono**, que se ve dibuj
 delante mientras se mueve) y *cómo se mueven y cuánto aprietan* (**modo
 dinámico**, velocidad de patrulla 1.5–8 u/s y **dificultad de los muñecos**). Los
 que no significan nada con lo elegido arriba salen **apagados y sin admitir
-entrada**, con su frase diciendo por qué.
+entrada**, con su frase diciendo por qué. Y al final, **«Volver» y «Jugar ·
+<modo>»** (vuelta 95): el par de siempre de una pantalla de ajustes, con el
+nombre del modo dentro porque un «Jugar» a secas en una pantalla con dos modos
+es un botón que no dice lo que hace. Sale de la misma variable que el botón de
+arriba.
 
 **Opciones** (desde el menú y desde la pausa, persistidas) se queda con lo que
 es **del jugador y de su máquina**: sensibilidad, **sensibilidad con mirilla**,

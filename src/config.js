@@ -4427,7 +4427,18 @@ export const ESTAMPADOS = {
   separacion: 0.01,
   /** Las seis caras a las que se puede encarar, y `cara` es una de éstas. */
   caras: ['norte', 'sur', 'este', 'oeste', 'suelo', 'techo'],
-  porDefecto: { imagen: '', cara: 'norte', x: 0, y: 2, z: 0, ancho: 4, alto: 2 },
+  /**
+   * **Y el giro dentro de su propio plano** (vuelta 95). `cara` dice hacia
+   * dónde mira el logo —que son seis direcciones del mundo— y no decía nada de
+   * cómo está puesto: un estampado sólo podía salir derecho. Se pidió poder
+   * girarlo, y es un grado de libertad que faltaba, no una preferencia: un
+   * banner vertical en una pared es la misma imagen a noventa grados.
+   *
+   * Va en **radianes**, como el `giro` de un prisma y el `yaw` de una salida, y
+   * el panel lo enseña en grados — la misma convención que ya tienen las dos.
+   */
+  giroPasoDeg: 5,
+  porDefecto: { imagen: '', cara: 'norte', x: 0, y: 2, z: 0, ancho: 4, alto: 2, giro: 0 },
 }
 
 /** ¿Es una ruta de estampado admisible? Misma forma que `esFotoDeFondo`. */

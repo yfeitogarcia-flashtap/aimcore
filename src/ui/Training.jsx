@@ -210,6 +210,13 @@ export default function Training({ settings, onChange, onStartTimed, onStartDeat
   const hayQuienDispare = conCobertura && settings.targetType === 'hitbox'
   const elegida = SESSION_DURATIONS[settings.sessionDuration]
   const segundos = elegida.seconds ?? 0
+  /**
+   * **El nombre del modo principal, en una variable** (vuelta 95), porque desde
+   * esta vuelta lo dicen dos botones: el de arriba y el «Jugar» del final. Dos
+   * copias de la misma condición es cómo uno acaba diciendo «ronda con
+   * explosivo» y el otro arrancando otra cosa.
+   */
+  const modoPrincipal = conCobertura ? 'Ronda con explosivo' : 'Ronda cronometrada'
   const deathmatchLabel = conCobertura
     ? `${SESSION_MODES.deathmatch.label}${segundos > 0 ? ` · ${elegida.label}` : ' ∞'}`
     : SESSION_MODES.deathmatch.plainLabel
@@ -244,7 +251,7 @@ export default function Training({ settings, onChange, onStartTimed, onStartDeat
             onClick={onStartTimed}
             autoFocus
           >
-            {conCobertura ? 'Ronda con explosivo' : 'Ronda cronometrada'}
+            {modoPrincipal}
             <span className="button__sub">
               {conCobertura
                 ? 'Encuentra la bomba y desactívala antes de que reviente.'
@@ -388,10 +395,27 @@ export default function Training({ settings, onChange, onStartTimed, onStartDeat
 
       {/* **Volver es pequeño y va al final** (vuelta 94). Era un botón del
           tamaño de los de jugar, y en una pantalla cuya acción es empezar una
-          partida, el control más grande no puede ser el de salir de ella. */}
+          partida, el control más grande no puede ser el de salir de ella.
+
+          **Y a su lado, «Jugar»** (vuelta 95). Los dos modos están arriba y
+          pegados desde la 94, así que esto no es que la acción no se vea: es
+          que el final de una pantalla de ajustes es donde se acaba de decidir,
+          y ahí lo que se espera es el par de siempre — te vas o confirmas.
+
+          **Dice qué modo arranca**, y sale de la misma variable que el botón de
+          arriba: un «Jugar» a secas en una pantalla con dos modos es un botón
+          que no dice lo que hace, que es el fallo de la vuelta 67. Y va en
+          verde porque es la acción, mientras que volver no lo es. */}
       <div className="panel__actions">
         <button type="button" className="button button--quiet button--pequeno" onClick={onBack}>
           Volver
+        </button>
+        <button
+          type="button"
+          className="button button--primary button--pequeno"
+          onClick={onStartTimed}
+        >
+          Jugar · {modoPrincipal}
         </button>
       </div>
     </div>

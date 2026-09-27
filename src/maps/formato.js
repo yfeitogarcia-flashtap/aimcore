@@ -383,6 +383,16 @@ function sanearEstampado(bruto, problemas, donde) {
   for (const eje of ['x', 'y', 'z']) {
     if (!finito(bruto[eje])) { problemas.push(`${donde}: ${eje} no es un número`); return null }
   }
+  /**
+   * **El giro se normaliza a una vuelta y no se escribe si es cero** (vuelta
+   * 95), que es la disciplina de la 83: lo que vale su valor de fábrica no se
+   * guarda. Así los estampados que ya están en disco se abren y se vuelven a
+   * guardar **byte a byte iguales**, y el saneado sigue siendo un punto fijo
+   * también en el orden de las claves.
+   */
+  const vuelta = Math.PI * 2
+  const giro = finito(bruto.giro) ? ((bruto.giro % vuelta) + vuelta) % vuelta : 0
+
   return {
     imagen: bruto.imagen,
     cara,
@@ -391,6 +401,7 @@ function sanearEstampado(bruto, problemas, donde) {
     z: bruto.z,
     ancho: acotar(finito(bruto.ancho) ? bruto.ancho : ESTAMPADOS.porDefecto.ancho, ESTAMPADOS.anchoMin, ESTAMPADOS.anchoMax),
     alto: acotar(finito(bruto.alto) ? bruto.alto : ESTAMPADOS.porDefecto.alto, ESTAMPADOS.altoMin, ESTAMPADOS.altoMax),
+    ...(giro > 0 ? { giro } : {}),
   }
 }
 

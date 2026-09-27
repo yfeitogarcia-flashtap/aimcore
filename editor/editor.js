@@ -611,6 +611,12 @@ function cajaDeArea(w, d, alto, color, opacidad) {
  * al motor** — lo que sí guarda que digan lo mismo es `estampado93`, que compara
  * las dos.
  */
+/** Cómo se dice al lado de cada cara hacia dónde da, para el desplegable. */
+const RUMBO_DE_CARA = {
+  norte: 'hacia −Z', sur: 'hacia +Z', este: 'hacia +X',
+  oeste: 'hacia −X', suelo: 'hacia arriba', techo: 'hacia abajo',
+}
+
 const CARAS_DE_ESTAMPADO = {
   norte: { rotacion: [0, Math.PI, 0] },
   sur: { rotacion: [0, 0, 0] },
@@ -679,6 +685,53 @@ function aroDeCuartos(x, y, z, radio, marca, grupo) {
   pincha.userData.marca = { ...marca, prioridad: PRIORIDAD.tirador }
   pinchables.push(pincha)
   return pincha
+}
+
+/**
+ * **Un aro en el plano de un estampado** (vuelta 95). El de las rampas se tumba
+ * en el suelo porque lo que gira es una huella; un logo gira **dentro de su
+ * pared**, así que el aro se pone en su mismo plano copiando su rotación — un
+ * `TorusGeometry` nace en el XY local, que es el plano del `PlaneGeometry`, así
+ * que se encaran solos.
+ *
+ * Y debajo va un disco invisible más ancho, que es la idea de los `picker` de
+ * `TransformControls` y la lección de la vuelta 93: **un toro tiene el centro
+ * hueco**, así que apuntarle al centro —que es donde apunta cualquiera— es un
+ * clic que se cuela por el agujero y deselecciona.
+ */
+function aroEnPlano(centro, rotacion, radio, marca, grupo) {
+  const aro = new THREE.Mesh(
+    new THREE.TorusGeometry(radio, 0.05, 6, 28),
+    new THREE.MeshBasicMaterial({ color: COLOR_GIZMO }),
+  )
+  aro.position.copy(centro)
+  aro.rotation.copy(rotacion)
+  grupo.add(aro)
+  const pincha = new THREE.Mesh(
+    new THREE.CircleGeometry(radio + 0.2, 16),
+    new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide }),
+  )
+  pincha.position.copy(centro)
+  pincha.rotation.copy(rotacion)
+  pincha.userData.marca = { ...marca, prioridad: PRIORIDAD.tirador }
+  grupo.add(pincha)
+  pinchables.push(pincha)
+  return pincha
+}
+
+/**
+ * **Un punto del mundo, en coordenadas de la ventana.** Lo piden los gestos que
+ * ocurren en un plano que no es el suelo —girar y escalar un estampado—, donde
+ * el punto del ratón proyectado contra el suelo no significa nada.
+ */
+const _proyectado = new THREE.Vector3()
+function aPantalla(x, y, z) {
+  const caja = lienzo.getBoundingClientRect()
+  _proyectado.set(x, y, z).project(camara)
+  return {
+    x: caja.left + ((_proyectado.x + 1) / 2) * caja.width,
+    y: caja.top + ((1 - _proyectado.y) / 2) * caja.height,
+  }
 }
 
 /** Un tirador de esquina: se pincha y se estira. */
@@ -1006,6 +1059,8 @@ function pintarMarcas() {
     const cuadro = new THREE.Mesh(new THREE.PlaneGeometry(est.ancho, est.alto), material)
     cuadro.position.set(est.x, est.y, est.z)
     cuadro.rotation.set(...cara.rotacion)
+    // El giro dentro de su plano, en local, igual que en el motor.
+    if (est.giro) cuadro.rotateZ(est.giro)
     cuadro.userData.marca = { que: 'est', i, prioridad: PRIORIDAD.cuerpo }
     cuadro.userData.realce = (puesta) => { material.opacity = puesta ? 1 : 0.9 }
     grupo.add(cuadro)
@@ -1029,11 +1084,38 @@ function pintarMarcas() {
     grupo.add(esquina)
     pinchables.push(esquina)
 
+    /**
+     * **Y la otra esquina de abajo escala sin deformar** (vuelta 95). Es el
+     * séptimo tirador de una pieza (vuelta 93) aplicado a un logo, y aquí la
+     * razón es más fuerte que allí: una pieza deformada sigue siendo una caja,
+     * pero **un logo estirado es otro logo** — que es justo el motivo por el que
+     * los estampados son la única excepción a «sin assets» (vuelta 93).
+     *
+     * Va achatada como las de una pieza, y en la esquina contraria a la que
+     * deforma: las dos de abajo, una a cada lado, así que cuál es cuál se
+     * aprende una vez.
+     */
+    const proporcion = tirador(COLOR_GIZMO)
+    proporcion.scale.y = 0.5
+    const otra = new THREE.Vector3(-est.ancho / 2, -est.alto / 2, 0).applyEuler(cuadro.rotation)
+    proporcion.position.set(est.x + otra.x, est.y + otra.y, est.z + otra.z)
+    proporcion.userData.marca = { que: 'est-proporcion', i, prioridad: PRIORIDAD.tirador }
+    grupo.add(proporcion)
+    pinchables.push(proporcion)
+
     const tAlto = tirador(COLOR_GIZMO)
     tAlto.position.set(est.x, est.y + est.alto / 2 + 0.4, est.z)
     tAlto.userData.marca = { que: 'est-alto', i, prioridad: PRIORIDAD.tirador }
     grupo.add(tAlto)
     pinchables.push(tAlto)
+
+    aroEnPlano(
+      cuadro.position,
+      cuadro.rotation,
+      Math.max(est.ancho, est.alto) / 2 + 0.5,
+      { que: 'est-giro', i },
+      grupo,
+    )
 
     marcas.add(grupo)
   }
@@ -1441,6 +1523,8 @@ const golpe = new THREE.Vector3()
 
 let arrastrando = null
 let orbitando = null
+/** La pieza que había bajo el clic derecho, hasta saber si fue clic o arrastre. */
+let candidatoApilar = -1
 
 function aRejilla(v) {
   // Se redondea al paso y se limpia la coma flotante: 0.1 × 3 no es 0.3, y
@@ -1537,6 +1621,17 @@ lienzo.addEventListener('pointerdown', (evento) => {
      * sección del panel; aquí es el mismo gesto con el que ya se está mirando
      * la pieza. Fuera de una pieza —que es casi toda la pantalla— el clic
      * derecho sigue siendo orbitar, que es lo que hace desde la vuelta 74.
+     *
+     * **Y se decide al soltar, no al pulsar** (vuelta 95). Apilar ocurría en el
+     * `pointerdown`, así que **cualquier órbita que empiece con el puntero
+     * encima de una pieza la apilaba** — y encima esa órbita no llegaba a
+     * empezar, porque la rama salía con un `return`. En un mapa lleno eso es
+     * media pantalla: se reportó como «una pieza se eleva flotando sin querer».
+     *
+     * La regla es la de cualquier gesto que puede ser un clic o un arrastre:
+     * **quién es no se sabe hasta que el puntero se levanta**. Se orbita
+     * siempre, se guarda la pieza candidata, y sólo si el puntero no se ha
+     * movido cuenta como clic.
      */
     if (evento.button === 2) {
       const caja = lienzo.getBoundingClientRect()
@@ -1544,13 +1639,16 @@ lienzo.addEventListener('pointerdown', (evento) => {
       puntero.y = -((evento.clientY - caja.top) / caja.height) * 2 + 1
       rayo.setFromCamera(puntero, camara)
       const debajo = rayo.intersectObjects(proxies.children, false)
-      if (debajo.length > 0) {
-        elegir(debajo[0].object.userData.indice)
-        apilar()
-        return
-      }
+      candidatoApilar = debajo.length > 0 ? debajo[0].object.userData.indice : -1
     }
-    orbitando = { x: evento.clientX, y: evento.clientY, pan: evento.button === 1 || evento.shiftKey }
+    orbitando = {
+      x: evento.clientX,
+      y: evento.clientY,
+      // De dónde salió, que es contra lo que se mide si hubo arrastre.
+      x0: evento.clientX,
+      y0: evento.clientY,
+      pan: evento.button === 1 || evento.shiftKey,
+    }
     return
   }
   if (evento.button !== 0) return
@@ -2271,11 +2369,60 @@ function moverMarcaDeEstampado(arrastre, punto, evento) {
     if (arrastre.y0 === undefined) { arrastre.y0 = evento.clientY; arrastre.v0 = e.y }
     const delta = (arrastre.y0 - evento.clientY) / GIZMO.pixelesPorEscalon
     e.y = Number(Math.max(arrastre.v0 + delta * 0.5, 0).toFixed(2))
+    return
+  }
+  /**
+   * **Escalar sin deformar es un factor, no dos números** (vuelta 95). Se mide
+   * cuánto se aleja el puntero del centro **en pantalla** y eso multiplica a los
+   * dos lados: el gesto es el de agarrar una esquina y tirar, y funciona igual
+   * mire la cámara desde donde mire, que es lo que un punto del suelo no da
+   * cuando el logo está en una pared.
+   *
+   * Y **el tope se aplica al factor, no a cada lado**: acotando ancho y alto por
+   * separado, el primero que llegara a su límite dejaría de crecer y el otro
+   * seguiría — o sea deformándolo justo en el tirador que existe para no
+   * deformarlo.
+   */
+  if (arrastre.que === 'est-proporcion') {
+    const centro = aPantalla(e.x, e.y, e.z)
+    const d = Math.hypot(evento.clientX - centro.x, evento.clientY - centro.y)
+    if (arrastre.d0 === undefined) {
+      arrastre.d0 = Math.max(d, 1)
+      arrastre.a0 = e.ancho
+      arrastre.h0 = e.alto
+    }
+    const minimo = Math.max(ESTAMPADOS.anchoMin / arrastre.a0, ESTAMPADOS.altoMin / arrastre.h0)
+    const maximo = Math.min(ESTAMPADOS.anchoMax / arrastre.a0, ESTAMPADOS.altoMax / arrastre.h0)
+    const factor = Math.min(Math.max(d / arrastre.d0, minimo), maximo)
+    e.ancho = Number((arrastre.a0 * factor).toFixed(2))
+    e.alto = Number((arrastre.h0 * factor).toFixed(2))
+    return
+  }
+  /**
+   * **El aro gira el logo dentro de su pared.** El ángulo se mide **en
+   * pantalla** alrededor del centro proyectado, y no en el mundo: el plano de un
+   * estampado puede ser vertical, y un punto del suelo no dice nada de un ángulo
+   * dentro de una pared.
+   *
+   * Se resta porque en pantalla la Y crece hacia abajo, así que el ángulo corre
+   * al revés que el del plano. Lo que se paga y hay que saber: **mirándolo desde
+   * detrás, el logo gira al contrario del ratón**, porque desde ahí su plano se
+   * ve espejado. Es el mismo precio que tiene cualquier gizmo plano y se arregla
+   * dando la vuelta a la cámara.
+   */
+  if (arrastre.que === 'est-giro') {
+    const centro = aPantalla(e.x, e.y, e.z)
+    const angulo = Math.atan2(evento.clientY - centro.y, evento.clientX - centro.x)
+    if (arrastre.a0 === undefined) { arrastre.a0 = angulo; arrastre.g0 = e.giro ?? 0 }
+    const paso = (ESTAMPADOS.giroPasoDeg * Math.PI) / 180
+    const vuelta = Math.PI * 2
+    const bruto = arrastre.g0 - (angulo - arrastre.a0)
+    e.giro = (((Math.round(bruto / paso) * paso) % vuelta) + vuelta) % vuelta
   }
 }
 
 /** Lo que gobierna `moverMarcaDeEstampado`. */
-const MARCAS_DE_ESTAMPADO = new Set(['est', 'est-esquina', 'est-alto'])
+const MARCAS_DE_ESTAMPADO = new Set(['est', 'est-esquina', 'est-proporcion', 'est-alto', 'est-giro'])
 
 /** Lo que gobierna `moverMarcaDeRampa`. */
 const MARCAS_DE_RAMPA = new Set(['rampa', 'rampa-esquina', 'rampa-alto', 'rampa-giro'])
@@ -2361,9 +2508,28 @@ function colocar(indice, x, z) {
   pintarPanel()
 }
 
-const soltar = () => { arrastrando = null; orbitando = null }
+/**
+ * Cuánto puede moverse el puntero y seguir siendo un clic. Cuatro píxeles es lo
+ * que tiembla una mano al pulsar un botón del ratón; por encima de eso, quien
+ * lo movió quería mover la cámara.
+ */
+const APILAR_UMBRAL_PX = 4
+
+const soltar = (evento) => {
+  if (candidatoApilar >= 0 && orbitando && evento) {
+    const movido = Math.hypot(evento.clientX - orbitando.x0, evento.clientY - orbitando.y0)
+    if (movido <= APILAR_UMBRAL_PX) {
+      elegir(candidatoApilar)
+      apilar()
+    }
+  }
+  candidatoApilar = -1
+  arrastrando = null
+  orbitando = null
+}
 lienzo.addEventListener('pointerup', soltar)
-lienzo.addEventListener('pointercancel', soltar)
+// Un gesto cancelado por el navegador no es un clic: no apila.
+lienzo.addEventListener('pointercancel', () => soltar(null))
 
 lienzo.addEventListener('wheel', (evento) => {
   evento.preventDefault()
@@ -2469,8 +2635,11 @@ function rellenarAlturas() {
   const rumbos = RUMBOS.map(([v, n]) => `<option value="${v}">${n}</option>`).join('')
   $('r-rumbo').innerHTML = rumbos
   $('e-rumbo').innerHTML = rumbos
+  // **Y con el eje al lado** (vuelta 95): «norte» a secas no dice hacia dónde de
+  // un mapa que se mira desde arriba, y el eje sí — es el mismo dato que la
+  // tabla de caras del motor.
   $('est-cara').innerHTML = ESTAMPADOS.caras
-    .map((c) => `<option value="${c}">${c}</option>`).join('')
+    .map((c) => `<option value="${c}">${c} · ${RUMBO_DE_CARA[c]}</option>`).join('')
   $('abrir').innerHTML = `<option value="">(mapa nuevo)</option>` + Object.entries(SCENARIOS)
     .map(([clave, def]) => `<option value="${clave}">${def.label ?? clave}</option>`)
     .join('')
@@ -2925,6 +3094,7 @@ function pintarEstampados() {
   $('est-ancho').value = e.ancho
   $('est-alto').value = e.alto
   $('est-cara').value = e.cara
+  $('est-giro').value = aGrados(e.giro ?? 0)
   const usadas = [...new Set(lista.map((x) => x.imagen))].length
   $('est-nota').textContent =
     `${usadas} de ${ESTAMPADOS.imagenesMax} imágenes distintas usadas. `
@@ -2978,6 +3148,10 @@ campo('est-alto', conEstampado((e, v) => {
   e.alto = Math.min(Math.max(Number(v) || e.alto, ESTAMPADOS.altoMin), ESTAMPADOS.altoMax)
 }))
 campo('est-cara', conEstampado((e, v) => { if (ESTAMPADOS.caras.includes(v)) e.cara = v }))
+campo('est-giro', conEstampado((e, v) => {
+  const vuelta = Math.PI * 2
+  e.giro = ((aRadianes(v) % vuelta) + vuelta) % vuelta
+}))
 
 /** Los ventiladores, con sus números al lado del dibujo. */
 function pintarVentiladores() {
@@ -3755,6 +3929,14 @@ function subirPieza(cuanto) {
   pieza.kind = Number((nueva + grosor).toFixed(4))
   sucio = true
   pintarPanel()
+  /**
+   * **Y se dice** (vuelta 95). Mover una pieza de altura no cambia su huella,
+   * así que mirando el mapa desde arriba —que es de donde se construye— no se
+   * nota: el segundo seguro contra un atajo pulsado sin querer es que la barra
+   * lo cuente. Y sirve igual para el uso deliberado, que es poder afinar la
+   * base sin abrir el panel.
+   */
+  contar([], nueva > 0 ? `base ${nueva.toFixed(2)} u` : 'apoyada en el suelo')
 }
 
 /**
@@ -4488,10 +4670,25 @@ $('rehacer').addEventListener('click', () => mover(pila.adelante, pila.atras))
  */
 window.addEventListener('keydown', (evento) => {
   if (motor || escribiendo() || evento.ctrlKey || evento.metaKey || evento.altKey) return
-  if (evento.code === 'KeyR') { evento.preventDefault(); subirPieza(paso); return }
-  if (evento.code === 'KeyF') {
+  /**
+   * **Subir y bajar dejan de ser R y F** (vuelta 95). Eran R y F desde la
+   * vuelta 78, y **la R es recargar en el juego**: quien construye un mapa es
+   * quien más lo juega, así que la pulsa por costumbre con una pieza elegida y
+   * la pieza se va hacia arriba. Se reportó como «una pieza se eleva flotando
+   * sin querer», y el remedio era Ctrl+Z.
+   *
+   * La regla de la vuelta 78 decía que **las teclas de herramienta son suyas y
+   * no se sobrecargan**, y esto es su otra mitad: tampoco pueden ser las del
+   * juego. Re Pág y Av Pág no están en ningún bind de `KEYBINDS` ni pueden
+   * estarlo, y dicen arriba y abajo sin que haya que aprendérselo. Lo que se
+   * paga es que la mano sale de WASD, y es lo correcto: mover una pieza de
+   * altura no es un gesto que se repita cien veces seguidas, y un atajo cómodo
+   * que se dispara solo no es cómodo.
+   */
+  if (evento.code === 'PageUp') { evento.preventDefault(); subirPieza(paso); return }
+  if (evento.code === 'PageDown') {
     evento.preventDefault()
-    // **F sobre una pieza ya apoyada la apila**: bajar de cero no lleva a
+    // **Bajar sobre una pieza ya apoyada la apila**: bajar de cero no lleva a
     // ninguna parte, y lo que se quiere al llegar al suelo es asentarla.
     const pieza = mapa.boxes[seleccion]
     const base = pieza?.base ? coverHeight(pieza.base) : 0
@@ -5528,12 +5725,12 @@ const ATAJOS = [
   ['Esquinas', 'estira la pieza elegida · el cubo de arriba cambia su alto'],
   ['Flecha azul', 'rumbo y fuerza de una superficie · vertical, cuánto lanza'],
   ['Aro verde', 'gira la pieza 90° (ancho y fondo cambiados)'],
-  ['Clic der.', 'orbita la cámara · sobre una pieza, la apila'],
+  ['Clic der.', 'orbita la cámara · un clic sin arrastrar sobre una pieza la apila'],
   ['Rueda', 'acerca y aleja'],
   ['WASD', 'vuela la cámara (el ratón sobre el mapa)'],
   ['Q / E', 'baja y sube la cámara'],
   ['Mayús', 'corre, volando'],
-  ['R / F', 'sube y baja la pieza elegida'],
+  ['Re Pág / Av Pág', 'sube y baja la pieza elegida'],
   ['Ctrl+Z', 'deshacer · con Mayús, rehacer'],
   ['Ctrl+C / V', 'copia y pega la pieza elegida, en un hueco libre'],
   ['Supr', 'borra la pieza elegida'],
@@ -5567,6 +5764,24 @@ pintarMarca()
 rellenarAlturas()
 cargarFotosDeFondo()
 cargarImagenesDeEstampado()
+
+/**
+ * **Y se vuelve a mirar al volver a la ventana** (vuelta 95). La lista se pedía
+ * **una vez, al arrancar**, así que dejar un WebP nuevo en `public/estampados/`
+ * no servía de nada hasta cerrar Alchemist y volver a abrirlo — que es
+ * exactamente lo que se reportó.
+ *
+ * El disparador no es un temporizador sino **el gesto**: dejar un fichero en una
+ * carpeta se hace fuera del navegador, así que volver a esta ventana *es* la
+ * señal de que puede haber algo nuevo. Cuesta una petición por vuelta, y sólo
+ * mientras haya un servidor de desarrollo detrás.
+ *
+ * El botón se queda porque un gesto deducido no puede ser la única puerta: si
+ * alguien copia el fichero con la ventana ya delante, no hay vuelta que
+ * detectar. Es la misma pareja que el aviso de la barra y el botón de subir.
+ */
+window.addEventListener('focus', () => { cargarImagenesDeEstampado() })
+$('est-buscar').addEventListener('click', () => { cargarImagenesDeEstampado() })
 abrirLoQueToque()
 elegirPestana(pestanaActual)
 redimensionar()

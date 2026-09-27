@@ -92,6 +92,15 @@ export class Estampados {
         e.z + cara.normal[2] * ESTAMPADOS.separacion,
       )
       malla.rotation.set(...cara.rotacion)
+      /**
+       * **Y el giro, dentro de su propio plano** (vuelta 95). Un
+       * `PlaneGeometry` vive en su XY local, así que girar sobre **su** Z es
+       * exactamente «girar el logo sin moverlo de la pared». Va después de
+       * encarar la cara y en local (`rotateZ`), no como un tercer ángulo de la
+       * Euler: ahí dependería del orden y un logo del techo saldría girado por
+       * otro eje.
+       */
+      if (e.giro) malla.rotateZ(e.giro)
       // Que ningún rayo le pregunte nada: ni el disparo, ni la visibilidad, ni
       // el tirador del editor. Es lo que lo deja fuera del presupuesto.
       malla.raycast = () => {}

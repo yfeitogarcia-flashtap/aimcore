@@ -1225,10 +1225,24 @@ tomarla con la foto delante.
 Desde la vuelta 93 un mapa puede llevar **logos a color pegados a una
 superficie** — firma del creador o patrocinador. Deja la imagen en
 `public/estampados/` (**WebP a ser posible**, que es lo que menos pesa) y sale en
-el desplegable de la hoja de Mapa; «Colocar un estampado» lo pone delante de la
-cámara y a partir de ahí se arrastra por su cuadro, se le da tamaño con la
-esquina y se sube con el cubo. La **cara** decide hacia dónde mira: los cuatro
-rumbos, el suelo y el techo.
+el desplegable de la hoja de Mapa — **sin reiniciar Alchemist**: la lista se
+rehace al volver a la ventana del navegador, que es justo el gesto de haber
+dejado el fichero, y hay un botón por si copias la imagen con la ventana ya
+delante.
+
+«Colocar un estampado» lo pone delante de la cámara, y desde ahí:
+
+- **el cuadro** lo mueve, **el cubo** lo sube;
+- **la esquina de abajo a la derecha** estira ancho y alto por separado, y **la
+  de la izquierda escala sin deformarlo** — que es lo que hace falta casi
+  siempre, porque un logo estirado es otro logo;
+- **el aro lo gira** dentro de su propia pared, de cinco en cinco grados.
+
+Y **«Mira hacia»** —que hasta la vuelta 95 se llamaba «Cara» y se entendía como
+el giro— es la dirección del mapa a la que encara: los cuatro rumbos, el suelo y
+el techo. Ojo a lo que esconde ese nombre: **un estampado no va pegado a una
+pieza**, es un plano suelto que se coloca donde quieras; arrímalo a la cara de
+una caja y elige la dirección hacia la que esa cara da.
 
 Tres cosas que conviene saber, porque son el precio:
 

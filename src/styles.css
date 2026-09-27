@@ -1951,6 +1951,21 @@ body {
   display: grid;
   grid-template-rows: subgrid;
   grid-row: span var(--armoury-filas);
+  /* **Y una columna que puede encogerse** (vuelta 95). Sin declararla, la ficha
+     tiene **una columna implícita `auto`**, o sea `minmax(auto, max-content)`:
+     se estira hasta el texto más largo que lleve dentro en vez de acotarse a la
+     ficha. Medido antes de tocar nada: ficha de 185 px con 165 de caja de
+     contenido, y las estadísticas dentro midiendo **190** — 26 px por fuera del
+     borde derecho y **16 dentro de la ficha de al lado**, que es como se leía
+     «3.2× con el clic derecho sin destello» de la Scout por encima de la Pump.
+
+     `minmax(0, 1fr)` es lo que deja a la columna bajar de su `max-content`, así
+     que el texto **se parte** en vez de empujar la caja. No toca la alineación
+     entre fichas: lo que alinea las filas es `subgrid`, que es de las **filas**
+     (vuelta 43), y esto es la columna. Lo que sí cambia es que un valor largo
+     ocupa dos renglones, y eso sube la fila **en las seis a la vez**, que es
+     justo lo que `subgrid` promete. */
+  grid-template-columns: minmax(0, 1fr);
   /* **Y apretada desde la vuelta 92.** Con una categoría cada vez las fichas
      caben en una fila, así que lo único que decide si el panel pide rueda es
      lo **alta** que sea una: medida antes de tocar nada, 695 px de ficha y 939
