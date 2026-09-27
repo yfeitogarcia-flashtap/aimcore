@@ -330,8 +330,15 @@ Hace dos cosas que una pestaña no puede:
 - **Pantalla completa de verdad.** **F11** la alterna, y lo que dejes puesto es lo
   que se recuerda: la ventana vuelve a abrir así. Es el mismo interruptor que sale
   en *Opciones → Arrancar en pantalla completa*, que en un navegador no aparece
-  porque ahí F11 es del navegador y «arrancar así» no se puede.
+  porque ahí F11 es del navegador y «arrancar así» no se puede. **Desde la vuelta
+  98 F11 lo atiende la propia ventana**, así que funciona aunque la página no
+  llegue a enterarse de dónde está.
 - **CTRL para agacharse**, de fábrica. Ver *Controles*.
+
+**Y se puede comprobar que el juego sabe que está en la app**: al pie de
+*Opciones* pone **«Vektor de escritorio 0.3.0»** (la versión que sea). Si pone
+«este navegador», la app instalada es anterior a la 0.3 y hay que reinstalarla
+desde el enlace de siempre.
 
 **El día que Vektor tenga dominio propio, nadie tendrá que reinstalar.** El
 servidor sabe mandar a la dirección nueva a quien llegue por la vieja, y a la app
@@ -385,11 +392,18 @@ rival: al que se une por el enlace le salen apagadas, porque cambiarlas no
 reconfigura la sala —empieza otra, con otro código— y eso dejaría al otro solo en
 la de antes.
 
-**El menú de ESC tiene tres botones:** *Pausar la partida*, *Opciones* y *Salir
-de la partida*. Las opciones son las mismas del juego —controles, sensibilidad,
-sensibilidad de la mirilla— y se abren **sin salir de la partida**; el mundo
-sigue corriendo mientras las miras, así que ahí eres un blanco. Pausar es lo
-único que para el mundo, y lo para para los dos.
+**Los botones del menú dependen de si hay partida** (vuelta 98). Mientras esperas
+al rival es la pantalla de **crear la sala**: *Volver* al menú del juego,
+*Opciones* y *Controles*. Con el rival dentro es la **pausa de una partida**:
+*Pausar la partida*, *Opciones*, *Controles* y *Salir de la partida* — abandonar
+sólo tiene sentido cuando hay algo que abandonar. Las opciones son las mismas del
+juego y se abren **sin salir de la partida**; el mundo sigue corriendo mientras
+las miras, así que ahí eres un blanco. Pausar es lo único que para el mundo, y lo
+para para los dos.
+
+**Los controles están detrás del botón del teclado**: una tabla de dos columnas
+—qué hace y con qué tecla— con **tus** teclas, no las de fábrica. Sustituye al
+renglón corrido que había debajo del menú.
 
 **Y el botón «copiar» copia siempre**, también cuando juegas por la IP de tu red:
 ahí el navegador no da portapapeles moderno y hace falta el camino de abajo. Lo
@@ -468,7 +482,9 @@ Todo es configurable en `ROUNDS` (`src/config.js`).
 
 Irse y caerse son dos cosas distintas:
 
-- **Irse** es pulsar «Salir de la partida». El rival gana esa ronda y la partida.
+- **Irse** es pulsar «Salir de la partida», que desde la vuelta 98 sólo sale en
+  el menú de ESC **con la partida en marcha** — en la pantalla de crear la sala lo
+  que hay es **Volver** al menú del juego. El rival gana esa ronda y la partida.
 - **Caerse** —wifi, portátil dormido, pestaña cerrada— no manda ningún aviso, así
   que el juego lo trata como lo que es: la partida **se pausa** para el que sigue
   conectado, con un cartel que lo dice, y se guarda la butaca entera (vida,
@@ -496,10 +512,22 @@ panel abierto eres un blanco.
 
 **Se compra de dos formas, y las dos valen igual:** pinchando el artículo, o
 tecleando su **combinación** — categoría y código, que van escritos en la esquina
-de cada ficha. La Pulse es `1 1`, el Reaper `1 3`, la Volt `3 1`, el Krakov `4 1`,
-la Rift `4 3`, el Titan `5 3`, la Pump `2 1` y el Fang `7 5`. Los códigos
-dejan huecos a propósito para las armas que faltan: cuando lleguen, lo que ya te
-sabes no cambiará de sitio.
+de cada ficha. **Desde la vuelta 98 hay una sola tabla, y la categoría es la
+sección de la armería donde está la ficha:**
+
+| Categoría | Qué hay | Códigos |
+|---|---|---|
+| **1** Primarias | Volt, Rift, Krakov, Pump, Scout, Titan | `1 1` … `1 6` |
+| **2** Pistolas | Pulse, Reaper | `2 1`, `2 2` |
+| **3** Cuerpo a cuerpo | el cuchillo, que no se compra | — |
+| **4** Arrojadizas | Core, KO, Blind, Fang | `4 1` … `4 4` |
+| **5** Especiales | Bow, U2 | `5 1`, `5 2` |
+| **6** Equipo | Chaleco, Casco (sólo en el duelo) | `6 1`, `6 2` |
+
+El código es **el orden de la ficha dentro de su sección**, así que se lee en el
+panel sin buscarlo, y el primer número ya abre su sección. Hasta la 97 había dos
+agrupaciones —la tienda por tipo de arma y la armería por ranura— y eso hacía que
+teclear abriera una sección distinta de la que el número parecía decir.
 
 **Y desde la vuelta 93 esa combinación también funciona en el entrenamiento.**
 Abre la armería con **B** y teclea los dos números: ahí no hay dinero, así que
@@ -724,9 +752,17 @@ Va en **tres pasos**, y cada uno hace una pregunta:
    *jugar* de *prepararse*. Y debajo, los controles como **pares de tecla y
    verbo** —`WASD` moverte, `SPACE` saltar— en vez de los tres renglones de
    texto de antes: un párrafo de controles no lo lee nadie antes de jugar.
-3. Pulsando Entrenamiento, la pantalla donde **se configura la partida**: los
-   dos modos arriba y, debajo, el mapa, el tipo de diana, cuántas a la vez, el
-   modo dinámico, la dificultad, la duración y el resto, **en tres grupos**.
+3. Pulsando Entrenamiento, la pantalla donde **se configura la partida**, en
+   este orden desde la vuelta 98: **Modo** (ronda con explosivo o Deathmatch),
+   **Dónde se juega**, **Contra qué disparas**, **Dificultad**, **Dianas
+   simultáneas y movimiento** y **El resto**. Y abajo, pegados, **Volver** y
+   **Jugar**.
+
+**El modo se elige, no se arranca** (vuelta 98). Los dos modos eran dos botones
+que empezaban la partida al pulsarlos, así que no se podía marcar el Deathmatch y
+seguir bajando a la dificultad. Ahora son un interruptor: el elegido se enciende
+en verde, el otro se queda en gris, se guarda como el resto de ajustes, y lo que
+arranca la partida es **Jugar** — que dice «Jugar» y nada más.
 
 **Tres cosas cambiaron en la vuelta 94, y las tres salieron de mirar una
 captura:**
@@ -835,12 +871,25 @@ npm run editor     # abre /editor/ directamente
 **Sólo existe en desarrollo.** No entra en lo que se despliega: es una
 herramienta de autor, no una pantalla del juego.
 
-**Y un mapa se publica aparte de guardarse.** En la hoja de **Mapa** hay una
-casilla, **Publicado**: sin marcarla el mapa se guarda, se abre y se prueba aquí
-igual, pero **no aparece en el juego** — ni en el selector de escenarios ni en el
-desplegable del duelo. Un mapa nuevo nace en borrador, y la barra de arriba lo
-dice al lado de su nombre. Los mapas que ya tenías siguen publicados: la casilla
-sólo guarda el «no».
+**Y un mapa se publica aparte de guardarse, y para un modo.** En la hoja de
+**Mapa** hay dos casillas, **Publicado en: Entrenamiento / Duelo** (vuelta 98):
+ninguna es un borrador —se guarda, se abre y se prueba aquí igual, pero no
+aparece en el juego—, una lo ofrece en ese modo y las dos en los dos. Un mapa
+nuevo nace en borrador, y la barra de arriba lo dice al lado de su nombre. Los
+mapas que ya tenías siguen donde estaban: los de duelo en el duelo y los demás en
+el entrenamiento. Publicar en el duelo pide que sea un mapa de duelo (con sus dos
+salidas); la casilla lo hace si hace falta.
+
+**Y se puede duplicar un mapa entero** (hoja **Archivo → Duplicar este mapa**):
+la copia se abre en borrador y sin guardar, con otra clave, para cambiarle los
+spawns o lo que sea y publicarla en el otro modo sin tocar el original.
+
+**Un mapa con la clave de un escenario del juego lo sustituye sólo en los modos
+donde se publica.** Es lo que pasaba con `src/maps/empty.js`: media sala de duelo
+guardada con la clave de la Sala vacía, que al ser el escenario de fábrica del
+entrenamiento se montaba al entrar a entrenar. Ahora en el entrenamiento vuelve la
+Sala vacía de siempre, y ese mapa se queda en el duelo, que es donde está
+publicado.
 
 ### El panel
 

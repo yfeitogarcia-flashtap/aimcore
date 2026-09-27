@@ -24,7 +24,7 @@
  */
 
 import * as THREE from 'three'
-import { CLAVES_INTEGRADAS, COLORS, COVER, FANS, FONDOS, GIZMO, MOVEMENT, ESCALERAS, ESTAMPADOS, PRIMARY_WEAPONS, PRISMAS, ROUNDS, SCENARIOS, SURFACES, TARGET, TEAMS, TELEPORTS, TUBES, ZIPLINES, coverHeight, coverTintedColor, esFotoDeFondo, esImagenDeEstampado, fisicaDeEscenario, giro180, scenarioRoom } from '../src/config.js'
+import { CLAVES_INTEGRADAS, COLORS, MODOS_DE_MAPA, modosDeMapa, COVER, FANS, FONDOS, GIZMO, MOVEMENT, ESCALERAS, ESTAMPADOS, PRIMARY_WEAPONS, PRISMAS, ROUNDS, SCENARIOS, SURFACES, TARGET, TEAMS, TELEPORTS, TUBES, ZIPLINES, coverHeight, coverTintedColor, esFotoDeFondo, esImagenDeEstampado, fisicaDeEscenario, giro180, scenarioRoom } from '../src/config.js'
 import { Avatar } from '../src/game/avatar.js'
 import { Engine } from '../src/game/engine.js'
 import { MovementController } from '../src/game/movement.js'
@@ -3027,21 +3027,33 @@ function pintarPanel() {
   const choca = CLAVES_INTEGRADAS.includes(mapa.clave)
   $('clave-nota').hidden = !choca
   if (choca) {
-    $('clave-nota').textContent =
-      `Esta clave es la de un escenario del juego: al guardar, este mapa lo `
-      + `sustituye en todo Vektor. Si no era la idea, cámbiala antes de guardar.`
+    // **Y desde la vuelta 98 sólo en los modos donde se publica**: en los demás
+    // el integrado sigue en su sitio (`escenariosDeModo`, en config.js).
+    const donde = modosDeMapa(mapa)
+    $('clave-nota').textContent = donde.length
+      ? `Esta clave es la de un escenario del juego: al guardar, este mapa lo `
+        + `sustituye en ${donde.length === 2 ? 'los dos modos' : `el ${donde[0]}`}. `
+        + `Si no era la idea, cámbiala antes de guardar.`
+      : `Esta clave es la de un escenario del juego. Como borrador no sustituye `
+        + `nada; publicado, lo sustituiría en ese modo.`
   }
   $('label').value = mapa.label ?? ''
   /**
-   * **Publicado** (vuelta 88). `undefined` es publicado, que es lo que hace que
-   * los mapas que ya existen no cambien de estado al abrirlos: sólo se guarda
-   * el `false` (ver `sanearMapa`).
+   * **Dónde se publica** (vuelta 98). Las casillas leen `modosDeMapa`, la misma
+   * función de la que salen las listas del juego, así que un mapa viejo sin
+   * `modos` enseña lo que el juego le ofrece de verdad —duelo si era
+   * `soloDuelo`, entrenamiento si no, ninguno si era borrador—.
    */
-  const estaPublicado = mapa.publicado !== false
-  $('publicado').checked = estaPublicado
-  $('publicado-nota').textContent = estaPublicado
-    ? 'Sale en el selector del juego. Desmárcalo para dejarlo en borrador sin borrar nada.'
-    : 'Borrador: se guarda y se puede probar aquí, pero no aparece en el juego.'
+  const modos = modosDeMapa(mapa)
+  $('modo-entrenamiento').checked = modos.includes('entrenamiento')
+  $('modo-duelo').checked = modos.includes('duelo')
+  $('publicado-nota').textContent = !modos.length
+    ? 'Borrador: se guarda y se puede probar aquí, pero no aparece en el juego.'
+    : modos.length === 2
+      ? 'Sale en los dos modos: en el selector del entrenamiento y en el del duelo.'
+      : modos[0] === 'duelo'
+        ? 'Sale sólo en el desplegable del duelo.'
+        : 'Sale sólo en el selector del entrenamiento.'
   // **La sala sale del mapa, no del escenario montado.** Remontar va con
   // bandera y ocurre en el frame siguiente, así que preguntarle al escenario
   // enseñaba la sala del mapa *anterior*: abrir Los Pilares decía 40×40.
@@ -3070,7 +3082,7 @@ function pintarPanel() {
    * justo lo que pasa cuando se guarda cuatro veces y no aparece en el juego.
    */
   $('barra-mapa').textContent =
-    (mapa.label || mapa.clave || '(mapa nuevo)') + (mapa.publicado === false ? ' · borrador' : '')
+    (mapa.label || mapa.clave || '(mapa nuevo)') + (modos.length ? '' : ' · borrador')
 
   $('lista').innerHTML = mapa.boxes
     .map((p, i) => `<li data-i="${i}" class="${i === seleccion ? 'puesta' : ''}">${String(i).padStart(2, '0')} · ${p.kind} · ${p.w}×${p.d} @ ${p.x},${p.z}</li>`)
@@ -3935,13 +3947,51 @@ campo('clave', (v) => {
 })
 campo('label', (v) => { mapa.label = v })
 /**
- * **La casilla de publicar** (vuelta 88). Escribe `false` o **borra el campo**,
- * no `true`: lo que vale su valor de fábrica no se guarda (vuelta 83), y aquí
- * eso además es lo que deja los mapas de siempre exactamente como estaban.
+ * **Las casillas de publicar** (vuelta 98). Escriben `modos` y **borran
+ * `publicado`**, que dice la mitad de lo mismo: dos campos para una pregunta es
+ * cómo acaban contestando distinto.
+ *
+ * Y marcar Duelo en un mapa que no es de duelo **lo hace de duelo**, con sus dos
+ * salidas: un 1v1 sin dos sitios de salida no es un mapa que se pueda ofrecer, y
+ * el saneado lo quitaría al guardar. Mejor que la casilla haga lo que promete
+ * que que se desmarque sola.
  */
-campo('publicado', () => {
-  mapa.publicado = $('publicado').checked ? undefined : false
+function escribirModos() {
+  const modos = MODOS_DE_MAPA.filter((m) => $(`modo-${m}`).checked)
+  mapa.modos = modos
+  delete mapa.publicado
+  if (modos.includes('duelo') && !mapa.soloDuelo) {
+    mapa.soloDuelo = true
+    salidasDe()
+  }
   anotarEnLaBarra(mapa.clave)
+}
+campo('modo-entrenamiento', escribirModos)
+campo('modo-duelo', escribirModos)
+
+/**
+ * **Duplicar el mapa entero** (vuelta 98). Es la puerta que se pidió para sacar
+ * de un mapa de duelo su versión de entrenamiento —otro spawn, sin salidas, sus
+ * rutas— sin tocar el original. Tres cosas:
+ *
+ * - **La copia nace en borrador** (`modos: []`), como un mapa nuevo: si naciera
+ *   publicada, habría dos mapas iguales en el mismo selector antes de haber
+ *   cambiado nada.
+ * - **Con una clave libre**, que es la que la hace otro fichero: con la misma,
+ *   guardar la copia sería sobrescribir el original.
+ * - **Y sin guardar.** Lo que falta es exactamente lo que se va a cambiar.
+ */
+$('duplicar-mapa').addEventListener('click', () => {
+  const base = `${mapa.clave || 'mapa'}-copia`
+  let clave = base
+  for (let n = 2; SCENARIOS[clave] || clave === mapa.clave; n++) clave = `${base}-${n}`
+  const copia = JSON.parse(JSON.stringify(mapa))
+  copia.label = `${mapa.label || mapa.clave || 'Mapa'} (copia)`
+  copia.modos = []
+  delete copia.publicado
+  cargar(copia, clave)
+  $('duplicar-nota').textContent =
+    `Copia abierta como «${clave}», en borrador y sin guardar. Cámbiale lo que quieras y elige dónde se publica en la hoja Mapa.`
 })
 campo('sala-w', (v) => { mapa.room = { ...mapa.room, width: Number(v) } })
 campo('sala-d', (v) => { mapa.room = { ...mapa.room, depth: Number(v) } })
@@ -5811,7 +5861,14 @@ function notaDeFisica() {
 }
 
 campo('solo-duelo', () => {
+  // **Lo que se publica se fija antes de tocar esto** (vuelta 98). En un mapa sin
+  // `modos`, dónde sale se deduce de `soloDuelo`, así que desmarcarlo lo movería
+  // del duelo al entrenamiento sin que nadie lo haya pedido. Se escribe lo que
+  // había y, si deja de ser de duelo, se le quita sólo el duelo.
+  mapa.modos = modosDeMapa(mapa)
+  delete mapa.publicado
   mapa.soloDuelo = $('solo-duelo').checked || undefined
+  if (!mapa.soloDuelo) mapa.modos = mapa.modos.filter((m) => m !== 'duelo')
   // Dos salidas en cuanto se declara mapa de duelo: un 1v1 **son** dos sitios
   // de salida, así que proponerlas no es adivinar, es la definición. Se ponen
   // en extremos opuestos y mirándose, que es lo único que no puede estar mal.

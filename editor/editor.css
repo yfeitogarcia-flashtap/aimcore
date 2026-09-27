@@ -536,6 +536,9 @@ label.ancho2 { grid-column: span 2; }
 
 .checkline { display: flex; align-items: center; gap: 6px; }
 .checkline input { width: auto; }
+/* Dónde se publica (vuelta 98): dos casillas en una fila, sin el marco del navegador. */
+.modos { border: 0; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 4px 16px; }
+.modos legend { padding: 0; margin-bottom: 4px; width: 100%; }
 
 /** Un aviso no es un problema: el mapa se guarda igual, pero hay que saberlo. */
 .aviso {

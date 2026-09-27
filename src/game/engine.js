@@ -13,7 +13,7 @@
 
 import * as THREE from 'three'
 import { CSS3DRenderer } from 'three/examples/jsm/renderers/CSS3DRenderer.js'
-import { ACCURACY, ACTION_PANEL, AVATAR, CAMERA, CLAVADAS, COVER, EDITOR, FOOTSTEPS, FRAME_LIMITS, GRENADES, HELP, IMPACTS, LOOK, MELEE_WEAPON, MOVEMENT, NET, OBJECTIVE, PLAYER, PROJECTILES, RECOIL_RESET_MS, RENDER, SCOPE, SECONDARY_WEAPON, SESSION_DURATION_S, SESSION_DURATIONS, SESSION_MODES, SIM, SIM_STEP_MS, SURFACES, TARGET, TEAMS, THROWABLE_WEAPONS, TRAJECTORY, WEAPONS, weaponSpeedFactor } from '../config.js'
+import { ACCURACY, ACTION_PANEL, AVATAR, CAMERA, CLAVADAS, COVER, EDITOR, FOOTSTEPS, FRAME_LIMITS, GRENADES, HELP, IMPACTS, LOOK, MELEE_WEAPON, MOVEMENT, NET, OBJECTIVE, PLAYER, PROJECTILES, RECOIL_RESET_MS, RENDER, SCOPE, SECONDARY_WEAPON, SESSION_DURATION_S, SESSION_DURATIONS, SESSION_MODES, SIM, SIM_STEP_MS, SURFACES, TARGET, TEAMS, THROWABLE_WEAPONS, TRAJECTORY, WEAPONS, claveDeEscenario, definicionDeEntrenamiento, weaponSpeedFactor } from '../config.js'
 import { createScene } from './scene.js'
 import { Scenario } from './scenario.js'
 import { Scope } from './scope.js'
@@ -241,7 +241,7 @@ export class Engine {
 
     // El escenario se monta antes que el movimiento: de él salen la colisión y
     // el punto de aparición.
-    this.scenario = new Scenario(this.scene, this._escenarioFijo ?? getSettings().scenario)
+    this.scenario = new Scenario(this.scene, this._escenarioFijo ?? definicionDeEntrenamiento(getSettings().scenario))
     // La sala la manda el escenario: la grilla y las paredes se montan a su
     // medida, y con ellas el límite real de movimiento.
     this._setRoom(this.scenario.room)
@@ -1205,7 +1205,10 @@ export class Engine {
    */
   _applySettings(settings) {
     // Con escenario fijo el ajuste del jugador no manda aquí: ver `_escenarioFijo`.
-    this._applyScenario(this._escenarioFijo ?? settings.scenario)
+    // Y sin él, **la definición del entrenamiento** y no la clave (vuelta 98):
+    // una clave resuelve contra `SCENARIOS`, que deja ganar al fichero en todos
+    // los modos, y así se montaba aquí un mapa publicado sólo para el duelo.
+    this._applyScenario(this._escenarioFijo ?? definicionDeEntrenamiento(settings.scenario))
     setSpatialEnabled(settings.spatialAudio)
     this._sensNormal = settings.sensitivity
     this._sensMirilla = settings.scopeSensitivity
@@ -1327,7 +1330,7 @@ export class Engine {
    */
   _applyScenario(key) {
     this._wantedScenarioKey = key
-    if (this.scenario.key === key && !this.transition.active) return
+    if (this.scenario.key === claveDeEscenario(key) && !this.transition.active) return
     this.transition.run(() => this._buildScenario(this._wantedScenarioKey))
   }
 
@@ -1337,7 +1340,7 @@ export class Engine {
    * repone los anclajes de aparición.
    */
   _buildScenario(key) {
-    if (this.scenario.key === key) return
+    if (this.scenario.key === claveDeEscenario(key)) return
     const hadSession = this.targets.sessionActive
 
     this.scenario.dispose()

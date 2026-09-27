@@ -26,7 +26,7 @@
  * Es la misma decisión que ya se tomó en la vuelta 44 y el mismo número.
  */
 import * as THREE from 'three'
-import { NET, SIM, SIM_STEP_MS, escenarioDeDuelo } from '../src/config.js'
+import { NET, SIM, SIM_STEP_MS, definicionDeDuelo, escenarioDeDuelo } from '../src/config.js'
 import { Scenario } from '../src/game/scenario.js'
 import { MSG } from '../net/protocolo.js'
 import { Partida } from '../net/partida.js'
@@ -50,7 +50,7 @@ export class Sala {
      * piezas de geometría y sus oclusores, y montarlo dos veces sería dos
      * mundos distintos con los mismos datos.
      */
-    this.escenario = new Scenario(new THREE.Scene(), ESCENARIO)
+    this.escenario = new Scenario(new THREE.Scene(), definicionDeDuelo(ESCENARIO))
     /**
      * `MSG.COLOCAR` sólo se atiende si la variable está puesta, igual que
      * `VEKTOR_DEBUG` en el huésped de sobremesa. Sin ella —o sea, en el
@@ -99,7 +99,7 @@ export class Sala {
       this._mapaPuesto = true
       const mapa = escenarioDeDuelo(consulta.get('mapa') ?? ESCENARIO)
       if (mapa !== this.escenario.key) {
-        this.escenario = new Scenario(new THREE.Scene(), mapa)
+        this.escenario = new Scenario(new THREE.Scene(), definicionDeDuelo(mapa))
         this.partida = new Partida({ escenario: this.escenario, depurar: !!this.env.VEKTOR_DEBUG })
         if (this._compraPuesta) this.partida.configurarCompra(Number(consulta.get('compra')))
       }

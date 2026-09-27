@@ -26,9 +26,17 @@
  *   de alto y sólo sale en la bienvenida y en el final, sí lleva el logotipo
  *   entero.
  *
+ * **Y si hay imágenes hechas a mano, mandan ellas** (vuelta 98). Se dejan en
+ * `Reference/Instalador/` como `cabecera.png` y `lateral.png` (o `.bmp`/`.jpg`)
+ * y este script las usa en vez de componer: las **pasa a BMP de 24 bits** y las
+ * **aplana sobre el negro** si traen transparencia, que son las dos cosas que
+ * NSIS no perdona. Si no miden exactamente 150×57 y 164×314, se ajustan
+ * **cubriendo y recortando por el centro** —nunca estirando: un logo deformado es
+ * otro logo (vuelta 95)— y se avisa, porque lo que se ve ya no es lo que se hizo.
+ *
  * Uso: `npm run escritorio:instalador`.
  */
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import Jimp from 'jimp'
@@ -38,6 +46,17 @@ const LOGOTIPO = resolve(raiz, 'Reference/Logo/vektor-logo-white-orange.png')
 /** La marca sola, en naranja: la misma que el icono de la ventana y el favicon. */
 const MARCA = resolve(raiz, 'Reference/Logo/vektor-mark-orange.png')
 const DESTINO = resolve(raiz, 'escritorio/src-tauri/instalador')
+/** Donde se dejan las imágenes hechas a mano, si las hay. */
+const A_MANO = resolve(raiz, 'Reference/Instalador')
+
+/** La primera imagen a mano con ese nombre, en cualquiera de los formatos que se leen. */
+function aMano(nombre) {
+  for (const ext of ['png', 'bmp', 'jpg', 'jpeg']) {
+    const ruta = resolve(A_MANO, `${nombre}.${ext}`)
+    if (existsSync(ruta)) return ruta
+  }
+  return null
+}
 
 /** El negro de Vektor, el mismo de `COLORS.background`. */
 const FONDO = 0x0a0a0aff
@@ -50,7 +69,38 @@ const FONDO = 0x0a0a0aff
  * horizontal. El lateral lo quiere en el tercio de arriba porque el asistente
  * escribe su texto debajo.
  */
-async function componer({ ancho, alto, margen, arriba, izquierda = 0.5, origen, fichero }) {
+async function guardar(lienzo, fichero, ancho, alto) {
+  const bmp = await lienzo.getBufferAsync(Jimp.MIME_BMP)
+  mkdirSync(DESTINO, { recursive: true })
+  const ruta = resolve(DESTINO, fichero)
+  writeFileSync(ruta, bmp)
+  // **Y se dice qué ha salido**, porque un paso que sólo dice «hecho» no
+  // distingue un BMP de un fichero vacío (la regla del workflow de la vuelta 94).
+  const bits = bmp.readUInt16LE(28)
+  console.log(`${fichero}: ${ancho}×${alto}, ${bits} bits, ${(bmp.length / 1024).toFixed(1)} KB`)
+  if (bits !== 24) {
+    throw new Error(`${fichero} ha salido a ${bits} bits y NSIS quiere 24 sin alfa.`)
+  }
+  return ruta
+}
+
+/** Una imagen hecha a mano, llevada al tamaño exacto y aplanada sobre el negro. */
+async function deMano({ ancho, alto, origen, fichero }) {
+  const imagen = await Jimp.read(origen)
+  const { width, height } = imagen.bitmap
+  if (width !== ancho || height !== alto) {
+    console.warn(`AVISO: ${origen} mide ${width}×${height} y NSIS quiere ${ancho}×${alto}; se ajusta cubriendo y se recorta por el centro.`)
+    imagen.cover(ancho, alto)
+  }
+  const lienzo = await new Jimp(ancho, alto, FONDO)
+  lienzo.composite(imagen, 0, 0)
+  console.log(`${fichero}: desde ${origen}`)
+  return guardar(lienzo, fichero, ancho, alto)
+}
+
+async function componer({ ancho, alto, margen, arriba, izquierda = 0.5, origen, fichero, nombreAMano }) {
+  const propia = aMano(nombreAMano)
+  if (propia) return deMano({ ancho, alto, origen: propia, fichero })
   const lienzo = await new Jimp(ancho, alto, FONDO)
   const logo = await Jimp.read(origen)
 
@@ -67,19 +117,7 @@ async function componer({ ancho, alto, margen, arriba, izquierda = 0.5, origen, 
   const x = Math.round((ancho - logo.bitmap.width) * izquierda)
   const y = Math.round((alto - logo.bitmap.height) * arriba)
   lienzo.composite(logo, x, y)
-
-  const bmp = await lienzo.getBufferAsync(Jimp.MIME_BMP)
-  mkdirSync(DESTINO, { recursive: true })
-  const ruta = resolve(DESTINO, fichero)
-  writeFileSync(ruta, bmp)
-  // **Y se dice qué ha salido**, porque un paso que sólo dice «hecho» no
-  // distingue un BMP de un fichero vacío (la regla del workflow de la vuelta 94).
-  const bits = bmp.readUInt16LE(28)
-  console.log(`${fichero}: ${ancho}×${alto}, ${bits} bits, ${(bmp.length / 1024).toFixed(1)} KB`)
-  if (bits !== 24) {
-    throw new Error(`${fichero} ha salido a ${bits} bits y NSIS quiere 24 sin alfa.`)
-  }
-  return ruta
+  return guardar(lienzo, fichero, ancho, alto)
 }
 
 await componer({
@@ -90,6 +128,7 @@ await componer({
   izquierda: 0.08,
   origen: MARCA,
   fichero: 'cabecera.bmp',
+  nombreAMano: 'cabecera',
 })
 await componer({
   ancho: 164,
@@ -98,4 +137,5 @@ await componer({
   arriba: 0.22,
   origen: LOGOTIPO,
   fichero: 'lateral.bmp',
+  nombreAMano: 'lateral',
 })

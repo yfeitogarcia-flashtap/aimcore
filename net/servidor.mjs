@@ -37,7 +37,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as THREE from 'three'
 import { WebSocketServer } from 'ws'
-import { ESCRITORIO, NET, SIM, SIM_STEP_MS, escenarioDeDuelo } from '../src/config.js'
+import { ESCRITORIO, NET, SIM, SIM_STEP_MS, definicionDeDuelo, escenarioDeDuelo } from '../src/config.js'
 import { Scenario } from '../src/game/scenario.js'
 import { MSG } from './protocolo.js'
 import { Partida } from './partida.js'
@@ -164,7 +164,9 @@ class Sala {
      * de geometría con sus oclusores, y montarlo dos veces serían dos mundos
      * distintos con los mismos datos.
      */
-    this.escenario = new Scenario(new THREE.Scene(), this.mapa)
+    // La definición de la lista del duelo y no la clave (vuelta 98): una clave
+    // resuelve contra `SCENARIOS`, que deja ganar al fichero en todos los modos.
+    this.escenario = new Scenario(new THREE.Scene(), definicionDeDuelo(this.mapa))
     this.partida = new Partida({
       escenario: this.escenario,
       colchon: COLCHON,

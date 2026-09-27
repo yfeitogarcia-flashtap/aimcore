@@ -6,6 +6,8 @@ import {
   TARGET_TYPES,
   WEAPONS,
   WEAPON_MODES,
+  CATEGORIA_DE_RANURA,
+  articuloDeCombinacion,
   catalogoDeTienda,
   weaponSpeedFactor,
 } from '../config.js'
@@ -187,6 +189,12 @@ const FILAS_DE_FICHA = BLOQUES_DE_FICHA + FILAS_DE_STATS
  * que lo enseñaba mal. El nombre de la ranura **es** el nombre de la acción en
  * `KEYBINDS`, así que no hay nada que emparejar: sale de `keysOf(ranura.slot)`.
  */
+/**
+ * **En el orden de su categoría** (vuelta 98): 1 Primarias, 2 Pistolas, 3 Cuerpo
+ * a cuerpo, 4 Arrojadizas, 5 Especiales. La categoría es el primer dígito de una
+ * combinación (`CATEGORIA_DE_RANURA`), así que la pestaña que se abre al teclarlo
+ * es la que está en ese puesto.
+ */
 const RANURAS = [
   {
     slot: 'primary',
@@ -199,9 +207,9 @@ const RANURAS = [
     nota: 'Siempre llevas una. La Pulse es la de serie y no cuesta nada; el Reaper se compra y se paga al morir.',
   },
   {
-    slot: 'special',
-    label: 'Especiales',
-    nota: 'Se llevan ADEMÁS de un arma principal, no en vez de ella. Lo que las acota es el precio: un cohete y un rifle son dos rondas buenas.',
+    slot: 'melee',
+    label: 'Cuerpo a cuerpo',
+    nota: 'Se lleva siempre y no se elige. Clic izquierdo flojo, clic derecho fuerte, y por la espalda mata.',
   },
   {
     slot: 'throwable',
@@ -209,9 +217,9 @@ const RANURAS = [
     nota: 'La tecla cicla entre las que lleves. Clic izquierdo lanza lejos; clic derecho, corto y a ras de suelo.',
   },
   {
-    slot: 'melee',
-    label: 'Cuerpo a cuerpo',
-    nota: 'Se lleva siempre y no se elige. Clic izquierdo flojo, clic derecho fuerte, y por la espalda mata.',
+    slot: 'special',
+    label: 'Especiales',
+    nota: 'Se llevan ADEMÁS de un arma principal, no en vez de ella. Lo que las acota es el precio: un cohete y un rifle son dos rondas buenas.',
   },
 ]
 
@@ -604,9 +612,14 @@ export default function Armoury({ settings, equipped, onChange, onClose, soloFic
    */
   const binds = useSyncExternalStore(subscribeKeybinds, getKeybinds)
 
+  // **Las fichas van en el orden de su código** (vuelta 98), que es el segundo
+  // dígito de la combinación: la tercera ficha de Primarias es la `1 3`. Lo que
+  // no está en el catálogo —el cuchillo— va detrás.
   const porRanura = RANURAS.map((ranura) => ({
     ...ranura,
-    armas: Object.keys(WEAPONS).filter((key) => WEAPONS[key].slot === ranura.slot),
+    armas: Object.keys(WEAPONS)
+      .filter((key) => WEAPONS[key].slot === ranura.slot)
+      .sort((a, b) => (PRECIOS[a]?.codigo ?? 99) - (PRECIOS[b]?.codigo ?? 99)),
   })).filter((ranura) => ranura.armas.length > 0)
 
   /**
@@ -667,6 +680,15 @@ export default function Armoury({ settings, equipped, onChange, onClose, soloFic
    */
   const [tecleado, setTecleado] = useState('')
   const [aviso, setAviso] = useState('')
+  /**
+   * **Lo tecleado vive en una ref, y lo que se hace con ello, fuera de React**
+   * (vuelta 98). Hasta la 97 equipar se hacía **dentro** del actualizador de
+   * `setTecleado`, y un actualizador es una función que React puede llamar
+   * cuando le parezca —en el render siguiente, o dos veces en modo estricto—:
+   * abrir la sección y equipar desde ahí es la parte del «la sección no cambia»
+   * que no dependía de la tabla.
+   */
+  const tecleadoRef = useRef('')
   useEffect(() => {
     if (soloFicha) return undefined
     const onKey = (event) => {
@@ -674,24 +696,30 @@ export default function Armoury({ settings, equipped, onChange, onClose, soloFic
       if (!/^[0-9]$/.test(event.key)) return
       event.preventDefault()
       event.stopPropagation()
-      setTecleado((antes) => {
-        const ahora = antes + event.key
-        if (ahora.length < 2) { setAviso(''); return ahora }
-        const categoria = Number(ahora[0])
-        const codigo = Number(ahora[1])
-        const item = CATALOGO.find((i) => i.categoria === categoria && i.codigo === codigo)
-        const arma = item && WEAPONS[item.clave]
-        if (!item) setAviso(`${ahora[0]} ${ahora[1]} · no hay nada ahí`)
-        else if (!arma) setAviso(`${ahora[0]} ${ahora[1]} · ${item.nombre} se compra en el duelo`)
-        else {
-          setAviso(`${ahora[0]} ${ahora[1]} · ${item.nombre}`)
-          // Se abre su categoría: equipar algo sin ver qué has equipado es lo
-          // mismo que no enterarse (vuelta 89).
-          setAbierta(arma.slot)
-          onChange({ [SLOT_SETTING[arma.slot]]: item.clave })
-        }
-        return ''
-      })
+      const ahora = tecleadoRef.current + event.key
+      if (ahora.length < 2) {
+        tecleadoRef.current = ahora
+        setTecleado(ahora)
+        setAviso('')
+        // **El primer dígito ya abre su sección**: es la categoría, y ver dónde
+        // estás antes del segundo es lo que deja corregir sin mirar la tabla.
+        const ranura = Object.keys(CATEGORIA_DE_RANURA).find((r) => CATEGORIA_DE_RANURA[r] === Number(ahora))
+        if (ranura && porRanura.some((r) => r.slot === ranura)) setAbierta(ranura)
+        return
+      }
+      tecleadoRef.current = ''
+      setTecleado('')
+      const item = articuloDeCombinacion(Number(ahora[0]), Number(ahora[1]))
+      const arma = item && WEAPONS[item.clave]
+      if (!item) setAviso(`${ahora[0]} ${ahora[1]} · no hay nada ahí`)
+      else if (!arma) setAviso(`${ahora[0]} ${ahora[1]} · ${item.nombre} se compra en el duelo`)
+      else {
+        setAviso(`${ahora[0]} ${ahora[1]} · ${item.nombre}`)
+        // Se abre su categoría: equipar algo sin ver qué has equipado es lo
+        // mismo que no enterarse (vuelta 89).
+        setAbierta(arma.slot)
+        onChange({ [SLOT_SETTING[arma.slot]]: item.clave })
+      }
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
@@ -742,8 +770,13 @@ export default function Armoury({ settings, equipped, onChange, onClose, soloFic
             className={`armoury__ranura${ranura.slot === activa.slot ? ' armoury__ranura--activa' : ''}`}
             onClick={() => setAbierta(ranura.slot)}
           >
+            {/* **El número de la categoría, y aparte la tecla** (vuelta 98). Hasta
+                la 97 la pestaña llevaba sólo la tecla de la ranura, y un «1» bajo
+                Primarias se leía como el primer dígito de una combinación que
+                abría Pistolas. Son dos cosas y se escriben como dos. */}
+            <span className="armoury__ranura-cat">{CATEGORIA_DE_RANURA[ranura.slot]}</span>
             <span className="armoury__ranura-nombre">{ranura.label}</span>
-            <span className="armoury__ranura-tecla">{teclaDeRanura(ranura.slot, binds)}</span>
+            <span className="armoury__ranura-tecla">tecla {teclaDeRanura(ranura.slot, binds)}</span>
           </button>
         ))}
       </div>

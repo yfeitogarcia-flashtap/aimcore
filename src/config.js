@@ -3313,6 +3313,17 @@ export const SETTINGS = {
     step: 0.01,
     decimals: 2,
   },
+  /**
+   * **A qué modo se juega el entrenamiento** (vuelta 98). Hasta aquí eran dos
+   * botones que arrancaban la partida al pulsarlos, así que elegir el modo y
+   * empezar eran el mismo gesto: no se podía marcar uno y seguir configurando.
+   * Ahora es un ajuste más de la partida —de los once de la vuelta 92, el
+   * primero— y lo que arranca es «Jugar».
+   */
+  trainingMode: {
+    label: 'Modo',
+    default: 'timed',
+  },
   scenario: {
     label: 'Escenario',
     /**
@@ -5304,36 +5315,95 @@ const ESCENARIOS_INTEGRADOS = {
  */
 export const CLAVES_INTEGRADAS = Object.keys(ESCENARIOS_INTEGRADOS)
 
+/**
+ * **Un escenario integrado dice cómo se llama** (vuelta 98), igual que uno de
+ * fichero declara su `clave`. Hace falta desde que el entrenamiento y el duelo
+ * montan **la definición de su modo** y no la de `SCENARIOS`: el motor compara
+ * claves para no remontar el mundo sin motivo, y una definición sin clave se
+ * llamaba «(sin guardar)» —todas igual—.
+ */
+for (const [clave, definicion] of Object.entries(ESCENARIOS_INTEGRADOS)) {
+  if (definicion.clave === undefined) definicion.clave = clave
+}
+
 export const SCENARIOS = { ...ESCENARIOS_INTEGRADOS, ...MAPAS_DE_FICHERO }
 
 /**
- * **Y un mapa sin publicar no sale en ninguna lista** (vuelta 88).
- *
- * Es la única puerta: las dos listas derivadas de abajo son de donde salen el
- * selector de escenarios y el desplegable del duelo, así que filtrar aquí es
- * filtrar en los dos sitios sin escribirlo dos veces. `SCENARIOS` **no** se
- * filtra a propósito —el editor tiene que poder abrir un borrador, y una sala
- * creada con su clave tiene que poder montarlo—: lo que se decide aquí es qué
- * se **ofrece**, no qué existe.
- *
- * `undefined` es publicado, que es lo que hace que esto no mueva ni un mapa de
- * los que ya hay: ver `sanearMapa` en `src/maps/formato.js`.
+ * **Los modos en los que se puede publicar un mapa** (vuelta 98), en el orden en
+ * que el saneado los escribe.
  */
-const publicado = (def) => def.publicado !== false
-
-export const TRAINER_SCENARIOS = Object.fromEntries(
-  Object.entries(SCENARIOS).filter(([, definition]) => !definition.soloDuelo && publicado(definition)),
-)
+export const MODOS_DE_MAPA = ['entrenamiento', 'duelo']
 
 /**
- * **Los mapas de duelo**, derivados del propio dato (`soloDuelo`) igual que
- * `TRAINER_SCENARIOS` se deriva de lo contrario. Desde la vuelta 72 hay dos —El
- * Espejo y Los Pilares— y por eso hace falta una lista: hasta aquí el escenario
- * del duelo era un solo nombre en `NET.escenario`.
+ * **En qué modos se ofrece un mapa** (vuelta 98). Es la única pregunta que
+ * deciden las dos listas de abajo, y hasta la 97 se contestaba con dos campos
+ * que decían otra cosa: `publicado` (¿sale en algún sitio?) y `soloDuelo` (¿es
+ * de duelo?). De ahí que un mapa no pudiera publicarse **en los dos**, y que un
+ * mapa de duelo guardado con una clave del entrenamiento se colara en el
+ * entrenamiento — que es lo que se reportó: Aim Camp a medias al entrar a
+ * entrenar.
+ *
+ * `modos` manda si está. Si no está, se deduce de los dos de antes **sin
+ * reescribir el fichero**, que es lo que deja todos los mapas de hoy donde
+ * estaban: `publicado: false` es ninguno, `soloDuelo` es duelo, y lo demás
+ * entrenamiento.
  */
-export const DUEL_SCENARIOS = Object.fromEntries(
-  Object.entries(SCENARIOS).filter(([, def]) => def.soloDuelo && publicado(def)),
-)
+export function modosDeMapa(definicion) {
+  if (!definicion || typeof definicion !== 'object') return []
+  if (Array.isArray(definicion.modos)) return MODOS_DE_MAPA.filter((m) => definicion.modos.includes(m))
+  if (definicion.publicado === false) return []
+  return definicion.soloDuelo ? ['duelo'] : ['entrenamiento']
+}
+
+/**
+ * **Lo que se ofrece en un modo** (vuelta 98, enmendando la 94).
+ *
+ * `SCENARIOS` deja ganar al fichero, y eso sigue siendo lo que *existe*: el
+ * editor abre por ahí y una sala creada con su clave lo monta. Lo que cambia es
+ * lo que se **ofrece**: un mapa de fichero sustituye a un integrado **sólo en
+ * los modos para los que se publica**. En los demás, el integrado sigue en su
+ * sitio.
+ *
+ * Es el caso que se reportó, y no es de laboratorio: un mapa de duelo guardado
+ * con la clave `empty` pisaba la Sala vacía **en todo el juego**, y como la Sala
+ * vacía es el escenario de fábrica del entrenamiento, entrar a entrenar montaba
+ * media sala de duelo sin un error en ninguna pantalla. Con la fusión por modo
+ * ese mapa se queda en el duelo, que es donde se publicó, y el Gridshot vuelve.
+ *
+ * Y por eso **los dos modos montan la definición de su lista y no una clave**
+ * (`definicionDeEntrenamiento`, `definicionDeDuelo`): una clave que resolviera
+ * contra `SCENARIOS` volvería a montar el fichero.
+ */
+function escenariosDeModo(modo) {
+  const lista = {}
+  for (const clave of Object.keys(SCENARIOS)) {
+    const deFichero = MAPAS_DE_FICHERO[clave]
+    const integrado = ESCENARIOS_INTEGRADOS[clave]
+    const elegido = [deFichero, integrado].find((def) => def && modosDeMapa(def).includes(modo))
+    if (elegido) lista[clave] = elegido
+  }
+  return lista
+}
+
+export const TRAINER_SCENARIOS = escenariosDeModo('entrenamiento')
+
+/**
+ * **Los mapas de duelo**, derivados del mismo dato que los del entrenamiento.
+ * Desde la vuelta 72 hay más de uno —El Espejo y Los Pilares— y por eso hace
+ * falta una lista: hasta aquí el escenario del duelo era un solo nombre en
+ * `NET.escenario`.
+ */
+export const DUEL_SCENARIOS = escenariosDeModo('duelo')
+
+/**
+ * **La definición que monta el entrenamiento** para una clave (vuelta 98). Una
+ * clave que no se ofrece en el entrenamiento cae a la primera que sí, y no a
+ * `empty` a secas: `empty` puede no estar en la lista, y era exactamente así
+ * como un mapa de otro modo acababa montado aquí.
+ */
+export function definicionDeEntrenamiento(clave) {
+  return TRAINER_SCENARIOS[clave] ?? TRAINER_SCENARIOS.empty ?? Object.values(TRAINER_SCENARIOS)[0] ?? ESCENARIOS_INTEGRADOS.empty
+}
 
 /**
  * **Qué mapa juega una sala**, saneado. Lo miran los dos extremos —el huésped
@@ -5344,6 +5414,16 @@ export const DUEL_SCENARIOS = Object.fromEntries(
  */
 export function escenarioDeDuelo(key) {
   return DUEL_SCENARIOS[key] ? key : NET.escenario
+}
+
+/**
+ * **La definición que monta el duelo** (vuelta 98), la de su lista y no la de
+ * `SCENARIOS`, por lo mismo que `definicionDeEntrenamiento`. La llaman los tres
+ * que montan una sala —los dos huéspedes y la página—, y el saneado de la clave
+ * es el de arriba: no hay una segunda idea de qué mapa juega una sala.
+ */
+export function definicionDeDuelo(key) {
+  return DUEL_SCENARIOS[escenarioDeDuelo(key)] ?? ESCENARIOS_INTEGRADOS[NET.escenario]
 }
 
 export function scenarioHasCover(escenario) {
@@ -6680,12 +6760,23 @@ export const ECONOMY = {
   },
   /**
    * **El catálogo, y su combinación de compra rápida.** Cada entrada dice su
-   * categoría y su código dentro de ella, que es lo que se teclea tras la tecla
-   * de la armería: la Pulse es `B 1 1`, la Volt `B 3 1` y la Rift `B 4 3`.
+   * código dentro de su categoría, y lo que se teclea es **categoría + código**:
+   * la Volt es `1 1`, la Rift `1 2`, la Pulse `2 1`.
    *
-   * Los códigos **no son correlativos a propósito**: dejan el sitio de las armas
-   * que faltan (la 4 2 de otro rifle, la 2 de las escopetas), porque el día que
-   * lleguen no pueden mover de sitio lo que la gente ya tiene en los dedos.
+   * **La categoría no se escribe: sale de la ranura** (vuelta 98,
+   * `CATEGORIA_DE_RANURA`). Hasta la 97 había dos agrupaciones —la tienda por
+   * tipo de arma (1 Pistolas, 2 Escopetas, 3 Subfusiles, 4 Rifles…) y la armería
+   * por ranura (Primarias, Pistolas, Especiales…)— y la pestaña de Primarias
+   * llevaba un «1» que era la tecla de la ranura mientras el `1` de una
+   * combinación abría Pistolas. Se reportó exactamente así: «la sección no
+   * cambia o muestra otra arma, algunas combinaciones están cambiadas». Ahora hay
+   * **una** tabla, y la categoría de un arma es la sección donde está su ficha.
+   *
+   * **Y el código es el orden de la ficha dentro de su sección**, que es lo que
+   * hace que el número se lea en el panel sin buscarlo. La vuelta 64 dejaba
+   * huecos «para las armas que faltan»; con la numeración nueva eso ya no compra
+   * nada —cambiar de tabla ya mueve lo que había en los dedos— y un hueco se lee
+   * como un código roto.
    *
    * `disponible: false` es lo que todavía no existe en el juego. Sale en el
    * panel, con su precio y su combinación, y **no se puede comprar**: prometer
@@ -6709,7 +6800,7 @@ export const ECONOMY = {
    *   lista escrita a mano es una lista donde un día se cuela algo.
    */
   catalogo: [
-    { clave: 'pulse', nombre: 'Pulse', tipo: 'arma', ranura: 'secondary', categoria: 1, codigo: 1, precio: 0, disponible: true },
+    { clave: 'pulse', nombre: 'Pulse', tipo: 'arma', ranura: 'secondary', codigo: 1, precio: 0, disponible: true },
     /**
      * **El Reaper, y es el primer artículo que compite con algo que ya llevas**
      * (vuelta 90). Todo lo demás del catálogo llena un hueco: aquí lo que se
@@ -6722,7 +6813,7 @@ export const ECONOMY = {
      * techo de esa ronda (`techoRonda1`). No hace falta una excepción: con 800
      * de saldo inicial tampoco llegaría.
      */
-    { clave: 'reaper', nombre: 'Reaper', tipo: 'arma', ranura: 'secondary', categoria: 1, codigo: 3, precio: 900, disponible: true },
+    { clave: 'reaper', nombre: 'Reaper', tipo: 'arma', ranura: 'secondary', codigo: 2, precio: 900, disponible: true },
     /**
      * **La Pump estrena la categoría 2**, que llevaba reservada para las
      * escopetas desde que existe el catálogo — y por eso su código es el 1 de
@@ -6734,9 +6825,9 @@ export const ECONOMY = {
      * a los tres mil porque **sólo mata de cerca**, que es lo contrario de lo
      * que compran la Rift y la Scout.
      */
-    { clave: 'pump', nombre: 'Pump', tipo: 'arma', ranura: 'primary', categoria: 2, codigo: 1, precio: 2400, disponible: true },
-    { clave: 'volt', nombre: 'Volt', tipo: 'arma', ranura: 'primary', categoria: 3, codigo: 1, precio: 1600, disponible: true },
-    { clave: 'rift', nombre: 'Rift', tipo: 'arma', ranura: 'primary', categoria: 4, codigo: 3, precio: 2900, disponible: true },
+    { clave: 'pump', nombre: 'Pump', tipo: 'arma', ranura: 'primary', codigo: 4, precio: 2400, disponible: true },
+    { clave: 'volt', nombre: 'Volt', tipo: 'arma', ranura: 'primary', codigo: 1, precio: 1600, disponible: true },
+    { clave: 'rift', nombre: 'Rift', tipo: 'arma', ranura: 'primary', codigo: 2, precio: 2900, disponible: true },
     /**
      * **El Krakov cuesta 3400**: por encima de la Rift (2900) y de la Scout
      * (3100), y por debajo del Titan (4700). El número sale de la economía como
@@ -6755,11 +6846,11 @@ export const ECONOMY = {
      * rifle de asalto. Lo que se elige entre las dos es cuánto se quiere pelear
      * con el retroceso, y para eso tienen que estar una al lado de la otra.
      */
-    { clave: 'krakov', nombre: 'Krakov', tipo: 'arma', ranura: 'primary', categoria: 4, codigo: 1, precio: 3400, disponible: true },
+    { clave: 'krakov', nombre: 'Krakov', tipo: 'arma', ranura: 'primary', codigo: 3, precio: 3400, disponible: true },
     // **La Scout cuesta más que el rifle** porque una bala al cuerpo mata a
     // quien no lleve chaleco. Y 3100 deja intacta la regla de la ronda 2: con
     // los 2700 del que pierde no llega, guarde o no los 300 del chaleco.
-    { clave: 'scout', nombre: 'Scout', tipo: 'arma', ranura: 'primary', categoria: 5, codigo: 1, precio: 3100, disponible: true },
+    { clave: 'scout', nombre: 'Scout', tipo: 'arma', ranura: 'primary', codigo: 5, precio: 3100, disponible: true },
     /**
      * **El Titan es el artículo más caro del catálogo**, por encima del U2
      * (4200), y el número sale de la economía y no del gusto: ganar una ronda
@@ -6768,7 +6859,7 @@ export const ECONOMY = {
      * en cualquier zona y a través de cualquier armadura no puede ser el arma
      * de todas las rondas; tiene que ser la de la ronda que se prepara.
      */
-    { clave: 'titan', nombre: 'Titan', tipo: 'arma', ranura: 'primary', categoria: 5, codigo: 3, precio: 4700, disponible: true },
+    { clave: 'titan', nombre: 'Titan', tipo: 'arma', ranura: 'primary', codigo: 6, precio: 4700, disponible: true },
     /**
      * **El arco y el U2** (vueltas 85 y 86), en su propia categoría: no son
      * rifles ni francotiradores, son **armas que lanzan algo**, y meterlos con
@@ -6791,10 +6882,10 @@ export const ECONOMY = {
      *   era «o uno o el otro» por la ranura; ahora es «los dos, si te lo
      *   puedes pagar», que es una decisión y no una prohibición.
      */
-    { clave: 'bow', nombre: 'Bow', tipo: 'arma', ranura: 'special', categoria: 8, codigo: 1, precio: 1200, disponible: true },
-    { clave: 'u2', nombre: 'U2', tipo: 'arma', ranura: 'special', categoria: 8, codigo: 2, precio: 4200, disponible: true },
-    { clave: 'chaleco', nombre: 'Chaleco', tipo: 'equipo', categoria: 6, codigo: 1, precio: 500, disponible: true },
-    { clave: 'casco', nombre: 'Casco', tipo: 'equipo', categoria: 6, codigo: 2, precio: 350, disponible: true },
+    { clave: 'bow', nombre: 'Bow', tipo: 'arma', ranura: 'special', codigo: 1, precio: 1200, disponible: true },
+    { clave: 'u2', nombre: 'U2', tipo: 'arma', ranura: 'special', codigo: 2, precio: 4200, disponible: true },
+    { clave: 'chaleco', nombre: 'Chaleco', tipo: 'equipo', codigo: 1, precio: 500, disponible: true },
+    { clave: 'casco', nombre: 'Casco', tipo: 'equipo', codigo: 2, precio: 350, disponible: true },
     /**
      * **Las tres granadas, que desde la vuelta 87 se compran de verdad.**
      * Estaban aquí desde la 64 **precintadas** —con su precio y su combinación
@@ -6807,9 +6898,9 @@ export const ECONOMY = {
      * es el techo (`techoRonda1`) — la primera ronda sigue siendo una decisión
      * de equipo y no una carrera de armas.
      */
-    { clave: 'core', nombre: 'Core', tipo: 'utilidad', ranura: 'throwable', categoria: 7, codigo: 1, precio: 300, disponible: true },
-    { clave: 'ko', nombre: 'KO', tipo: 'utilidad', ranura: 'throwable', categoria: 7, codigo: 2, precio: 250, disponible: true },
-    { clave: 'blind', nombre: 'Blind', tipo: 'utilidad', ranura: 'throwable', categoria: 7, codigo: 3, precio: 250, disponible: true },
+    { clave: 'core', nombre: 'Core', tipo: 'utilidad', ranura: 'throwable', codigo: 1, precio: 300, disponible: true },
+    { clave: 'ko', nombre: 'KO', tipo: 'utilidad', ranura: 'throwable', codigo: 2, precio: 250, disponible: true },
+    { clave: 'blind', nombre: 'Blind', tipo: 'utilidad', ranura: 'throwable', codigo: 3, precio: 250, disponible: true },
     /**
      * **El Fang es utilidad y no arma**, y eso tiene una consecuencia que es
      * una decisión: **cabe en la ronda 1**, como las tres granadas. Con 800 de
@@ -6821,18 +6912,23 @@ export const ECONOMY = {
      * gastan. Y sigue costando menos que cualquier arma, porque hace falta
      * acertar a una cabeza con una parábola.
      */
-    { clave: 'fang', nombre: 'Fang', tipo: 'utilidad', ranura: 'throwable', categoria: 7, codigo: 5, precio: 450, disponible: true },
+    { clave: 'fang', nombre: 'Fang', tipo: 'utilidad', ranura: 'throwable', codigo: 4, precio: 450, disponible: true },
   ],
   /** Cómo se llama cada categoría en el panel. */
+  /**
+   * **Las categorías de la tienda son las secciones de la armería** (vuelta 98),
+   * en el orden en que salen. El número de cada ranura coincide con su tecla de
+   * fábrica donde se ha podido (1, 2, 3 y 5); la de arrojadizas es la 4 porque
+   * su tecla es una letra. El cuchillo tiene categoría y nada que comprar: se
+   * lleva siempre.
+   */
   categorias: {
-    1: 'Pistolas',
-    2: 'Escopetas',
-    3: 'Subfusiles',
-    4: 'Rifles de asalto',
-    5: 'Francotirador',
+    1: 'Primarias',
+    2: 'Pistolas',
+    3: 'Cuerpo a cuerpo',
+    4: 'Arrojadizas',
+    5: 'Especiales',
     6: 'Equipo',
-    7: 'Utilidad',
-    8: 'Especiales',
   },
   /**
    * **El techo de la ronda 1**: los tipos que se pueden comprar. Sin `arma`, así
@@ -6879,13 +6975,46 @@ export function catalogoDeTienda() {
    * declarase por su cuenta cuál es gratis podría acabar diciendo una cosa
    * distinta de la que el saneado te pone en la mano. Se sella al vuelo desde
    * `WEAPONS[clave].deSerie`, y la lista se calcula una vez.
+   *
+   * **Y la categoría se sella igual** (vuelta 98): sale de la ranura del arma
+   * —`WEAPONS[clave].slot`, no la que diga el renglón— y de `tipo` para el
+   * equipo, que no tiene ranura. La lista sale **ordenada por categoría y
+   * código**, que es el orden de las fichas, y un código repetido dentro de una
+   * categoría revienta al cargar: dos artículos en la misma combinación es una
+   * compra que no se sabe qué compra.
    */
   if (!_catalogo) {
     _catalogo = ECONOMY.catalogo
       .filter((item) => WEAPONS[item.clave]?.slot !== 'melee')
-      .map((item) => (WEAPONS[item.clave]?.deSerie ? { ...item, deSerie: true } : item))
+      .map((item) => {
+        const ranura = WEAPONS[item.clave]?.slot ?? item.ranura
+        const categoria = item.tipo === 'equipo' ? CATEGORIA_DE_EQUIPO : CATEGORIA_DE_RANURA[ranura]
+        return { ...item, categoria, ...(WEAPONS[item.clave]?.deSerie ? { deSerie: true } : {}) }
+      })
+      .sort((a, b) => a.categoria - b.categoria || a.codigo - b.codigo)
+    const vistas = new Set()
+    for (const item of _catalogo) {
+      const combinacion = `${item.categoria} ${item.codigo}`
+      if (!Number.isInteger(item.categoria) || vistas.has(combinacion)) {
+        throw new Error(`catálogo: la combinación ${combinacion} (${item.clave}) no es única`)
+      }
+      vistas.add(combinacion)
+    }
   }
   return _catalogo
+}
+
+/**
+ * **Qué categoría es cada ranura** (vuelta 98): la única tabla de la que salen
+ * las secciones de la armería, los títulos de la tienda y el primer dígito de
+ * una combinación.
+ */
+export const CATEGORIA_DE_RANURA = { primary: 1, secondary: 2, melee: 3, throwable: 4, special: 5 }
+export const CATEGORIA_DE_EQUIPO = 6
+
+/** Un artículo por su combinación, o `null`. La miran la armería y la tienda. */
+export function articuloDeCombinacion(categoria, codigo) {
+  return catalogoDeTienda().find((i) => i.categoria === categoria && i.codigo === codigo) ?? null
 }
 
 export const ROUNDS = {
@@ -7005,6 +7134,16 @@ export const ESCRITORIO = {
    * literales iguales es como uno se queda atrás.
    */
   ordenPantallaCompleta: 'pantalla_completa',
+  /**
+   * **La marca que la ventana inyecta en cada documento** (vuelta 98), la
+   * segunda señal de «estoy en la app». Escrita también en `main.rs`.
+   */
+  marcaGlobal: '__VEKTOR_ESCRITORIO__',
+  /**
+   * El aviso que manda la ventana cuando F11 la cambia (vuelta 98), para que el
+   * ajuste de la página diga lo mismo. Escrito también en `main.rs`.
+   */
+  avisoPantallaCompleta: 'vektor:pantalla-completa',
 }
 
 export const ACTUALIZACION = {

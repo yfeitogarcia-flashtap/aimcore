@@ -11,15 +11,23 @@
 // del navegador y la API del documento **exige un gesto**, así que «arrancar así»
 // es imposible ahí. Y ese es todo el reparto:
 //
-//   - **Quién decide es la página**, con su ajuste (`SETTINGS.pantallaCompleta`).
-//     F11 lo alterna y el panel de opciones lo enseña; las dos cosas escriben el
-//     mismo valor, que es lo que hace que «recordar la elección» no necesite un
-//     segundo estado que cuadrar.
-//   - **Y aquí se obedece y se copia.** La orden llega por IPC y, con ella, se
-//     deja escrito en el directorio de configuración lo que había puesto. Hace
-//     falta porque el arranque nativo ocurre **antes de que la página exista**:
-//     no hay a quién preguntarle, así que se lee la copia. La verdad sigue siendo
-//     el ajuste del juego; esto es una copia para el primer instante.
+//   - **El ajuste es de la página** (`SETTINGS.pantallaCompleta`): el panel de
+//     opciones lo enseña y lo escribe, y la ventana obedece por IPC.
+//   - **F11 es de la ventana** (vuelta 98). En la 97 lo escuchaba la página, y
+//     eso lo colgaba de que la página supiera que está en la app —que es justo
+//     lo que falló—. Aquí F11 funciona aunque la página no sepa nada: se pone o
+//     se quita, se copia al fichero y **se le cuenta a la página**, que actualiza
+//     su ajuste. Los dos lados escriben el mismo valor, así que siguen sin ser
+//     dos estados.
+//   - **Y se copia en frío.** El arranque nativo ocurre **antes de que la página
+//     exista**: no hay a quién preguntarle, así que se lee la copia.
+//
+// Y una cosa más, que es la que faltaba en la 97: **la página tiene que poder
+// saber que está aquí**. Se lo dicen dos señales, y las dos son nativas y no
+// dependen del origen: el agente de usuario de `tauri.conf.json` y una marca que
+// se inyecta en cada documento antes que ningún script suyo
+// (`window.__VEKTOR_ESCRITORIO__`). Con una sola, un fallo de esa sola deja la
+// app sin `Ctrl` y sin pantalla completa **sin un error en ninguna pantalla**.
 //
 // `Ctrl+W` no se toca y no hace nada, que es el motivo por el que agacharse sale
 // de fábrica en `Ctrl` **sólo aquí** (`src/keybinds.js`): no hay pestaña que
@@ -29,7 +37,31 @@
 use std::fs;
 use std::path::PathBuf;
 
-use tauri::{Manager, WebviewWindow};
+use tauri::{Manager, WebviewWindow, WebviewWindowBuilder};
+use tauri_plugin_global_shortcut::{Code, GlobalShortcutExt, Shortcut, ShortcutState};
+
+/// La ventana que declara `tauri.conf.json`. Se declara ahí con `create: false`
+/// y se construye aquí, porque la marca de abajo sólo se puede poner desde Rust.
+const VENTANA: &str = "main";
+
+/// El nombre del aviso que recibe la página cuando F11 cambia la ventana. Está
+/// escrito también en `src/escritorio.js`, que es la otra punta.
+const AVISO_A_LA_PAGINA: &str = "vektor:pantalla-completa";
+
+/// F11 sin modificadores.
+fn atajo_de_pantalla_completa() -> Shortcut {
+    Shortcut::new(None, Code::F11)
+}
+
+/// **La marca que la página lee para saber dónde está**, inyectada en cada
+/// documento antes que ningún script suyo. Congelada, y con la versión dentro:
+/// es también lo que enseña el panel de opciones, que es la forma de comprobar a
+/// simple vista que la página se ha enterado.
+fn marca_de_la_app(version: &str) -> String {
+    format!(
+        "Object.defineProperty(window, '__VEKTOR_ESCRITORIO__', {{ value: Object.freeze({{ version: {version:?} }}), enumerable: false }});"
+    )
+}
 
 /// **La copia en frío de la elección**, junto a la configuración de la app y no
 /// al lado del ejecutable: el portable se deja en cualquier carpeta —a veces sin
@@ -66,10 +98,66 @@ fn recordar_pantalla_completa(app: &tauri::AppHandle, activa: bool) {
     let _ = fs::write(ruta, if activa { "1" } else { "0" });
 }
 
+/// Pone o quita, recuerda y se lo cuenta a la página. El último paso es un
+/// `eval` y no un evento de Tauri: el puente de eventos pasa por la capacidad,
+/// que está atada al origen, y esto tiene que llegar aunque el dominio cambie.
+fn alternar_desde_la_ventana(ventana: &WebviewWindow) {
+    let activa = !ventana.is_fullscreen().unwrap_or(false);
+    let _ = ventana.set_fullscreen(activa);
+    recordar_pantalla_completa(ventana.app_handle(), activa);
+    let _ = ventana.eval(format!(
+        "window.dispatchEvent(new CustomEvent({AVISO_A_LA_PAGINA:?}, {{ detail: {activa} }}))"
+    ));
+}
+
+/// **F11 sólo es de Vektor mientras Vektor tiene el foco.** El atajo es global
+/// del sistema —es la única forma de que una ventana con una página remota vea
+/// una tecla antes que la página—, así que se registra al ganar el foco y se
+/// suelta al perderlo: F11 en el navegador de al lado tiene que seguir siendo
+/// del navegador. Un fallo al registrarlo (otra app se ha quedado con F11) no
+/// tira nada: la página sigue escuchando F11 como en la 97.
+fn escuchar_f11(app: &tauri::AppHandle, escuchar: bool) {
+    let atajos = app.global_shortcut();
+    let atajo = atajo_de_pantalla_completa();
+    let puesto = atajos.is_registered(atajo);
+    if escuchar && !puesto {
+        let _ = atajos.register(atajo);
+    } else if !escuchar && puesto {
+        let _ = atajos.unregister(atajo);
+    }
+}
+
 fn main() {
     tauri::Builder::default()
+        .plugin(
+            tauri_plugin_global_shortcut::Builder::new()
+                .with_handler(|app, atajo, evento| {
+                    if evento.state != ShortcutState::Pressed {
+                        return;
+                    }
+                    if *atajo != atajo_de_pantalla_completa() {
+                        return;
+                    }
+                    if let Some(ventana) = app.get_webview_window(VENTANA) {
+                        alternar_desde_la_ventana(&ventana);
+                    }
+                })
+                .build(),
+        )
         .setup(|app| {
-            if let Some(ventana) = app.get_webview_window("main") {
+            let config = app
+                .config()
+                .app
+                .windows
+                .iter()
+                .find(|ventana| ventana.label == VENTANA)
+                .cloned()
+                .expect("tauri.conf.json tiene que declarar la ventana principal");
+            let version = app.package_info().version.to_string();
+            let ventana = WebviewWindowBuilder::from_config(app.handle(), &config)?
+                .initialization_script(marca_de_la_app(&version))
+                .build()?;
+            {
                 // **Se decide antes de mostrarla**, que es la razón por la que la
                 // ventana nace invisible en `tauri.conf.json`: ponerla a pantalla
                 // completa con la ventana ya en pantalla es un salto visible en
@@ -85,11 +173,12 @@ fn main() {
                 // único que la ventana pone es el foco al abrir.
                 let _ = ventana.set_focus();
             }
+            escuchar_f11(app.handle(), true);
             Ok(())
         })
         .on_window_event(|ventana, evento| {
-            if let tauri::WindowEvent::Focused(true) = evento {
-                let _ = ventana.set_focus();
+            if let tauri::WindowEvent::Focused(foco) = evento {
+                escuchar_f11(ventana.app_handle(), *foco);
             }
         })
         .invoke_handler(tauri::generate_handler![pantalla_completa])
@@ -99,12 +188,13 @@ fn main() {
 
 /// **Pone o quita la pantalla completa, y lo recuerda.**
 ///
-/// Recibe el valor y no un «alterna», a propósito: quien lleva el estado es el
-/// ajuste de la página, así que un alternar aquí sería un segundo estado con el
-/// que el de allí puede discrepar —y el síntoma sería F11 dejando la ventana al
-/// revés de lo que dice el panel de opciones—. El nombre de la orden está escrito
-/// también en `src/config.js` (`ESCRITORIO.ordenPantallaCompleta`), que es la otra
-/// punta de esta línea.
+/// Recibe el valor y no un «alterna», a propósito: cuando la orden viene de la
+/// página, quien lleva el estado es su ajuste, así que un alternar aquí sería un
+/// segundo estado con el que el de allí puede discrepar. El único que alterna es
+/// F11 (`alternar_desde_la_ventana`), y ése le cuenta el resultado a la página
+/// para que su ajuste diga lo mismo. El nombre de la orden está escrito también
+/// en `src/config.js` (`ESCRITORIO.ordenPantallaCompleta`), que es la otra punta
+/// de esta línea.
 #[tauri::command]
 fn pantalla_completa(ventana: WebviewWindow, activa: bool) {
     let _ = ventana.set_fullscreen(activa);

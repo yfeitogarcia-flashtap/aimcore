@@ -14425,3 +14425,159 @@ membresía de comunidad se quedan como las dos que no tocan el juego. La primera
 —skins— se queda viva con su regla puesta. Lo que falta sigue siendo lo mismo: un
 sitio donde cobrar y una identidad a la que atar lo comprado, o sea la propuesta
 07.
+
+## §98 — Bugs primero: la app que no se reconocía, los mapas que se colaban y los códigos que no casaban; y tres maquetas
+
+El encargo fue explícito en el orden —«bugs primero, rediseño después»— y los tres
+bugs tenían la misma forma: **dos cosas que se creían una**. Una señal de «estoy en
+la app» que era la única; una fusión de mapas que valía para todos los modos a la
+vez; dos numeraciones de armas que parecían la misma.
+
+### §98.1 La app no se enteraba de que era la app, y F11 dependía de eso
+
+Lo reportado: F11 no hacía nada en la app y la fila «Arrancar en pantalla completa»
+no salía en opciones. Las dos cosas colgaban de `esEscritorio()`, y en la 97 esa
+función tenía **una sola señal**: el agente de usuario que declara
+`tauri.conf.json`. El código de Tauri y de wry que la aplica está bien —se revisó en
+el fuente de las versiones que compila el `.exe`—, así que no hay una causa única
+que arreglar desde aquí; lo que sí se puede arreglar es **depender de una sola
+señal y de la página para una tecla**. Tres cambios:
+
+- **Dos señales, y basta una.** La ventana deja de crearse desde la configuración
+  (`create: false`) y se construye en `main.rs` con un **script de inicio** que
+  pone `window.__VEKTOR_ESCRITORIO__` —con la versión— en cada documento antes que
+  ningún script de la página. Las dos señales son nativas y ninguna depende del
+  origen, que era la regla de la 97.
+- **F11 es de la ventana.** Un atajo global que se registra al ganar el foco y se
+  suelta al perderlo (F11 en el navegador de al lado sigue siendo del navegador).
+  Alterna, copia en `ventana.txt` y **se lo cuenta a la página** con un `eval` —no
+  con un evento de Tauri, que pasa por la capacidad atada al origen—. La página
+  pone su ajuste igual **sin devolverle la orden** (anota lo que la ventana ya ha
+  puesto antes de escribir el ajuste). Así F11 funciona aunque la página no sepa
+  dónde está, que es el fallo que se vio.
+- **Y se ve si se ha enterado.** El pie de opciones dice «Vektor de escritorio
+  0.3.0». Es la comprobación a simple vista que faltaba: en la 97 no había forma de
+  distinguir «la página no lo sabe» de «la app instalada es vieja».
+
+Se compiló para Windows desde aquí (`cargo check --target x86_64-pc-windows-msvc`),
+que es lo que se puede sin un Windows. Medido (`escritorio98`): con un agente de
+usuario de navegador y **sólo** el script que genera `main.rs`, la página sale en
+`Ctrl`, con la fila y con la versión; el aviso de F11 —el `eval` exacto de
+`main.rs`— pone el ajuste a `true` y a `false` **con cero órdenes de vuelta**; su
+denominador —cambiarlo desde la página— sí manda la orden; y sin ninguna marca no
+cambia nada.
+
+### §98.2 Un mapa sustituye a un integrado sólo donde se publica
+
+Lo reportado: «entrando en Entrenamiento aparece Aim Camp, un mapa de duelo, y
+además sin su mitad simétrica». Aim Camp en el repositorio está bien —de duelo y
+simétrico—. Lo que se montaba era **`src/maps/empty.js`**: una versión a medias de
+Aim Camp guardada con la clave `empty`. La 94 ya había visto que esa clave pisaba
+la Sala vacía y puso un aviso en el editor; lo que no se vio es la mitad peor: **la
+Sala vacía es el escenario de fábrica del entrenamiento**, y el saneado devolvía
+`empty` aunque no estuviera en la lista del entrenamiento. O sea que no hacía falta
+elegir nada: bastaba con entrar.
+
+- **`modos`** en el formato: entrenamiento, duelo, los dos o ninguno. Manda sobre
+  `publicado` y `soloDuelo`, y sin él se deduce de los dos —`modosDeMapa`— **sin
+  reescribir ningún fichero**: abrir y guardar un mapa sin tocar su publicación lo
+  deja byte a byte (vuelta 83). Publicar en el duelo exige ser mapa de duelo; el
+  saneado lo quita y lo dice, y la casilla del editor lo hace de duelo si hace
+  falta.
+- **Fusión por modo** (`escenariosDeModo`). `SCENARIOS` sigue siendo lo que
+  **existe**, con el fichero ganando; lo que se **ofrece** en un modo es el fichero
+  sólo si se publica en ese modo, y si no, el integrado. Y como una clave resuelve
+  contra `SCENARIOS`, **cada modo monta la definición de su lista**
+  (`definicionDeEntrenamiento`, `definicionDeDuelo`): el motor del entrenamiento,
+  los dos huéspedes y la página del duelo. Los integrados declaran su `clave` para
+  que el motor siga comparando claves.
+- **El valor de fábrica también tiene que estar en el catálogo.** El saneado cae a
+  la primera opción de la lista si el de fábrica no está.
+- **«Duplicar este mapa»** en Alchemist: copia entera, en borrador, sin guardar y
+  con una clave libre, para sacar la versión de otro modo sin tocar el original.
+
+Lo que **no** se ha tocado es `empty.js`: es de quien lo hizo. Con la fusión por
+modo se queda en el duelo —donde se publicó— y el entrenamiento recupera la Sala
+vacía. Medido (`mapas98`): con esa premisa delante, el selector enseña Sala vacía y
+Largo y Puerta, el motor monta `empty` con **0 piezas**, cada lista contiene sólo lo
+publicado en su modo, el saneado es un punto fijo y ningún mapa del disco gana
+`modos` al abrirse; en Alchemist, Aim Camp sale marcado sólo en Duelo y la copia
+nace en borrador con sus 63 piezas.
+
+### §98.3 Una tabla de categorías, y es la de las secciones
+
+Lo reportado: al teclear una combinación la sección no cambiaba o enseñaba otra
+arma, unas estaban cambiadas y otras sin asignar. Había **dos agrupaciones**: la
+tienda por tipo de arma (1 Pistolas, 2 Escopetas, 3 Subfusiles, 4 Rifles, 5
+Francotirador, 6 Equipo, 7 Utilidad, 8 Especiales) y la armería por ranura
+(Primarias, Pistolas, Especiales, Arrojadizas, Cuerpo a cuerpo). Y cada pestaña de
+la armería llevaba **la tecla de su ranura** en la misma cápsula en que la ficha
+lleva su código: un «1» bajo Primarias, mientras el `1` de una combinación abría
+Pistolas. Encima, la armería equipaba **dentro del actualizador** de un `setState`,
+que React puede llamar cuando quiera.
+
+- **La categoría sale de la ranura** (`CATEGORIA_DE_RANURA`), y el catálogo deja de
+  escribirla: 1 Primarias, 2 Pistolas, 3 Cuerpo a cuerpo, 4 Arrojadizas, 5
+  Especiales, 6 Equipo. Donde se ha podido coincide con la tecla de fábrica.
+- **El código es el orden de la ficha en su sección**, sin huecos. La vuelta 64
+  dejaba huecos para las armas que faltaban; con la tabla nueva eso ya no compra
+  nada y un hueco se lee como un código roto.
+- **Un solo buscador** (`articuloDeCombinacion`) para la armería y la tienda, y una
+  combinación repetida revienta al cargar.
+- **La pestaña enseña su número en grande y la tecla aparte**, y el primer dígito
+  ya abre su sección.
+
+Medido (`armeria98`), arma a arma y leyendo el código **de la pantalla**: las 14
+armas del catálogo en la armería del menú y otra vez en la de una partida (el
+primer dígito abre su sección y el segundo la equipa), y los 16 artículos de la
+tienda del duelo contestan con su nombre.
+
+### §98.4 Entrenamiento: el modo se elige, no se arranca
+
+Los dos modos eran dos botones que empezaban la partida. Ahora son un interruptor
+(`SETTINGS.trainingMode`, guardado como los otros once): **sólo el elegido en
+verde**, con su luz, y lo que arranca es **Jugar**, abajo. El orden es el pedido
+—Modo, Dónde, Contra qué, Dificultad, Dianas simultáneas y movimiento, El resto— y
+la regla de la 94 («la acción no se va de la pantalla») se cumple por la otra
+punta: lo pegado es la barra de abajo. Medido (`entreno98`, a 1920×1080, 1366×768 y
+1280×860): pulsar un modo no arranca nada, el elegido es el único verde, Jugar se
+ve y se puede pinchar con la lista arriba y abajo, y arranca el modo marcado.
+
+### §98.5 Duelo: la pantalla de crear la sala no es la de pausar una partida
+
+El menú de ESC del duelo era el mismo antes y durante la partida, así que al crear
+la sala ofrecía «Salir de la partida» y no había forma de volver al menú del juego.
+Los botones dependen ahora del mismo `ocupadas` que cierra las opciones de la sala
+(vuelta 67): sin rival, **Volver**; con rival, **Pausar** y **Salir**. Volver a
+media partida es abandonarla, así que ahí no sale: dos botones que hacen lo mismo
+con dos nombres es uno que miente. Y los controles pasan a una **tabla** detrás de
+un botón con un teclado, con las teclas de los binds. Medido (`duelomenu98`, dos
+navegadores): solo, Volver sin Salir ni Pausar; con el rival, al revés; la tabla
+dice la C de agacharse y Volver lleva a `/`. `menu92` sigue verde: 379 px y ningún
+control inalcanzable a 700×460.
+
+### §98.6 El instalador acepta imágenes hechas a mano
+
+Confirmado: **150 × 57** la cabecera y **164 × 314** el lateral, **BMP de 24 bits
+sin transparencia**, y NSIS no las escala. El generador usa las de
+`Reference/Instalador/` si están (y el workflow se lanza al cambiarlas), las aplana
+y, si no miden eso, **cubre y recorta** avisando — nunca estira.
+
+### §98.7 Tres maquetas, antes de construir ninguna
+
+Se pidieron al menos tres alternativas de toda la interfaz para compararlas. Están
+en un lienzo aparte, con las cinco pantallas de cada una y los datos de verdad del
+juego (las siluetas son las del juego, trazadas del mismo `weaponPaths.js`):
+
+- **A · Retícula**: la rejilla de Vektor llevada a instrumento — hilos de 1 px,
+  esquinas de mira, secciones numeradas y datos en mono. La más cercana a lo de hoy.
+- **B · Cabina**: un armazón fijo en todas las pantallas —raíl a la izquierda,
+  barra de estado arriba, la acción siempre en el mismo sitio—, esquinas
+  achaflanadas y tipografía condensada. La que más resuelve el «el Duelo no se
+  parece al resto», porque el duelo pasa a ser una pantalla más del mismo armazón.
+- **C · Cartel**: tipografía grande, una columna de decisión y subrayado en vez de
+  cajas. La más distinta y la que más cuesta llevar a una pantalla con muchos datos
+  como la armería.
+
+La elegida se construye como **un sistema** —tokens y componentes una vez, en el
+juego y en la página del duelo— y no pantalla a pantalla.

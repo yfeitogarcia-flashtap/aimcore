@@ -32,6 +32,10 @@ on:
     paths:
       - 'escritorio/**'
       - '.github/workflows/escritorio.yml'
+      # Las imágenes del instalador hechas a mano (vuelta 98) y su generador:
+      # cambiarlas es cambiar el instalador, así que tiene que volver a salir.
+      - 'Reference/Instalador/**'
+      - 'scripts/escritorio-instalador.mjs'
   workflow_dispatch:
 
 # Dos empujones seguidos a `escritorio/` no necesitan dos `.exe`: gana el último.

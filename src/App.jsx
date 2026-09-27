@@ -249,8 +249,15 @@ export default function App() {
     engineRef.current?.requestLock()
   }, [])
 
-  const startTimed = useCallback(() => engineRef.current?.requestStart('timed'), [])
-  const startDeathmatch = useCallback(() => engineRef.current?.requestStart('deathmatch'), [])
+  /**
+   * **Jugar arranca el modo elegido** (vuelta 98), que es un ajuste y no un
+   * botón. Se lee del store en el momento de pulsar, no de un cierre: un
+   * `useCallback` sin la dependencia se quedaría con el modo de cuando se montó.
+   */
+  const startTraining = useCallback(
+    () => engineRef.current?.requestStart(getSettings().trainingMode),
+    [],
+  )
   const finishSession = useCallback(() => engineRef.current?.finishSession(), [])
   const backToStart = useCallback(() => {
     setSummary(null)
@@ -422,8 +429,7 @@ export default function App() {
             <Training
               settings={settings}
               onChange={updateSettings}
-              onStartTimed={startTimed}
-              onStartDeathmatch={startDeathmatch}
+              onStart={startTraining}
               onBack={() => setMenu('modos')}
             />
           ) : (

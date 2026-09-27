@@ -118,13 +118,19 @@
                    dice. Pasó, y por eso esto está aquí. -->
               <p id="clave-nota" class="nota aviso" hidden></p>
               <label>Nombre <input id="label" type="text" /></label>
-              <!-- **Publicado** (vuelta 88): guardar sigue escribiendo el
-                   fichero, pero un mapa sin publicar no se le ofrece a nadie.
-                   Son dos cosas distintas y hasta aquí eran una: el mapa salía
-                   en el selector del juego desde el primer guardado, a medio
-                   dibujar. -->
-              <label class="checkline"><input id="publicado" type="checkbox" />
-                Publicado (sale en el juego)</label>
+              <!-- **Dónde se publica** (vuelta 98, sobre la 88): guardar sigue
+                   escribiendo el fichero, y lo que se decide aquí es a qué modo
+                   se le ofrece. Ninguna casilla es un borrador; las dos, que sale
+                   en los dos. Hasta la 97 era una casilla de «publicado» y otra
+                   de «sólo duelo» en otra hoja, y un mapa no podía estar en los
+                   dos modos a la vez. -->
+              <fieldset class="modos">
+                <legend>Publicado en</legend>
+                <label class="checkline"><input id="modo-entrenamiento" type="checkbox" />
+                  Entrenamiento</label>
+                <label class="checkline"><input id="modo-duelo" type="checkbox" />
+                  Duelo</label>
+              </fieldset>
               <p id="publicado-nota" class="nota"></p>
             </section>
 
@@ -670,9 +676,11 @@
             <section>
               <h2>Mapa de duelo</h2>
               <label class="checkline"><input id="solo-duelo" type="checkbox" />
-                Es un mapa de duelo (fuera del selector de entrenamiento)</label>
-              <p class="nota">Un mapa de duelo no tiene explosivo, ni recogibles, ni
-                rutas: es el mapa de un modo, no una variante del entrenamiento.</p>
+                Es un mapa de duelo (dos salidas y sus cajas de compra)</label>
+              <p class="nota">Dónde sale se elige en la hoja <b>Mapa</b>. Un mapa de duelo
+                puede publicarse también en el entrenamiento, que lo juega desde su
+                spawn; para cambiarle los spawns sin tocar el original, duplícalo en
+                <b>Archivo</b>.</p>
             </section>
 
             <section id="duelo-campos">
@@ -857,6 +865,13 @@
               <h2>Abrir</h2>
               <label>Mapa <select id="abrir"></select></label>
               <ul id="problemas"></ul>
+              <!-- **Duplicar el mapa entero** (vuelta 98): la forma de sacar una
+                   versión de entrenamiento de un mapa de duelo —o al revés— sin
+                   tocar el original. La copia nace en borrador y sin guardar. -->
+              <div class="botonera">
+                <button id="duplicar-mapa" type="button">Duplicar este mapa</button>
+              </div>
+              <p id="duplicar-nota" class="nota"></p>
             </section>
 
             <!-- **Subir es una acción del editor, no del script que lo abre**

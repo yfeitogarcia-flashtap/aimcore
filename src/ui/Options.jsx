@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react'
 import Controls from './Controls.jsx'
 import { keyLabel, keysOf } from '../keybinds.js'
-import { esEscritorio } from '../escritorio.js'
+import { esEscritorio, versionDeEscritorio } from '../escritorio.js'
 import { persistenciaDisponible } from '../settings.js'
 import { FieldHead, SegmentedRow, SliderRow, ToggleRow } from './fields.jsx'
 import {
@@ -257,7 +257,14 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
           los datos al cerrarse o una ventana privada se veían como un juego que
           pierde los ajustes solo. Ahora la frase cambia. */}
       {persistenciaDisponible() ? (
-        <p className="panel__hint">Los ajustes se guardan en este navegador.</p>
+        <p className="panel__hint">
+          {/* **Y dice dónde está** (vuelta 98). En la 97 la página no se enteró de
+              que corría en la app y no había forma de verlo desde fuera: la
+              versión escrita aquí es la comprobación a simple vista. */}
+          {esEscritorio()
+            ? `Vektor de escritorio ${versionDeEscritorio()}. Los ajustes se guardan en esta app.`
+            : 'Los ajustes se guardan en este navegador.'}
+        </p>
       ) : (
         <p className="panel__hint panel__hint--alerta">
           Este navegador no deja guardar ajustes, así que se perderán al cerrar.

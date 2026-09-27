@@ -297,7 +297,10 @@ declara `soloDuelo`, la Sala vacía pasó a ofrecerse **como mapa de duelo**, qu
 es un mapa sin salidas. Sin un error en ninguna pantalla, y justo en la pantalla
 que la vuelta 92 construyó para enseñar que hay más de un escenario. El editor
 avisa ahora al ver la clave (`CLAVES_INTEGRADAS`), antes de guardar. Lo que no
-se ha tocado es el mapa: es de quien lo hizo.
+se ha tocado es el mapa: es de quien lo hizo. **Y desde la vuelta 98 sólo sustituye
+en los modos donde se publica** — ver «Lo que existe y lo que se ofrece», más abajo:
+la 94 vio la mitad; la otra era que la Sala vacía es el escenario de fábrica del
+entrenamiento, así que ese mapa se montaba con sólo entrar a entrenar.
 
 **Un gesto que puede ser un clic o un arrastre se decide al soltar** (vuelta
 95). El clic derecho del editor orbita la cámara **y** apila la pieza que haya
@@ -745,6 +748,82 @@ paga una vez, se queda.
 Medido (`escritorio97`): un navegador en la dirección vieja recibe 302 con su ruta
 y su consulta enteras, el nombre bueno se sirve con 200 —o sea que no hay bucle— y
 la app recibe 200 en la dirección vieja.
+
+**Saber dónde estás no puede colgar de una sola señal, y una tecla de la ventana es
+de la ventana** (vuelta 98, enmendando la 97). La 97 reconocía la app por **una**
+marca —el agente de usuario— y colgó de ella las tres cosas de la app, F11 incluida,
+que además escuchaba la página. En la app de verdad la página no se enteró: F11 no
+hacía nada y la fila de pantalla completa no salía, sin un error en ninguna
+pantalla. Tres reglas que se quedan:
+
+- **Dos señales nativas, y basta una**: el agente de usuario y una marca que la
+  ventana inyecta en cada documento antes que ningún script
+  (`window.__VEKTOR_ESCRITORIO__`, con la versión). Por eso la ventana se declara con
+  `create: false` y se construye en `main.rs`. Ninguna depende del origen, que es la
+  regla de la 97 y sigue en pie.
+- **Lo que la ventana puede hacer sola, lo hace ella.** F11 es un atajo del proceso
+  nativo, registrado **sólo con el foco** —en el navegador de al lado F11 sigue
+  siendo suyo—; alterna, copia en `ventana.txt` y **se lo cuenta a la página** con un
+  `eval` (no con un evento de Tauri: ese pasa por la capacidad, atada al origen). La
+  página pone su ajuste igual **anotando antes lo que la ventana ya ha puesto**, así
+  que la suscripción no le devuelve la orden. La escucha de F11 de la página se
+  queda de repuesto para cuando otra aplicación tenga el atajo.
+- **Y que la página lo sabe se ve**: el pie de opciones dice «Vektor de escritorio
+  X.Y». Sin eso, «la página no lo sabe» y «la app instalada es vieja» eran el mismo
+  síntoma.
+
+Medido (`escritorio98`), con los dos scripts **sacados de `main.rs` tal cual**:
+sólo la marca y un agente de usuario de navegador bastan para `Ctrl`, la fila y la
+versión; el aviso de F11 cambia el ajuste con **cero órdenes de vuelta**, y su
+denominador —cambiarlo desde la página— sí manda la orden. Y el `.exe` se comprueba
+que compila para Windows desde aquí (`cargo check --target x86_64-pc-windows-msvc`),
+que es todo lo que se puede sin un Windows delante.
+
+**Lo que existe y lo que se ofrece son dos listas, y cada modo monta la suya**
+(vuelta 98). Un mapa se publica **por modo** (`modos`: entrenamiento, duelo, los dos
+o ninguno) y la pregunta la contesta una sola función, `modosDeMapa`, que deduce
+los de un mapa viejo de `publicado` y `soloDuelo` **sin reescribir el fichero**.
+`SCENARIOS` sigue siendo lo que **existe** —el fichero gana, y es por donde abre el
+editor—; lo que se **ofrece** en un modo (`escenariosDeModo`) es el fichero sólo si
+se publica en ese modo, y si no, el integrado. Tres cosas que son el mecanismo:
+
+- **Cada modo monta la definición de su lista, no una clave**
+  (`definicionDeEntrenamiento`, `definicionDeDuelo`): una clave resuelve contra
+  `SCENARIOS`, y así se montaba en el entrenamiento un mapa publicado para el duelo.
+  Lo llaman el motor, los dos huéspedes y la página del duelo. Los integrados
+  declaran su `clave` para que el motor siga comparando claves.
+- **El valor de fábrica de un catálogo también tiene que estar en él.** El saneado
+  devolvía `empty` aunque no estuviera en la lista del entrenamiento; ahora cae a
+  la primera que sí.
+- **Publicar en el duelo exige ser mapa de duelo**, y `soloDuelo` pasa a significar
+  sólo eso («tiene dos salidas»), no «sólo en el duelo». El saneado quita el modo
+  que no cabe y lo dice; la casilla del editor lo hace de duelo.
+
+Pasó, y es la segunda vez que lo pasa la misma clave: `src/maps/empty.js` —media
+Aim Camp guardada como `empty`— se montaba al entrar a entrenar. Medido (`mapas98`).
+
+**Una numeración que el jugador teclea es una sola tabla, y es la que ve** (vuelta
+98). Había dos agrupaciones de armas —la tienda por tipo, la armería por ranura— y
+la pestaña de cada ranura llevaba su tecla en la misma cápsula en la que la ficha
+lleva su código. **La categoría sale de la ranura** (`CATEGORIA_DE_RANURA`: 1
+Primarias, 2 Pistolas, 3 Cuerpo a cuerpo, 4 Arrojadizas, 5 Especiales, 6 Equipo),
+**el código es el orden de la ficha en su sección**, la combinación la busca **una**
+función (`articuloDeCombinacion`) para la armería y la tienda, y una combinación
+repetida revienta al cargar. Y **una acción no va dentro del actualizador de un
+`setState`**: React lo llama cuando quiere —en el render siguiente, o dos veces en
+modo estricto—. Medido (`armeria98`), leyendo el código **de la pantalla**, arma a
+arma y en los tres sitios.
+
+**Elegir y arrancar son dos gestos** (vuelta 98). Los dos modos del entrenamiento
+eran botones que empezaban la partida, así que no se podía marcar uno y seguir
+configurando. Son un interruptor (`SETTINGS.trainingMode`) con **sólo el elegido en
+verde**, y arranca **Jugar**, abajo y pegado —la regla de la 94 por la otra punta—.
+
+**Y un menú que sirve a dos momentos cambia con el momento** (vuelta 98). El menú
+del duelo era el mismo al crear la sala y a media partida: ofrecía «Salir de la
+partida» sin partida y no tenía cómo volver. Cuelga del mismo `ocupadas` que cierra
+las opciones de la sala (vuelta 67): sin rival, **Volver**; con rival, **Pausar** y
+**Salir**, y Volver se va, porque a media partida volver **es** abandonar.
 
 **Todo el tuning en `config.js`.** Ninguna constante de juego vive suelta en un
 módulo. Si necesitas un número nuevo, va a `config.js` aunque lo use un solo
@@ -5078,9 +5157,10 @@ quita; al cerrarla vuelve, salvo que ya se haya recuperado el ratón.
 
 **Dos formas de comprar, y las dos son la misma llamada**: pinchar el artículo o
 teclear su **combinación** (categoría + código), que va escrita en la esquina de
-cada uno. Los códigos **no son correlativos a propósito** —la Rift es `4 3`—:
-dejan sitio a las armas que faltan, porque el día que lleguen no pueden mover de
-sitio lo que la gente ya tiene en los dedos. Y lo que todavía no exista **sale en el panel
+cada uno. **Desde la vuelta 98 la categoría es la ranura y el código es el orden
+de la ficha en su sección**, sin huecos —la Rift es `1 2`—: ver «Una numeración que
+se teclea es una sola tabla», más arriba. Los huecos de la vuelta 64 («dejan sitio a
+las armas que faltan») se fueron con la tabla vieja. Y lo que todavía no exista **sale en el panel
 con su precio y su código y no se puede comprar**: esconderlo sería no poder
 aprenderse la combinación; venderlo sería prometer una mecánica que no hay. Las
 tres granadas estuvieron así de la vuelta 64 a la 87, y al construirse ocuparon
@@ -5829,6 +5909,11 @@ reloj y cable:
   **Y cambiar la dirección que abre no obliga a nadie a reinstalar**: el huésped
   redirige al dominio nuevo con `VEKTOR_DOMINIO` y **a la app no la redirige**,
   porque su canal con el proceso nativo está atado al origen.
+  **Desde la vuelta 98 (0.3.0) F11 lo atiende la propia ventana** y la página se
+  sabe en la app por dos señales, no una; el pie de *Opciones* dice «Vektor de
+  escritorio 0.3.0», que es cómo se ve que se ha enterado. Las imágenes del
+  instalador (150×57 y 164×314, BMP de 24 bits) se pueden sustituir dejando PNG en
+  `Reference/Instalador/`.
 - **En Cloudflare**, un **Durable Object por código de partida**
   (`worker/sala.js`), con el mismo Worker sirviendo el juego y las salas.
   **Desde la 58 es respaldo, no producción**, y se queda en pie unas semanas. Se
@@ -5931,8 +6016,10 @@ reconexión, y volver es abrir el enlace otra vez. Irse —que es pulsar el bot�
 le da la ronda y la partida al rival. El huésped lleva ping/pong para enterarse
 de un cable mudo.
 
-**Y el menú de ESC del duelo tiene tres botones desde la vuelta 73**: pausar,
-**opciones** y salir. El de opciones abre el panel completo del juego —con la
+**Y el menú de ESC del duelo cambia con el momento desde la vuelta 98**: al crear
+la sala, *Volver*, *Opciones* y *Controles* (un botón con un teclado que abre una
+tabla con los binds); con el rival dentro, *Pausar*, *Opciones*, *Controles* y
+*Salir*. **Desde la vuelta 73** tenía tres botones —pausar, **opciones** y salir—. El de opciones abre el panel completo del juego —con la
 sección de controles y la sensibilidad de la mirilla— **sin salir de la
 partida**, que hasta aquí era la única forma de llegar a él. No pausa: el mundo
 sigue corriendo, igual que con el menú desde la 60 y con la tienda desde la 64.
@@ -5979,8 +6066,9 @@ motor de verdad**: «Probar» construye un `Engine` contra la definición que ha
 delante, con su sala, su física y su colisión. Guardar escribe
 `src/maps/<clave>.js` y el mapa **ya es un escenario**: lo ve el huésped de Node
 igual y sale en el selector **si está publicado**, que desde la vuelta 88 es una
-casilla en la hoja de Mapa —un mapa nuevo nace en borrador y la barra de arriba
-lo dice—. Cada guardado pregunta qué cambia y anota una versión con su fecha, y
+casilla en la hoja de Mapa y **desde la 98 son dos** —Entrenamiento y Duelo—; un
+mapa nuevo nace en borrador y la barra de arriba lo dice. Y **Archivo → Duplicar
+este mapa** abre una copia en borrador y sin guardar, con otra clave. Cada guardado pregunta qué cambia y anota una versión con su fecha, y
 hay borrador para lo que no se ha guardado (vuelta 75).
 
 Con la fase 2 ya se construye de verdad: **seis formas** —cubo, prisma, muro,
@@ -6610,7 +6698,8 @@ no está en el catálogo es lo que no se compra, y hoy eso es el cuchillo: dice
 equipa y ya.
 
 **Y desde la vuelta 93 se equipa sin ratón, con la combinación de la tienda.**
-Cada ficha lleva su **categoría + código** escrito al lado del precio, y
+Desde la 98 la categoría es la sección y el código el orden de la ficha (la Rift es
+`1 2`), y el primer dígito ya abre la sección. Cada ficha lleva su **categoría + código** escrito al lado del precio, y
 teclearlos con el panel abierto equipa el arma —los mismos códigos del catálogo
 del duelo, así que lo que se aprende aquí vale allí—. Lo tecleado y lo que sale
 se dicen bajo el raíl; lo que este modo no puede dar (un chaleco) lo dice en vez
@@ -6623,22 +6712,17 @@ de los dos— con **Armería** y **Opciones** debajo en gris y, debajo, **los
 controles como pares de tecla y verbo**; y pulsando Entrenamiento, la pantalla de
 configurar la partida.
 
-**Configurar entrenamiento** (lo que hasta la 91 estaba dentro de opciones):
-arriba **los dos modos** —ronda cronometrada o con explosivo, y Deathmatch o
-práctica libre según el mapa—, **pegados a la cabecera desde la vuelta 94**, así
-que siguen a la vista con la lista hasta abajo. Debajo, los once ajustes **en
-tres grupos**: *dónde se juega* (escenario con su plano y su ficha, duración de
-la sesión —la del modo / sin límite / 30 s / 1 / 3 / 5 / 10 minutos, y vale para
-los dos modos desde la 78—), *contra qué disparas* (tipo de diana, simultáneas,
-tamaño, cadencia, distancia de aparición y **ancho del cono**, que se ve dibujado
-delante mientras se mueve) y *cómo se mueven y cuánto aprietan* (**modo
-dinámico**, velocidad de patrulla 1.5–8 u/s y **dificultad de los muñecos**). Los
-que no significan nada con lo elegido arriba salen **apagados y sin admitir
-entrada**, con su frase diciendo por qué. Y al final, **«Volver» y «Jugar ·
-<modo>»** (vuelta 95): el par de siempre de una pantalla de ajustes, con el
-nombre del modo dentro porque un «Jugar» a secas en una pantalla con dos modos
-es un botón que no dice lo que hace. Sale de la misma variable que el botón de
-arriba.
+**Configurar entrenamiento** (lo que hasta la 91 estaba dentro de opciones), en
+el orden de la vuelta 98: **Modo** —un interruptor, ronda con explosivo o
+Deathmatch (cronometrada o práctica libre en la sala vacía), sólo el elegido en
+verde y guardado como un ajuste más—, *dónde se juega* (escenario con su plano y
+su ficha, y la duración de la sesión), *contra qué disparas* (tipo de diana),
+*dificultad*, *dianas simultáneas y movimiento* (simultáneas, modo dinámico y
+velocidad de patrulla) y *el resto* (tamaño, cadencia, distancia de aparición y
+**ancho del cono**, que se ve dibujado delante mientras se mueve). Los que no
+significan nada con lo elegido arriba salen **apagados y sin admitir entrada**,
+con su frase diciendo por qué. Y abajo, **pegados**, **«Volver» y «Jugar»** —que
+dice «Jugar» y nada más: el modo ya está en verde encima—.
 
 **Opciones** (desde el menú y desde la pausa, persistidas) se queda con lo que
 es **del jugador y de su máquina**: sensibilidad, **sensibilidad con mirilla**,
@@ -6668,6 +6752,15 @@ el botón no pueda apuntar a un ajuste distinto del que enseña la fila.
 
 Cuentas, guardado en la nube, rankings y minimapa. Si el encargo no
 lo pide explícitamente, no se añade.
+
+**Y la vuelta 98 fija lo que va delante** (encargo de la vuelta 98): primero se
+construye **el rediseño elegido** de entre las tres maquetas —como un sistema único
+para el juego y la página del duelo, no pantalla a pantalla—; después la **11**, ya
+**aprobada**, empezando por su fase 1 (todos contra todos) **y el cambio de
+protocolo**, con dos condiciones puestas: antes de construirla, **una estimación
+del coste mensual de tráfico en Fly.io con el protocolo nuevo** (por ejemplo, 5
+salas de 10 jugadores, 2 horas al día), y que **Alchemist deje colocar tantas
+salidas como jugadores tenga el modo del mapa**.
 
 **Y cuatro propuestas están escritas y sin construir, con su orden decidido por el
 encargo de la vuelta 97**: primero la **11** (salas de varios, espectador y lobby

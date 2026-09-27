@@ -21,7 +21,7 @@
  * avisos de conexión, las pausas y los números de F3.
  */
 import { masterGain, playEquip, playRoundTick } from '../src/audio/sfx.js'
-import { COLORS, CROSSHAIR, DUEL_SCENARIOS, ECONOMY, NET, RESUME_KEY_DELAY_MS, ROUNDS, TARGET, TEAMS, WEAPONS, catalogoDeTienda } from '../src/config.js'
+import { COLORS, CROSSHAIR, DUEL_SCENARIOS, ECONOMY, NET, RESUME_KEY_DELAY_MS, ROUNDS, TARGET, TEAMS, WEAPONS, articuloDeCombinacion, catalogoDeTienda, definicionDeDuelo } from '../src/config.js'
 import { Engine } from '../src/game/engine.js'
 import { Avatar } from '../src/game/avatar.js'
 import { hasLineOfSight } from '../src/game/sight.js'
@@ -137,7 +137,7 @@ const motor = new Engine(lienzo, {
    * llega como pulsación —al entrar y al salir del alcance—, no por frame.
    */
   onMeleeRange: (dentro, espalda) => capa.aCuchillo(dentro, espalda),
-}, { escenario: ESCENARIO })
+}, { escenario: definicionDeDuelo(ESCENARIO) })
 
 /**
  * **El fantasma: dónde dice el servidor que estás tú.** Es lo que hace visible
@@ -387,20 +387,47 @@ function reloj(ms) {
 let pausaMiaAntes = false
 let caidaAntes = false
 
+/** Las filas de la tabla de controles (vuelta 98). Van aquí arriba porque `pintarPausa` puede repintarla antes de llegar a la tabla. */
+const CONTROLES_DEL_DUELO = [
+  { direcciones: true, que: 'Moverse' },
+  { accion: 'jump', que: 'Saltar' },
+  { accion: 'crouch', que: 'Agacharse' },
+  { accion: 'walk', que: 'Andar sin hacer ruido' },
+  { accion: 'shoot', que: 'Disparar' },
+  { accion: 'reload', que: 'Recargar' },
+  { accion: 'primary', que: 'Arma principal' },
+  { accion: 'secondary', que: 'Pistola' },
+  { accion: 'melee', que: 'Cuchillo' },
+  { accion: 'throwable', que: 'Arrojadizos' },
+  { accion: 'special', que: 'Arma especial' },
+  { accion: 'use', que: 'Usar' },
+  { accion: 'armoury', que: 'Armería y tienda' },
+  { accion: 'scoreboard', que: 'Marcador' },
+]
+
+/** Las pausas libres que quedan, para la fila de Escape. Las escribe `pintarPausa`. */
+let libresQueQuedan = null
+
 function pintarPausa() {
   const p = cliente.pausa
   // Las pausas que quedan se dicen **en el menú**, que es donde se gastan
   // (vuelta 73). Estaban además pegadas al bloque de vida, y ese bloque es
   // ahora el del juego: dos sitios para el mismo número es uno que se queda
   // viejo.
-  $('libresMenu').textContent = p.libres
+  libresQueQuedan = p.libres
+  const libres = document.getElementById('libresMenu')
+  if (libres) libres.textContent = p.libres
+  else pintarControles(getKeybinds())
   // **El botón de votación sólo existe cuando es la única salida** (vuelta 55):
   // con libres que gastar, pedirle permiso al rival sería pedir por pedir.
   // Pausar, sólo con libres que gastar y sin nada en marcha; pedir votación,
   // sólo cuando ya no quedan. Nunca los dos a la vez: son la misma acción con
   // distinto precio, y dos botones juntos obligan a leerlos para saber cuál.
-  $('pausar').hidden = p.libres <= 0 || p.pausada || cliente.votacion.activa
-  $('pedirVoto').hidden = p.libres > 0 || p.pausada || cliente.votacion.activa
+  // **Y sin rival no hay partida que pausar** (vuelta 98): el menú es entonces
+  // el de crear la sala (`pintarBotonesDelMenu`).
+  const sinPartida = cliente.ocupadas < 2
+  $('pausar').hidden = sinPartida || p.libres <= 0 || p.pausada || cliente.votacion.activa
+  $('pedirVoto').hidden = sinPartida || p.libres > 0 || p.pausada || cliente.votacion.activa
   if (p.pausada && p.motivo === 'caida') {
     // **La pausa por caída no la ha puesto nadie**, así que no lleva botón de
     // reanudar: la levanta que el otro vuelva. Lo que sí lleva —pasados los
@@ -584,13 +611,6 @@ montarPantallaCompleta()
  * una tecla sale de un catálogo cerrado, pero pegar texto en `innerHTML` es una
  * costumbre que un día se lleva una comilla.
  */
-const CONTROLES_DEL_DUELO = [
-  { direcciones: true, que: 'mover' },
-  { accion: 'jump', que: 'saltar' },
-  { accion: 'crouch', que: 'agachar' },
-  { accion: 'walk', que: 'andar' },
-  { accion: 'shoot', que: 'disparar' },
-]
 
 function pintarControles(binds) {
   // La tienda se cierra con la tecla de armería, que también es un bind: aquí
@@ -598,24 +618,75 @@ function pintarControles(binds) {
   const cierra = document.getElementById('tiendaCierra')
   if (cierra) cierra.textContent = keyLabel(keysOf('armoury', binds)[0])
 
-  const fila = document.getElementById('controles')
-  if (!fila) return
-  fila.textContent = ''
-  const pares = CONTROLES_DEL_DUELO.map((c) => [
-    c.direcciones
-      ? ['forward', 'left', 'back', 'right'].map((a) => keyLabel(keysOf(a, binds)[0])).join('')
-      : keyLabel(keysOf(c.accion, binds)[0]),
+  /**
+   * **Una tabla de dos columnas** (vuelta 98): qué hace y con qué tecla. Las
+   * filas se escriben con nodos y no con `innerHTML`, porque las teclas salen de
+   * lo que el jugador ha guardado (la regla de la 97 con el HTML de esta página).
+   */
+  const cuerpo = document.getElementById('controles')
+  if (!cuerpo) return
+  cuerpo.textContent = ''
+  const filas = CONTROLES_DEL_DUELO.map((c) => [
     c.que,
+    c.direcciones
+      ? ['forward', 'left', 'back', 'right'].map((a) => keyLabel(keysOf(a, binds)[0])).join(' ')
+      : keyLabel(keysOf(c.accion, binds)[0]),
   ])
-  // La F3 es de esta página y no un bind, así que va al final y escrita.
-  pares.push(['F3', 'números de red'])
-  pares.forEach(([tecla, que], i) => {
-    if (i > 0) fila.append(document.createTextNode(' · '))
+  // Dos teclas que no son binds y van escritas: Escape es la salida del ratón
+  // (está en `FORBIDDEN_KEYS`) y F3 es de esta página, como las del editor.
+  filas.push(['Este menú (no pausa por sí solo)', 'ESC'])
+  filas.push(['Números de red', 'F3'])
+  for (const [que, tecla] of filas) {
+    const tr = document.createElement('tr')
+    const a = document.createElement('td')
+    a.textContent = que
+    const b = document.createElement('td')
     const kbd = document.createElement('kbd')
     kbd.textContent = tecla
-    fila.append(kbd, document.createTextNode(` ${que}`))
-  })
+    b.append(kbd)
+    tr.append(a, b)
+    cuerpo.append(tr)
+  }
+  if (libresQueQuedan !== null) {
+    const tr = document.createElement('tr')
+    const a = document.createElement('td')
+    a.textContent = 'Pausas que te quedan sin pedir permiso'
+    const b = document.createElement('td')
+    b.id = 'libresMenu'
+    b.textContent = String(libresQueQuedan)
+    tr.append(a, b)
+    cuerpo.append(tr)
+  }
 }
+
+/**
+ * **El botón del teclado abre y cierra la tabla.** Es un `.control`: se pincha
+ * con el ratón suelto y su clic no cuenta como el que captura (vuelta 48).
+ */
+$('teclado').addEventListener('click', () => {
+  const abierta = $('tablaControles').hidden
+  $('tablaControles').hidden = !abierta
+  $('teclado').setAttribute('aria-expanded', String(abierta))
+})
+
+/**
+ * **Qué botones lleva el menú, según haya partida** (vuelta 98). Sin rival esto
+ * es la pantalla de crear la sala: «Volver» al menú del juego, y ni pausar ni
+ * abandonar, porque no hay partida que pausar ni de la que irse. Con el rival
+ * dentro es la pausa de una partida, y ahí van las dos cosas y «Volver» se va:
+ * volver al menú en mitad de una partida **es** abandonarla, y dos botones que
+ * hacen lo mismo con dos nombres es uno que miente.
+ */
+function pintarBotonesDelMenu() {
+  const enPartida = cliente.ocupadas >= 2
+  $('volver').hidden = enPartida
+  $('salir').hidden = !enPartida
+  pintarPausa()
+}
+
+$('volver').addEventListener('click', () => {
+  salirAlMenu()
+})
 
 pintarControles(getKeybinds())
 subscribeKeybinds(pintarControles)
@@ -1082,8 +1153,10 @@ function pintarPanel() {
     huboRival = dentro
     // **Y con el rival dentro, las opciones de la partida se cierran** (vuelta
     // 67): cambiarlas empieza otra sala y le deja fuera. Se repinta al cambiar y
-    // no cada vez, que es la regla del HUD.
+    // no cada vez, que es la regla del HUD. Y con ellas, los botones del menú
+    // (vuelta 98): pasa de crear la sala a ser la pausa de una partida.
     pintarConfigurable()
+    pintarBotonesDelMenu()
   }
   $('hayRival').textContent = dentro ? 'dentro' : 'esperando'
   // El caudal se mide sobre la ventana, así que hay que vaciarlo aunque el panel
@@ -1326,7 +1399,9 @@ document.addEventListener('keydown', (evento) => {
   }
   const categoria = Number(tecleado[0])
   const codigo = Number(tecleado[1])
-  const item = ECONOMY.catalogo.find((i) => i.categoria === categoria && i.codigo === codigo)
+  // La misma tabla que la armería (vuelta 98): una combinación no puede comprar
+  // aquí algo distinto de lo que equipa allí.
+  const item = articuloDeCombinacion(categoria, codigo)
   $('tiendaTecleado').textContent = item
     ? `${categoria} ${codigo} · ${item.nombre}`
     : `${categoria} ${codigo} · no hay nada ahí`

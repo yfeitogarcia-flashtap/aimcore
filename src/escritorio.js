@@ -15,7 +15,7 @@
  *
  * Y una regla que las separa, porque no dependen de lo mismo: **saber dónde
  * estamos no depende del origen; pedirle algo a la ventana, sí.** El agente de
- * usuario viaja con la ventana vaya a donde vaya; el IPC de Tauri sólo funciona
+ * usuario y la marca inyectada viajan con la ventana vaya a donde vaya; el IPC de Tauri sólo funciona
  * si la URL cargada está en la lista de la capacidad. Así que un cambio de
  * dominio mal acompañado deja la tecla de agacharse funcionando y la pantalla
  * completa muda —que es el orden correcto de los dos fallos, y está escrito en
@@ -25,18 +25,57 @@ import { ESCRITORIO } from './config.js'
 import { getSettings, subscribeSettings, updateSettings } from './settings.js'
 
 /**
- * Se calcula una vez: el agente de usuario no cambia mientras la página vive, y
- * esto lo pregunta el saneado de los binds, que corre al importar el módulo.
+ * Se calcula una vez: las dos señales están puestas antes de que corra ningún
+ * script de la página, y esto lo pregunta el saneado de los binds, que corre al
+ * importar el módulo.
  */
 let esLaApp = null
 
-/** ¿Corre esto dentro de la ventana de escritorio? */
+/**
+ * **La marca que inyecta la ventana** (vuelta 98): `window.__VEKTOR_ESCRITORIO__`,
+ * puesta por Tauri en cada documento antes que ningún script suyo, con la versión
+ * de la app dentro.
+ */
+function marcaInyectada() {
+  const w = typeof window === 'undefined' ? null : window
+  const marca = w?.[ESCRITORIO.marcaGlobal]
+  return marca && typeof marca === 'object' ? marca : null
+}
+
+/**
+ * ¿Corre esto dentro de la ventana de escritorio?
+ *
+ * **Dos señales, y basta una** (vuelta 98). En la 97 era sólo el agente de
+ * usuario, y en la app de verdad la página no se enteró: F11 no hacía nada y la
+ * fila de pantalla completa no salía en opciones, sin un error en ninguna
+ * pantalla. Las dos son nativas y **ninguna depende del origen** —que es la
+ * regla de la 97 y sigue en pie—: el agente de usuario lo pone la
+ * configuración de la ventana y la marca, un script de inicio que la ventana
+ * inyecta en cualquier documento. Que fallen las dos a la vez pide que falle
+ * Tauri entero.
+ */
 export function esEscritorio() {
   if (esLaApp === null) {
     const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent ?? ''
-    esLaApp = ua.includes(ESCRITORIO.marcaUA)
+    esLaApp = marcaInyectada() !== null || ua.includes(ESCRITORIO.marcaUA)
   }
   return esLaApp
+}
+
+/**
+ * **Qué versión de la app es**, o `null` en un navegador. Es lo que enseña el
+ * panel de opciones, y existe por lo que costó la vuelta 97: la única forma de
+ * saber desde fuera que la página se ha enterado de dónde está es que lo diga.
+ * Sale de la marca, y si no hay marca, del agente de usuario
+ * (`VektorEscritorio/0.3`).
+ */
+export function versionDeEscritorio() {
+  if (!esEscritorio()) return null
+  const marca = marcaInyectada()
+  if (typeof marca?.version === 'string') return marca.version
+  const ua = typeof navigator === 'undefined' ? '' : navigator.userAgent ?? ''
+  const trozo = ua.split(`${ESCRITORIO.marcaUA}/`)[1]
+  return trozo ? trozo.split(' ')[0] : '?'
 }
 
 /**
@@ -103,23 +142,25 @@ let puesto = false
 
 /**
  * **Monta la pantalla completa de la app**: aplica el ajuste al cargar, lo sigue
- * mientras cambie, y pone F11 a alternarlo.
+ * mientras cambie, y escucha lo que haga F11.
  *
  * Lo montan **las dos páginas** —el juego y el duelo—, como el vigilante de
  * actualizaciones y por la misma razón: es de la ventana, no de un modo, y una
  * segunda copia en la página del 1v1 sería la vuelta 63 por la puerta del
  * escritorio.
  *
- * Tres detalles que no se adivinan:
+ * Cuatro detalles que no se adivinan:
  *
- * - **F11 sólo se toca en la app.** En un navegador esa tecla es suya y ya hace
- *   esto; interceptarla sería pelearse por un gesto que ya funciona, y encima
- *   `preventDefault` no la para (es la regla de `Ctrl+W` de la vuelta 27 con otra
- *   tecla). Sigue en `FORBIDDEN_KEYS`, así que tampoco se puede asignar a nada.
- * - **F11 escribe el ajuste, no la ventana.** Alternar y recordar son la misma
- *   acción (`SETTINGS.pantallaCompleta`), así que quien manda es el store y la
- *   ventana obedece a su suscripción. Llamar a la ventana aquí además sería
- *   pedírselo dos veces.
+ * - **F11 es de la ventana** desde la vuelta 98 (`escritorio/src-tauri`): la
+ *   pone o la quita ella, y **aquí llega el aviso** (`ESCRITORIO.avisoPantallaCompleta`)
+ *   para que el ajuste diga lo mismo. Eso hace que F11 funcione aunque esta
+ *   página no llegara a saber dónde está, que es el fallo que tuvo la 97.
+ * - **Y el aviso no rebota.** Se anota lo que la ventana ya ha puesto *antes* de
+ *   escribir el ajuste, así que la suscripción ve un valor que ya está y no se lo
+ *   vuelve a pedir.
+ * - **La escucha de F11 de aquí se queda de repuesto**: sólo le llega la tecla si
+ *   la ventana no ha podido quedarse con el atajo (otra aplicación lo tenía). En
+ *   un navegador F11 es suyo y no se toca, y sigue en `FORBIDDEN_KEYS`.
  * - **Y no se repite lo que ya está puesto.** Al arrancar, la ventana ya viene
  *   en pantalla completa si lo estaba (lo lee de su copia en frío), así que el
  *   primer aviso se manda igual —es idempotente— pero los cambios de otros
@@ -139,6 +180,13 @@ export function montarPantallaCompleta() {
   aplicar(getSettings().pantallaCompleta)
   const dejarDeEscuchar = subscribeSettings((ajustes) => aplicar(ajustes.pantallaCompleta))
 
+  const alAvisar = (evento) => {
+    const activa = Boolean(evento.detail)
+    ultima = activa
+    if (getSettings().pantallaCompleta !== activa) updateSettings({ pantallaCompleta: activa })
+  }
+  window.addEventListener(ESCRITORIO.avisoPantallaCompleta, alAvisar)
+
   const alPulsar = (evento) => {
     if (evento.code !== 'F11' || evento.repeat) return
     evento.preventDefault()
@@ -148,6 +196,7 @@ export function montarPantallaCompleta() {
 
   return () => {
     dejarDeEscuchar()
+    window.removeEventListener(ESCRITORIO.avisoPantallaCompleta, alAvisar)
     window.removeEventListener('keydown', alPulsar)
     puesto = false
   }

@@ -11,6 +11,7 @@ import {
   SIMULTANEOUS_TARGETS,
   TARGET_TYPES,
   TRAINER_SCENARIOS,
+  definicionDeEntrenamiento,
   scenarioHasCover,
 } from '../config.js'
 
@@ -64,7 +65,7 @@ function ScenarioRow({ value, onChange }) {
             aria-pressed={value === key}
             onClick={() => onChange({ scenario: key })}
           >
-            <ScenarioThumbnail scenarioKey={key} />
+            <ScenarioThumbnail scenarioKey={key} definicion={TRAINER_SCENARIOS[key]} />
             <span className="scenarios__name">{TRAINER_SCENARIOS[key].label}</span>
           </button>
         ))}
@@ -98,7 +99,7 @@ function durationHint(settings) {
   const bomba = 'La ronda con explosivo no usa esto: la mide la bomba.'
   if (elegida.seconds === null) {
     return `Cada modo trae la suya: ${SESSION_DURATION_S} s en la ronda corta y sin límite en ${
-      scenarioHasCover(settings.scenario)
+      scenarioHasCover(definicionDeEntrenamiento(settings.scenario))
         ? SESSION_MODES.deathmatch.label
         : SESSION_MODES.deathmatch.plainLabel
     }. ${bomba}`
@@ -110,7 +111,7 @@ function durationHint(settings) {
 
 /** Qué se ve del abanico de aparición, y dónde deja de significar algo. */
 function coneHint(settings) {
-  if (scenarioHasCover(settings.scenario)) {
+  if (scenarioHasCover(definicionDeEntrenamiento(settings.scenario))) {
     return 'Con escenario no se aplica: las dianas salen en puntos de ruta, no dentro del cono.'
   }
   const encuadre = Math.round(
@@ -175,7 +176,7 @@ function dynamicHint(targetType) {
     : 'Las dianas se desplazan por todo su volumen de aparición.'
 }
 
-export default function Training({ settings, onChange, onStartTimed, onStartDeathmatch, onBack }) {
+export default function Training({ settings, onChange, onStart, onBack }) {
   /**
    * **Abre por arriba**, que es la lección de la vuelta 78: el panel *es* el
    * contenedor con scroll, así que un hijo autoenfocado se trae la lista
@@ -201,7 +202,7 @@ export default function Training({ settings, onChange, onStartTimed, onStartDeat
     return () => window.removeEventListener('keydown', onKey)
   }, [onBack])
 
-  const conCobertura = scenarioHasCover(settings.scenario)
+  const conCobertura = scenarioHasCover(definicionDeEntrenamiento(settings.scenario))
   /**
    * Quién dispara: hace falta escenario **y** muñecos con zonas. Sale de las
    * mismas dos condiciones que ya escribe `difficultyHint`, así que la fila no
@@ -211,15 +212,30 @@ export default function Training({ settings, onChange, onStartTimed, onStartDeat
   const elegida = SESSION_DURATIONS[settings.sessionDuration]
   const segundos = elegida.seconds ?? 0
   /**
-   * **El nombre del modo principal, en una variable** (vuelta 95), porque desde
-   * esta vuelta lo dicen dos botones: el de arriba y el «Jugar» del final. Dos
-   * copias de la misma condición es cómo uno acaba diciendo «ronda con
-   * explosivo» y el otro arrancando otra cosa.
+   * **Los dos modos, con el nombre que tienen en este escenario.** Con cobertura
+   * y muñecos que disparan son la ronda con explosivo y el Deathmatch; en la sala
+   * vacía no hay bomba ni contra quién, así que son la ronda cronometrada y la
+   * práctica libre de siempre. El rótulo sale del escenario elegido, no de un
+   * interruptor aparte.
    */
-  const modoPrincipal = conCobertura ? 'Ronda con explosivo' : 'Ronda cronometrada'
-  const deathmatchLabel = conCobertura
-    ? `${SESSION_MODES.deathmatch.label}${segundos > 0 ? ` · ${elegida.label}` : ' ∞'}`
-    : SESSION_MODES.deathmatch.plainLabel
+  const modos = [
+    {
+      clave: 'timed',
+      nombre: conCobertura ? 'Ronda con explosivo' : 'Ronda cronometrada',
+      sub: conCobertura
+        ? 'Encuentra la bomba y desactívala antes de que reviente.'
+        : `Dianas contrarreloj · ${segundos > 0 ? elegida.label : `${SESSION_DURATION_S} s`}`,
+    },
+    {
+      clave: 'deathmatch',
+      nombre: conCobertura
+        ? `${SESSION_MODES.deathmatch.label}${segundos > 0 ? ` · ${elegida.label}` : ' ∞'}`
+        : SESSION_MODES.deathmatch.plainLabel,
+      sub: conCobertura
+        ? 'Sin bomba: los muñecos disparan y tú aguantas.'
+        : 'Sin reloj y sin objetivo: dianas y nada más.',
+    },
+  ]
 
   return (
     <div
@@ -228,63 +244,49 @@ export default function Training({ settings, onChange, onStartTimed, onStartDeat
       tabIndex={-1}
       onMouseDown={(event) => event.stopPropagation()}
     >
-      {/**
-        * **Y la acción no se va de la pantalla** (vuelta 94). La vuelta 92 puso
-        * los dos modos arriba con un argumento correcto —al final de once
-        * ajustes hay que buscarlos con la rueda— y se quedó a medio camino: este
-        * panel mide 850 px de alto y su contenido 1305, así que **configurar es
-        * exactamente el gesto que se los lleva fuera de la vista**. Quien baja a
-        * tocar el cono y quiere jugar tiene que subir a buscar el botón.
-        *
-        * Se quedan primeros, que es lo que la 92 decidió, y además **pegados
-        * arriba**: es un solo control, el primero, y no se va nunca. Duplicarlos
-        * en una barra de abajo habría sido dos botones que hacen lo mismo, o sea
-        * la vuelta 63 por la puerta del menú.
-        */}
-      <div className="training__cabecera">
-        <h2 className="panel__title panel__title--small">Entrenamiento</h2>
+      <h2 className="panel__title panel__title--small">Entrenamiento</h2>
 
-        <div className="training__modos">
-          <button
-            type="button"
-            className="button button--primary button--grande"
-            onClick={onStartTimed}
-            autoFocus
-          >
-            {modoPrincipal}
-            <span className="button__sub">
-              {conCobertura
-                ? 'Encuentra la bomba y desactívala antes de que reviente.'
-                : `Dianas contrarreloj · ${segundos > 0 ? elegida.label : `${SESSION_DURATION_S} s`}`}
-            </span>
-          </button>
-          {/* **El segundo modo tiene nombre propio donde lo tiene.** Con
-              cobertura y muñecos que disparan es un Deathmatch y se llama así; en
-              la sala vacía no hay contra quién, así que sigue siendo la práctica
-              libre de siempre. El rótulo sale del escenario elegido, no de un
-              interruptor aparte. */}
-          <button
-            type="button"
-            className="button button--primary button--grande"
-            onClick={onStartDeathmatch}
-          >
-            {deathmatchLabel}
-            <span className="button__sub">
-              {conCobertura
-                ? 'Sin bomba: los muñecos disparan y tú aguantas.'
-                : 'Sin reloj y sin objetivo: dianas y nada más.'}
-            </span>
-          </button>
+      {/**
+        * **El modo se elige, no se arranca** (vuelta 98). Hasta la 97 eran dos
+        * botones verdes que empezaban la partida al pulsarlos, así que elegir y
+        * jugar eran el mismo gesto y no había forma de marcar el Deathmatch y
+        * seguir bajando a la dificultad. Ahora es un interruptor de dos
+        * posiciones: **sólo la elegida va en verde** —la regla de la 94, el color
+        * no designa un ganador que nadie ha elegido— y lo que arranca es «Jugar»,
+        * abajo.
+        *
+        * Es un `radiogroup` y no dos `aria-pressed`: dos botones «pulsados» que se
+        * excluyen se leen con el lector de pantalla como dos interruptores sueltos.
+        */}
+      <Grupo titulo="Modo">
+        <div className="interruptor" role="radiogroup" aria-label="Modo de entrenamiento">
+          {modos.map((modo) => {
+            const puesto = settings.trainingMode === modo.clave
+            return (
+              <button
+                key={modo.clave}
+                type="button"
+                role="radio"
+                aria-checked={puesto}
+                className={`interruptor__opcion${puesto ? ' interruptor__opcion--puesta' : ''}`}
+                onClick={() => onChange({ trainingMode: modo.clave })}
+              >
+                <span className="interruptor__luz" aria-hidden="true" />
+                <span className="interruptor__nombre">{modo.nombre}</span>
+                <span className="interruptor__sub">{modo.sub}</span>
+              </button>
+            )
+          })}
         </div>
-      </div>
+      </Grupo>
 
       <Grupo titulo="Dónde se juega">
         <ScenarioRow value={settings.scenario} onChange={onChange} />
 
         {/* **La duración es de la sesión, no de un modo** (vuelta 78). «La del
             modo» es el valor de fábrica y devuelve lo de siempre; cualquier otro
-            se aplica a los dos botones de arriba. La ronda con explosivo la sigue
-            midiendo la bomba. */}
+            se aplica a los dos modos. La ronda con explosivo la sigue midiendo la
+            bomba. */}
         <SegmentedRow
           setting="sessionDuration"
           catalog={SESSION_DURATIONS}
@@ -306,7 +308,20 @@ export default function Training({ settings, onChange, onStartTimed, onStartDeat
               : 'Esferas con una sola zona: cae de un impacto, venga de donde venga.'
           }
         />
+      </Grupo>
 
+      <Grupo titulo="Dificultad">
+        <SegmentedRow
+          setting="enemyDifficulty"
+          catalog={ENEMY_DIFFICULTIES}
+          value={settings.enemyDifficulty}
+          onChange={onChange}
+          inerte={!hayQuienDispare}
+          hint={difficultyHint(settings)}
+        />
+      </Grupo>
+
+      <Grupo titulo="Dianas simultáneas y movimiento">
         <SegmentedRow
           setting="simultaneousTargets"
           catalog={SIMULTANEOUS_TARGETS}
@@ -319,49 +334,6 @@ export default function Training({ settings, onChange, onStartTimed, onStartDeat
           }
         />
 
-        <SliderRow
-          id="tr-radius"
-          setting="targetRadius"
-          value={settings.targetRadius}
-          onChange={onChange}
-        />
-
-        <SliderRow
-          id="tr-cadence"
-          setting="spawnIntervalMs"
-          value={settings.spawnIntervalMs}
-          onChange={onChange}
-          suffix=" ms"
-        />
-
-        {/* **Y estas dos se apagan con un escenario con cobertura** (vuelta 94):
-            ahí las dianas salen en puntos de ruta y ni la distancia ni el cono
-            deciden nada. Lo decía la frase de debajo desde la 78 y el control
-            seguía entero y respondiendo. */}
-        <SliderRow
-          id="tr-distance"
-          setting="spawnDistance"
-          value={settings.spawnDistance}
-          onChange={onChange}
-          inerte={conCobertura}
-          hint={conCobertura ? 'Con escenario no se aplica: las dianas salen en puntos de ruta.' : null}
-        />
-
-        {/* **Y con el panel abierto se ve** (vuelta 78): el motor dibuja el
-            abanico delante de la cámara mientras estas opciones están puestas,
-            así que mover el slider enseña el efecto en vez de describirlo. */}
-        <SliderRow
-          id="tr-cone"
-          setting="spawnConeDeg"
-          value={settings.spawnConeDeg}
-          onChange={onChange}
-          suffix="°"
-          inerte={conCobertura}
-          hint={coneHint(settings)}
-        />
-      </Grupo>
-
-      <Grupo titulo="Cómo se mueven y cuánto aprietan">
         <ToggleRow
           setting="dynamic"
           value={settings.dynamic}
@@ -382,40 +354,70 @@ export default function Training({ settings, onChange, onStartTimed, onStartDeat
           inerte={!settings.dynamic}
           hint={patrolSpeedHint(settings)}
         />
+      </Grupo>
 
-        <SegmentedRow
-          setting="enemyDifficulty"
-          catalog={ENEMY_DIFFICULTIES}
-          value={settings.enemyDifficulty}
+      <Grupo titulo="El resto">
+        <SliderRow
+          id="tr-radius"
+          setting="targetRadius"
+          value={settings.targetRadius}
           onChange={onChange}
-          inerte={!hayQuienDispare}
-          hint={difficultyHint(settings)}
+        />
+
+        <SliderRow
+          id="tr-cadence"
+          setting="spawnIntervalMs"
+          value={settings.spawnIntervalMs}
+          onChange={onChange}
+          suffix=" ms"
+        />
+
+        {/* **Y estas dos se apagan con un escenario con cobertura** (vuelta 94):
+            ahí las dianas salen en puntos de ruta y ni la distancia ni el cono
+            deciden nada. */}
+        <SliderRow
+          id="tr-distance"
+          setting="spawnDistance"
+          value={settings.spawnDistance}
+          onChange={onChange}
+          inerte={conCobertura}
+          hint={conCobertura ? 'Con escenario no se aplica: las dianas salen en puntos de ruta.' : null}
+        />
+
+        {/* **Y con el panel abierto se ve** (vuelta 78): el motor dibuja el
+            abanico delante de la cámara mientras estas opciones están puestas. */}
+        <SliderRow
+          id="tr-cone"
+          setting="spawnConeDeg"
+          value={settings.spawnConeDeg}
+          onChange={onChange}
+          suffix="°"
+          inerte={conCobertura}
+          hint={coneHint(settings)}
         />
       </Grupo>
 
-      {/* **Volver es pequeño y va al final** (vuelta 94). Era un botón del
-          tamaño de los de jugar, y en una pantalla cuya acción es empezar una
-          partida, el control más grande no puede ser el de salir de ella.
-
-          **Y a su lado, «Jugar»** (vuelta 95). Los dos modos están arriba y
-          pegados desde la 94, así que esto no es que la acción no se vea: es
-          que el final de una pantalla de ajustes es donde se acaba de decidir,
-          y ahí lo que se espera es el par de siempre — te vas o confirmas.
-
-          **Dice qué modo arranca**, y sale de la misma variable que el botón de
-          arriba: un «Jugar» a secas en una pantalla con dos modos es un botón
-          que no dice lo que hace, que es el fallo de la vuelta 67. Y va en
-          verde porque es la acción, mientras que volver no lo es. */}
-      <div className="panel__actions">
+      {/**
+        * **Volver y Jugar, abajo y pegados** (vuelta 98). Es el par de siempre
+        * de una pantalla de ajustes, y la acción ya no está arriba —arriba se
+        * elige—, así que la regla de la 94 («la acción no se va de la pantalla»)
+        * se cumple aquí: la barra es **pegajosa por abajo** y se ve con la lista
+        * en cualquier punto del scroll.
+        *
+        * **Y dice «Jugar» y nada más**, como se pidió. El modo que arranca ya
+        * está escrito en verde encima; repetirlo en el botón era la solución de
+        * la 95 a un problema que era de los dos botones de arriba.
+        */}
+      <div className="panel__actions training__acciones">
         <button type="button" className="button button--quiet button--pequeno" onClick={onBack}>
           Volver
         </button>
         <button
           type="button"
-          className="button button--primary button--pequeno"
-          onClick={onStartTimed}
+          className="button button--primary button--grande training__jugar"
+          onClick={onStart}
         >
-          Jugar · {modoPrincipal}
+          Jugar
         </button>
       </div>
     </div>

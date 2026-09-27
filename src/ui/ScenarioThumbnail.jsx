@@ -22,11 +22,14 @@ function sortedBoxes(definition) {
   return [...(definition.boxes ?? [])].sort((a, b) => coverHeight(a.kind) - coverHeight(b.kind))
 }
 
-export default function ScenarioThumbnail({ scenarioKey, className = '' }) {
-  const definition = SCENARIOS[scenarioKey]
+export default function ScenarioThumbnail({ scenarioKey, definicion = null, className = '' }) {
+  // **La definición del modo, si la hay** (vuelta 98): una clave resuelve contra
+  // `SCENARIOS`, que deja ganar al fichero en todos los modos, y el plano sería
+  // el de un mapa distinto del que se va a jugar.
+  const definition = definicion ?? SCENARIOS[scenarioKey]
   if (!definition) return null
 
-  const room = scenarioRoom(scenarioKey)
+  const room = scenarioRoom(definition)
   const { width, depth } = room
   const halfW = width / 2
   const halfD = depth / 2

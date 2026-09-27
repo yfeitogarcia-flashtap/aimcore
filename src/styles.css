@@ -936,38 +936,103 @@ body {
   margin-bottom: 4px;
 }
 
-/* **La cabecera se queda pegada arriba** (vuelta 94). El panel es el
-   contenedor con scroll —1305 px de contenido en 850 de alto—, así que bajar a
-   tocar un ajuste se llevaba fuera de la vista los dos botones de empezar, que
-   son la acción. Pegada, la decisión de la vuelta 92 («lo primero que se ve son
-   los dos modos») se cumple también después de haber configurado.
+/* **Volver y Jugar se quedan pegados abajo** (vuelta 98). Hasta la 97 lo pegado
+   era la cabecera con los dos botones de empezar —la regla de la 94: la acción
+   no se va de la pantalla—. Desde la 98 esos dos botones son un interruptor que
+   se elige y la acción es «Jugar», al final, así que lo que se pega es el final.
+   Mismo motivo y mismo mecanismo, en la otra punta.
 
-   El fondo es opaco a propósito: el panel ya es translúcido sobre la escena, y
-   con la cabecera translúcida encima las filas se leerían **a través** de los
-   botones al pasar por debajo. */
-.training__cabecera {
+   El fondo es opaco a propósito: el panel es translúcido sobre la escena y con
+   la barra translúcida encima las filas se leerían **a través** de los botones. */
+.training__acciones {
   position: sticky;
-  top: -32px; /* compensa el `padding-top` del panel, que es su primer hueco */
+  bottom: -32px; /* compensa el `padding-bottom` del panel, su último hueco */
   z-index: 1;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  margin: -32px -40px 0;
-  padding: 32px 40px 12px;
+  margin: 0 -40px -32px;
+  padding: 14px 40px 32px;
   background: var(--background-color);
-  border-bottom: 1px solid var(--panel-border);
+  border-top: 1px solid var(--panel-border);
+  align-items: center;
 }
 
-/* Los dos botones de empezar, uno al lado del otro y ocupando el ancho: son la
-   acción de esa pantalla, no una fila más de ajustes. */
-.training__modos {
+.training__jugar {
+  min-width: 220px;
+  margin-top: 0;
+}
+
+/* **El interruptor de modo** (vuelta 98): dos posiciones, y **sólo la puesta en
+   verde**. La apagada es contorno gris, no un segundo botón verde en hueco: dos
+   verdes de distinto relleno se leían como «uno destaca», y cuál destacaba
+   dependía del foco (la lección de la 94). La luz de la izquierda es lo que lo
+   hace leerse como interruptor y no como dos botones. */
+.interruptor {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 10px;
 }
 
-.training__modos .button {
-  margin-top: 0;
+.interruptor__opcion {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 12px;
+  row-gap: 4px;
+  align-items: center;
+  padding: 14px 16px;
+  border: 1px solid var(--panel-border);
+  background: transparent;
+  color: var(--text-muted);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.interruptor__opcion:hover {
+  border-color: var(--text-muted);
+  color: var(--text-color);
+}
+
+.interruptor__opcion:focus-visible {
+  outline: 2px solid var(--text-color);
+  outline-offset: 2px;
+}
+
+.interruptor__luz {
+  grid-row: 1 / span 2;
+  width: 14px;
+  height: 14px;
+  border: 2px solid currentColor;
+  border-radius: 50%;
+}
+
+.interruptor__nombre {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.interruptor__sub {
+  grid-column: 2;
+  font-size: 11px;
+  line-height: 1.4;
+  opacity: 0.8;
+}
+
+.interruptor__opcion--puesta,
+.interruptor__opcion--puesta:hover {
+  border-color: var(--action-color);
+  background: color-mix(in srgb, var(--action-color) 14%, transparent);
+  color: var(--action-color);
+}
+
+.interruptor__opcion--puesta .interruptor__luz {
+  background: var(--action-color);
+  box-shadow: 0 0 10px var(--action-color);
+}
+
+.interruptor__opcion--puesta .interruptor__sub {
+  color: var(--text-color);
 }
 
 /* **Los ajustes van en grupos** (vuelta 94): once filas del mismo peso son una
@@ -2123,14 +2188,25 @@ body {
   border-color: var(--action-color);
 }
 
-/* La tecla, en la misma cápsula que lleva en la ficha: el mismo dato con la
-   misma forma en los dos sitios. */
-.armoury__ranura-tecla {
+/* **El número de la categoría es lo grande; la tecla, lo pequeño** (vuelta 98).
+   El número es lo que se teclea en una combinación y el mismo que lleva cada
+   ficha delante de su código; la tecla es la de sacar esa ranura jugando, y
+   hasta aquí eran la misma cápsula — que es como un «1» de Primarias se leía
+   como el primer dígito de la Pulse. */
+.armoury__ranura-cat {
   min-width: 18px;
   padding: 1px 0;
   border: 1px solid currentColor;
-  font-size: 10px;
+  font-size: 11px;
+  font-weight: 700;
   text-align: center;
+}
+
+.armoury__ranura-tecla {
+  font-size: 9px;
+  opacity: 0.7;
+  text-transform: none;
+  letter-spacing: 0.04em;
 }
 
 .armoury__actions {

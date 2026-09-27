@@ -10,7 +10,7 @@
  * Nada de geometría: eso es de `scenario.js`, que monta **estos mismos datos**.
  */
 
-import { COVER, ESCALERAS, ESTAMPADOS, FANS, FONDOS, PRIMARY_WEAPONS, PRISMAS, ROOM, ROUNDS, SURFACES, TUBES, ZIPLINES, coverHeight, esFotoDeFondo, esImagenDeEstampado } from '../config.js'
+import { COVER, MODOS_DE_MAPA, ESCALERAS, ESTAMPADOS, FANS, FONDOS, PRIMARY_WEAPONS, PRISMAS, ROOM, ROUNDS, SURFACES, TUBES, ZIPLINES, coverHeight, esFotoDeFondo, esImagenDeEstampado } from '../config.js'
 
 /**
  * **Todos los campos que puede tener un mapa, en el orden en que se escriben.**
@@ -21,7 +21,7 @@ import { COVER, ESCALERAS, ESTAMPADOS, FANS, FONDOS, PRIMARY_WEAPONS, PRISMAS, R
  * campo a un escenario, va aquí y en `sanearMapa`.
  */
 export const CAMPOS = [
-  'clave', 'label', 'card', 'publicado', 'soloDuelo', 'fondo', 'room', 'spawn', 'fisica', 'duelo',
+  'clave', 'label', 'card', 'modos', 'publicado', 'soloDuelo', 'fondo', 'room', 'spawn', 'fisica', 'duelo',
   'boxes', 'prismas', 'ramps', 'tubos', 'escaleras', 'estampados', 'ventiladores', 'tirolinas', 'teletransportes', 'spawnZone', 'objectiveSites', 'pickups', 'routes',
   'anchors',
 ]
@@ -44,15 +44,15 @@ export function mapaNuevo(clave = 'mapa-nuevo') {
     clave,
     label: 'Mapa nuevo',
     /**
-     * **Un mapa nace sin publicar** (vuelta 88). Es lo único que hace falta
-     * para que la casilla signifique algo: si naciera publicado, publicar no
-     * sería una decisión sino un descuido que hay que deshacer. Va aquí y en
-     * este orden porque `sanearMapa` lo emite entre `card` y `soloDuelo`, y el
-     * saneado es un punto fijo **también en el orden de las claves** (vuelta
-     * 83) — un objeto con las claves en otro orden rompe el deshacer/rehacer
-     * sin cambiar ni un dato.
+     * **Un mapa nace sin publicar** (vuelta 88), y desde la 98 eso se dice como
+     * **ningún modo**. Es lo único que hace falta para que las casillas
+     * signifiquen algo: si naciera publicado, publicar no sería una decisión
+     * sino un descuido que hay que deshacer. Va aquí y en este orden porque
+     * `sanearMapa` lo emite entre `card` y `soloDuelo`, y el saneado es un punto
+     * fijo **también en el orden de las claves** (vuelta 83) — un objeto con las
+     * claves en otro orden rompe el deshacer/rehacer sin cambiar ni un dato.
      */
-    publicado: false,
+    modos: [],
     room: { width: 40, depth: 40, height: 10 },
     spawn: { x: 0, z: 16 },
     boxes: [],
@@ -584,8 +584,33 @@ export function sanearMapa(bruto) {
    * publicar**, que es lo que se pidió — un mapa a medio dibujar no tiene por
    * qué salir en la lista de nadie —, y publicar es marcar la casilla.
    */
-  if (bruto.publicado === false) mapa.publicado = false
+  /**
+   * **En qué modos se publica** (vuelta 98): entrenamiento, duelo, los dos o
+   * ninguno. Manda sobre `publicado`, que dice la mitad de lo mismo: con los dos
+   * escritos, el viejo se tira **y se dice**. Y sin `modos` no se escribe nada
+   * nuevo: `modosDeMapa` deduce los de un mapa viejo de los dos campos de antes,
+   * así que abrir y guardar un mapa sin tocar la publicación lo deja byte a
+   * byte como estaba (vuelta 83).
+   */
+  if (Array.isArray(bruto.modos)) {
+    mapa.modos = MODOS_DE_MAPA.filter((m) => bruto.modos.includes(m))
+    for (const m of bruto.modos) {
+      if (!MODOS_DE_MAPA.includes(m)) problemas.push(`modo desconocido: ${m}`)
+    }
+    if (bruto.publicado !== undefined) problemas.push('publicado: lo dice «modos», se quita')
+  } else if (bruto.publicado === false) {
+    mapa.publicado = false
+  }
   if (bruto.soloDuelo) mapa.soloDuelo = true
+  /**
+   * **Y no se publica en el duelo lo que no es un mapa de duelo.** Un 1v1 son
+   * dos salidas (vuelta 66), y las declara un mapa de duelo; sin eso la sala
+   * sacaría a los dos de donde no ha decidido nadie.
+   */
+  if (mapa.modos?.includes('duelo') && !mapa.soloDuelo) {
+    mapa.modos = mapa.modos.filter((m) => m !== 'duelo')
+    problemas.push('modos: el duelo necesita un mapa de duelo (con sus dos salidas); se quita')
+  }
   /**
    * **El fondo es una clave del catálogo o una foto de `public/fondos/`.**
    *

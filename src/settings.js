@@ -24,6 +24,7 @@ import {
   SIMULTANEOUS_TARGETS,
   TARGET_TYPES,
   WEAPONS,
+  SESSION_MODES,
 } from './config.js'
 
 const STORAGE_KEY = 'aimcore.settings.v1'
@@ -40,6 +41,7 @@ const CATALOGS = {
   // El del duelo no se elige aquí (vuelta 66): es de un modo que ni siquiera
   // pasa por este store. Misma idea que el arma y su ranura.
   scenario: TRAINER_SCENARIOS,
+  trainingMode: SESSION_MODES,
   sessionDuration: SESSION_DURATIONS,
   enemyDifficulty: ENEMY_DIFFICULTIES,
   targetType: TARGET_TYPES,
@@ -162,6 +164,17 @@ export function sanitizeSettings(raw) {
       value = raw.weapon
     }
     if (Object.prototype.hasOwnProperty.call(CATALOGS[key], value)) result[key] = value
+    /**
+     * **Y el valor de fábrica también tiene que estar en el catálogo** (vuelta
+     * 98). Con el escenario puede no estarlo: `empty` es el de fábrica y un mapa
+     * de fichero publicado sólo para otro modo con esa clave lo sacaba de la
+     * lista del entrenamiento — y el saneado devolvía `empty` igual, que es como
+     * un mapa de duelo acababa montado aquí. Cae a la primera que se ofrezca.
+     */
+    if (!Object.prototype.hasOwnProperty.call(CATALOGS[key], result[key])) {
+      const primera = Object.keys(CATALOGS[key])[0]
+      if (primera !== undefined) result[key] = primera
+    }
   }
   return result
 }

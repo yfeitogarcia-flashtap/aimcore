@@ -44,6 +44,13 @@ Cómo está repartido, que es lo que hay que saber para tocarlo:
   nativo deja escrito lo que había puesto en un fichero junto a su configuración
   (`ventana.txt`). Hace falta porque el arranque ocurre **antes de que la página
   exista**: no hay a quién preguntar. La verdad sigue siendo el ajuste del juego.
+- **Y F11 lo atiende la ventana** (vuelta 98). Es un atajo que el proceso nativo
+  registra **sólo mientras la ventana tiene el foco** —F11 en el navegador de al
+  lado sigue siendo del navegador—: pone o quita la pantalla completa, la copia
+  en `ventana.txt` y **se lo cuenta a la página** (`vektor:pantalla-completa`),
+  que pone su ajuste igual. En la 97 lo escuchaba la página, y eso lo dejaba
+  colgando de que la página supiera que estaba en la app — que es exactamente lo
+  que falló en el primer `.exe`.
 
 ### `Ctrl` para agacharse
 
@@ -51,10 +58,18 @@ En la app, agacharse sale **de fábrica en `Ctrl`**, y el panel de controles lo
 acepta si se reasigna. En un navegador sigue siendo la `C` y `Ctrl` sigue
 prohibido, por lo de siempre: `Ctrl+W`.
 
-La página sabe dónde está por **la marca que esta ventana lleva en su agente de
-usuario** (`VektorEscritorio`, en `tauri.conf.json` y en `src/config.js`). No es
+La página sabe dónde está por **dos señales, y le basta una** (vuelta 98): la
+marca que esta ventana lleva en su agente de usuario (`VektorEscritorio`, en
+`tauri.conf.json` y en `src/config.js`) y una marca que la ventana **inyecta en
+cada documento** antes que ningún script de la página
+(`window.__VEKTOR_ESCRITORIO__`, con la versión dentro). Por eso la ventana se
+declara en `tauri.conf.json` con `create: false` y se construye en `main.rs`: la
+segunda marca sólo se puede poner desde Rust. Ninguna depende del origen. No es
 un parámetro en la dirección a propósito: eso lo podría escribir cualquiera en un
 navegador y se llevaría de premio que `Ctrl` cerrase su pestaña.
+
+**Y se ve si se ha enterado**: al pie de *Opciones* pone «Vektor de escritorio
+0.3.0». Si pone «este navegador» dentro de la app, la app es anterior a la 0.3.
 
 Y **lo guardado sobrevive a jugar en los dos sitios**: `localStorage` es por
 origen, así que la app y el navegador comparten el mismo almacén de teclas. Se
@@ -149,9 +164,11 @@ Los seis sitios donde esta ventana puede fallar y no el navegador:
    instalador también** (vuelta 97): la marca arriba a la izquierda, el logotipo
    entero en el lateral de la bienvenida, y abajo «Vektor Installer» con su
    versión en lugar de «Nullsoft Install System».
-5. **F11 y la pantalla completa.** Pulsa F11: la ventana se pone a pantalla
-   completa. Ciérrala y vuelve a abrirla: tiene que abrir así. En
-   *Opciones* hay el mismo interruptor, y en un navegador esa fila no sale.
+5. **F11 y la pantalla completa.** Primero, al pie de *Opciones* tiene que
+   poner «Vektor de escritorio 0.3.0» (si no, es una instalación vieja). Pulsa
+   F11: la ventana se pone a pantalla completa y el interruptor de *Opciones* se
+   marca solo. Ciérrala y vuelve a abrirla: tiene que abrir así. En un navegador
+   esa fila no sale.
 6. **Se actualiza sola.** Como no contiene el juego, un despliegue nuevo le llega
    sin volver a descargar el `.exe`: la propia página lo detecta y recarga
    (vuelta 93). Para verlo, deja la ventana abierta mientras entra un despliegue.
@@ -159,6 +176,26 @@ Los seis sitios donde esta ventana puede fallar y no el navegador:
 La primera vez Windows enseña **«Windows protegió tu PC»**, porque el ejecutable
 va sin firmar: *Más información → Ejecutar de todas formas*. Es lo que hay hasta
 que haya certificado, y está aceptado.
+
+## Las imágenes del instalador
+
+NSIS usa dos imágenes, **BMP de 24 bits sin transparencia**, y **no las escala**:
+
+| Imagen | Medida exacta | Dónde sale |
+|---|---|---|
+| Cabecera | **150 × 57 px** | arriba a la izquierda, en las páginas del medio |
+| Lateral | **164 × 314 px** | a la izquierda, en la bienvenida y en el final |
+
+Se generan desde la marca en cada compilación. **Para usar las tuyas**, déjalas
+en `Reference/Instalador/` como `cabecera.png` y `lateral.png` (vale también
+`.bmp` o `.jpg`): el generador las pasa a BMP de 24 bits y las aplana sobre el
+negro de Vektor si traen transparencia. Si no miden exactamente eso, las ajusta
+**cubriendo y recortando por el centro** —nunca estirando— y lo avisa en el
+registro de la compilación. Subirlas lanza una compilación nueva del `.exe`.
+
+Un detalle de Windows que no se puede arreglar desde aquí: con el escalado de
+pantalla por encima del 100 %, Windows estira esas imágenes y se ven algo
+blandas. Diséñalas con trazos gruesos y sin texto pequeño.
 
 ## Compilarlo en tu PC (no hace falta)
 
