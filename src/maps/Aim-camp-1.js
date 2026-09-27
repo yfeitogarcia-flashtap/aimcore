@@ -73,6 +73,10 @@ export default {
   prismas: [],
   ramps: [],
   tubos: [],
+  escaleras: [],
+  estampados: [
+    {"imagen":"/estampados/Alchemist-logo.webp","cara":"este","x":-25,"y":10,"z":0,"ancho":40,"alto":20},
+  ],
   ventiladores: [],
   tirolinas: [],
   teletransportes: [],
