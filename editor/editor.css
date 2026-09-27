@@ -658,3 +658,61 @@ kbd {
 
 .cabe { color: var(--accion); }
 .aprieta { color: var(--naranja); }
+
+/* --- El panel de capas (vuelta 96) --------------------------------------- */
+
+/* Una sección por tipo, y sólo salen los tipos que el mapa tiene: una lista con
+   diez cabeceras vacías es una lista donde no se encuentra nada. */
+.capa { margin: 0 0 8px; }
+.capa h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0 0 3px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--apagado);
+}
+.capa h3 .dato { margin-right: auto; }
+.capa ul { list-style: none; margin: 0; padding: 0; }
+.capa li {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 3px;
+  margin: 0 0 2px;
+}
+/* `minmax(0, 1fr)` y no `1fr`: una columna implícita se estira hasta su
+   contenido más largo y el texto de una fila se sale del panel — es la lección de
+   la ficha de la armería de la vuelta 95, por la puerta de al lado. */
+.capa li > button:first-child {
+  min-width: 0;
+  text-align: left;
+  padding: 3px 6px;
+  border-left: 2px solid var(--linea);
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.capa li.actual > button:first-child { border-left-color: var(--accion); }
+/* Oculto se **atenúa y se tacha**, no desaparece de la lista: la lista es
+   justamente donde hay que poder volver a encenderlo (regla de la vuelta 94 con
+   los ajustes inertes). */
+.capa li.oculta > button:first-child {
+  opacity: 0.45;
+  text-decoration: line-through;
+}
+/* El ojo es pequeño y sin caja, como el «por defecto» de un ajuste desde la
+   vuelta 94: es lo que menos se pulsa de la fila y no puede pesar como su nombre. */
+.capa .ojo,
+.capa h3 .ojo {
+  border: 0;
+  background: none;
+  padding: 2px 4px;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: 0.75;
+}
+.capa .ojo:hover { opacity: 1; }
+.capa .ojo[aria-pressed="true"] { opacity: 0.5; }
+#capas-ocultas[hidden] { display: none; }

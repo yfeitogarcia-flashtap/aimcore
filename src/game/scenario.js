@@ -494,6 +494,14 @@ export class Scenario {
         // contesta es «¿sobre qué estoy?», y eso lo decide el mismo barrido
         // que decide a qué altura está el suelo.
         superficie: box.superficie ?? null,
+        /**
+         * **Y si es una barrera, la caja lo dice** (vuelta 96). Va aquí por lo
+         * mismo que `superficie`: quien tiene que saberlo es quien barre esta
+         * lista. `resolveAxis` y `groundHeightAt` la siguen honrando —una
+         * barrera para el cuerpo—, y `cortarSegmento` la salta, que es lo que
+         * la deja pasar a todo lo que vuela.
+         */
+        barrera: box.barrera ?? null,
       })
 
       /**
@@ -1246,7 +1254,27 @@ export class Scenario {
       }
     }
 
-    for (let i = 0; i < this.boxes.length; i++) contraCaja(this.boxes[i])
+    /**
+     * **Una barrera no para nada que vuele** (vuelta 96). La vuelta 95 la dejó
+     * fuera de `occluders`, y eso es lo que decide una bala: los disparos se
+     * resuelven con un rayo contra la malla dibujada (vuelta 64). Un proyectil
+     * no pasa por ahí: pregunta por **aritmética** contra `this.boxes`, que es
+     * donde la barrera sí está porque ahí es donde se choca con el cuerpo. O
+     * sea que una barrera paraba una flecha, una granada, un cohete y un
+     * cuchillo lanzado, y dejaba pasar la bala — dos respuestas distintas a la
+     * misma pregunta, y ninguna de las dos la había decidido nadie.
+     *
+     * Se salta aquí y no en el montaje porque la caja tiene que seguir en
+     * `this.boxes`: de esa lista cuelgan también `resolveAxis` y
+     * `groundHeightAt`, que son justo las dos que una barrera sí tiene que
+     * contestar. Y con ella se va el láser de `trayectoria.js`, que evalúa la
+     * misma función: la curva que se dibuja no puede parar donde la granada no
+     * para.
+     */
+    for (let i = 0; i < this.boxes.length; i++) {
+      if (this.boxes[i].barrera) continue
+      contraCaja(this.boxes[i])
+    }
 
     /**
      * **Un prisma es la intersección de sus semiplanos**, así que cortarlo es

@@ -221,9 +221,37 @@ function colocarCamara() {
 
 /** Escenario montado ahora mismo: lo que se ve es exactamente lo que se juega. */
 let escenario = null
+
+/**
+ * **Lo que se dibuja y lo que se mide son dos cosas en cuanto algo se puede
+ * ocultar** (vuelta 96), y esto es la línea que lo dice.
+ *
+ * `escenario` es el que está en la escena, y con el ojo puesto le faltan piezas.
+ * De él colgaban además **dos medidas**: el denominador del presupuesto —«0.0031
+ * ms con 40 piezas»— y la línea de visión entre las dos salidas de un mapa de
+ * duelo. Las dos leídas del filtrado dirían lo que el editor está dibujando y no
+ * lo que el mapa tiene, o sea que ocultar una pieza **bajaría el presupuesto** y
+ * podría cambiar un «SE VEN» por un «sin línea de visión»: una medida que miente
+ * por un ajuste de vista, que es el fallo de la vuelta 67 en un instrumento.
+ *
+ * Así que las dos leen `escenarioMedido`, que es el del mapa entero. **Sin nada
+ * oculto son el mismo objeto**, así que el camino normal no monta nada de más ni
+ * puede divergir; con algo oculto se monta un segundo sobre una escena de
+ * mentira, que no dibuja.
+ */
+let escenarioMedido = null
 /** Cajas invisibles, una por pieza, **sólo para poder pinchar**. */
 const proxies = new THREE.Group()
 scene.add(proxies)
+
+/**
+ * **Lo que sólo se ve construyendo** (vuelta 96): hoy, el contorno de una
+ * barrera invisible. Es un grupo aparte de `proxies` porque no se pincha y
+ * aparte de las marcas porque no es un gizmo — es la pieza, dibujada aquí porque
+ * el juego a propósito no la dibuja.
+ */
+const fantasmas = new THREE.Group()
+scene.add(fantasmas)
 const materialProxy = new THREE.MeshBasicMaterial({ visible: false })
 
 /** El contorno de la pieza elegida, en el verde de acción. */
@@ -335,6 +363,83 @@ const TIRADOR = 0.34
  * pasa cuando no querías nada más.
  */
 const PRIORIDAD = { tirador: 3, cuerpo: 2, pieza: 1, area: 0 }
+
+/**
+ * **Cuánto se agarra un aro de giro a cada lado de su trazo**, en unidades de
+ * mundo. El trazo mide 0.05-0.06, así que esto es lo que lo hace pinchable (la
+ * lección de la vuelta 93) sin convertirlo en un disco que tape lo que rodea
+ * (la de la 96). Sale de la misma escala que los tiradores: media unidad es más
+ * que el radio de un tirador y bastante menos que el aro más pequeño que se
+ * dibuja.
+ */
+const ARO_AGARRE = 0.5
+
+/**
+ * **Lo que se pincha de una pieza es la pieza** (vuelta 96), y el material es
+ * uno para todas: una malla invisible no se dibuja, así que no cuesta nada.
+ */
+const materialVolumen = new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide })
+
+/**
+ * **Un volumen invisible que hace pinchable lo que se ve de un elemento.**
+ *
+ * Es la pieza que faltaba para que todo lo colocable se comporte igual. Una caja
+ * tiene su proxy desde la vuelta 76 (`proxies`) y por eso se arrastra pinchándola;
+ * una rampa, una escalera, un prisma y un estampado sólo tenían **una bolita de
+ * alambre de 0.42 en su centro** como cuerpo, y su geometría de verdad vive
+ * fundida dentro de `Scenario`, que no se raycastea. O sea que arrastrarlos era
+ * dar con esa bola, y un clic sobre la pieza no elegía nada.
+ *
+ * Va a **`PRIORIDAD.pieza`** y no a `cuerpo`: así compite con las cajas por
+ * distancia, como una caja con otra, y los tiradores y las bolas siguen ganando
+ * —que es lo que hace que estirar por una esquina siga funcionando con la pieza
+ * debajo—.
+ */
+function volumenPinchable(geometria, marca, grupo) {
+  const malla = new THREE.Mesh(geometria, materialVolumen)
+  malla.userData.marca = { ...marca, prioridad: PRIORIDAD.pieza }
+  grupo.add(malla)
+  pinchables.push(malla)
+  return malla
+}
+
+/**
+ * **La cuña de una rampa**, para pincharla por donde se ve y no por su caja
+ * envolvente: con una caja, el aire de encima del plano inclinado elegiría la
+ * rampa, y eso es peor que no poder pincharla —un clic en el vacío tiene que
+ * deseleccionar—. Seis vértices y ocho triángulos; el sentido de giro da igual
+ * porque el material es `DoubleSide` y esto no se dibuja.
+ */
+function geometriaDeCuna(rampa, alto) {
+  const enX = rampa.fromX !== undefined
+  const x0 = Math.min(rampa.x, rampa.x + rampa.w)
+  const x1 = Math.max(rampa.x, rampa.x + rampa.w)
+  const z0 = Math.min(rampa.z, rampa.z + rampa.d)
+  const z1 = Math.max(rampa.z, rampa.z + rampa.d)
+  const desde = enX ? rampa.fromX : rampa.fromZ
+  const hasta = enX ? rampa.toX : rampa.toZ
+  // El extremo alto es `hasta`; si la rampa baja, el alto está en el mínimo.
+  const sube = hasta >= desde
+  const v = []
+  if (enX) {
+    const bajo = sube ? x0 : x1
+    const arriba = sube ? x1 : x0
+    v.push(bajo, 0, z0, bajo, 0, z1, arriba, 0, z1, arriba, 0, z0, arriba, alto, z1, arriba, alto, z0)
+  } else {
+    const bajo = sube ? z0 : z1
+    const arriba = sube ? z1 : z0
+    v.push(x0, 0, bajo, x1, 0, bajo, x1, 0, arriba, x0, 0, arriba, x1, alto, arriba, x0, alto, arriba)
+  }
+  const geo = new THREE.BufferGeometry()
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(v, 3))
+  geo.setIndex([
+    0, 1, 2, 0, 2, 3, // el suelo
+    0, 1, 4, 0, 4, 5, // el plano inclinado
+    3, 2, 4, 3, 4, 5, // el frente alto
+    0, 5, 3, 1, 2, 4, // los dos costados
+  ])
+  return geo
+}
 
 /**
  * **Los tiradores de la pieza elegida** (vuelta 79).
@@ -669,6 +774,20 @@ function flechaDeSuelo(x0, z0, x1, z1, y) {
  * entre la rampa y la escalera: dos copias del mismo aro serían dos gestos que
  * se despegan el día que uno cambie de radio.
  */
+/**
+ * **Y el aro se dibuja a ras de suelo, no flotando encima** (vuelta 96).
+ *
+ * La vuelta 79 lo puso a `alto + 0.35`, que parece lo natural —arriba, donde no
+ * estorba— y con una cámara oblicua es lo contrario: un rayo que apunta al
+ * centro de una pieza de 3.6 cruza el plano del aro **a unas dos unidades del
+ * eje**, o sea justo en su banda. Medido a 45°, pinchar el centro de un prisma
+ * daba `prisma-giro`: el aro de una pieza tapaba la pieza, que es la misma forma
+ * del fallo del disco macizo por otra puerta.
+ *
+ * A ras de suelo el rayo lo cruza **donde está la pieza**, así que la banda queda
+ * fuera de su huella y se ve desde arriba, que es de donde se construye (vuelta
+ * 93). Es además donde ya estaba el anillo del hueco de un tubo.
+ */
 function aroDeCuartos(x, y, z, radio, marca, grupo) {
   const aro = new THREE.Mesh(
     new THREE.TorusGeometry(radio, 0.06, 6, 28),
@@ -677,12 +796,53 @@ function aroDeCuartos(x, y, z, radio, marca, grupo) {
   aro.rotation.x = -Math.PI / 2
   aro.position.set(x, y, z)
   grupo.add(aro)
+  /**
+   * **Y el picker de un aro es un aro** (vuelta 96). La 93 le puso debajo un
+   * cilindro **macizo** con un argumento correcto a medias —un toro tiene el
+   * centro hueco y apuntarle al centro era un clic que se colaba— y la mitad que
+   * faltaba es que ese disco **tapa la pieza entera**: el aro de una rampa de
+   * 3×6 mide 3.9 de radio, así que a prioridad de tirador se lleva cualquier
+   * clic sobre su huella. De ahí salieron los tres síntomas que se reportaron
+   * juntos: una rampa, una escalera y un tubo **sólo se podían girar y
+   * redimensionar**, una escalera **seguía elegida** al pinchar una caja que
+   * cayera dentro de su huella, y arrastrar el cuerpo era dar con una bolita de
+   * 0.42 en el centro.
+   *
+   * Lo que la 93 compró se conserva entero: el aro sigue siendo gordo de pinchar
+   * (`ARO_AGARRE`, medio radio de tolerancia a cada lado del trazo, que es mucho
+   * más que sus 0.06 de tubo). Lo que cambia es que **el agujero del medio
+   * vuelve a ser un agujero**, que es lo que deja llegar al cuerpo de debajo.
+   */
   const pincha = new THREE.Mesh(
-    new THREE.CylinderGeometry(radio + 0.25, radio + 0.25, 0.3, 16),
-    new THREE.MeshBasicMaterial({ visible: false }),
+    new THREE.RingGeometry(Math.max(0.05, radio - ARO_AGARRE), radio + ARO_AGARRE, 28),
+    new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide }),
   )
+  pincha.rotation.x = -Math.PI / 2
   pincha.position.copy(aro.position)
-  pincha.userData.marca = { ...marca, prioridad: PRIORIDAD.tirador }
+  /**
+   * **Y es el único tirador que gana por distancia y no por prioridad**
+   * (vuelta 96). Los demás —una esquina, el cubo del alto— están **sobre** su
+   * pieza, y sin prioridad los taparía la propia cara que tienen debajo: para eso
+   * existe `PRIORIDAD.tirador` desde la vuelta 79. Un aro está **fuera** de la
+   * huella por construcción (radio + 0.9), así que nunca lo tapa su pieza y
+   * prioridad de tirador sólo sirve para lo contrario: un rayo que atraviesa la
+   * pieza y sale por el aro de detrás **giraba** en vez de elegir.
+   *
+   * Con `PRIORIDAD.pieza` la respuesta es la que se ve: la banda que está delante
+   * gana, y la que queda detrás de la pieza pierde — que es exactamente lo que
+   * hace la pieza al taparla.
+   */
+  pincha.userData.marca = { ...marca, prioridad: PRIORIDAD.pieza }
+  /**
+   * **Y va al grupo, no sólo a la lista.** `pinchables` es lo que se raycastea y
+   * el `Raycaster` de three **no actualiza matrices de mundo**: un objeto que no
+   * cuelga de la escena se queda con la identidad, así que este picker se
+   * raycasteaba **en el origen** — un disco de cuatro unidades invisible en el
+   * centro del mapa, robando clics con prioridad de tirador, y el aro de verdad
+   * sin poder agarrarse. Todos los demás pickers del fichero sí se añaden; éste
+   * era el único que se había quedado fuera.
+   */
+  grupo.add(pincha)
   pinchables.push(pincha)
   return pincha
 }
@@ -707,13 +867,18 @@ function aroEnPlano(centro, rotacion, radio, marca, grupo) {
   aro.position.copy(centro)
   aro.rotation.copy(rotacion)
   grupo.add(aro)
+  // Un aro, no un disco: el disco tapaba el propio estampado, así que pinchar
+  // el logo lo giraba en vez de moverlo. Ver `aroDeCuartos`.
   const pincha = new THREE.Mesh(
-    new THREE.CircleGeometry(radio + 0.2, 16),
+    new THREE.RingGeometry(Math.max(0.05, radio - ARO_AGARRE), radio + ARO_AGARRE, 28),
     new THREE.MeshBasicMaterial({ visible: false, side: THREE.DoubleSide }),
   )
   pincha.position.copy(centro)
   pincha.rotation.copy(rotacion)
-  pincha.userData.marca = { ...marca, prioridad: PRIORIDAD.tirador }
+  // Por distancia y no por prioridad, como el de `aroDeCuartos`: un aro rodea su
+  // pieza y nunca lo tapa ella, así que la prioridad sólo servía para ganarle
+  // desde detrás.
+  pincha.userData.marca = { ...marca, prioridad: PRIORIDAD.pieza }
   grupo.add(pincha)
   pinchables.push(pincha)
   return pincha
@@ -749,6 +914,25 @@ const pinchables = []
  * Rehace los marcadores desde el mapa. Sale de `remontar`, así que corre a lo
  * sumo una vez por frame y no por movimiento del ratón.
  */
+/**
+ * **Los tiradores son de lo elegido** (vuelta 96), como los de una caja desde la
+ * vuelta 79 (`gizmoPieza.visible`).
+ *
+ * Es la asimetría que producía el síntoma reportado: una rampa, una escalera, un
+ * tubo, un prisma y un estampado dibujaban **su gizmo entero siempre** —esquina,
+ * cubo de alto y aro de giro, todos a `PRIORIDAD.tirador`—, así que en un mapa
+ * con cuatro rampas cualquier clic caía en un tirador de alguna y el cuerpo era
+ * inalcanzable: «solo girar y redimensionar», con todas las letras.
+ *
+ * Lo que se queda puesto siempre es **lo que informa y no lo que agarra**: el
+ * volumen pinchable, la bola del centro, la flecha de subida de una rampa, el
+ * anillo del hueco de un tubo y la imagen de un estampado. Lo que aparece al
+ * elegir es lo que cambia números.
+ */
+function esLoElegido(prefijo, i) {
+  return marcaElegida?.que?.startsWith(prefijo) === true && marcaElegida.i === i
+}
+
 function pintarMarcas() {
   limpiarMarcas()
   pinchables.length = 0
@@ -758,6 +942,10 @@ function pintarMarcas() {
   const caja = duelo.cajaCompra ?? ROUNDS.cajaCompra
 
   for (const [i, salida] of salidas.entries()) {
+    // **Y el ojo apaga también su gizmo** (vuelta 96): un marcador de algo
+    // que no se ve es un marcador que no marca nada, y además seguiría
+    // pinchándose.
+    if (estaOculto('salidas', i)) continue
     const color = colorDeSalida(i)
     const grupo = new THREE.Group()
     grupo.position.set(salida.x, 0, salida.z)
@@ -934,6 +1122,7 @@ function pintarMarcas() {
    * motor va a chocar, así que cuadrarlo sería recortarlo a mano.
    */
   for (const [i, prisma] of (mapa.prismas ?? []).entries()) {
+    if (estaOculto('prismas', i)) continue
     const grupo = new THREE.Group()
     const puntos = puntosDePrisma(prisma)
     const alto = coverHeight(prisma.kind)
@@ -972,6 +1161,28 @@ function pintarMarcas() {
     grupo.add(cuerpo)
     pinchables.push(cuerpo)
 
+    /**
+     * Y su volumen también, extruido de **los mismos vértices** con los que el
+     * motor lo dibuja y lo choca (`puntosDePrisma`): un prisma girado 37° sólo
+     * se puede pinchar por donde se ve si lo que se pincha sale de ahí.
+     */
+    {
+      const forma = new THREE.Shape(puntosDePrisma(prisma).map((p) => new THREE.Vector2(p.x, p.z)))
+      const geo = new THREE.ExtrudeGeometry(forma, { depth: alto - base, bevelEnabled: false })
+      /**
+       * La sección va en el XY del `Shape` y la extrusión crece en +Z, así que
+       * lo que hace falta es **cambiar Y por Z**, no girar: un giro de −90° deja
+       * el prisma espejado en Z y el alto hacia abajo. Se escribe la matriz a
+       * mano porque es exactamente eso y nada más.
+       */
+      geo.applyMatrix4(new THREE.Matrix4().set(1, 0, 0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 0, 1))
+      geo.translate(0, base, 0)
+      volumenPinchable(geo, { que: 'prisma', i }, grupo)
+    }
+
+    // Y sus tiradores sólo si está elegido: ver `esLoElegido`.
+    if (!esLoElegido('prisma', i)) { marcas.add(grupo); continue }
+
     // Esquina: estira ancho y fondo **en los ejes del prisma**, no en los del
     // mundo. Con los del mundo, estirar uno girado 30° le cambiaría la forma en
     // diagonal y el número del panel diría otra cosa.
@@ -992,26 +1203,18 @@ function pintarMarcas() {
     pinchables.push(tAlto)
 
     /**
-     * **El aro, y lo que se pincha no es el aro** (vuelta 79). Un toro tiene el
-     * centro hueco y apuntarle al centro —que es donde apunta cualquiera— es un
-     * clic que se cuela por el agujero. Debajo va una bola invisible.
+     * **El aro de giro, y sale de `aroDeCuartos`** (vuelta 96). Estaba escrito a
+     * mano aquí —una cuarta copia del mismo aro, con su propio picker— y eso
+     * costó exactamente lo que cuesta una copia: al arreglar el disco macizo que
+     * tapaba las piezas, el prisma **se quedó sin arreglar** y era el único de
+     * los cinco que seguía girándose al pinchar su cuerpo. La regla de la vuelta
+     * 63 por la puerta del editor.
+     *
+     * Lo único suyo es que el prisma gira a cualquier ángulo y no a cuartos, y
+     * eso lo decide quien mueve el aro (`prisma-giro`), no quien lo dibuja.
      */
-    const radioAro = Math.max(prisma.w, prisma.d) / 2 + 0.9
-    const aro = new THREE.Mesh(
-      new THREE.TorusGeometry(radioAro, 0.06, 6, 28),
-      new THREE.MeshBasicMaterial({ color: COLOR_GIZMO }),
-    )
-    aro.rotation.x = -Math.PI / 2
-    aro.position.set(prisma.x, alto + 0.35, prisma.z)
-    grupo.add(aro)
-    const pinchaAro = new THREE.Mesh(
-      new THREE.CylinderGeometry(radioAro + 0.25, radioAro + 0.25, 0.3, 16),
-      new THREE.MeshBasicMaterial({ visible: false }),
-    )
-    pinchaAro.position.copy(aro.position)
-    pinchaAro.userData.marca = { que: 'prisma-giro', i, prioridad: PRIORIDAD.tirador }
-    grupo.add(pinchaAro)
-    pinchables.push(pinchaAro)
+    aroDeCuartos(prisma.x, base + 0.04, prisma.z, Math.max(prisma.w, prisma.d) / 2 + 0.9,
+      { que: 'prisma-giro', i }, grupo)
 
     marcas.add(grupo)
   }
@@ -1040,6 +1243,7 @@ function pintarMarcas() {
    * `src/game/estampados.js`.
    */
   for (const [i, est] of (mapa.estampados ?? []).entries()) {
+    if (estaOculto('estampados', i)) continue
     const grupo = new THREE.Group()
     const cara = CARAS_DE_ESTAMPADO[est.cara] ?? CARAS_DE_ESTAMPADO.norte
 
@@ -1074,6 +1278,10 @@ function pintarMarcas() {
     borde.position.copy(cuadro.position)
     borde.rotation.copy(cuadro.rotation)
     grupo.add(borde)
+
+    // Y sus cuatro tiradores sólo si está elegido: ver `esLoElegido`. Lo que se
+    // queda siempre es la imagen y su contorno, que es lo que dice dónde está.
+    if (!esLoElegido('est', i)) { marcas.add(grupo); continue }
 
     // La esquina, **en los ejes del cuadro**: estirarla en los del mundo daría
     // un ancho que el panel no reconoce cuando el logo mira al este.
@@ -1121,6 +1329,7 @@ function pintarMarcas() {
   }
 
   for (const [i, rampa] of (mapa.ramps ?? []).entries()) {
+    if (estaOculto('ramps', i)) continue
     const grupo = new THREE.Group()
     const alto = coverHeight(rampa.top)
     const enX = rampa.fromX !== undefined
@@ -1139,19 +1348,11 @@ function pintarMarcas() {
     grupo.add(cuerpo)
     pinchables.push(cuerpo)
 
-    const esquina = tirador(COLOR_GIZMO)
-    esquina.position.set(minX + Math.abs(rampa.w), 0.15, minZ + Math.abs(rampa.d))
-    esquina.userData.marca = { que: 'rampa-esquina', i, prioridad: PRIORIDAD.tirador }
-    grupo.add(esquina)
-    pinchables.push(esquina)
+    // Y la cuña entera se pincha, no sólo su bola: ver `volumenPinchable`.
+    volumenPinchable(geometriaDeCuna(rampa, alto), { que: 'rampa', i }, grupo)
 
-    const tAlto = tirador(COLOR_GIZMO)
-    tAlto.position.set(cx, alto, cz)
-    tAlto.userData.marca = { que: 'rampa-alto', i, prioridad: PRIORIDAD.tirador }
-    grupo.add(tAlto)
-    pinchables.push(tAlto)
-
-    // La flecha de subida: del extremo bajo al alto, por el centro de la huella.
+    // La flecha de subida se queda puesta siempre: dice hacia dónde sube, que
+    // es información del mapa y no un mando.
     const bajo = enX ? rampa.fromX : rampa.fromZ
     const arriba = enX ? rampa.toX : rampa.toZ
     grupo.add(flechaDeSuelo(
@@ -1160,13 +1361,28 @@ function pintarMarcas() {
       alto * 0.5 + 0.1,
     ))
 
-    grupo.add(aroDeCuartos(cx, alto + 0.35, cz, Math.max(Math.abs(rampa.w), Math.abs(rampa.d)) / 2 + 0.9,
-      { que: 'rampa-giro', i }, grupo))
+    if (esLoElegido('rampa', i)) {
+      const esquina = tirador(COLOR_GIZMO)
+      esquina.position.set(minX + Math.abs(rampa.w), 0.15, minZ + Math.abs(rampa.d))
+      esquina.userData.marca = { que: 'rampa-esquina', i, prioridad: PRIORIDAD.tirador }
+      grupo.add(esquina)
+      pinchables.push(esquina)
+
+      const tAlto = tirador(COLOR_GIZMO)
+      tAlto.position.set(cx, alto, cz)
+      tAlto.userData.marca = { que: 'rampa-alto', i, prioridad: PRIORIDAD.tirador }
+      grupo.add(tAlto)
+      pinchables.push(tAlto)
+
+      aroDeCuartos(cx, 0.04, cz, Math.max(Math.abs(rampa.w), Math.abs(rampa.d)) / 2 + 0.9,
+        { que: 'rampa-giro', i }, grupo)
+    }
 
     marcas.add(grupo)
   }
 
   for (const [i, esc] of (mapa.escaleras ?? []).entries()) {
+    if (estaOculto('escaleras', i)) continue
     const grupo = new THREE.Group()
     const m = medidasDeEscalera(esc, COVER.stepHeight)
     const base = esc.base ?? 0
@@ -1187,22 +1403,17 @@ function pintarMarcas() {
     grupo.add(cuerpo)
     pinchables.push(cuerpo)
 
-    // La esquina lejana de la huella: estira el ancho y la huella de un escalón.
-    const esquina = tirador(COLOR_GIZMO)
-    esquina.position.set(
-      enZ ? esc.x + esc.ancho : esc.x + signo * m.largo,
-      base + 0.15,
-      enZ ? esc.z + signo * m.largo : esc.z + esc.ancho,
-    )
-    esquina.userData.marca = { que: 'escalera-esquina', i, prioridad: PRIORIDAD.tirador }
-    grupo.add(esquina)
-    pinchables.push(esquina)
-
-    const tAlto = tirador(COLOR_GIZMO)
-    tAlto.position.set(cx, cima, cz)
-    tAlto.userData.marca = { que: 'escalera-alto', i, prioridad: PRIORIDAD.tirador }
-    grupo.add(tAlto)
-    pinchables.push(tAlto)
+    /**
+     * Y cada escalón se pincha. Sale de `cajasDeEscalera`, **la misma función
+     * que despliega la escalera en el motor**, así que lo que se agarra es
+     * exactamente lo que se ve y lo que se choca: un proxy calculado aparte
+     * sería la escalera dibujada de una forma y pinchable de otra.
+     */
+    for (const caja of cajasDeEscalera(esc, COVER.stepHeight)) {
+      const geo = new THREE.BoxGeometry(caja.w, coverHeight(caja.kind) - (caja.base ? coverHeight(caja.base) : 0), caja.d)
+      geo.translate(caja.x + caja.w / 2, ((caja.base ? coverHeight(caja.base) : 0) + coverHeight(caja.kind)) / 2, caja.z + caja.d / 2)
+      volumenPinchable(geo, { que: 'escalera', i }, grupo)
+    }
 
     grupo.add(flechaDeSuelo(
       enZ ? cx : esc.x, enZ ? esc.z : cz,
@@ -1210,13 +1421,33 @@ function pintarMarcas() {
       cima * 0.5 + 0.1,
     ))
 
-    grupo.add(aroDeCuartos(cx, cima + 0.35, cz, Math.max(esc.ancho, m.largo) / 2 + 0.9,
-      { que: 'escalera-giro', i }, grupo))
+    if (esLoElegido('escalera', i)) {
+      // La esquina lejana de la huella: estira el ancho y la huella de un escalón.
+      const esquina = tirador(COLOR_GIZMO)
+      esquina.position.set(
+        enZ ? esc.x + esc.ancho : esc.x + signo * m.largo,
+        base + 0.15,
+        enZ ? esc.z + signo * m.largo : esc.z + esc.ancho,
+      )
+      esquina.userData.marca = { que: 'escalera-esquina', i, prioridad: PRIORIDAD.tirador }
+      grupo.add(esquina)
+      pinchables.push(esquina)
+
+      const tAlto = tirador(COLOR_GIZMO)
+      tAlto.position.set(cx, cima, cz)
+      tAlto.userData.marca = { que: 'escalera-alto', i, prioridad: PRIORIDAD.tirador }
+      grupo.add(tAlto)
+      pinchables.push(tAlto)
+
+      aroDeCuartos(cx, base + 0.04, cz, Math.max(esc.ancho, m.largo) / 2 + 0.9,
+        { que: 'escalera-giro', i }, grupo)
+    }
 
     marcas.add(grupo)
   }
 
   for (const [i, tubo] of (mapa.tubos ?? []).entries()) {
+    if (estaOculto('tubos', i)) continue
     const grupo = new THREE.Group()
     const fuera = tubo.radio + tubo.grosor
 
@@ -1245,20 +1476,22 @@ function pintarMarcas() {
     aro.position.set(tubo.x, tubo.base + 0.03, tubo.z)
     grupo.add(aro)
 
-    // Radio: se tira de él por el suelo, como la esquina de una pieza.
-    const tRadio = tirador(COLOR_GIZMO)
-    tRadio.position.set(tubo.x + fuera, tubo.base + 0.25, tubo.z)
-    tRadio.userData.marca = { que: 'tubo-radio', i, prioridad: PRIORIDAD.tirador }
-    grupo.add(tRadio)
-    pinchables.push(tRadio)
+    if (esLoElegido('tubo', i)) {
+      // Radio: se tira de él por el suelo, como la esquina de una pieza.
+      const tRadio = tirador(COLOR_GIZMO)
+      tRadio.position.set(tubo.x + fuera, tubo.base + 0.25, tubo.z)
+      tRadio.userData.marca = { que: 'tubo-radio', i, prioridad: PRIORIDAD.tirador }
+      grupo.add(tRadio)
+      pinchables.push(tRadio)
 
-    // Alto: como el cubo de arriba de una pieza (vuelta 79), con el ratón en
-    // pantalla — el suelo no dice nada de una altura.
-    const tAlto = tirador(COLOR_GIZMO)
-    tAlto.position.set(tubo.x, tubo.base + tubo.alto, tubo.z)
-    tAlto.userData.marca = { que: 'tubo-alto', i, prioridad: PRIORIDAD.tirador }
-    grupo.add(tAlto)
-    pinchables.push(tAlto)
+      // Alto: como el cubo de arriba de una pieza (vuelta 79), con el ratón en
+      // pantalla — el suelo no dice nada de una altura.
+      const tAlto = tirador(COLOR_GIZMO)
+      tAlto.position.set(tubo.x, tubo.base + tubo.alto, tubo.z)
+      tAlto.userData.marca = { que: 'tubo-alto', i, prioridad: PRIORIDAD.tirador }
+      grupo.add(tAlto)
+      pinchables.push(tAlto)
+    }
 
     marcas.add(grupo)
   }
@@ -1274,6 +1507,7 @@ function pintarMarcas() {
    * tirador entre ellas sería un tirador que no se encuentra.
    */
   for (const [i, v] of (mapa.ventiladores ?? []).entries()) {
+    if (estaOculto('ventiladores', i)) continue
     const grupo = new THREE.Group()
     const { grupo: cajaGrupo } = cajaDeArea(v.w, v.d, v.alto, COLORS.electric, 0.07)
     cajaGrupo.position.set(v.x + v.w / 2, v.base + v.alto / 2, v.z + v.d / 2)
@@ -1353,6 +1587,7 @@ function pintarMarcas() {
    * derecho: **lo que se ve es el dato**, no un dibujo paralelo del editor.
    */
   for (const [i, t] of (mapa.tirolinas ?? []).entries()) {
+    if (estaOculto('tirolinas', i)) continue
     const grupo = new THREE.Group()
     for (const [cual, p] of [['a', t.desde], ['b', t.hasta]]) {
       const bola = new THREE.Mesh(
@@ -1390,6 +1625,7 @@ function pintarMarcas() {
    * leyendo ocho números es exactamente la barrera que la 78 vino a quitar.
    */
   for (const [i, tp] of (mapa.teletransportes ?? []).entries()) {
+    if (estaOculto('teletransportes', i)) continue
     const grupo = new THREE.Group()
     const { grupo: cajaGrupo } = cajaDeArea(tp.w, tp.d, TELEPORTS.alto, COLORS.electric, 0.09)
     cajaGrupo.position.set(tp.x + tp.w / 2, TELEPORTS.alto / 2, tp.z + tp.d / 2)
@@ -1476,19 +1712,58 @@ scene.add(marcaSpawn)
  * bandera: arrastrar una caja cambia la definición en cada movimiento del ratón
  * y fundir geometrías por evento sería trabajo tirado.
  */
+/** Una escena que no dibuja: lo que `Scenario` necesita y nada más. */
+const escenaDeMentira = { add() {}, remove() {} }
+
 function remontar() {
+  if (escenarioMedido && escenarioMedido !== escenario) escenarioMedido.dispose()
   escenario?.dispose()
-  escenario = new Scenario(scene, mapa)
+  escenario = new Scenario(scene, mapaParaDibujar())
+  escenarioMedido = ocultos.size === 0 ? escenario : new Scenario(escenaDeMentira, mapa)
   setRoom(escenario.room)
 
   proxies.clear()
+  // Y estos se sueltan de verdad: `remontar` corre en cada arrastre, así que una
+  // geometría por fotograma sin soltar es memoria que sólo sube.
+  for (const hijo of fantasmas.children) { hijo.geometry.dispose(); hijo.material.dispose() }
+  fantasmas.clear()
   for (const [indice, pieza] of mapa.boxes.entries()) {
     const alto = coverHeight(pieza.kind)
     const base = pieza.base ? coverHeight(pieza.base) : 0
+    // **Un oculto tampoco se pincha** (vuelta 96): una pieza invisible que sigue
+    // robando el clic es peor que una visible. El índice de los demás no se mueve
+    // porque va escrito en el proxy y no es su posición en el grupo.
+    if (estaOculto('boxes', indice)) continue
     const malla = new THREE.Mesh(new THREE.BoxGeometry(pieza.w, alto - base, pieza.d), materialProxy)
     malla.position.set(pieza.x + pieza.w / 2, base + (alto - base) / 2, pieza.z + pieza.d / 2)
     malla.userData.indice = indice
     proxies.add(malla)
+
+    /**
+     * **Y lo que el juego no dibuja, el editor sí** (vuelta 96). Una barrera
+     * invisible no tiene malla en `Scenario` a propósito —es su razón de ser— y
+     * eso dejaba una pieza que **desaparece del editor al deseleccionarla**: para
+     * volver a dar con ella había que pinchar a ciegas donde el jugador se choca,
+     * que es exactamente el segundo agujero que la vuelta 81 cerró con la lista
+     * de dispositivos, por la otra puerta.
+     *
+     * Va como **contorno y no como caja translúcida**: sin luces, la silueta es
+     * lo único que dice dónde está un plano (vuelta 38), y una caja rellena aquí
+     * se confundiría con un cristal — que es la otra variante, y la diferencia
+     * entre las dos es justo lo que hay que poder ver. Y no es geometría: fuera
+     * de `proxies` y fuera de `pinchables`, porque el clic ya lo recoge el proxy
+     * de arriba como en cualquier pieza.
+     */
+    if (pieza.barrera === 'invisible') {
+      const aristas = new THREE.LineSegments(
+        new THREE.EdgesGeometry(new THREE.BoxGeometry(pieza.w, alto - base, pieza.d)),
+        new THREE.LineBasicMaterial({
+          color: COVER.barrera.color, transparent: true, opacity: 0.55,
+        }),
+      )
+      aristas.position.copy(malla.position)
+      fantasmas.add(aristas)
+    }
   }
 
   marcaSpawn.position.set(mapa.spawn.x, 0.9, mapa.spawn.z)
@@ -1530,6 +1805,45 @@ function aRejilla(v) {
   // Se redondea al paso y se limpia la coma flotante: 0.1 × 3 no es 0.3, y
   // una caja en 0.30000000000000004 ensucia el fichero y las comparaciones.
   return Number((Math.round(v / paso) * paso).toFixed(4))
+}
+
+/**
+ * **Dónde nace algo nuevo: delante de la cámara y dentro de la sala** (vuelta
+ * 96). Un solo sitio para todo lo colocable —cajas, prismas, tubos, rampas,
+ * escaleras, estampados y los cinco dispositivos—, que es lo que se pidió.
+ *
+ * Lo de «delante de la cámara» ya lo hacían todos, y es correcto: un objeto que
+ * nace en el origen es un objeto que hay que ir a buscar (vuelta 81). Lo que
+ * faltaba es la otra mitad, y se reportó en un mapa de 50×50 **con la cámara
+ * dentro**: el centro de órbita se mueve con el vuelo y no está acotado, así que
+ * en cuanto se mira desde fuera del recinto —o desde encima de una esquina— lo
+ * que se coloca nace fuera de la sala, donde no se puede jugar y donde el
+ * saneado no dice nada porque un mapa puede tener piezas donde quiera.
+ *
+ * Se acota **la huella entera y no su esquina**, con `margen` de holgura contra
+ * la pared: colocar algo mordiendo el muro es colocarlo a medias. Y si la huella
+ * no cabe en la sala se centra, que es lo único que queda por decir.
+ *
+ * @param {number} ancho de la huella, en unidades
+ * @param {number} fondo de la huella
+ * @param {boolean} porElCentro `true` para lo que se sitúa por su centro —un
+ *   tubo, un prisma, un estampado— y `false` para lo que va por su esquina
+ *   mínima, que es la convención de una caja.
+ */
+function puntoParaColocar(ancho = 0, fondo = 0, porElCentro = false) {
+  const sala = escenario?.room ?? scenarioRoom(mapa)
+  const margen = 0.5
+  const acotar = (centro, medida, mitadSala) => {
+    const media = medida / 2
+    const limite = mitadSala - margen - media
+    // Si no cabe, al centro: es lo único honesto, y se ve.
+    const c = limite <= 0 ? 0 : Math.min(Math.max(centro, -limite), limite)
+    return aRejilla(porElCentro ? c : c - media)
+  }
+  return {
+    x: acotar(orbita.centro.x, ancho, sala.width / 2),
+    z: acotar(orbita.centro.z, fondo, sala.depth / 2),
+  }
 }
 
 /** Hasta dónde busca el imán una cara con la que alinearse. */
@@ -2539,8 +2853,13 @@ lienzo.addEventListener('wheel', (evento) => {
 // ---------------------------------------------------------------- panel
 
 function elegir(indice) {
+  const habia = marcaElegida
   seleccion = indice
   marcaElegida = null
+  // **Si había una marca, sus tiradores se van** (vuelta 96): desde esta vuelta
+  // los tiradores son de lo elegido, así que dejar de elegir tiene que
+  // remontarlos. Sólo cuando hace falta — `pintarMarcas` rehace todos los grupos.
+  if (habia) pintarMarcas()
   pintarResaltado()
   pintarContorno()
   pintarPanel()
@@ -2548,8 +2867,12 @@ function elegir(indice) {
 
 /** Elegir un marcador apaga la pieza elegida: se edita una cosa a la vez. */
 function elegirMarca(marca) {
+  const antes = marcaElegida
   marcaElegida = { que: marca.que, i: marca.i ?? -1 }
   seleccion = -1
+  // Y al revés: los de lo que se acaba de elegir tienen que aparecer. Se compara
+  // el par entero, porque pinchar el mismo cuerpo dos veces no cambia nada.
+  if (antes?.que !== marcaElegida.que || antes?.i !== marcaElegida.i) pintarMarcas()
   pintarResaltado()
   pintarContorno()
   refrescarPanel()
@@ -2776,6 +3099,7 @@ function pintarPanel() {
   pintarSuperficieDePieza(pieza)
   pintarTubo()
   pintarEstampados()
+  pintarCapas()
   pintarRampa()
   pintarEscalera()
   pintarPrisma()
@@ -3095,6 +3419,227 @@ function pintarEscalera() {
  */
 function estampadosDe() { return listaDe('estampados') }
 
+/**
+ * **Qué tiene un mapa, en una sola tabla** (vuelta 96).
+ *
+ * De aquí salen tres cosas que antes vivían por separado o no existían: la lista
+ * de capas, el **ojo** que oculta un elemento en el editor y la tecla **Supr**,
+ * que hasta esta vuelta sólo borraba una caja. Un tipo nuevo se añade aquí y
+ * hereda las tres.
+ *
+ * - `clave` es el nombre de su lista en el mapa, que es también la clave del ojo.
+ * - `prefijo` es el de su marca, y se compara con `startsWith` porque una marca
+ *   puede ser el cuerpo o uno de sus tiradores (`escalera`, `escalera-esquina`).
+ *   El orden importa: si algún día hay un `estructura`, el más largo va primero.
+ * - `lista` es el accesor de **lectura**; quien va a añadir pide el de escritura.
+ * - `fila` describe un elemento en una línea. Es lo que se lee en la lista, así
+ *   que dice lo que distingue a ése de sus hermanos y no el tipo otra vez.
+ *
+ * Las cajas están aquí para la lista y el ojo, y **no** para Supr: una caja se
+ * elige por `seleccion` y tiene su propio camino desde la vuelta 76.
+ */
+const TIPOS_DE_MAPA = [
+  {
+    clave: 'boxes', prefijo: null, nombre: 'Piezas', lista: () => mapa.boxes ?? [],
+    fila: (b) => `${b.kind} ${b.w}×${b.d}`
+      + (b.barrera ? ` · barrera ${b.barrera}` : '')
+      + (b.superficie ? ` · ${b.superficie.tipo}` : '')
+      + (b.tinte ? ` · ${b.tinte}` : '')
+      + (b.base ? ` · sobre ${b.base}` : ''),
+  },
+  {
+    clave: 'prismas', prefijo: 'prisma', nombre: 'Prismas', lista: () => prismasDe(),
+    fila: (k) => `${k.lados} lados ${k.w}×${k.d} · ${k.kind}`,
+  },
+  {
+    clave: 'tubos', prefijo: 'tubo', nombre: 'Tubos', lista: () => tubosDe(),
+    fila: (t) => `radio ${t.radio} · alto ${t.alto} · ${t.caras} caras`,
+  },
+  {
+    clave: 'ramps', prefijo: 'rampa', nombre: 'Rampas', lista: () => rampasDe(),
+    fila: (r) => `${r.w}×${r.d} · sube a ${r.top}`,
+  },
+  {
+    clave: 'escaleras', prefijo: 'escalera', nombre: 'Escaleras', lista: () => escalerasDe(),
+    fila: (e) => `ancho ${e.ancho} · alto ${e.alto} · ${medidasDeEscalera(e, COVER.stepHeight).escalones} escalones`,
+  },
+  {
+    clave: 'estampados', prefijo: 'est', nombre: 'Estampados', lista: () => estampadosDe(),
+    fila: (e) => `${e.imagen.split('/').pop()} · ${e.cara} · ${e.ancho}×${e.alto}`,
+  },
+  {
+    clave: 'ventiladores', prefijo: 'vent', nombre: 'Ventiladores', lista: () => ventiladoresDe(),
+    fila: (v) => `${v.w}×${v.d}×${v.alto} · fuerza ${v.fuerza}`,
+  },
+  {
+    clave: 'tirolinas', prefijo: 'tiro', nombre: 'Tirolinas', lista: () => tirolinasDe(),
+    fila: (t) => `de (${t.desde.x}, ${t.desde.z}) a (${t.hasta.x}, ${t.hasta.z})`,
+  },
+  {
+    clave: 'teletransportes', prefijo: 'tp', nombre: 'Teletransportes', lista: () => teletransportesDe(),
+    fila: (t) => `(${t.x}, ${t.z}) → (${t.destino.x}, ${t.destino.z})`,
+  },
+  {
+    clave: 'salidas',
+    prefijo: 'salida',
+    nombre: 'Salidas de duelo',
+    /**
+     * **Se leen del mapa y no con `salidasDe()`**, que **escribe**: si no hay dos
+     * salidas se las inventa y las deja puestas en `duelo.salidas`. Eso está bien
+     * donde se usa —la hoja de duelo, que va a editarlas— y sería un desastre
+     * aquí: esta lista se pinta con el panel, así que abrir Alchemist con
+     * cualquier mapa le añadiría dos salidas de duelo **sin que nadie las
+     * pidiera**, y de paso rompería la comparación de deshacer/rehacer, que es un
+     * `JSON.stringify` del mapa (vuelta 83).
+     *
+     * Y sólo en un mapa de duelo, que es la misma condición con la que
+     * `pintarMarcas` las dibuja: en los demás no significan nada.
+     */
+    lista: () => (mapa.soloDuelo && Array.isArray(mapa.duelo?.salidas) ? mapa.duelo.salidas : []),
+    fila: (s, i) => `salida ${i + 1} · (${s.x}, ${s.z})`,
+  },
+]
+
+/**
+ * **Lo que el ojo esconde, y sólo en el editor** (vuelta 96). Claves
+ * `<lista>:<índice>`, en memoria y **no en el mapa**: es estado de vista, y el
+ * mapa es lo que compara deshacer/rehacer con un `JSON.stringify` (vuelta 83), así
+ * que meterle un campo de vista rompería esa comparación sin cambiar un dato.
+ *
+ * Lo que se paga, y va escrito porque no se adivina: **no sobrevive a guardar**,
+ * porque guardar recarga la página (vuelta 75). Es lo correcto para un ojo —nadie
+ * espera que dure— y es exactamente lo que **no** vale para un candado, que es
+ * por lo que el candado no está en esta vuelta.
+ */
+const ocultos = new Set()
+const estaOculto = (clave, i) => ocultos.has(`${clave}:${i}`)
+
+/**
+ * **El mapa que se dibuja**, que con algo oculto **no es el mapa**. Devuelve el
+ * mismo objeto cuando no hay nada oculto: así el camino normal no paga ni una
+ * copia y no puede comportarse distinto.
+ *
+ * Las salidas no se filtran aquí porque no las dibuja `Scenario` —son marcas del
+ * editor— y su ojo lo aplica `pintarMarcas`.
+ */
+function mapaParaDibujar() {
+  if (ocultos.size === 0) return mapa
+  const copia = { ...mapa }
+  for (const tipo of TIPOS_DE_MAPA) {
+    if (tipo.clave === 'salidas') continue
+    const lista = mapa[tipo.clave]
+    if (!Array.isArray(lista)) continue
+    copia[tipo.clave] = lista.filter((_, i) => !estaOculto(tipo.clave, i))
+  }
+  return copia
+}
+
+/**
+ * **La lista de todo lo que hay en el mapa** (vuelta 96, fase 1 de la propuesta
+ * 10). Sale de `TIPOS_DE_MAPA`, así que un tipo nuevo aparece aquí sin tocar esto
+ * — que es el fallo que la vuelta 92 tuvo con las ranuras y la 89 con las filas
+ * del `subgrid`: dos listas paralelas donde tenía que haber una.
+ */
+function pintarCapas() {
+  const lista = $('capas-lista')
+  if (!lista) return
+  let total = 0
+  const trozos = []
+  for (const tipo of TIPOS_DE_MAPA) {
+    const cosas = tipo.lista()
+    if (!cosas.length) continue
+    total += cosas.length
+    const ocultasAqui = cosas.filter((_, i) => estaOculto(tipo.clave, i)).length
+    trozos.push(`
+      <section class="capa">
+        <h3>${tipo.nombre} <span class="dato">${cosas.length}</span>
+          <button type="button" class="ojo" data-capa-tipo="${tipo.clave}"
+            title="${ocultasAqui === cosas.length ? 'Ver' : 'Ocultar'} todo ${tipo.nombre.toLowerCase()}"
+            aria-pressed="${ocultasAqui === cosas.length}">${ocultasAqui === cosas.length ? '🙈' : '👁'}</button></h3>
+        <ul>${cosas.map((cosa, i) => {
+          const oculto = estaOculto(tipo.clave, i)
+          const actual = tipo.prefijo
+            ? marcaElegida?.que?.startsWith(tipo.prefijo) && marcaElegida.i === i
+            : seleccion === i
+          return `<li class="${actual ? 'actual' : ''}${oculto ? ' oculta' : ''}">
+            <button type="button" data-capa="${tipo.clave}" data-i="${i}">${tipo.fila(cosa, i)}</button>
+            <button type="button" class="ojo" data-capa-ojo="${tipo.clave}" data-i="${i}"
+              title="${oculto ? 'Ver' : 'Ocultar'}" aria-pressed="${oculto}">${oculto ? '🙈' : '👁'}</button>
+          </li>`
+        }).join('')}</ul>
+      </section>`)
+  }
+  lista.innerHTML = trozos.join('') || '<p class="nota">El mapa está vacío.</p>'
+  $('capas-cuenta').textContent = total ? `· ${total} elementos` : ''
+  // **Y que hay algo oculto se dice en el panel** (regla de la vuelta 77: el
+  // estado se lee sin abrir nada; aquí, sin tener que recorrer la lista). Sin
+  // esto, un mapa con media docena de piezas escondidas es un mapa que parece
+  // tener menos de las que tiene, y eso se descubre probándolo — tarde.
+  const aviso = $('capas-ocultas')
+  aviso.hidden = ocultos.size === 0
+  aviso.textContent = ocultos.size === 1
+    ? '1 elemento oculto en el editor. Sigue en el mapa y en el juego.'
+    : `${ocultos.size} elementos ocultos en el editor. Siguen en el mapa y en el juego.`
+  $('capas-ver-todo').disabled = ocultos.size === 0
+}
+
+/** Cambia el ojo de uno o de un tipo entero y remonta. */
+function alternarOjo(clave, i) {
+  const tipo = TIPOS_DE_MAPA.find((t) => t.clave === clave)
+  if (!tipo) return
+  if (i === null) {
+    const cosas = tipo.lista()
+    const todosOcultos = cosas.length > 0 && cosas.every((_, k) => estaOculto(clave, k))
+    for (let k = 0; k < cosas.length; k++) {
+      if (todosOcultos) ocultos.delete(`${clave}:${k}`)
+      else ocultos.add(`${clave}:${k}`)
+    }
+  } else if (estaOculto(clave, i)) ocultos.delete(`${clave}:${i}`)
+  else ocultos.add(`${clave}:${i}`)
+  // Ocultar lo que está elegido lo suelta: un gizmo de algo que no se ve es un
+  // gizmo huérfano, y el panel enseñaría la ficha de una cosa invisible.
+  if (tipo.prefijo
+    ? marcaElegida?.que?.startsWith(tipo.prefijo) && (i === null || marcaElegida.i === i) && estaOculto(clave, marcaElegida.i)
+    : seleccion >= 0 && (i === null || seleccion === i) && estaOculto(clave, seleccion)) {
+    marcaElegida = null
+    seleccion = -1
+  }
+  sucio = true
+  remontar()
+  pintarCapas()
+  pintarPanel()
+}
+
+/** Los que Supr puede borrar: todos menos la caja, que va por `seleccion`. */
+const BORRABLES = TIPOS_DE_MAPA
+  .filter((t) => t.prefijo)
+  .map((t) => [t.nombre.replace(/s$/, '').toLowerCase(), t.prefijo, t.lista])
+
+/**
+ * Borra el elemento elegido y devuelve su nombre, o `null` si no había ninguno.
+ * Lo llaman los botones «Quitar» de cada ficha **y** la tecla Supr: dos caminos
+ * hasta la misma acción es cómo uno acaba olvidándose de anotar el deshacer.
+ */
+function borrarLoElegido() {
+  const que = marcaElegida?.que
+  if (!que) return null
+  const fila = BORRABLES.find(([, prefijo]) => que.startsWith(prefijo))
+  if (!fila) return null
+  const lista = fila[2]()
+  const i = marcaElegida.i
+  if (!(i >= 0) || i >= lista.length) return null
+  anotarParaDeshacer()
+  lista.splice(i, 1)
+  marcaElegida = null
+  sucio = true
+  pintarPanel()
+  // Y la hoja de Duelo si está abierta: las salidas viven ahí, y su propio
+  // botón de quitar ya repintaba las dos cosas.
+  if (panelAbierto()) pintarDuelo()
+  contar([], `${fila[0]} borrado`)
+  return fila[0]
+}
+
 function estampadoElegido() {
   if (!marcaElegida?.que?.startsWith('est')) return null
   return estampadosDe()[marcaElegida.i] ?? null
@@ -3103,17 +3648,28 @@ function estampadoElegido() {
 /** Lo que haya en `public/estampados/`, que lo dice el servidor de desarrollo. */
 let imagenesDeEstampado = []
 
+/**
+ * Pide el listado y lo pinta. Devuelve **cuántas ha encontrado**, o `-1` si no
+ * ha podido preguntar: quien la llama a mano tiene que poder decirlo, porque un
+ * botón que repinta en silencio es un botón que no hace nada (vuelta 89) — y así
+ * se reportó el de la vuelta 95, que sí llamaba a esto.
+ */
 async function cargarImagenesDeEstampado() {
   try {
-    const respuesta = await fetch('/__editor/estampados')
-    if (!respuesta.ok) return
+    // **Sin caché, y a propósito.** La respuesta no lleva validador y lo que se
+    // está preguntando es justo «¿ha cambiado la carpeta?»: una respuesta
+    // reutilizada contesta la pregunta de antes.
+    const respuesta = await fetch('/__editor/estampados', { cache: 'no-store' })
+    if (!respuesta.ok) return -1
     const { imagenes } = await respuesta.json()
-    if (!Array.isArray(imagenes)) return
+    if (!Array.isArray(imagenes)) return -1
     imagenesDeEstampado = imagenes
     pintarEstampados()
+    return imagenes.length
   } catch {
     // Sin listado no pasa nada: el mapa se sigue editando. Es la misma respuesta
     // que con las fotos de fondo desde la vuelta 78.
+    return -1
   }
 }
 
@@ -3153,6 +3709,35 @@ function pintarEstampados() {
     + 'No tiene colisión y no recibe disparos.'
 }
 
+// ---------------------------------------------------------------- capas (96)
+$('capas-lista').addEventListener('click', (evento) => {
+  const ojo = evento.target.closest('button[data-capa-ojo]')
+  if (ojo) { alternarOjo(ojo.dataset.capaOjo, Number(ojo.dataset.i)); return }
+  const tipoEntero = evento.target.closest('button[data-capa-tipo]')
+  if (tipoEntero) { alternarOjo(tipoEntero.dataset.capaTipo, null); return }
+  const fila = evento.target.closest('button[data-capa]')
+  if (!fila) return
+  const clave = fila.dataset.capa
+  const i = Number(fila.dataset.i)
+  const tipo = TIPOS_DE_MAPA.find((t) => t.clave === clave)
+  // Pinchar una fila **elige el elemento en la vista**, que es la mitad de para
+  // qué existe esta lista (vuelta 81: colocar y encontrar son dos problemas).
+  // Y no se puede elegir algo oculto: se enseña primero.
+  if (estaOculto(clave, i)) alternarOjo(clave, i)
+  if (tipo?.prefijo) elegirMarca({ que: tipo.prefijo, i })
+  else elegir(i)
+  pintarCapas()
+})
+
+$('capas-ver-todo').addEventListener('click', () => {
+  if (ocultos.size === 0) return
+  ocultos.clear()
+  sucio = true
+  remontar()
+  pintarCapas()
+  pintarPanel()
+})
+
 $('est-lista').addEventListener('click', (evento) => {
   const boton = evento.target.closest('button[data-est]')
   if (!boton) return
@@ -3170,20 +3755,14 @@ $('est-poner').addEventListener('click', () => {
   lista.push({
     ...ESTAMPADOS.porDefecto,
     imagen: url,
-    x: aRejilla(orbita.centro.x),
-    z: aRejilla(orbita.centro.z),
+    ...puntoParaColocar(ESTAMPADOS.porDefecto.ancho, ESTAMPADOS.porDefecto.ancho, true),
   })
   sucio = true
   elegirMarca({ que: 'est', i: lista.length - 1 })
 })
 
 $('est-borrar').addEventListener('click', () => {
-  if (!marcaElegida?.que?.startsWith('est')) return
-  anotarParaDeshacer()
-  estampadosDe().splice(marcaElegida.i, 1)
-  marcaElegida = null
-  sucio = true
-  pintarPanel()
+  if (marcaElegida?.que?.startsWith('est')) borrarLoElegido()
 })
 
 const conEstampado = (aplicar) => (v) => {
@@ -3559,21 +4138,11 @@ campo('k-base', (v) => {
 })
 
 $('k-borrar').addEventListener('click', () => {
-  if (!marcaElegida?.que?.startsWith('prisma')) return
-  anotarParaDeshacer()
-  prismasDe().splice(marcaElegida.i, 1)
-  marcaElegida = null
-  sucio = true
-  pintarPanel()
+  if (marcaElegida?.que?.startsWith('prisma')) borrarLoElegido()
 })
 
 $('t-borrar').addEventListener('click', () => {
-  if (!marcaElegida?.que?.startsWith('tubo')) return
-  anotarParaDeshacer()
-  tubosDe().splice(marcaElegida.i, 1)
-  marcaElegida = null
-  sucio = true
-  pintarPanel()
+  if (marcaElegida?.que?.startsWith('tubo')) borrarLoElegido()
 })
 
 // ------------------------------------------------- la rampa y la escalera (93)
@@ -3597,12 +4166,7 @@ campo('r-top', (v) => { const r = rampaElegida(); if (r && v) r.top = v })
 campo('r-rumbo', (v) => { const r = rampaElegida(); if (r) orientarRampa(r, Number(v) || 0) })
 
 $('r-borrar').addEventListener('click', () => {
-  if (!marcaElegida?.que?.startsWith('rampa')) return
-  anotarParaDeshacer()
-  rampasDe().splice(marcaElegida.i, 1)
-  marcaElegida = null
-  sucio = true
-  pintarPanel()
+  if (marcaElegida?.que?.startsWith('rampa')) borrarLoElegido()
 })
 
 const conEscalera = (aplicar) => (v) => {
@@ -3632,12 +4196,7 @@ campo('e-escalones', conEscalera((e, v) => {
 campo('e-rumbo', conEscalera((e, v) => { e.rumbo = ((Math.round(Number(v) || 0) % 4) + 4) % 4 }))
 
 $('e-borrar').addEventListener('click', () => {
-  if (!marcaElegida?.que?.startsWith('escalera')) return
-  anotarParaDeshacer()
-  escalerasDe().splice(marcaElegida.i, 1)
-  marcaElegida = null
-  sucio = true
-  pintarPanel()
+  if (marcaElegida?.que?.startsWith('escalera')) borrarLoElegido()
 })
 
 /**
@@ -3683,8 +4242,8 @@ function ponerDispositivo(cual) {
   // Se aparta de lo que ya haya ahí, como una forma nueva desde la vuelta 76:
   // dos plataformas seguidas caían una dentro de otra y la segunda no se veía,
   // así que el botón parecía no hacer nada la segunda vez.
-  const x = aRejilla(orbita.centro.x - w / 2)
-  let z = aRejilla(orbita.centro.z - d / 2)
+  const { x, z: z0 } = puntoParaColocar(w, d)
+  let z = z0
   while (mapa.boxes.some((pieza) => pieza.x === x && pieza.z === z)) z += d + paso
   mapa.boxes.push({
     x,
@@ -3717,8 +4276,8 @@ function ponerDispositivo(cual) {
 function anadirBarrera() {
   const base = COVER.barrera.porDefecto
   const w = ladoDeDispositivo
-  const x = aRejilla(orbita.centro.x - w / 2)
-  let z = aRejilla(orbita.centro.z - base.grosor / 2)
+  const { x, z: z0 } = puntoParaColocar(w, base.grosor)
+  let z = z0
   // Se aparta de lo que ya haya ahí, como cualquier forma nueva desde la 76.
   while (mapa.boxes.some((pieza) => pieza.x === x && pieza.z === z)) z += base.grosor + paso
   mapa.boxes.push({ x, z, w, d: base.grosor, kind: base.alto, barrera: 'cristal' })
@@ -4131,11 +4690,10 @@ $('formas').addEventListener('click', (evento) => {
     const lista = listaParaEscribir('prismas')
     // Delante de la cámara y **por su centro**, que es lo que `x`/`z` significa
     // en un prisma: la esquina de algo que gira no quiere decir nada.
+    const medida = { ...PRISMAS.porDefecto, ...forma.prisma }
     lista.push({
-      ...PRISMAS.porDefecto,
-      ...forma.prisma,
-      x: aRejilla(orbita.centro.x),
-      z: aRejilla(orbita.centro.z),
+      ...medida,
+      ...puntoParaColocar(medida.w ?? 2, medida.d ?? 2, true),
     })
     sucio = true
     elegirMarca({ que: 'prisma', i: lista.length - 1 })
@@ -4145,10 +4703,11 @@ $('formas').addEventListener('click', (evento) => {
     const lista = listaParaEscribir('ramps')
     // Delante de la cámara y con su pie en la esquina mínima, como una pieza.
     // Nace subiendo hacia +Z, que es hacia donde mira quien la coloca.
+    const { x, z } = puntoParaColocar(3, 6)
     lista.push({
-      x: aRejilla(orbita.centro.x - 1.5), z: aRejilla(orbita.centro.z - 3),
+      x, z,
       w: 3, d: 6,
-      fromZ: aRejilla(orbita.centro.z - 3), toZ: aRejilla(orbita.centro.z - 3) + 6,
+      fromZ: z, toZ: z + 6,
       top: 'plataforma',
     })
     sucio = true
@@ -4157,10 +4716,12 @@ $('formas').addEventListener('click', (evento) => {
   }
   if (forma.macro === 'escalera') {
     const lista = listaParaEscribir('escaleras')
+    // La huella de una escalera crece en su rumbo, así que se acota con su
+    // largo desplegado y no con su ancho en los dos ejes.
+    const medidas = medidasDeEscalera(ESCALERAS.porDefecto, COVER.stepHeight)
     lista.push({
       ...ESCALERAS.porDefecto,
-      x: aRejilla(orbita.centro.x - ESCALERAS.porDefecto.ancho / 2),
-      z: aRejilla(orbita.centro.z),
+      ...puntoParaColocar(ESCALERAS.porDefecto.ancho, medidas.largo),
     })
     sucio = true
     elegirMarca({ que: 'escalera', i: lista.length - 1 })
@@ -4170,10 +4731,10 @@ $('formas').addEventListener('click', (evento) => {
     const tubos = listaParaEscribir('tubos')
     // Delante de la cámara, como una pieza nueva: uno que nace en el origen es
     // uno que hay que ir a buscar.
+    const fuera = (TUBES.porDefecto.radio + TUBES.porDefecto.grosor) * 2
     tubos.push({
       ...TUBES.porDefecto,
-      x: aRejilla(orbita.centro.x),
-      z: aRejilla(orbita.centro.z),
+      ...puntoParaColocar(fuera, fuera, true),
     })
     sucio = true
     elegirMarca({ que: 'tubo', i: tubos.length - 1 })
@@ -4190,7 +4751,7 @@ $('formas').addEventListener('click', (evento) => {
    * fallo del duplicado por esta otra puerta, y arreglar uno solo habría dejado
    * el otro en pie.
    */
-  const donde = { x: aRejilla(orbita.centro.x - forma.w / 2), z: aRejilla(orbita.centro.z - forma.d / 2), w: forma.w, d: forma.d, kind: forma.kind }
+  const donde = { ...puntoParaColocar(forma.w, forma.d), w: forma.w, d: forma.d, kind: forma.kind }
   const { x, z } = huecoLibrePara(donde) ?? donde
   mapa.boxes.push({ x, z, w: forma.w, d: forma.d, kind: forma.kind })
   sucio = true
@@ -4802,9 +5363,20 @@ window.addEventListener('keydown', (evento) => {
     return
   }
   if (evento.code === 'Delete' || evento.code === 'Backspace') {
-    if (seleccion < 0) return
-    evento.preventDefault()
-    $('borrar').click()
+    /**
+     * **Supr borra lo elegido, sea lo que sea** (vuelta 96). Hasta aquí salía
+     * con un `if (seleccion < 0) return`, y `seleccion` es **sólo una caja**:
+     * rampa, escalera, tubo, prisma, estampado, ventilador, tirolina,
+     * teletransporte y salida se eligen como *marca*, con `seleccion = -1`. O sea
+     * que la tecla no borraba a ninguno de los nueve, y se reportó de la escalera
+     * porque es la que se estaba usando.
+     *
+     * Lo que lo cierra no es enumerarlos aquí: es que **borrar uno sea una sola
+     * función** (`borrarLoElegido`), con su tabla al lado de los accesores. Un
+     * tipo nuevo que se añada a esa tabla hereda la tecla sin tocar esto.
+     */
+    if (seleccion >= 0) { evento.preventDefault(); $('borrar').click(); return }
+    if (borrarLoElegido()) evento.preventDefault()
   }
 })
 
@@ -4941,7 +5513,8 @@ function medirPresupuesto() {
     const peor = muestras[BLOQUES_MEDIDOS - 1]
 
     let triangulos = 0
-    for (const malla of escenario.occluders) {
+    // **Del mapa entero y no de lo que se dibuja** (vuelta 96): ver `escenarioMedido`.
+    for (const malla of escenarioMedido.occluders) {
       triangulos += (malla.geometry?.index?.count ?? malla.geometry?.attributes?.position?.count ?? 0) / 3
     }
 
@@ -4949,7 +5522,7 @@ function medirPresupuesto() {
     // En la barra, lo corto; en el panel, con su denominador entero (vuelta 46).
     const corto = `${media.toFixed(4)} ms/paso` + (aprieta ? ' — SE PASA' : '')
     const largo = `${media.toFixed(4)} ms de colisión por paso (peor bloque ${peor.toFixed(4)})` +
-      ` · ${escenario.boxes.length} piezas · ${Math.round(triangulos)} triángulos` +
+      ` · ${escenarioMedido.boxes.length} piezas · ${Math.round(triangulos)} triángulos` +
       ` · de ${PASOS_MEDIDOS} pasos · presupuesto ${PRESUPUESTO_MS} ms` +
       (aprieta ? ' — SE PASA' : '')
     for (const [id, texto] of [['presupuesto', corto], ['presupuesto-panel', largo]]) {
@@ -5211,8 +5784,9 @@ $('salida-anadir').addEventListener('click', () => {
   anotarParaDeshacer()
   if (!mapa.soloDuelo) mapa.soloDuelo = true
   const salidas = salidasDe()
-  const x = aRejilla(orbita.centro.x)
-  const z = aRejilla(orbita.centro.z)
+  // Y dentro de la sala, como todo lo colocable: una salida fuera del recinto
+  // es un jugador que aparece donde no se puede jugar.
+  const { x, z } = puntoParaColocar(1.2, 1.2, true)
   salidas.push({ x, z, yaw: Math.atan2(-(0 - x), -(0 - z)) })
   marcaElegida = { que: 'salida', i: salidas.length - 1 }
   sucio = true
@@ -5348,13 +5922,14 @@ $('s-medir').addEventListener('click', () => {
   const [a, b] = salidasDe()
   const dist = Math.hypot(b.x - a.x, b.z - a.z)
   let seVen = null
-  if (escenario) {
-    // Los ojos a la altura de siempre, y el mismo rayo que usa la aparición.
+  if (escenarioMedido) {
+    // Los ojos a la altura de siempre, y el mismo rayo que usa la aparición. Y
+    // contra el mapa entero: ocultar una pieza no puede cambiar el veredicto.
     const ojos = 1.7
     seVen = hasLineOfSight(
       new THREE.Vector3(a.x, ojos, a.z),
       new THREE.Vector3(b.x, ojos, b.z),
-      escenario.occluders,
+      escenarioMedido.occluders,
     )
   }
   $('s-medida').textContent =
@@ -5871,22 +6446,41 @@ cargarFotosDeFondo()
 cargarImagenesDeEstampado()
 
 /**
- * **Y se vuelve a mirar al volver a la ventana** (vuelta 95). La lista se pedía
- * **una vez, al arrancar**, así que dejar un WebP nuevo en `public/estampados/`
- * no servía de nada hasta cerrar Alchemist y volver a abrirlo — que es
- * exactamente lo que se reportó.
+ * **Y la lista se rehace sin reiniciar, por tres puertas** (vueltas 95 y 96).
  *
- * El disparador no es un temporizador sino **el gesto**: dejar un fichero en una
- * carpeta se hace fuera del navegador, así que volver a esta ventana *es* la
- * señal de que puede haber algo nuevo. Cuesta una petición por vuelta, y sólo
- * mientras haya un servidor de desarrollo detrás.
+ * La 95 puso una sola —volver a la ventana— con este argumento: «dejar un
+ * fichero en una carpeta se hace fuera del navegador, así que volver a la
+ * ventana *es* la señal». Suena bien y **no es verdad**: es *una* señal, y sólo
+ * si el navegador llega a perder el foco y a recuperarlo. Copiando el fichero
+ * desde una ventana que está encima, arrastrándolo, o descargándolo con el
+ * propio navegador, no hay ninguna vuelta que detectar — y se reportó
+ * exactamente así, «no aparece hasta cerrar Alchemist».
  *
- * El botón se queda porque un gesto deducido no puede ser la única puerta: si
- * alguien copia el fichero con la ventana ya delante, no hay vuelta que
- * detectar. Es la misma pareja que el aviso de la barra y el botón de subir.
+ * La que no falla es la primera, y es la que la 95 no vio: **quien ve aparecer
+ * el fichero es el servidor**, que ya tiene la carpeta vigilada. El aviso llega
+ * por el canal de HMR, así que existe sólo en desarrollo, que es donde existe
+ * esta página. Las otras dos se quedan porque no estorban y cubren el caso de
+ * que el aviso no llegue —un fichero copiado antes de abrir, un servidor
+ * reiniciado por debajo—.
  */
+if (import.meta.hot) {
+  import.meta.hot.on('vektor:estampados', () => { cargarImagenesDeEstampado() })
+}
 window.addEventListener('focus', () => { cargarImagenesDeEstampado() })
-$('est-buscar').addEventListener('click', () => { cargarImagenesDeEstampado() })
+$('est-buscar').addEventListener('click', async () => {
+  // **Y el botón dice lo que ha encontrado.** Es la mitad que faltaba: pulsarlo
+  // repintaba el desplegable con la misma lista y desde fuera eso es idéntico a
+  // un botón roto. No hay más mecanismo aquí que decirlo en voz alta.
+  const aviso = $('est-buscados')
+  aviso.hidden = false
+  aviso.textContent = 'Buscando…'
+  const cuantas = await cargarImagenesDeEstampado()
+  aviso.textContent = cuantas < 0
+    ? 'No se ha podido preguntar a la carpeta.'
+    : cuantas === 0
+      ? 'La carpeta public/estampados/ está vacía.'
+      : `${cuantas} ${cuantas === 1 ? 'imagen' : 'imágenes'} en la carpeta.`
+})
 abrirLoQueToque()
 elegirPestana(pestanaActual)
 redimensionar()
@@ -5911,6 +6505,9 @@ window.vektorEditor = {
   get laseres() { return laseres },
   get plantados() { return plantados },
   get marcas() { return marcas },
+  get fantasmas() { return fantasmas },
+  get escenarioMedido() { return escenarioMedido },
+  get proxies() { return proxies },
   get pinchables() { return pinchables },
   get tiradoresDePieza() { return tiradoresDePieza },
   get marcaElegida() { return marcaElegida },

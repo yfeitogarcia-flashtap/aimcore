@@ -13900,3 +13900,283 @@ uno por pieza y por ángulo— y se puede **ver**; y el umbral global después, 
 auditoría publicada. Y **empezando por el Titan y sólo el Titan**, que es la única
 arma del arsenal que se delata antes de disparar (vuelta 90): la única donde «te han
 matado a través de una esquina» viene con un aviso previo.
+
+---
+
+## §96 — Cerrar Alchemist: lo que la 95 dejó a medias, y una asimetría de cinco causas
+
+El encargo tenía un objetivo escrito con todas las letras: *«dejar Alchemist
+cerrado y fino, y después la app de Tauri. Nada más por ahora.»* Y de sus seis
+puntos, **dos eran fallos de lo que se entregó en la 95** — uno medido y verde, y
+mal medido; el otro arreglado, dado por bueno y sin funcionar.
+
+### §96.1 «No está en `occluders`» no significa «no para nada»
+
+La vuelta 95 construyó la barrera con una decisión y una medida. La decisión:
+**fuera de `occluders`**, porque de esa lista cuelgan cuatro cosas —la línea de
+visión de la aparición, la brújula, el destello de mira del Titan y el rayo que
+resuelve un disparo— y un límite que se comportara como cobertura serían cinco
+sistemas diciendo «ahí no hay nadie» de un rival que se ve perfectamente. La
+medida (`barrera95`) lo confirmó: 0 montones en `occluders`, no corta la vista, no
+para el rayo de un disparo, y para al cuerpo en 0.9000.
+
+Todo cierto. Y **la mitad de la pregunta**.
+
+Porque hay **dos caminos** por los que el mundo pregunta contra qué choca algo, y
+la lista que usa cada uno es distinta:
+
+| Quién pregunta | Contra qué | Cómo |
+|---|---|---|
+| Una bala, la vista, la brújula, el destello | `occluders` | un rayo contra la malla dibujada (vuelta 64) |
+| El cuerpo del jugador | `boxes` | `resolveAxis` y `groundHeightAt` |
+| **Un proyectil** | **`boxes`** | **`cortarSegmento`, por aritmética (vuelta 85)** |
+
+La barrera se quedó fuera de `occluders` y **dentro de `boxes`**, porque ahí es
+donde se choca con el cuerpo, que es su razón de ser. Resultado: paraba una
+flecha, una granada, un cohete y un cuchillo lanzado, **y dejaba pasar la bala**.
+Dos respuestas distintas a la misma pregunta —«¿esto es cobertura?»— y ninguna de
+las dos la había decidido nadie. Es el fallo de la vuelta 67 en su forma más pura:
+un control que promete una cosa y un mundo que hace otra, sin un error en ninguna
+pantalla.
+
+Lo que lo hace una lección y no un descuido es **por qué no lo cazó el banco de la
+95**: porque el banco midió lo que la decisión decía —`occluders`— en vez de lo que
+la promesa decía —«no para nada»—. Una promesa sobre el mundo se comprueba **contra
+cada cosa que el mundo tiene**, y el mundo tenía seis tipos de proyectil desde la
+vuelta 90.
+
+El arreglo es una línea y tres cautelas:
+
+- **La caja nombra su acabado** (`barrera` dentro de `this.boxes`) y
+  `cortarSegmento` la salta. Se salta **ahí** y no al montar, porque la caja tiene
+  que seguir en esa lista: de ella cuelgan `resolveAxis` y `groundHeightAt`, que son
+  justo las dos que una barrera sí contesta.
+- **Y con ella se va el láser de tiro curvo**, que evalúa la misma función. Eso no
+  es un efecto secundario, es la condición: desde la vuelta 85 la curva que se
+  dibuja **no puede mentir** porque sale de la misma fórmula que el vuelo, y una
+  curva que se cortara donde la granada no se corta sería exactamente mentir.
+- **Y la ficha del editor lo dice entero.** «No corta la vista ni para balas» era
+  verdad y estaba incompleto; ahora dice *la atraviesa todo lo que se dispara o se
+  lanza*, que es lo único de una barrera que no se ve mirándola.
+
+Medido (`barrera96`, los seis tipos, con su denominador delante y por separado):
+contra un muro de control **ninguno cruza** —la flecha, el cohete y el cuchillo
+mueren en su cara (z 0.500) y las tres granadas **rebotan** y revientan de este lado
+(z 4.571, por mecha)— y contra las dos variantes de barrera **los seis cruzan**,
+dando cristal e invisible el mismo sitio hasta el último decimal. El Plano A y El
+Espejo se cortan dígito a dígito igual que antes, que es la premisa.
+
+**Y el banco de la 95 se puso rojo por la razón correcta.** Su fila «cristal e
+invisible montan exactamente la misma colisión» comparaba el JSON entero de
+`boxes`, y ahora la caja lleva además su etiqueta: se compara sin ella y se afirma
+aparte que las dos la llevan. Un banco que va a rojo porque la forma del dato
+cambió está haciendo su trabajo.
+
+### §96.2 El botón que sí llamaba a la función, y el argumento que sonaba bien
+
+La vuelta 95 arregló que las imágenes de estampado no se vieran hasta reiniciar
+Alchemist, y lo hizo con este argumento, escrito en `CLAUDE.md`:
+
+> El disparador no es un temporizador: **dejar un fichero en una carpeta se hace
+> fuera del navegador**, así que volver a la ventana *es* la señal.
+
+Suena bien. **Es falso**, y falso de una forma concreta: volver a la ventana es
+*una* señal, y sólo existe si el navegador llega a perder el foco y a recuperarlo.
+Copiando el fichero desde una ventana que está por encima, arrastrándolo, o
+descargándolo con el propio navegador, **no hay ninguna vuelta que detectar**. Se
+reportó igual que la primera vez: «no aparece hasta cerrar Alchemist».
+
+Y el botón, que la 95 dejó puesto precisamente porque «un gesto deducido no puede
+ser la única puerta», se reportó como «no hace nada». Medido, **sí hacía**: pedía
+el listado y repintaba el desplegable. Lo que no hacía era **decirlo**. Un botón
+que repinta en silencio con la misma lista es, desde fuera, idéntico a un botón
+roto — que es la lección de la vuelta 89 con el dinero del HUD, otra vez, y esta
+vez en un control.
+
+Lo que lo cierra es mirar quién puede saberlo de verdad: **el vigilante de Vite ya
+tiene la carpeta vigilada**. El aviso sale de él y llega por el canal de HMR
+(`vektor:estampados`), así que no es un temporizador —que era lo que la 95
+descartaba con razón— y es **exacto**: llega cuando el fichero existe, no cuando
+alguien vuelve a mirar. Las otras dos puertas se quedan porque cubren lo que el
+aviso no puede (un fichero copiado antes de abrir, un servidor reiniciado por
+debajo), el botón dice cuántas ha encontrado, y la petición va con
+`cache: 'no-store'` porque lo que se pregunta es justo si la carpeta cambió.
+
+**Y el banco por poco no lo mide.** Su primera versión hacía un `fetch` desde la
+página para comprobar que el servidor veía el fichero **antes** de pulsar el botón,
+y eso pudo dejar la respuesta en la caché del navegador: el botón la habría releído
+de ahí y la fila saldría verde sin haber pedido nada. Se comprueba desde fuera de
+la página. Es el confundido de orden de la vuelta 46 aplicado a una caché.
+
+Medido (`est96`): con la página abierta y sin tocar nada, dejar un WebP lo mete en
+el desplegable **y el centinela de la página sobrevive**, o sea que no fue una
+recarga de Vite; el botón lo mete también y escribe «2 imágenes en la carpeta»; y
+borrar el fichero lo saca.
+
+### §96.3 Cuatro síntomas, cinco causas, y ninguna era la que se reportó
+
+El punto 1 del encargo llegó como una lista de cuatro cosas de la escalera, la
+rampa y el estampado: **aparecen fuera de la sala**, **no se arrastran pinchándolas
+(solo girar y redimensionar)**, **la escalera sigue elegida al pinchar otra pieza**
+y **no se borra con Supr**. Y con una petición de fondo que es la que importa: *que
+todo elemento colocable, los actuales y los futuros, pase por el mismo sistema.*
+
+Lo que había debajo eran cinco causas independientes, y la más gorda no estaba en
+la lista.
+
+**(1) El «picker» de un aro era un disco macizo.** La vuelta 93 se lo puso debajo
+con un argumento correcto a medias —un toro tiene el centro hueco y apuntarle al
+centro era un clic que se colaba por el agujero— y la mitad que faltaba es que ese
+disco **tapa lo que rodea**: el aro de una rampa de 3×6 mide 3.9 de radio, así que
+a `PRIORIDAD.tirador` se llevaba cualquier clic sobre su huella. De ahí salen dos
+síntomas de los cuatro: «solo girar y redimensionar», y una escalera que sigue
+elegida al pinchar una caja que caiga dentro de su huella. Un `RingGeometry` con
+`ARO_AGARRE` de tolerancia a cada lado conserva lo que la 93 compró —el aro sigue
+siendo gordo de pinchar, contra sus 0.06 de tubo— y **devuelve el agujero del
+medio**.
+
+**(2) Y ese picker no colgaba de la escena.** El `Raycaster` de three **no
+actualiza matrices de mundo**: un objeto que sólo está en la lista de pinchables se
+queda con la identidad. O sea que ese disco de cuatro unidades se raycasteaba **en
+el origen del mapa**, robando clics con prioridad de tirador, y el aro de verdad no
+se podía agarrar. Era el único picker del fichero que se había quedado fuera de su
+grupo. La regla que se queda: **si algo se raycastea, tiene que estar en el grafo.**
+
+**(3) El aro es el único tirador que no va por prioridad.** Los demás están
+**sobre** su pieza, y sin prioridad los taparía la cara que tienen debajo — para eso
+existe `PRIORIDAD.tirador` desde la vuelta 79. Un aro está **fuera** de la huella
+por construcción, así que nunca lo tapa su pieza, y la prioridad sólo servía para
+lo contrario: un rayo que atraviesa la pieza y sale por el aro de detrás **giraba**
+en vez de elegir. Y va **a ras de suelo**, no flotando encima: con una cámara
+oblicua, un rayo al centro de una pieza de 3.6 cruza el plano de un aro alto a unas
+dos unidades del eje, justo en su banda. Medido a 45°, pinchar el centro de un
+prisma daba `prisma-giro`.
+
+**(4) Los tiradores se dibujaban siempre, para todos.** Una caja lo hace bien desde
+la 79 —`gizmoPieza.visible`, sólo la elegida— y las cinco macros dibujaban su gizmo
+entero permanentemente: esquina, cubo de alto y aro, todos a prioridad de tirador.
+En un mapa con cuatro rampas eso es estar rodeado de tiradores. Ahora son **de lo
+elegido**, y lo que se queda puesto es **lo que informa y no lo que agarra**: el
+volumen, la bola del centro, la flecha de subida de una rampa, el anillo del hueco
+de un tubo y la imagen de un estampado.
+
+**(5) Y lo que se pinchaba de una pieza no era la pieza.** El «cuerpo» de una
+rampa, una escalera, un prisma y un tubo era **una bola de alambre de 0.42 en su
+centro**, porque su geometría de verdad vive fundida dentro de `Scenario`, que no se
+raycastea. Ahora cada una lleva un volumen invisible a `PRIORIDAD.pieza` —compite
+con las cajas por distancia, como una caja con otra— y **sale de la misma función
+que la monta en el motor**: `cajasDeEscalera` para una escalera, `puntosDePrisma`
+para un prisma, y la cuña para una rampa. Un proxy calculado aparte sería la pieza
+dibujada de una forma y pinchable de otra, que es el fallo del winding de los
+prismas (vuelta 85) esperando a repetirse.
+
+**Y una copia costó lo que cuestan las copias.** El aro del prisma estaba escrito a
+mano en su bucle —una cuarta copia del mismo aro, con su propio picker— así que al
+arreglar el disco macizo **el prisma se quedó sin arreglar**, y era el único de los
+cinco que seguía girándose al pinchar su cuerpo. La regla de la vuelta 63 por la
+puerta del editor, y la cazó el banco fila a fila.
+
+Los otros dos síntomas eran cada uno una línea:
+
+- **«Aparecen fuera de la sala»**: el centro de órbita se mueve con el vuelo y no
+  estaba acotado, así que colocar mirando desde fuera del recinto pone la pieza
+  fuera. Un solo sitio ahora (`puntoParaColocar`), que acota **la huella entera** y
+  la centra si no cabe — y lo usan los nueve, incluida la caja, que tenía el mismo
+  fallo y nadie lo había reportado.
+- **«No se borra con Supr»**: el manejador salía con `if (seleccion < 0) return`, y
+  `seleccion` es **sólo una caja**. Los nueve tipos restantes se eligen como marca,
+  con `seleccion = -1`, así que la tecla no borraba a ninguno. Se reportó de la
+  escalera porque es la que se estaba usando.
+
+Medido (`coloca96`, con clics de ratón de verdad contra la página —la disciplina de
+la vuelta 48— y con el centro de órbita **empujado fuera de la sala**, que es la
+situación real): los siete tipos nacen dentro de una sala de 50×50; rampa, escalera
+y prisma se eligen pinchando su cuerpo y se mueven arrastrándolo; pinchando una caja
+la escalera **se suelta**; Supr borra los tres; y los tres aros siguen girando lo que
+giraban, agarrados por la banda que el propio editor dibuja. Y `volumen96`, sin
+navegador: el volumen de un prisma coincide con el que el motor choca en **4000 de
+4000 puntos**, y la cuña de una rampa sigue su plano inclinado —el rayo cae en
+1.3000 a mitad de rampa, que es la superficie— así que el aire de encima no la elige.
+
+**Y el banco hizo la pregunta que había que hacer.** Sus dos primeras filas rojas no
+eran fallos del código: el control **paraba la flecha en la cara exacta** (z 0.500,
+y mi ventana lo excluía) y **hacía rebotar las granadas**, que reventaban de este
+lado del muro un rato después. Lo que discrimina no es «a qué distancia se para»
+sino **de qué lado del muro acaba**, y eso vale para los seis a la vez.
+
+### §96.4 El ojo obliga a separar lo que se dibuja de lo que se mide
+
+El punto 5 pedía un panel de capas con lista, agrupar, bloquear y ojo, con una
+salida escrita: *«Si es grande, decídnoslo y lo planificamos.»* Es grande, y la
+propuesta está en `docs/propuestas/10-panel-de-capas.md`. Lo que sí entró es la
+**fase 1** —la lista y el ojo—, porque no toca el formato; lo que no entró es
+agrupar y bloquear, por una razón que es suya y no de trabajo: los dos necesitan
+que cada elemento tenga **identidad**, y hoy se identifica **por su posición en su
+lista**, así que borrar uno renumeraría los demás y un candado apuntaría a otra
+pieza. Eso es un `id` en `CAMPOS` y en el saneado de once tipos, con la disciplina
+de la vuelta 83 delante y con una decisión sobre los mapas que ya están en disco.
+
+Lo interesante de construir la fase 1 no fue el filtro: fue descubrir que
+**`escenario` servía para tres cosas**. Además de dibujar, de él colgaban **el
+denominador del presupuesto** —«0.0031 ms con 40 piezas»— y **la línea de visión
+entre las dos salidas** de un mapa de duelo. Montarlo filtrado habría hecho que
+ocultar una pieza **bajara el presupuesto** y pudiera cambiar un «SE VEN» por un
+«sin línea de visión»: dos instrumentos mintiendo por un ajuste de vista, que es el
+fallo de la 67 metido dentro de una medida.
+
+De ahí la regla que se queda y vale para cualquier cosa que se pueda ocultar: **lo
+que se dibuja y lo que se mide son dos cosas.** `escenario` es el de la escena y
+`escenarioMedido` el del mapa entero; **sin nada oculto son el mismo objeto**, así
+que el camino normal no monta nada de más y no puede divergir.
+
+Y dos cosas más que son el mecanismo:
+
+- **El ojo no se guarda**, y es lo correcto: vive en memoria y no en el mapa, porque
+  el mapa es lo que compara deshacer/rehacer con un `JSON.stringify` (vuelta 83). Lo
+  que se paga va escrito: no sobrevive a guardar, porque guardar recarga la página
+  (vuelta 75). Para un ojo está bien; es exactamente lo que **no** vale para un
+  candado, y es la otra mitad de por qué el candado no está aquí.
+- **Y un oculto tampoco se pincha.** Una pieza invisible que sigue robando el clic
+  es peor que una visible.
+
+**Y volvió a saltar la trampa de la vuelta 83.** `salidasDe()` **escribe en el
+mapa** si no hay dos salidas —se las inventa y las deja puestas—, lo cual está bien
+donde se usa (la hoja de duelo, que va a editarlas) y habría sido un desastre en una
+lista que se pinta con el panel: abrir Alchemist con cualquier mapa le habría añadido
+dos salidas de duelo sin que nadie las pidiera, rompiendo de paso la comparación de
+deshacer/rehacer. Lo cazó el banco contando filas: salían ocho donde el mapa tiene
+seis elementos.
+
+Medido (`capas96`): tantas filas como elementos —las cajas incluidas, que no salían
+en ninguna hoja—, pinchar una fila elige ese elemento, el ojo quita una pieza del
+dibujo **y de lo pinchable** dejando el mapa igual, lo medido sigue contando **14
+contra las 13 dibujadas**, un mapa que no es de duelo **no lista ni se inventa
+salidas**, y «ver todo» las devuelve y vuelve a hacer de los dos escenarios **un
+solo objeto**.
+
+### §96.5 Y el `.exe` ya estaba, que es la respuesta correcta al punto 6
+
+El punto 6 pedía que GitHub Actions generase el `.exe` para no tener que instalar
+Rust. **Está hecho desde la vuelta 94** (`.github/workflows/escritorio.yml`), y lo
+único que faltaba era decir dónde: la publicación rodante `escritorio-ultima`, con
+**Vektor-instalador.exe** (1.8 MB) y **Vektor-portable.exe** (7.2 MB), compilados de
+`6ab8446`.
+
+Y que siga compilado de la 94 y no de esta vuelta **es la decisión funcionando**:
+el disparador está acotado a `escritorio/**` a propósito, porque **la ventana no
+contiene el juego** — abre la URL del despliegue. Un cambio del juego no cambia el
+`.exe`, y volver a compilarlo en cada empujón sería gastar un corredor de Windows
+para producir el mismo binario.
+
+### §96.6 Y la monetización queda anotada, sin decidir
+
+El encargo la deja como bloque permanente con cuatro vías: skins cosméticas con
+dinero real, pase de temporada, cuota mensual para jugar y cuota de membresía de
+comunidad. Están en `docs/roadmap.md` §6 tal como se plantearon, y con lo que cada
+una pide antes de existir. Una cosa sí se puede decir ya, porque sale de decisiones
+que este proyecto tomó hace cincuenta vueltas: **las skins de color chocan con que
+el color es información** —naranja es una diana, el tinte de un jugador es su equipo
+(vuelta 38)— así que una skin no es decoración, es cambiar lo que el jugador lee. Y
+la **cuota mensual para jugar** contradice la promesa que protege el enlace por
+código: se puede jugar sin cuenta y en igualdad. Ninguna de las dos es un precio que
+decidir: son decisiones de diseño que van antes del precio.

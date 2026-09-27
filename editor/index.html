@@ -85,6 +85,10 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l7-7M20 4l-7 7"/><path d="M3 15l6 6M21 9l-6-6"/></svg>
           <span>Duelo</span>
         </button>
+        <button type="button" data-pestana="capas" title="Capas · todo lo que hay en el mapa">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg>
+          <span>Capas</span>
+        </button>
         <button type="button" data-pestana="probar" title="Probar · muñecos, plantado y vuelo">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 1v5M12 18v5M1 12h5M18 12h5"/></svg>
           <span>Probar</span>
@@ -170,12 +174,13 @@
               </div>
               <p id="est-vacio" class="nota">Deja una imagen en <b>public/estampados/</b>
                 —WebP a ser posible— y aparecerá aquí.</p>
-              <p class="nota">La lista se rehace <b>al volver a esta ventana</b>,
-                así que dejar el fichero y volver al navegador basta. Y con el
-                botón, cuando quieras.</p>
+              <p class="nota">La lista se rehace <b>sola, en cuanto dejas el
+                fichero</b>: lo ve el servidor, no hace falta volver a esta
+                ventana. El botón está para pedirlo a mano.</p>
               <div class="botonera">
                 <button id="est-buscar" type="button">Buscar imágenes nuevas</button>
               </div>
+              <p id="est-buscados" class="nota" hidden></p>
               <ul id="est-lista"></ul>
 
               <div id="est-ficha" hidden>
@@ -314,9 +319,10 @@
                 </select>
               </label>
               <p id="p-barrera-nota" class="nota" hidden>Una barrera <b>sólo para
-                el cuerpo</b>: no corta la vista ni para balas, y no esconde al
-                rival de la brújula. Sirve para decir por dónde no se pasa, no
-                para taparse — para eso están las piezas.</p>
+                el cuerpo</b>: no corta la vista, no esconde al rival de la brújula
+                y <b>la atraviesa todo lo que se dispara o se lanza</b> — balas,
+                flechas, cohetes, granadas y cuchillos. Sirve para decir por dónde
+                no se pasa, no para taparse — para eso están las piezas.</p>
               <p id="p-barrera-aviso" class="aviso" hidden></p>
 
               <!-- **Lo que la pieza le hace a quien la pisa vive en
@@ -781,6 +787,34 @@
           </div>
 
           <!-- ----------------------------------------------- PROBAR -->
+          <!-- --------------------------------------------- CAPAS -->
+          <!-- **La lista de todo lo que hay** (vuelta 96, fase 1 de
+               `docs/propuestas/10-panel-de-capas.md`). Hasta aquí cada tipo
+               tenía su lista en su hoja —los dispositivos desde la 81, los
+               estampados desde la 93, las salidas desde la 78— y las cajas no
+               salían en ninguna: para inventariar un mapa había que pasar por
+               cuatro pestañas. El ojo es de esta vuelta; **agrupar y bloquear
+               no**, y se dice aquí en vez de dejar dos botones apagados. -->
+          <div class="hoja" data-hoja="capas" hidden>
+            <section>
+              <h2>Capas <span id="capas-cuenta" class="dato"></span></h2>
+              <p class="nota">Todo lo que hay en el mapa. Pincha una fila para
+                elegirla en la vista; el <b>ojo</b> la quita de la vista sin
+                tocar el mapa.</p>
+              <div class="botonera">
+                <button type="button" id="capas-ver-todo">Ver todo</button>
+              </div>
+              <p id="capas-ocultas" class="aviso" hidden></p>
+              <div id="capas-lista"></div>
+              <p class="nota"><b>Agrupar y bloquear todavía no están.</b> Los dos
+                necesitan que cada elemento tenga identidad propia y hoy se
+                identifica por su posición en la lista, así que borrar uno
+                renumeraría los demás y el candado apuntaría a otra pieza. El
+                porqué y las fases, en
+                <code>docs/propuestas/10-panel-de-capas.md</code>.</p>
+            </section>
+          </div>
+
           <div class="hoja" data-hoja="probar" hidden>
             <section>
               <h2>Cómo se prueba</h2>

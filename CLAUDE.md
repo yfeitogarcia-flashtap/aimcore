@@ -372,14 +372,39 @@ y alto por separado, el primero que llegara a su límite dejaría de crecer y el
 otro seguiría, o sea deformándolo justo en el tirador que existe para no
 deformarlo.
 
-**Y una lista que sale de una carpeta se vuelve a mirar al volver a la ventana**
-(vuelta 95). Las imágenes de estampado se pedían **una vez, al arrancar**, así
-que dejar un WebP nuevo no servía de nada hasta cerrar Alchemist y volver a
-abrirlo. El disparador no es un temporizador: **dejar un fichero en una carpeta
-se hace fuera del navegador**, así que volver a la ventana *es* la señal. El
-botón se queda porque un gesto deducido no puede ser la única puerta — quien
-copie el fichero con la ventana ya delante no produce ninguna vuelta que
-detectar.
+**Una lista que sale de una carpeta la rehace quien mira la carpeta, y eso es el
+servidor** (vuelta 96, enmendando la 95). La 95 colgó el refresco de las imágenes
+de estampado de **volver a la ventana**, con este argumento: «dejar un fichero en
+una carpeta se hace fuera del navegador, así que volver a la ventana *es* la
+señal». Suena bien y **es falso**: es *una* señal, y sólo si el navegador llega a
+perder el foco y a recuperarlo. Copiando el fichero desde una ventana que está
+encima, arrastrándolo, o descargándolo con el propio navegador, no hay ninguna
+vuelta que detectar — y se reportó exactamente así, «no aparece hasta cerrar
+Alchemist».
+
+Lo que no falla es que **el vigilante de Vite ya ve la carpeta**, así que el aviso
+sale de él y llega por el canal de HMR (`vektor:estampados`). No es un
+temporizador —que era lo que la 95 descartaba con razón— y es **exacto**: llega
+cuando el fichero existe y no cuando alguien vuelve a mirar. Y existe sólo en
+desarrollo, que es donde existe esa página.
+
+Tres cosas que se quedan:
+
+- **Las otras dos puertas no se quitan**, porque no estorban y cubren lo que el
+  aviso no puede: un fichero copiado antes de abrir, o un servidor reiniciado por
+  debajo. Volver a la ventana y el botón siguen ahí.
+- **Y el botón dice lo que ha encontrado.** Era la mitad que faltaba y es la que
+  se reportó como «el botón no hace nada»: sí llamaba a la carga, y repintaba el
+  desplegable con la misma lista. Desde fuera eso es idéntico a un botón roto
+  (vuelta 89: «está en pantalla» y «se ve» son dos medidas distintas).
+- **Y se pide sin caché** (`cache: 'no-store'`). Lo que se está preguntando es
+  justo «¿ha cambiado la carpeta?»: una respuesta reutilizada contesta la de
+  antes.
+
+Medido (`est96`): con la página abierta y **sin tocar nada**, dejar un WebP en
+`public/estampados/` lo mete en el desplegable y **el centinela de la página
+sobrevive**, o sea que no fue una recarga de Vite; el botón lo mete también y
+escribe «2 imágenes en la carpeta»; y borrar el fichero lo saca.
 
 **Una barrera para el cuerpo y nada más, y eso es lo que hace que su acabado sea
 aspecto** (vuelta 95). `barrera: 'cristal' | 'invisible'` en una pieza: delimita
@@ -428,6 +453,161 @@ dan **0 montones en `occluders`**, no cortan la vista y no paran el rayo de un
 disparo; las dos montan **exactamente la misma colisión**; y las dos paran al jugador
 en **0.9000**, que es la cara del muro más el radio del cuerpo — el mismo sitio que
 una pieza normal.
+
+**Y no para nada que vuele, que la 95 dejó a medias sin saberlo** (vuelta 96).
+Aquello midió que una barrera no corta la vista y no para una bala, y las dos cosas
+eran ciertas: las dos cuelgan de `occluders`. **Un proyectil no pasa por ahí.**
+Pregunta por aritmética a `cortarSegmento` (vuelta 85), que barre `this.boxes` —que
+es donde la barrera sí está, porque ahí es donde se choca con el cuerpo—, así que
+una barrera paraba una flecha, una granada, un cohete y un cuchillo lanzado **y
+dejaba pasar la bala**: dos respuestas distintas a la misma pregunta, y ninguna de
+las dos la había decidido nadie.
+
+La lección es de dónde vino, y vale para cualquier cosa que se quiera hacer
+transparente: **«no está en `occluders`» no significa «no para nada».** Hay dos
+caminos por los que el mundo pregunta contra qué choca algo, y la lista que usa
+cada uno es distinta.
+
+Tres reglas del arreglo:
+
+- **La caja nombra su acabado** (`barrera` en `this.boxes`), y se salta **en
+  `cortarSegmento`** y no al montar: la caja tiene que seguir en esa lista porque de
+  ella cuelgan también `resolveAxis` y `groundHeightAt`, que son justo las dos que
+  una barrera sí contesta.
+- **Y con ello se va el láser de tiro curvo**, que evalúa la misma función: la curva
+  que se dibuja no puede pararse donde la granada no se para.
+- **La ficha del editor lo dice entero**, porque es lo único de una barrera que no
+  se ve mirándola: *la atraviesa todo lo que se dispara o se lanza*.
+
+Medido (`barrera96`, sin navegador, los seis tipos y con su denominador delante):
+contra un muro de control **ninguno cruza** —la flecha, el cohete y el cuchillo
+mueren en su cara, z 0.500, y las tres granadas **rebotan** y revientan de este
+lado, z 4.571— y contra las dos variantes de barrera **los seis cruzan**, dando
+cristal e invisible **el mismo sitio** hasta el último decimal. Y el Plano A y El
+Espejo se cortan dígito a dígito igual que antes, que es la premisa.
+
+**Todo lo colocable pasa por el mismo sistema** (vuelta 96). **Ésta es la
+convención permanente del editor para cualquier cosa que se pueda poner en un
+mapa**, presente o futura: nace **delante de la cámara y dentro de la sala**, se
+elige **pinchándola**, se arrastra por su cuerpo, y **Supr la borra** — igual que
+una caja desde la vuelta 76.
+
+Se reportaron cuatro cosas a la vez de la escalera, la rampa y el estampado
+—aparecen fuera de la sala, no se arrastran pinchándolas, la escalera sigue
+elegida al pinchar otra pieza y no se borra con Supr—, y eran **cinco causas, no
+cuatro síntomas**. Las cinco valen fuera de aquí:
+
+- **El «picker» de un aro tiene que ser un aro.** La vuelta 93 le puso debajo un
+  cilindro **macizo** con un argumento correcto a medias —un toro tiene el centro
+  hueco y apuntarle al centro era un clic que se colaba— y la mitad que faltaba es
+  que ese disco **tapa lo que rodea**: el aro de una rampa de 3×6 mide 3.9 de
+  radio, así que a prioridad de tirador se llevaba cualquier clic sobre su huella.
+  De ahí salieron dos de los síntomas: «solo girar y redimensionar», y una
+  escalera que sigue elegida al pinchar una caja que caiga dentro de su huella. Lo
+  que la 93 compró se conserva: el aro sigue siendo gordo de pinchar
+  (`ARO_AGARRE`, medio radio a cada lado del trazo, contra sus 0.06 de tubo). Lo
+  que cambia es que **el agujero del medio vuelve a ser un agujero**.
+- **Un picker que no cuelga de la escena raycastea desde el origen.** El
+  `Raycaster` de three **no actualiza matrices de mundo**, así que un objeto que
+  sólo está en la lista de pinchables se queda con la identidad. El de este aro era
+  el único del fichero que se había quedado fuera del grupo: un disco de cuatro
+  unidades invisible **en el centro del mapa**, robando clics, y el aro de verdad
+  sin poder agarrarse.
+- **Y el aro es el único tirador que gana por distancia y no por prioridad.** Los
+  demás están **sobre** su pieza y sin prioridad los taparía la cara que tienen
+  debajo: para eso existe `PRIORIDAD.tirador` desde la vuelta 79. Un aro está
+  **fuera** de la huella por construcción, así que nunca lo tapa su pieza y la
+  prioridad sólo servía para lo contrario — un rayo que atraviesa la pieza y sale
+  por el aro de detrás **giraba** en vez de elegir. Va además **a ras de suelo** y
+  no flotando encima: con una cámara oblicua, un rayo al centro de una pieza de 3.6
+  cruza el plano de un aro alto **a dos unidades del eje**, o sea justo en su banda.
+- **Los tiradores son de lo elegido.** Una caja lo hace desde la vuelta 79
+  (`gizmoPieza.visible`) y las cinco macros dibujaban **su gizmo entero siempre**,
+  así que en un mapa con cuatro rampas cualquier clic caía en un tirador de alguna.
+  Lo que se queda puesto es **lo que informa y no lo que agarra**: el volumen, la
+  bola del centro, la flecha de subida de una rampa, el anillo del hueco de un tubo
+  y la imagen de un estampado.
+- **Y lo que se pincha de una pieza es la pieza.** El «cuerpo» de una rampa, una
+  escalera, un prisma y un tubo era **una bola de alambre de 0.42 en su centro**,
+  porque su geometría de verdad vive fundida dentro de `Scenario`, que no se
+  raycastea. Ahora cada una lleva un volumen invisible a `PRIORIDAD.pieza` —compite
+  con las cajas por distancia, como una caja con otra— y **sale de la misma función
+  que la monta en el motor**: la cuña de una rampa, `cajasDeEscalera` para una
+  escalera y `puntosDePrisma` para un prisma. Un proxy calculado aparte sería la
+  pieza dibujada de una forma y pinchable de otra.
+
+Y dos cosas que son el mecanismo y no tuning: **el punto donde nace algo sale de un
+solo sitio** (`puntoParaColocar`, que acota **la huella entera** contra la sala con
+holgura, y la centra si no cabe), y **borrar es una sola función** con su tabla al
+lado (`TIPOS_DE_MAPA` → `borrarLoElegido`), que es lo que hace que Supr valga para
+los nueve tipos en vez de sólo para una caja. Un tipo nuevo que se añada a esa
+tabla hereda la tecla, la lista de capas y el ojo sin tocar nada más.
+
+Medido (`coloca96`, con clics de ratón de verdad contra la página y con el centro
+de órbita **empujado fuera de la sala**, que es la situación real porque se
+construye volando): los siete tipos nacen dentro de una sala de 50×50; rampa,
+escalera y prisma se eligen pinchando su cuerpo y se mueven arrastrándolo;
+pinchando una caja la escalera **se suelta**; Supr borra los tres; y el aro sigue
+girando lo que giraba, agarrado por la banda que el propio editor dibuja.
+(`volumen96`, sin navegador: el volumen de un prisma coincide con el que el motor
+choca en **4000 de 4000 puntos**, y la cuña de una rampa sigue su plano inclinado,
+así que el aire de encima no la elige.)
+
+**Y lo que el juego no dibuja, el editor sí** (vuelta 96). Una barrera invisible no
+tiene malla en `Scenario` a propósito —es su razón de ser— y eso dejaba una pieza
+que **desaparece del editor al deseleccionarla**: para volver a dar con ella había
+que pinchar a ciegas donde el jugador se choca. Va como **contorno y no como caja
+translúcida**, porque sin luces la silueta es lo único que dice dónde está un plano
+(vuelta 38) y una caja rellena se confundiría con un cristal — que es la otra
+variante, y la diferencia entre las dos es justo lo que hay que poder ver.
+
+**El editor tiene una lista de todo lo que hay, y el ojo obliga a separar lo que se
+dibuja de lo que se mide** (vuelta 96, fase 1 de
+`docs/propuestas/10-panel-de-capas.md`). Hasta aquí cada tipo tenía su lista en su
+hoja —los dispositivos desde la 81, los estampados desde la 93, las salidas desde
+la 78— y **las cajas no salían en ninguna**: para inventariar un mapa había que
+pasar por cuatro pestañas. Ahora hay una hoja «Capas» con todo, sacada de
+`TIPOS_DE_MAPA`, y cada fila tiene su **ojo**.
+
+Lo que costó no fue el filtro. **`escenario` servía para tres cosas**: dibujar, el
+denominador del presupuesto y la línea de visión entre las dos salidas de un mapa
+de duelo. Montarlo filtrado habría hecho que ocultar una pieza **bajara el
+presupuesto** y pudiera cambiar un «SE VEN» por un «sin línea de visión»: dos
+instrumentos mintiendo por un ajuste de vista, que es el fallo de la vuelta 67
+metido dentro de una medida. De ahí la regla que se queda:
+
+- **Lo que se dibuja y lo que se mide son dos cosas.** `escenario` es el de la
+  escena y `escenarioMedido` el del mapa entero; **sin nada oculto son el mismo
+  objeto**, así que el camino normal no monta nada de más y no puede divergir.
+- **El ojo no se guarda, y eso es lo correcto.** Vive en memoria y no en el mapa,
+  porque el mapa es lo que compara deshacer/rehacer con un `JSON.stringify` (vuelta
+  83). Lo que se paga va escrito: **no sobrevive a guardar**, porque guardar recarga
+  la página (vuelta 75). Para un ojo está bien —nadie espera que dure— y es
+  exactamente lo que **no** vale para un candado, que es por lo que el candado no
+  está en esta vuelta.
+- **Y un oculto tampoco se pincha**: una pieza invisible que sigue robando el clic
+  es peor que una visible. Su proxy y su gizmo se van con ella, y el índice de los
+  demás no se mueve porque va escrito en el proxy y no es su posición en el grupo.
+- **Y que hay algo oculto se dice**, con su cuenta y un «ver todo»: un mapa con
+  media docena de piezas escondidas es un mapa que parece tener menos de las que
+  tiene, y eso se descubre probándolo (vuelta 67).
+
+**Agrupar y bloquear no están, y no es un olvido**: los dos necesitan que cada
+elemento tenga **identidad**, y hoy se identifica por su posición en su lista, así
+que borrar uno renumeraría los demás y el candado apuntaría a otra pieza. Eso es un
+campo nuevo en el formato y en el saneado de once tipos, con la disciplina de la
+vuelta 83 delante; las fases están escritas en la propuesta 10.
+
+Y una trampa que cazó el banco y es la de la 83 otra vez: **`salidasDe()` escribe en
+el mapa** si no hay dos salidas —se las inventa—, así que leerlas desde una lista
+que se pinta con el panel le habría añadido `duelo.salidas` a cualquier mapa que se
+abriese. La lista las lee de `mapa.duelo.salidas` y sólo en un mapa de duelo.
+
+Medido (`capas96`): tantas filas como elementos —las cajas incluidas—, pinchar una
+fila elige ese elemento, el ojo quita una pieza del dibujo **y de lo pinchable**
+dejando el mapa igual, lo medido sigue contando **14 contra las 13 dibujadas**, un
+mapa que no es de duelo **no lista ni se inventa salidas**, y «ver todo» las
+devuelve y vuelve a hacer de los dos escenarios **un solo objeto**.
 
 **Todo el tuning en `config.js`.** Ninguna constante de juego vive suelta en un
 módulo. Si necesitas un número nuevo, va a `config.js` aunque lo use un solo
@@ -5764,7 +5944,26 @@ zona, y su acabado —**cristal** muy translúcido o **invisible**— se elige e
 ficha de la pieza, junto al tinte. Sólo para el cuerpo: no corta la vista, no para
 balas y no esconde a nadie de la brújula, así que elegir el acabado es una decisión
 de aspecto y no de mecánica. Su ficha dice, con la física de ese mapa, si con ese
-alto se salta por encima.
+alto se salta por encima. **Desde la 96 la atraviesa también todo lo que se lanza
+o se dispara** —flechas, cohetes, granadas y cuchillos—, que en la 95 no era así
+sin que nada lo dijera, y **la invisible se ve en el editor** como contorno aunque
+no esté elegida.
+
+**Y desde la 96 hay una hoja de Capas**: la lista de **todo** lo que hay en el mapa
+—piezas, prismas, tubos, rampas, escaleras, estampados, ventiladores, tirolinas,
+teletransportes y salidas—, con su cuenta, pinchar una fila para elegirla en la
+vista y un **ojo** por fila y por tipo que la quita del editor sin tocar el mapa.
+Lo que se oculta se atenúa y se tacha en la lista, se dice cuántas hay ocultas y
+hay un «ver todo». **Agrupar y bloquear no están**, y el porqué y las fases están
+en `docs/propuestas/10-panel-de-capas.md`: los dos piden que cada elemento tenga
+identidad propia, que es un campo nuevo en el formato.
+
+**Y todo lo colocable se coloca, se elige, se arrastra y se borra igual** (vuelta
+96): nace delante de la cámara **y dentro de la sala**, se pincha por su cuerpo y
+**Supr lo borra**, sea una caja, una rampa, una escalera, un tubo, un prisma, un
+estampado, un dispositivo o una salida. Y los tiradores —esquina, alto y aro— son
+**de lo elegido**, como los de una caja: antes los dibujaban todos a la vez y se
+llevaban los clics.
 
 Lo que todavía no hace —y son las fases 4 y 5 de
 `docs/propuestas/05-editor-de-mapas.md`—: vanos y métricas de mapa en vivo más
@@ -6304,9 +6503,20 @@ el botón no pueda apuntar a un ajuste distinto del que enseña la fila.
 Cuentas, guardado en la nube, rankings y minimapa. Si el encargo no
 lo pide explícitamente, no se añade.
 
-**Y la vuelta 95 deja dos propuestas escritas y sin construir.** Las dos salieron
-del mismo encargo y las dos están en `docs/propuestas/`; lo que hay que saber sin
-abrirlas:
+**Y tres propuestas están escritas y sin construir, las dos de la 95 aprobadas y
+en cola.** Están en `docs/propuestas/`; lo que hay que saber sin abrirlas:
+
+- **10 — el panel de capas.** Su **fase 1 está hecha** en la vuelta 96 (la lista y
+  el ojo, en §3 y §5). Lo que queda son **agrupar y bloquear**, y las dos esperan
+  una decisión que es del formato: cada elemento se identifica hoy **por su
+  posición en su lista**, así que borrar uno renumeraría los demás y un candado
+  apuntaría a otra pieza. Eso es un `id` en `CAMPOS` y en el saneado de once tipos,
+  con la disciplina de la vuelta 83 delante —el saneado es un punto fijo byte a
+  byte— y con una decisión explícita sobre los mapas que ya están en disco. La
+  propuesta recomienda **escribirlo sólo cuando algo lo usa**, que los deja byte a
+  byte iguales mientras no se agrupe nada.
+- **Y las dos de la vuelta 95 están aprobadas y van justo después** (08 y 09), que
+  es lo que dijo el encargo de la 96.
 
 - **08 — el arsenal del mapa** (peanas de arma y dotación completa). La mitad está
   hecha: `duelo.dotacion` existe desde la vuelta 72 y le faltan dos campos

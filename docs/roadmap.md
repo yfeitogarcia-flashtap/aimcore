@@ -443,6 +443,29 @@ Lo que hay:
   `COLORS.decline` fue lo que quedó en la 55, medido en CIELAB porque ya no había
   hueco evidente.
 
+**Y desde la vuelta 96 hay cuatro vías puestas sobre la mesa, sin decidir
+ninguna.** Las apunta el encargo como bloque permanente, así que quedan aquí tal
+como se plantearon y **sin elegir**:
+
+- **Skins cosméticas para muñecos y avatares, con dinero real.** Choca de frente
+  con lo de arriba: hoy el color de un cuerpo **es información** —naranja es una
+  diana y el tinte de un jugador es su equipo (vuelta 38)—, así que una skin no es
+  decoración, es cambiar lo que el jugador lee. Lo que sí cabría sin tocar esa
+  lectura es la **forma** (siluetas, cascos), y eso mismo está descartado desde la
+  38 por otra razón: un modelo con extremidades promete información que no da. O
+  sea que esto no es un precio que decidir, es una decisión de diseño que hay que
+  tomar antes.
+- **Pase de temporada.** Pide progresión persistente, o sea cuentas (fase 2.2) y
+  algo que progrese, que hoy no existe: no hay rangos ni experiencia.
+- **Cuota mensual pequeña para jugar.** Es la que más cambia el producto, porque
+  contradice lo que protege la promesa del enlace por código: **se puede jugar sin
+  cuenta y en igualdad** (propuesta 07). Si se cobra por jugar, esa promesa se cae
+  y hay que decirlo en voz alta en vez de descubrirlo construyéndolo.
+- **Cuota de membresía de comunidad** (con encuestas, tests y participación en el
+  desarrollo). Es la única de las cuatro que **no toca el juego**: no cambia lo que
+  ves en el mapa, no pide progresión y no cierra la puerta a quien no paga. Si hay
+  que empezar por una, es ésta.
+
 Lo que **no** hay y hace falta antes de escribir una sola línea: qué se vende, a
 quién, y qué pasa con quien no paga. La respuesta a la última condiciona todo lo
 demás, y la única regla que este proyecto ya tiene de fábrica es la de arriba

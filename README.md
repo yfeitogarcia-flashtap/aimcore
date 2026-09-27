@@ -973,10 +973,16 @@ y deja el suyo delante de la cámara, ya montado y ya elegido:
   nada).
 
   **Sólo para el cuerpo**, y eso es lo que hace que elegir el acabado sea una
-  decisión de aspecto: una barrera **no corta la vista, no para balas y no
-  esconde al rival de la brújula**, así que el cristal y la invisible se
-  comportan igual. Para taparse están las piezas. Su ficha te dice, con la
-  **física de ese mapa**, si con ese alto se salta por encima.
+  decisión de aspecto: una barrera **no corta la vista, no esconde al rival de la
+  brújula y la atraviesa todo lo que se dispara o se lanza** —balas, flechas del
+  arco, cohetes del U2, las tres granadas y los cuchillos del Fang—, así que el
+  cristal y la invisible se comportan igual. Para taparse están las piezas. Su
+  ficha te dice, con la **física de ese mapa**, si con ese alto se salta por
+  encima.
+
+  **Y la invisible se ve mientras construyes**, como un contorno azul, aunque no
+  la tengas elegida: una pieza que desaparece al deseleccionarla es una pieza que
+  hay que volver a buscar a ciegas.
 
 Las dos plataformas nacen con **0.2 de alto**, por debajo de un escalón (0.25),
 que es lo que hace que **se pueda entrar andando** en ellas y no sólo cayendo
@@ -1056,6 +1062,52 @@ con un gesto más:
 Ojo a lo que se paga, que es poco pero conviene saberlo: **las esquinas se
 cortan a inglete y no en redondo**, igual que en una caja de toda la vida. Un
 prisma se comporta como una caja, no como una cosa nueva que haya que aprender.
+
+### Capas: la lista de todo lo que hay
+
+La hoja **Capas** del raíl lista **todo** lo que tiene el mapa —piezas, prismas,
+tubos, rampas, escaleras, estampados, ventiladores, tirolinas, teletransportes y
+salidas de duelo—, agrupado por tipo y con la cuenta al lado. **Pinchar una fila
+elige ese elemento en la vista**, que es para lo que existe: encontrar algo en un
+mapa de cuarenta piezas mirándolo desde arriba no siempre se puede.
+
+Y cada fila tiene un **ojo** que la quita del editor. Con él puesto:
+
+- **La pieza sigue en el mapa y en el juego.** Es una ayuda para construir detrás
+  de algo, no una forma de borrarlo. La fila se queda en la lista, atenuada y
+  tachada, porque es justo desde donde hay que poder volver a encenderla.
+- **Tampoco se puede pinchar**, y su gizmo desaparece con ella: una pieza
+  invisible que sigue robando el clic es peor que una visible.
+- **Se dice cuántas hay ocultas**, con un botón de **«Ver todo»**. Un mapa con
+  media docena de piezas escondidas parece tener menos de las que tiene, y eso se
+  descubre probándolo, que es tarde.
+- **Y no sobrevive a guardar.** Guardar recarga la página, así que al volver se ve
+  todo. Es lo que se espera de un ojo.
+- **El presupuesto y las métricas siguen contando el mapa entero.** Ocultar una
+  pieza no puede bajar el coste que el panel te enseña ni cambiar el veredicto de
+  «SE VEN» entre dos salidas: eso sería un instrumento mintiendo por un ajuste de
+  vista.
+
+**Agrupar y bloquear todavía no están.** No es un olvido: los dos necesitan que
+cada elemento tenga nombre propio, y hoy se identifica por su posición en la
+lista, así que borrar uno renumeraría los demás y un candado acabaría apuntando a
+otra pieza. El plan por fases está en `docs/propuestas/10-panel-de-capas.md`.
+
+### Todo se coloca, se elige y se borra igual
+
+Vale para una caja, un prisma, un tubo, una rampa, una escalera, un estampado, un
+dispositivo y una salida:
+
+- **Nace delante de la cámara y dentro de la sala.** Si estás mirando desde fuera
+  del recinto, se mete dentro en vez de quedarse donde no se puede jugar.
+- **Se elige pinchándolo** —sobre la pieza, no sobre un tirador— y **se arrastra
+  por su cuerpo**.
+- **Y se borra con Supr.**
+- **Los tiradores son de lo que tengas elegido**: esquina, cubo de alto y aro de
+  giro salen al elegir y se van al soltar. Antes estaban puestos para todo a la
+  vez y se llevaban los clics de las piezas que rodeaban.
+- **El aro de giro va a ras de suelo** y se agarra por su banda, no por su centro:
+  el centro es de la pieza.
 
 ### Cuánto mide y cuánto cuesta
 
@@ -1238,10 +1290,14 @@ tomarla con la foto delante.
 Desde la vuelta 93 un mapa puede llevar **logos a color pegados a una
 superficie** — firma del creador o patrocinador. Deja la imagen en
 `public/estampados/` (**WebP a ser posible**, que es lo que menos pesa) y sale en
-el desplegable de la hoja de Mapa — **sin reiniciar Alchemist**: la lista se
-rehace al volver a la ventana del navegador, que es justo el gesto de haber
-dejado el fichero, y hay un botón por si copias la imagen con la ventana ya
-delante.
+el desplegable de la hoja de Mapa — **sin reiniciar Alchemist y sin tener que
+hacer nada**: la lista se rehace **en cuanto el fichero aparece**, porque lo ve el
+servidor de desarrollo y avisa. Sigue habiendo un botón, que ahora te dice cuántas
+imágenes ha encontrado.
+
+(Hasta la vuelta 96 esto dependía de que volvieras a la ventana del navegador, y
+eso no siempre pasa: si copias el fichero desde una ventana que está por encima, o
+lo arrastras, el navegador no pierde el foco y no había nada que detectar.)
 
 «Colocar un estampado» lo pone delante de la cámara, y desde ahí:
 

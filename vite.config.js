@@ -247,6 +247,32 @@ function alCambiarLosMapas(ruta) {
 }
 
 /**
+ * **Y quien se entera de que apareció una imagen es quien mira la carpeta**
+ * (vuelta 96), o sea el servidor.
+ *
+ * La vuelta 95 lo colgó de `focus` con un argumento que suena bien y **es
+ * falso**: «dejar un fichero en una carpeta se hace fuera del navegador, así que
+ * volver a la ventana *es* la señal». Volver a la ventana es *una* señal, y sólo
+ * si el navegador llega a perder el foco y a recuperarlo — que no pasa copiando
+ * el fichero desde una ventana encima, ni arrastrándolo, ni descargándolo. Se
+ * reportó como «no aparece hasta cerrar Alchemist», que es exactamente eso.
+ *
+ * Lo que no falla es que el vigilante de Vite ya ve la carpeta, así que el aviso
+ * sale de él y llega por el canal de HMR. No es un temporizador —que era lo que
+ * la 95 descartaba con razón— y es **exacto**: llega cuando el fichero existe y
+ * no cuando alguien vuelve a mirar.
+ */
+function avisarDeEstampados(servidor) {
+  const enviar = servidor.hot ?? servidor.ws
+  return (ruta) => {
+    const normalizada = ruta.split('\\').join('/')
+    if (!normalizada.includes('/public/estampados/')) return
+    if (!EXTENSIONES_ESTAMPADO.some((ext) => normalizada.toLowerCase().endsWith(ext))) return
+    enviar?.send?.({ type: 'custom', event: 'vektor:estampados' })
+  }
+}
+
+/**
  * **Los mapas que hay en este PC y no en el juego** (vuelta 93), y subirlos.
  *
  * `git` se llama con `execFileSync` y argumentos sueltos, nunca con una cadena
@@ -425,6 +451,12 @@ const editor = {
      */
     servidor.watcher.on('unlink', alCambiarLosMapas)
     servidor.watcher.on('add', alCambiarLosMapas)
+
+    // Y lo mismo para las imágenes de estampado, con su propia criba: el
+    // vigilante ve el repositorio entero y esto sólo habla de una carpeta.
+    const alCambiarLosEstampados = avisarDeEstampados(servidor)
+    servidor.watcher.on('add', alCambiarLosEstampados)
+    servidor.watcher.on('unlink', alCambiarLosEstampados)
 
     servidor.middlewares.use((peticion, respuesta, siguiente) => {
       // **Salida temprana antes de construir nada.** Esto corre en cada
