@@ -13408,3 +13408,124 @@ Y lo que se queda como aviso: **la próxima arma de una categoría de seis vuelv
 romper esto**. Con siete, 1150 px dan 158 por ficha y los valores empezarían a
 partirse; ahí la decisión ya no es un número, es aceptar la segunda fila y decir
 que en ella no se compara.
+
+## §94 — El `.exe` se compila solo, los estampados suben con su mapa, y los menús
+
+Cuatro cosas de una sesión de infraestructura y producto. Las dos primeras
+cierran huecos que dejaban a Yago delante de una terminal, que es exactamente lo
+que las vueltas 91 y 93 venían a quitar; las dos últimas son la interfaz de
+entrada y lo que hay detrás de ella.
+
+### §94.1 — Un `.exe` no se compila en el PC de quien lo va a usar
+
+La ventana de Tauri existe desde la vuelta 91 y **no se había compilado nunca**.
+El README decía cómo: instalar Rust, instalar las herramientas de compilación de
+Windows, `npm install`, `npm run build`. Son varios gigas de cadena de
+herramientas y un rato largo, para producir un fichero de veinte megas cuya única
+función es abrir una URL.
+
+Lo que hay que ver es que **ese trabajo ya lo tiene hecho otro**: un corredor
+`windows-latest` de GitHub trae Rust, MSVC y el WebView2 puestos. Así que
+compilar en el PC no era una necesidad técnica, era un paso que nadie había
+movido de sitio. `.github/workflows/escritorio.yml` lo mueve.
+
+Cuatro decisiones, y ninguna es de configuración:
+
+- **No corre con cada empujón, y eso es el argumento de la vuelta 91 al
+  derecho.** La ventana **no contiene el juego**: apunta a la URL del despliegue,
+  así que un cambio en el juego produce un `.exe` byte a byte idéntico al
+  anterior. El disparador va acotado a `escritorio/**` y al propio fichero del
+  workflow, más `workflow_dispatch` para volver a publicar a mano. Si algún día
+  esto se recompila con cada commit, es que alguien ha olvidado por qué la
+  ventana está vacía.
+- **El icono se genera, no se guarda.** `src-tauri/icons/` sigue en
+  `.gitignore`, y el paso `npx tauri icon ../Reference/Logo/vektor-mark-orange.png`
+  lo escribe en la compilación. Es **la misma regla que las siluetas de las
+  armas y el favicon**: `Reference/` es material de trazado y lo que entra en el
+  producto es lo derivado. De paso se arregla el residuo que la 91 dejó anotado
+  —«sale con el icono por defecto de Tauri, a propósito»—: la marca elegida es la
+  **naranja**, que es la del favicon, así que el icono de la ventana y el de la
+  pestaña son la misma cosa, y el naranja se ve tanto sobre una barra de tareas
+  clara como sobre una oscura.
+- **Y `Cargo.lock` pasa a viajar en git.** Estaba ignorado desde la 91, junto a
+  `target/` y a los iconos, y ahí es donde el comentario metió una cosa que no
+  era del mismo tipo: `target/` son cientos de megas y los iconos son derivados,
+  pero un fichero de bloqueo es lo contrario de material generado — es la
+  **decisión** de con qué versiones se compila. Sin él, cada ejecución resuelve
+  lo que haya ese día: una publicación de `tauri` compatible por semver rompe la
+  app **sin que nadie toque nada**, y el registro señala al último commit. Son
+  416 cajas bloqueadas (hoy `tauri` 2.12.0), y de paso es lo que hace que la
+  caché de cargo sirva de algo — con resolución libre, la clave de caché no puede
+  significar nada.
+- **Lo que sale se busca, y se dice cuánto pesa.** El instalador de NSIS lleva la
+  versión en el nombre (`Vektor_0.1.0_x64-setup.exe`), así que una ruta escrita a
+  mano caduca con el próximo número. Se busca con un glob, se copia a un nombre
+  fijo —que es lo que hace que el enlace de descarga sea fijo— y el paso
+  **imprime el tamaño y falla por debajo de 1 MB**. Un paso que sólo dice «hecho»
+  no distingue un instalador de un fichero vacío; es la regla del denominador de
+  la vuelta 46 aplicada a un artefacto.
+
+**Y queda en dos sitios, porque son dos cosas distintas.** El artefacto de la
+ejecución (`vektor-escritorio`) es un `.zip` que hay que descomprimir y que sólo
+se encuentra entrando en la ejecución que lo produjo, y **caduca a los 90 días**.
+La publicación rodante `escritorio-ultima` da un enlace que no cambia nunca y el
+`.exe` suelto, que es lo que se le pasa a un tester — y el repositorio es
+público, así que quien descargue no necesita cuenta. Se **borra y se vuelve a
+crear** en vez de actualizarse, para que el tag apunte al commit con el que se
+compiló: una publicación rodante cuyo tag se quedó en el primer commit miente
+sobre lo que hay dentro. Lo que se paga son los segundos en los que el enlace no
+está.
+
+Se publican **los dos ficheros**: el instalador, que deja acceso directo y se
+desinstala desde Windows, y el ejecutable suelto, que abre con doble clic sin
+instalar nada porque en Windows 10 y 11 el WebView2 ya viene puesto. No es
+duplicar: son dos formas de probar, y la segunda es la que se le pide a alguien
+que sólo va a mirar cinco minutos.
+
+### §94.2 — Media pieza de un mapa se quedaba en el PC
+
+«Subir al juego» es de la vuelta 93 y subía `src/maps` y nada más. Los
+estampados son **de la misma vuelta**, y viven en `public/estampados/`.
+
+O sea que las dos mitades de un mapa con logo se separaron el día que nacieron, y
+el síntoma es el peor de los posibles: **el mapa sube, se juega, y el logo no
+está**. Sin un error en ninguna pantalla — porque un estampado cuya imagen no
+llega **se queda invisible a propósito** (§93.8: el mundo no la espera y nacen
+invisibles, que es lo que evita un rectángulo blanco en medio del mapa). La
+protección contra una imagen que tarda es exactamente lo que esconde una imagen
+que no se ha subido.
+
+Lo que cambia es una lista, y eso es lo que la hace segura:
+`CARPETAS_QUE_SUBEN = ['src/maps', 'public/estampados']`, y de ella salen el
+`git status` que cuenta, el `git add` que anota y —exportada— el banco que lo
+comprueba. Una segunda lista en la prueba mediría la prueba y no el producto, que
+es la vuelta 63 por la puerta del banco.
+
+Cuatro reglas:
+
+- **Sigue siendo sólo lo que Alchemist escribe.** La regla de la 91 no se abre:
+  cualquier otra cosa a medias se queda donde está. Lo que se admite es la
+  segunda carpeta que Alchemist toca, no «todo».
+- **Se cuentan aparte, porque son dos clases de trabajo perdido.** «2 sin subir»
+  no dice si lo que falta son dos horas de cajas o un fichero arrastrado a una
+  carpeta. La barra dice «1 mapa y 2 imágenes sin subir».
+- **Qué es una imagen lo dice la misma lista de extensiones con que el panel la
+  ofrece.** Un `.txt` que alguien deje ahí no es un estampado: se cuenta con el
+  registro y el historial, que es donde van las cosas que suben sin ser lo que se
+  mira.
+- **Y el mensaje del commit dice qué llevaba.** «mapas», «estampados» o las dos,
+  porque la historia de este repositorio está curada (vuelta 75) y un commit que
+  dice «mapas» cuando subía una imagen es una historia que hay que abrir para
+  leer.
+
+Una carpeta que no existe **no se le pasa a git**: `git status -- <ruta>` con un
+camino que no está es un error fatal, así que una copia sin `public/estampados/`
+habría dejado el editor diciendo que no hay repositorio. Hoy la carpeta viaja con
+su `LEEME.md`, así que existe tras cualquier clon; la guarda está porque el
+síntoma de no tenerla no se parece a la causa.
+
+Medido (`subir94`, contra el árbol de verdad y midiendo una **diferencia**, que
+es la lección de `subir93`): una imagen nueva aparece en la lista de imágenes
+(0 → 1) **sin tocar la cuenta de mapas ni la de otros**, el `git add --dry-run`
+de la subida la recoge, un `.txt` en esa carpeta se cuenta con el registro y no
+como estampado, y quitando los cebos se vuelve a la línea base dígito a dígito.

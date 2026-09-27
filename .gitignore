@@ -23,9 +23,16 @@ scratchpad/
 
 # **Lo que compila la app de escritorio** (vuelta 91). `escritorio/` sí entra en
 # git —es el proyecto de la ventana de Tauri— pero lo que Rust y el empaquetador
-# escriben, no: `target/` son cientos de megas y los iconos generados salen de
-# `npx tauri icon`, que es un paso de una vez y no material del repositorio.
+# escriben, no: `target/` son cientos de megas y los iconos se generan con
+# `npx tauri icon` a partir de `Reference/Logo/`, que es material de trazado y no
+# un asset del repositorio (la misma regla que las siluetas de las armas).
+#
+# **Y `Cargo.lock` sí entra desde la vuelta 94**, que es cuando el `.exe` pasó a
+# compilarse en GitHub Actions. Sin fichero de bloqueo, cada compilación resuelve
+# las versiones que haya ese día: una publicación de `tauri` compatible por
+# semver rompería la app **sin que nadie toque nada**, y el registro diría que el
+# culpable es el último commit. Un lockfile es lo que hace que una compilación de
+# hoy sea la de ayer, y además es lo que deja que la caché de cargo sirva de algo.
 escritorio/src-tauri/target
 escritorio/src-tauri/gen
 escritorio/src-tauri/icons
-escritorio/src-tauri/Cargo.lock

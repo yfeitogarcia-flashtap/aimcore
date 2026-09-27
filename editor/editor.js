@@ -4197,13 +4197,31 @@ $('versiones').addEventListener('click', async (evento) => {
  * la barra de arriba dice cuántos mapas hay en este PC y no en el juego, que es
  * la regla de la 77 —la barra dice el estado—.
  */
+/**
+ * **Un mapa y una imagen son dos clases de trabajo perdido** (vuelta 94), así
+ * que se cuentan por separado: «2 sin subir» no dice si lo que falta son dos
+ * horas de cajas o un fichero arrastrado a una carpeta.
+ */
+function textoSinSubir(mapas, imagenes) {
+  const trozos = []
+  if (mapas) trozos.push(mapas === 1 ? '1 mapa' : `${mapas} mapas`)
+  if (imagenes) trozos.push(imagenes === 1 ? '1 imagen' : `${imagenes} imágenes`)
+  if (!trozos.length) return 'cambios sin subir al juego'
+  return `${trozos.join(' y ')} sin subir al juego`
+}
+
 async function pintarPendientes() {
   const lista = $('pendientes')
   try {
     const respuesta = await fetch('/__editor/mapas-sin-subir')
-    const { mapas, otros, rama } = await respuesta.json()
-    const hayAlgo = mapas.length > 0 || otros > 0
-    lista.innerHTML = mapas.map((m) => `<li>${escapar(m)}</li>`).join('')
+    const { mapas, imagenes = [], otros, rama } = await respuesta.json()
+    const hayAlgo = mapas.length > 0 || imagenes.length > 0 || otros > 0
+    // Las imágenes van marcadas: en la lista, «nike.webp» al lado de
+    // «espejo.js» no diría que una es geometría y la otra un asset.
+    lista.innerHTML = [
+      ...mapas.map((m) => `<li>${escapar(m)}</li>`),
+      ...imagenes.map((i) => `<li>${escapar(i)} <span class="nota">imagen de estampado</span></li>`),
+    ].join('')
     $('nada-pendiente').hidden = hayAlgo
     $('subir').disabled = !hayAlgo
     // El registro y el historial no son mapas, pero suben con ellos: se dicen
@@ -4214,9 +4232,7 @@ async function pintarPendientes() {
     ].filter(Boolean).join(' · ')
     const aviso = $('sin-subir')
     aviso.hidden = !hayAlgo
-    aviso.textContent = mapas.length === 0
-      ? 'cambios sin subir al juego'
-      : mapas.length === 1 ? '1 mapa sin subir al juego' : `${mapas.length} mapas sin subir al juego`
+    aviso.textContent = textoSinSubir(mapas.length, imagenes.length)
   } catch {
     // Sin servidor de desarrollo esto no existe, y no es un fallo del mapa.
     lista.innerHTML = ''
@@ -4236,8 +4252,9 @@ $('subir').addEventListener('click', async () => {
       $('subir').disabled = false
       return
     }
-    $('subir-nota').textContent = cuerpo.subidos?.length
-      ? `subidos ${cuerpo.subidos.length} · en unos minutos están en el juego`
+    const cuantos = (cuerpo.subidos?.length ?? 0) + (cuerpo.imagenes?.length ?? 0)
+    $('subir-nota').textContent = cuantos
+      ? `subidos ${cuantos} · en unos minutos están en el juego`
       : (cuerpo.nota ?? 'no había nada que subir')
   } catch (error) {
     $('subir-nota').textContent = `no se ha podido subir: ${error.message}`

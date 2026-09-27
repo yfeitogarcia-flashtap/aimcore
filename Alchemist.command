@@ -76,10 +76,14 @@ fi
 # **Y se avisa también al arrancar** (vuelta 93). Subir vive dentro del editor
 # desde esta vuelta, pero una sesión que se cerró sin pulsarlo —o un mapa
 # guardado antes de la 93— deja cambios aquí y no en el juego.
-sin_subir="$(git status --porcelain -- src/maps 2>/dev/null)"
+#
+# **Las dos carpetas que escribe Alchemist** (vuelta 94): los mapas y las
+# imágenes de estampado, que son media pieza de un mapa que las use. Las dos
+# están en el repositorio, así que el camino existe siempre tras un clon.
+sin_subir="$(git status --porcelain -- src/maps public/estampados 2>/dev/null)"
 if [ -n "$sin_subir" ]; then
   echo ""
-  echo "  OJO: tienes mapas cambiados en este ordenador y NO en el juego:"
+  echo "  OJO: tienes cosas cambiadas en este ordenador y NO en el juego:"
   echo ""
   echo "$sin_subir"
   echo ""
@@ -113,18 +117,18 @@ npm run editor
 # Un paso inalcanzable justo como se usa es un paso que no existe, y no daba
 # ningún error. Desde la 93 se sube desde el editor; esto es la red.
 #
-# Se sube SÓLO src/maps: si tienes cualquier otra cosa a medias, se queda donde
-# está. Y lo normal es que sí: pulsar Intro sube.
+# Se suben SÓLO src/maps y public/estampados: si tienes cualquier otra cosa a
+# medias, se queda donde está. Y lo normal es que sí: pulsar Intro sube.
 # -----------------------------------------------------------------------------
 echo ""
 echo "================================================"
-echo "  Mapas sin subir"
+echo "  Mapas e imágenes sin subir"
 echo "================================================"
-pendientes="$(git status --porcelain -- src/maps 2>/dev/null)"
+pendientes="$(git status --porcelain -- src/maps public/estampados 2>/dev/null)"
 if [ -z "$pendientes" ]; then
   fin "Nada que subir: lo que hay aquí es lo que hay en el juego." 0
 fi
-echo "  Estos mapas están cambiados en este ordenador y NO en el juego:"
+echo "  Esto está cambiado en este ordenador y NO en el juego:"
 echo ""
 echo "$pendientes"
 echo ""
@@ -136,7 +140,7 @@ case "$subir" in
     ;;
 esac
 
-git add -- src/maps
+git add -- src/maps public/estampados
 if ! git commit -q -m "mapas: cambios desde Alchemist"; then
   fin "No he podido anotar los cambios. Pásaselo a Code tal cual." 1
 fi

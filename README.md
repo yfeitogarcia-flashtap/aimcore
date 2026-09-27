@@ -290,9 +290,9 @@ Hace cuatro cosas y las dice por pantalla:
    de dependencias con la copia de la última instalación de verdad.
 3. **Abre Alchemist** en el navegador. Con él levantado, el juego está en esa
    misma dirección sin el `/editor/`.
-4. **Y te avisa si tienes mapas sin subir**, al arrancar y al cerrar. Guardar un
-   mapa en Alchemist lo escribe en tu PC y nada más: el juego que se juega es el
-   desplegado, y ahí llega lo que se sube al repositorio.
+4. **Y te avisa si tienes mapas o imágenes sin subir**, al arrancar y al cerrar.
+   Guardar un mapa en Alchemist lo escribe en tu PC y nada más: el juego que se
+   juega es el desplegado, y ahí llega lo que se sube al repositorio.
 
 **Subir los mapas se hace desde el editor**, con el botón de **Archivo → Subir al
 juego** — y la barra de arriba te dice si tienes alguno pendiente, así que no hay
@@ -311,17 +311,30 @@ juego dentro**, y eso es justo lo que se quería — se actualiza solo, porque l
 que mira es el despliegue de siempre. Y de paso resuelve el `Ctrl+W` que cierra
 una pestaña sin querer: aquí no hay pestaña.
 
-Se compila una vez por versión, con Rust y Node instalados:
+**El `.exe` lo compila GitHub, no tú** (vuelta 94). Compilarlo a mano pedía
+instalar Rust y las herramientas de compilación de Windows —varios gigas—, y un
+corredor de Windows de GitHub ya las tiene. Lo que sale queda en un **enlace
+fijo**, así que se le pasa a un tester tal cual:
 
 ```
-cd escritorio
-npm install
-npm run build
+https://github.com/yfeitogarcia-flashtap/aimcore/releases/download/escritorio-ultima/Vektor-instalador.exe
+https://github.com/yfeitogarcia-flashtap/aimcore/releases/download/escritorio-ultima/Vektor-portable.exe
 ```
+
+El repositorio es público, así que quien descargue **no necesita cuenta de
+GitHub**. También queda como artefacto en la propia ejecución (Actions →
+*Compilar el escritorio (.exe)*), y se puede lanzar a mano desde ahí con **Run
+workflow**.
+
+Y **no se recompila con cada cambio del juego, a propósito**: esta ventana no
+contiene el juego, así que un `.exe` por commit sería el mismo `.exe`. Sólo corre
+cuando cambia `escritorio/`.
 
 El ejecutable sale **sin firmar**, así que Windows enseña un aviso de «editor
-desconocido» la primera vez (*Más información → Ejecutar de todas formas*). Los
-detalles, en `escritorio/README.md`.
+desconocido» la primera vez (*Más información → Ejecutar de todas formas*). El
+icono sí es la marca: se genera en la compilación desde `Reference/Logo/`, igual
+que las siluetas de las armas. Los cinco sitios donde hay que probarla y el paso a
+paso, en `escritorio/README.md`.
 
 ## El duelo 1v1: rondas y reconexión
 
@@ -1110,17 +1123,23 @@ notarlo más que por un parpadeo. Y la dirección lleva el mapa abierto
 **Guardar escribe el mapa en tu PC. El juego que se juega es el desplegado**, así
 que hasta que el mapa no llega al repositorio, sólo lo tienes tú.
 
-Eso se hace desde **Archivo → Subir al juego**: un botón que anota los cambios de
-`src/maps`, los trae al día y los empuja. Y **la barra de arriba te dice si tienes
-alguno sin subir**, así que no hay que acordarse de mirar. Alchemist también te lo
-avisa al arrancar, para cazar una sesión que se cerró sin pulsarlo.
+Eso se hace desde **Archivo → Subir al juego**: un botón que anota los cambios,
+los trae al día y los empuja. Y **la barra de arriba te dice si tienes algo sin
+subir**, así que no hay que acordarse de mirar. Alchemist también te lo avisa al
+arrancar, para cazar una sesión que se cerró sin pulsarlo.
 
-Dos cosas del mecanismo:
+Tres cosas del mecanismo:
 
 - **Un commit por subida, no por guardado.** La historia de este repositorio está
   cuidada y cuarenta commits de «he movido una caja» la llenarían de ruido.
-- **Sólo se sube `src/maps`.** Si tienes cualquier otra cosa a medias, se queda
-  donde está.
+- **Van los mapas y las imágenes de estampado** (vuelta 94). Hasta entonces subía
+  `src/maps` y nada más, y eso dejaba fuera **media pieza de un mapa con logos**:
+  la imagen vive en `public/estampados/`, y un mapa que llega sin ella se ve con
+  el logo apagado — exactamente lo que un estampado hace cuando el fichero no
+  está, así que no daba ni un aviso. Se cuentan por separado («1 mapa y 2
+  imágenes sin subir») porque son dos clases de trabajo perdido.
+- **Y nada más que eso.** Si tienes cualquier otra cosa a medias, se queda donde
+  está.
 
 Hasta la vuelta 93 esto vivía al final de `Alchemist.bat`, y **no funcionaba**: el
 paso iba detrás de la llamada que levanta el editor, y las dos formas de cerrar

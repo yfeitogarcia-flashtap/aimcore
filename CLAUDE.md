@@ -1520,8 +1520,14 @@ y eso no se arregla documentándolo. Cuatro reglas que se quedan:
 - **La cuenta de mapas sin subir va en la barra de arriba**, que es la regla de
   la 77: la barra dice el estado, y enterarse no puede depender de abrir un panel.
 - **Un commit por subida, no por guardado** (la historia del repo está curada,
-  vuelta 75), y **sólo `src/maps`**: cualquier otra cosa a medias se queda donde
-  está.
+  vuelta 75), y **sólo lo que Alchemist escribe**: `src/maps` y, desde la vuelta
+  94, `public/estampados`. Cualquier otra cosa a medias se queda donde está.
+  Las imágenes entran porque son **media pieza de un mapa que las use**: un mapa
+  subido sin su logo llega con el estampado apagado, que es exactamente lo que un
+  estampado hace cuando el fichero no está (vuelta 93) — o sea sin un error en
+  ninguna pantalla. Se cuentan **aparte de los mapas** en la barra de arriba,
+  porque dos horas de cajas y un fichero arrastrado a una carpeta no son la misma
+  pérdida.
 - **`git` se llama con `execFileSync` y argumentos sueltos, nunca con una cadena
   de shell.** Los nombres salen del disco, y un mapa con una comilla en el nombre
   sería una orden.
@@ -5261,9 +5267,10 @@ reloj y cable:
   ha cambiado de verdad, y abrir. **Y al cerrar, subir los mapas** (vuelta 91):
   un mapa guardado en Alchemist estaba sólo en ese PC, y el juego que se juega
   es el desplegado — así que editar o despublicar uno y no acordarse de subirlo
-  era perderlo de vista sin ningún aviso. Se mira `src/maps`, se enseña lo que
-  hay y **se sube por defecto** (Intro sube). **Sólo `src/maps`**: cualquier
-  otra cosa a medias se queda donde está.
+  era perderlo de vista sin ningún aviso. Se mira `src/maps` **y
+  `public/estampados`** (vuelta 94), se enseña lo que hay y **se sube por
+  defecto** (Intro sube). Nada más que esas dos: cualquier otra cosa a medias se
+  queda donde está.
 - **Y hay una ventana de escritorio** (`escritorio/`, vuelta 91). Tauri,
   Windows, sin barra de direcciones y sin pestañas, apuntando a la URL del
   despliegue. **No contiene el juego**, y eso es la decisión entera: no hay una
@@ -5271,6 +5278,20 @@ reloj y cable:
   de paso se acaba el `Ctrl+W` que cierra la pestaña por encima de la página
   (que es la razón por la que Vektor no mapea modificadores desde la vuelta 27).
   Sale sin firmar, con su aviso de «editor desconocido», y está aceptado.
+  **Y desde la vuelta 94 el `.exe` lo compila GitHub Actions**
+  (`.github/workflows/escritorio.yml`), en un corredor de Windows: compilarlo a
+  mano pedía instalar Rust y las herramientas de Windows, que es justo lo que no
+  se quería. Tres cosas que son el diseño: **no corre con cada empujón** —la
+  ventana no contiene el juego, así que un cambio del juego no cambia el `.exe`,
+  y por eso el disparador va acotado a `escritorio/**`—; **el icono se genera**
+  desde `Reference/Logo/` en la propia compilación, que es la misma regla que las
+  siluetas de las armas (material derivado, no asset); y **`Cargo.lock` pasa a
+  viajar en git**, porque sin fichero de bloqueo una publicación de `tauri`
+  compatible por semver rompe la app sin que nadie toque nada y el registro
+  culpa al último commit. Lo que sale queda en un **enlace fijo** —una
+  publicación rodante, `escritorio-ultima`— y como artefacto de la ejecución; el
+  paso a paso y los cinco sitios donde hay que probarla, en
+  `escritorio/README.md`.
 - **En Cloudflare**, un **Durable Object por código de partida**
   (`worker/sala.js`), con el mismo Worker sirviendo el juego y las salas.
   **Desde la 58 es respaldo, no producción**, y se queda en pie unas semanas. Se

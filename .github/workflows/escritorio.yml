@@ -1,0 +1,189 @@
+# **El `.exe` se compila solo** (vuelta 94).
+#
+# La ventana de escritorio es un proyecto de Tauri, o sea Rust: compilarla en el
+# PC de alguien pide instalar la cadena de Rust y las herramientas de compilación
+# de Windows, que son varios gigas y un rato. Y **no hace falta**, porque un
+# corredor de Windows de GitHub ya las tiene: lo que aquí se paga son minutos de
+# una máquina que no es tuya, y lo que se compra es que publicar el escritorio sea
+# descargar un fichero.
+#
+# **Y no se compila en cada empujón, a propósito.** La ventana no contiene el
+# juego (`escritorio/README.md`): apunta a la URL del despliegue, así que un
+# cambio en el juego **no cambia el `.exe`** — de hecho es el argumento entero de
+# haberla hecho así. Por eso esto sólo corre cuando cambia `escritorio/` o este
+# fichero, y a mano desde la pestaña Actions cuando se quiera volver a publicar.
+#
+# Dónde queda lo que sale, que es lo que hay que saber:
+#
+#   1. **En la propia ejecución**, como artefacto `vektor-escritorio` (un .zip).
+#   2. **Y en la publicación rodante `escritorio-ultima`**, con enlace fijo y el
+#      .exe suelto, que es lo que se le pasa a un tester:
+#      https://github.com/<usuario>/<repo>/releases/download/escritorio-ultima/Vektor-instalador.exe
+#
+# El paso a paso para una persona está en `escritorio/README.md`.
+
+name: Compilar el escritorio (.exe)
+
+on:
+  push:
+    branches:
+      - main
+      - 'claude/**'
+    paths:
+      - 'escritorio/**'
+      - '.github/workflows/escritorio.yml'
+  workflow_dispatch:
+
+# Dos empujones seguidos a `escritorio/` no necesitan dos `.exe`: gana el último.
+# Es lo contrario del despliegue en Fly, que hace cola — ahí lo que se publica es
+# un servidor vivo y cancelar a medias deja una imagen a medio subir; aquí lo que
+# se cancela es un fichero que nadie ha descargado todavía.
+concurrency:
+  group: escritorio-exe
+  cancel-in-progress: true
+
+jobs:
+  compilar:
+    name: Compilar en Windows y publicar
+    runs-on: windows-latest
+    # Una compilación en frío de Tauri son quince o veinte minutos; con la caché
+    # de cargo puesta, dos o tres. Si se pasa de aquí es que algo está colgado.
+    timeout-minutes: 45
+
+    # Para escribir la publicación rodante. Lo demás se queda en lectura.
+    permissions:
+      contents: write
+
+    env:
+      # La publicación rodante: **un tag fijo**, así que el enlace no cambia
+      # nunca. Una versión por compilación daría una lista de descargas que
+      # crece y en la que hay que elegir, y aquí lo que se quiere es «la última».
+      TAG: escritorio-ultima
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    steps:
+      - name: Traer el repositorio
+        uses: actions/checkout@v5
+
+      - name: Preparar Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: escritorio/package-lock.json
+
+      - name: Preparar Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      # Sin esto cada ejecución recompila las 416 cajas de las que cuelga Tauri.
+      # La caché va contra `Cargo.lock`, que es lo que la hace válida: si el
+      # fichero de bloqueo no cambia, lo compilado sigue sirviendo.
+      - name: Caché de cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: escritorio/src-tauri -> target
+
+      - name: Instalar la CLI de Tauri
+        working-directory: escritorio
+        run: npm ci
+
+      # **El icono se genera, no se guarda** (vuelta 94). `src-tauri/icons/` está
+      # en `.gitignore` porque es material derivado: sale de la marca de
+      # `Reference/Logo/`, que es exactamente lo que ya hacen las siluetas de las
+      # armas y el favicon con `potrace`. Lo que se elige aquí es **la marca en
+      # naranja**, que es la del favicon: el icono de la ventana y el de la
+      # pestaña del navegador son la misma cosa, y el naranja se ve tanto sobre
+      # una barra de tareas clara como sobre una oscura.
+      - name: Generar los iconos desde la marca
+        working-directory: escritorio
+        run: npx tauri icon ../Reference/Logo/vektor-mark-orange.png
+
+      - name: Compilar
+        working-directory: escritorio
+        run: npm run build
+
+      # **Lo que sale se busca, no se adivina.** El nombre del instalador lleva la
+      # versión dentro (`Vektor_0.1.0_x64-setup.exe`), así que escribir la ruta a
+      # mano es una ruta que caduca con el próximo número de versión. Se busca, se
+      # copia con un nombre fijo —que es lo que hace que el enlace de descarga sea
+      # fijo— y **se dice lo que se ha encontrado y cuánto pesa**, porque un paso
+      # que sólo dice «hecho» no distingue un .exe de un fichero vacío.
+      - name: Recoger el instalador y el portable
+        shell: pwsh
+        working-directory: escritorio
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path entrega | Out-Null
+
+          $instalador = Get-ChildItem -Path src-tauri/target/release/bundle -Recurse `
+            -Filter '*-setup.exe' | Sort-Object Length -Descending | Select-Object -First 1
+          if (-not $instalador) {
+            Write-Host '::error::No ha salido ningún instalador de src-tauri/target/release/bundle.'
+            Get-ChildItem -Path src-tauri/target/release/bundle -Recurse | Select-Object FullName
+            exit 1
+          }
+          Copy-Item $instalador.FullName entrega/Vektor-instalador.exe
+
+          # Y el ejecutable suelto, que es el que no necesita instalar nada: en
+          # Windows 10 y 11 el WebView2 ya está puesto, así que la ventana abre
+          # con doble clic desde donde se deje.
+          $portable = Get-ChildItem -Path src-tauri/target/release -Filter '*.exe' `
+            | Where-Object { $_.Length -gt 1MB } `
+            | Sort-Object Length -Descending | Select-Object -First 1
+          if ($portable) { Copy-Item $portable.FullName entrega/Vektor-portable.exe }
+
+          Get-ChildItem entrega | ForEach-Object {
+            "{0} — {1:N1} MB" -f $_.Name, ($_.Length / 1MB)
+          }
+
+          # La comprobación que hace que este paso valga algo: el instalador
+          # existe y pesa lo que pesa un instalador.
+          $mb = (Get-Item entrega/Vektor-instalador.exe).Length / 1MB
+          if ($mb -lt 1) {
+            Write-Host "::error::El instalador pesa $mb MB, o sea que no es un instalador."
+            exit 1
+          }
+
+      - name: Dejarlo como artefacto de la ejecución
+        uses: actions/upload-artifact@v4
+        with:
+          name: vektor-escritorio
+          path: escritorio/entrega/*.exe
+          if-no-files-found: error
+          retention-days: 90
+
+      # **Y con enlace fijo**, que es lo que un artefacto no da: un artefacto es
+      # un .zip que hay que descomprimir y que sólo se encuentra entrando en la
+      # ejecución que lo produjo. Se borra y se vuelve a crear en vez de
+      # actualizarse para que el tag apunte siempre al commit con el que se
+      # compiló: una publicación rodante cuyo tag se quedó en el primer commit
+      # miente sobre lo que hay dentro. Lo que se paga son unos segundos en los
+      # que el enlace no está.
+      - name: Publicar como «última»
+        shell: bash
+        run: |
+          set -eu
+
+          # El cuerpo va en un fichero y no como argumento: un texto de varias
+          # líneas con comillas, asteriscos y acentos dentro de una orden es una
+          # cita que se rompe con el próximo renglón que alguien añada.
+          cat > /tmp/notas.md <<'MD'
+          Ventana nativa de Windows. **No contiene el juego**: abre el despliegue, así que se actualiza sola.
+
+          - **Vektor-instalador.exe** — lo normal: instala y deja acceso directo.
+          - **Vektor-portable.exe** — sin instalar: doble clic donde lo dejes.
+
+          Va **sin firmar**, así que la primera vez Windows avisa de «editor desconocido»: *Más información → Ejecutar de todas formas*. Es lo que hay hasta que haya certificado.
+          MD
+          echo "" >> /tmp/notas.md
+          echo "Compilado de \`$GITHUB_SHA\`." >> /tmp/notas.md
+
+          gh release delete "$TAG" --yes --cleanup-tag 2>/dev/null || true
+          gh release create "$TAG" \
+            --prerelease \
+            --target "$GITHUB_SHA" \
+            --title "Vektor de escritorio — última" \
+            --notes-file /tmp/notas.md \
+            escritorio/entrega/Vektor-instalador.exe \
+            escritorio/entrega/Vektor-portable.exe
+          echo "Publicado: $(gh release view "$TAG" --json url --jq .url)"

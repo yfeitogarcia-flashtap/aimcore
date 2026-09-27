@@ -89,11 +89,14 @@ rem **Y se avisa tambien al arrancar** (vuelta 93). Subir vive dentro del editor
 rem desde esta vuelta, pero una sesion que se cerro sin pulsarlo —o un mapa
 rem guardado antes de la 93— deja cambios aqui y no en el juego. Enterarse al
 rem abrir es enterarse a tiempo; enterarse al cerrar, ya se ha jugado sin ellos.
-git status --porcelain -- src/maps > "%TEMP%\vektor-mapas.txt" 2>nul
+rem
+rem **Las dos carpetas que escribe Alchemist** (vuelta 94): los mapas y las
+rem imagenes de estampado, que son media pieza de un mapa que las use.
+git status --porcelain -- src/maps public/estampados > "%TEMP%\vektor-mapas.txt" 2>nul
 for %%A in ("%TEMP%\vektor-mapas.txt") do set "PENDIENTE=%%~zA"
 if not "!PENDIENTE!"=="0" (
   echo.
-  echo   OJO: tienes mapas cambiados en este PC y NO en el juego:
+  echo   OJO: tienes cosas cambiadas en este PC y NO en el juego:
   echo.
   type "%TEMP%\vektor-mapas.txt"
   echo.
@@ -131,21 +134,21 @@ rem
 rem Desde la 93 se sube desde el editor, con un boton. Esto se queda como red
 rem para cuando el proceso si vuelve por su cuenta.
 rem
-rem Se sube SOLO src\maps: si tienes cualquier otra cosa a medias, se queda
-rem donde esta. Y lo normal es que si: pulsar Enter sube.
+rem Se suben SOLO src\maps y public\estampados: si tienes cualquier otra cosa a
+rem medias, se queda donde esta. Y lo normal es que si: pulsar Enter sube.
 rem ---------------------------------------------------------------------------
 echo.
 echo ================================================
-echo   Mapas sin subir
+echo   Mapas e imagenes sin subir
 echo ================================================
-git status --porcelain -- src/maps > "%TEMP%\vektor-mapas.txt" 2>nul
+git status --porcelain -- src/maps public/estampados > "%TEMP%\vektor-mapas.txt" 2>nul
 for %%A in ("%TEMP%\vektor-mapas.txt") do set "PENDIENTE=%%~zA"
 if "!PENDIENTE!"=="0" (
   echo   Nada que subir: lo que hay aqui es lo que hay en el juego.
   del "%TEMP%\vektor-mapas.txt" >nul 2>&1
   goto :fin
 )
-echo   Estos mapas estan cambiados en este PC y NO en el juego:
+echo   Esto esta cambiado en este PC y NO en el juego:
 echo.
 type "%TEMP%\vektor-mapas.txt"
 del "%TEMP%\vektor-mapas.txt" >nul 2>&1
@@ -157,7 +160,7 @@ if /i "!SUBIR!"=="n" (
   goto :fin
 )
 
-git add -- src/maps
+git add -- src/maps public/estampados
 git -c core.editor=true commit -q -m "mapas: cambios desde Alchemist"
 if errorlevel 1 (
   echo   No he podido anotar los cambios. Pasaselo a Code tal cual.
