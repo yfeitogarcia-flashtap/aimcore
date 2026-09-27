@@ -6469,10 +6469,13 @@ muertes/reinicios se calculaban desde hacía vueltas con peso 0, y en la 34 se l
 dio peso. La fórmula no hubo que tocarla, que era justo lo que se buscaba al
 dejarles el hueco.
 
-**Lo que sí sigue reservado es una tecla de equipo** (la 5, el artilugio): tiene
-bind y no tiene lógica. La 4 dejó de estarlo al llegar el escudo, la 1 y la 2 al llegar
-las dos ranuras de arma, **la 3 en la vuelta 71 con el cuchillo** y **la G en la
-87 con las granadas** — que es exactamente para lo que se reservaron.
+**Y ya no queda ninguna tecla de equipo reservada**, que es lo que dice §3 desde
+la vuelta 92 y este renglón seguía contradiciendo. La 4 dejó de estarlo al llegar
+el escudo, la 1 y la 2 con las dos ranuras de arma, **la 3 en la 71 con el
+cuchillo**, **la G en la 87 con las granadas** y **la 5 en la 92 con el arma
+especial** — que es exactamente para lo que se reservaron. Lo único que sigue sin
+lógica es el **artilugio**, y ya no tiene tecla propia: vive en la contextual
+(`use`, la E) como su tercera rama.
 
 ---
 
