@@ -35,6 +35,28 @@ import Summary from './ui/Summary.jsx'
  * el bucle de render, así que una partida entera provoca un puñado de renders
  * de React, no miles.
  */
+/**
+ * **Los controles, como pares de tecla y verbo** (vuelta 94).
+ *
+ * `siempre` marca los que existen aunque el movimiento esté apagado
+ * (`MOVEMENT.enabled`), que es la misma condición que ya gateaba el renglón de
+ * antes — no una segunda idea de qué teclas hay.
+ *
+ * Y son **los valores de fábrica escritos aquí a propósito**, no los binds del
+ * jugador: este paso es el primer contacto con el juego y se lee antes de que
+ * nadie haya reasignado nada. Dónde se cambian lo dice el propio panel de
+ * opciones, que es donde se cambian.
+ */
+const TECLAS_DE_ENTRADA = [
+  { tecla: 'WASD', que: 'moverte', siempre: false },
+  { tecla: 'SHIFT', que: 'andar', siempre: false },
+  { tecla: 'C', que: 'agacharte', siempre: false },
+  { tecla: 'SPACE', que: 'saltar', siempre: false },
+  { tecla: 'R', que: 'recargar', siempre: true },
+  { tecla: 'B', que: 'armería', siempre: true },
+  { tecla: 'ESC', que: 'pausa', siempre: true },
+]
+
 export default function App() {
   const canvasRef = useRef(null)
   const engineRef = useRef(null)
@@ -446,21 +468,32 @@ export default function App() {
 
                   {/* **Y aquí sí van las instrucciones** (vuelta 92): quien ha
                       llegado a este paso ya ha decidido jugar, así que es el
-                      primer sitio donde leerlas significa algo. */}
+                      primer sitio donde leerlas significa algo.
+
+                      **Pero se miran, no se leen** (vuelta 94). Eran tres
+                      renglones de texto corrido —y el primero, el más
+                      prescindible, era el más grande de los tres—, así que para
+                      saber con qué se agacha uno había que leerse una frase
+                      entera. Una tecla y lo que hace es un par, y un par se
+                      dibuja como un par: la tecla en su recuadro y el verbo al
+                      lado. El que empieza busca «saltar» y lo encuentra sin
+                      leer nada más; el que ya lo sabe no lee nada. */}
                   <p className="panel__body">
-                    Click para capturar el ratón. Click izquierdo para disparar.
+                    Click para capturar el ratón · Click izquierdo dispara
                   </p>
-                  {MOVEMENT.enabled && (
-                    <p className="panel__hint">
-                      WASD o flechas para moverte · SHIFT camina · C agacha · SPACE salta y encadena
-                    </p>
-                  )}
-                  <p className="panel__hint">R recarga · B armería · Escape pausa.</p>
+                  <ul className="teclas">
+                    {TECLAS_DE_ENTRADA.filter((t) => t.siempre || MOVEMENT.enabled).map((t) => (
+                      <li key={t.que} className="teclas__par">
+                        <kbd className="teclas__tecla">{t.tecla}</kbd>
+                        <span className="teclas__que">{t.que}</span>
+                      </li>
+                    ))}
+                  </ul>
 
                   <div className="panel__actions">
                     <button
                       type="button"
-                      className="button button--quiet"
+                      className="button button--quiet button--pequeno"
                       onMouseDown={swallowClick}
                       onClick={() => setMenu('marca')}
                     >

@@ -936,23 +936,87 @@ body {
   margin-bottom: 4px;
 }
 
+/* **La cabecera se queda pegada arriba** (vuelta 94). El panel es el
+   contenedor con scroll —1305 px de contenido en 850 de alto—, así que bajar a
+   tocar un ajuste se llevaba fuera de la vista los dos botones de empezar, que
+   son la acción. Pegada, la decisión de la vuelta 92 («lo primero que se ve son
+   los dos modos») se cumple también después de haber configurado.
+
+   El fondo es opaco a propósito: el panel ya es translúcido sobre la escena, y
+   con la cabecera translúcida encima las filas se leerían **a través** de los
+   botones al pasar por debajo. */
+.training__cabecera {
+  position: sticky;
+  top: -32px; /* compensa el `padding-top` del panel, que es su primer hueco */
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: -32px -40px 0;
+  padding: 32px 40px 12px;
+  background: var(--background-color);
+  border-bottom: 1px solid var(--panel-border);
+}
+
 /* Los dos botones de empezar, uno al lado del otro y ocupando el ancho: son la
    acción de esa pantalla, no una fila más de ajustes. */
 .training__modos {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
   gap: 10px;
-  margin-bottom: 4px;
 }
 
 .training__modos .button {
   margin-top: 0;
 }
 
+/* **Los ajustes van en grupos** (vuelta 94): once filas del mismo peso son una
+   lista en la que ninguna destaca, que es el mismo diagnóstico con el que la 92
+   los sacó de opciones. El título es una etiqueta y no un botón: plegar
+   escondería, y lo que esta pantalla vino a arreglar es que nadie sabía que
+   había más. */
+.training__grupo {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.training__grupo-titulo {
+  margin: 4px 0 0;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--panel-border);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  /* **Y no lleva el naranja**: en este mismo panel el naranja es «ésta es la
+     opción elegida» (la fila de segmentos), así que un título en naranja
+     competiría con la única cosa que aquí significa algo por color. Un título
+     se separa por ser un título — más claro que las etiquetas y con su línea
+     debajo—, no por robarle un significado a la paleta. */
+  color: var(--text-color);
+}
+
 .field {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+/* **Un ajuste que el juego va a ignorar se apaga** (vuelta 94). No se esconde:
+   vuelve a valer en cuanto se cambia lo de arriba, y aparecer y desaparecer
+   movería la lista entera con cada clic. Su frase se queda legible —es la que
+   dice por qué—, y por eso el atenuado no la toca. */
+.field--inerte .field__head,
+.field--inerte .field__control,
+.field--inerte .segmented,
+.field--inerte .scenarios {
+  opacity: 0.38;
+}
+
+.field--inerte .field__control,
+.field--inerte .segmented {
+  pointer-events: none;
 }
 
 /* Etiqueta y botón de restablecer de la fila, en la misma línea y a los dos
@@ -964,9 +1028,14 @@ body {
   gap: 12px;
 }
 
+/* **Y deja de competir con la etiqueta de su propia fila** (vuelta 94). Tenía
+   caja, y once cajas grises a la altura de once rótulos se leen como once
+   controles: en una captura de la pantalla de entrenamiento, lo más repetido
+   era el botón que casi nunca se usa. Sin caja es lo que es —un enlace— y sólo
+   se enciende cuando hay algo que restablecer. */
 .field__default {
-  padding: 3px 7px;
-  border: 1px solid var(--panel-border);
+  padding: 3px 0;
+  border: none;
   background: transparent;
   color: var(--text-muted);
   font-family: inherit;
@@ -974,20 +1043,21 @@ body {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   cursor: pointer;
-  transition: border-color 120ms ease, color 120ms ease, opacity 120ms ease;
+  transition: color 120ms ease, opacity 120ms ease;
 }
 
 .field__default:hover:not(:disabled),
 .field__default:focus-visible:not(:disabled) {
-  border-color: var(--accent-color);
   color: var(--accent-color);
   outline: none;
+  text-decoration: underline;
 }
 
-/* Ya está en su valor de fábrica: se queda a la vista, apagado, para que la
-   fila no cambie de alto cada vez que se toca un slider. */
+/* Ya está en su valor de fábrica: se queda **en su sitio** y casi invisible,
+   para que la fila no cambie de alto cada vez que se toca un slider (vuelta 92)
+   pero tampoco pese cuando no hay nada que deshacer. */
 .field__default:disabled {
-  opacity: 0.3;
+  opacity: 0.16;
   cursor: default;
 }
 
@@ -1440,11 +1510,36 @@ body {
   color: var(--action-color);
 }
 
-.button--primary:hover,
-.button--primary:focus-visible {
+.button--primary:hover {
   border-color: var(--action-color);
   background: var(--action-color);
   color: var(--background-color);
+}
+
+/* **El foco no elige por ti** (vuelta 94). Relleno, `:focus-visible` hacía que
+   de dos modos del mismo tamaño y del mismo color uno saliera macizo y el otro
+   en contorno — y cuál era dependía de dónde estuviera el foco, que lo pone un
+   `autoFocus`. Medido en la captura de la pantalla de inicio: «Entrenamiento»
+   verde entero y «Duelo 1v1» hueco, o sea un menú que designa un ganador que
+   nadie decidió (la regla de la vuelta 43 en un menú). El foco tiene que verse
+   —se navega con el teclado— así que es un anillo, que dice «estás aquí» sin
+   decir «esto es lo importante». */
+.button--primary:focus-visible {
+  /* Y conserva su color: `.button:focus-visible` tiñe de naranja —que es el
+     color de las dianas— y con la misma especificidad gana la regla de después.
+     Un botón de acción que al enfocarse cambia de significado de color es el
+     mismo fallo que el relleno, con otro disfraz. */
+  border-color: var(--action-color);
+  color: var(--action-color);
+  background: transparent;
+  outline: 2px solid var(--action-color);
+  outline-offset: 3px;
+}
+
+/* Pequeño: para lo que no es la acción de la pantalla — volver, sobre todo. */
+.button--pequeno {
+  padding: 7px 14px;
+  font-size: 10px;
 }
 
 /* ---------- Vida, escudo y casco ---------- */
@@ -2215,4 +2310,48 @@ body {
 .armoury__art .weapon__svg {
   width: 190px;
   height: 62px;
+}
+
+/* **Los controles como pares de tecla y verbo** (vuelta 94). Eran tres
+   renglones de texto corrido bajo los modos, y un párrafo de controles es algo
+   que nadie lee antes de jugar: para saber con qué se agacha uno había que
+   leerse una frase entera. Dibujados como pares se **miran**, que es lo que un
+   control necesita del primer contacto con el juego.
+
+   La rejilla es de columnas automáticas y no de un número fijo: con una tecla
+   más o una menos —el movimiento apagado quita cuatro— se reparte sola en vez
+   de dejar una fila coja. */
+.teclas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 6px 10px;
+  width: min(460px, 100%);
+  align-self: center;
+  margin: 2px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.teclas__par {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* La tecla lleva caja y el verbo no: es lo que separa «lo que pulsas» de «lo
+   que pasa» sin gastar un color, que en esta paleta ya significan todos algo. */
+.teclas__tecla {
+  min-width: 46px;
+  padding: 3px 6px;
+  border: 1px solid var(--panel-border);
+  font-family: inherit;
+  font-size: 9px;
+  letter-spacing: 0.1em;
+  text-align: center;
+  color: var(--text-color);
+}
+
+.teclas__que {
+  font-size: 10px;
+  color: var(--text-muted);
 }

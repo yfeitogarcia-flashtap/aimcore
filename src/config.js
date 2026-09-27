@@ -5184,6 +5184,18 @@ const ESCENARIOS_INTEGRADOS = {
  * deja abrir El Espejo en el editor, cambiarle una caja y probarlo sin tocar
  * este fichero. Para volver al de fábrica se borra el de `src/maps/`.
  */
+/**
+ * **Las claves que ya trae el juego escritas a mano** (vuelta 94), para que el
+ * editor pueda avisar de una colisión.
+ *
+ * El fundido de abajo deja ganar al fichero, y eso es correcto —es cómo se
+ * edita un escenario integrado desde Alchemist—, pero **hasta aquí era
+ * silencioso**: guardar un mapa con la clave `empty` sustituye la Sala vacía en
+ * todo el juego, y el selector de entrenamiento se queda con un escenario
+ * menos sin que nada lo diga. Pasó, y por eso existe esta lista.
+ */
+export const CLAVES_INTEGRADAS = Object.keys(ESCENARIOS_INTEGRADOS)
+
 export const SCENARIOS = { ...ESCENARIOS_INTEGRADOS, ...MAPAS_DE_FICHERO }
 
 /**

@@ -24,7 +24,7 @@
  */
 
 import * as THREE from 'three'
-import { COLORS, COVER, FANS, FONDOS, GIZMO, MOVEMENT, ESCALERAS, ESTAMPADOS, PRIMARY_WEAPONS, PRISMAS, ROUNDS, SCENARIOS, SURFACES, TARGET, TEAMS, TELEPORTS, TUBES, ZIPLINES, coverHeight, coverTintedColor, esFotoDeFondo, esImagenDeEstampado, fisicaDeEscenario, giro180, scenarioRoom } from '../src/config.js'
+import { CLAVES_INTEGRADAS, COLORS, COVER, FANS, FONDOS, GIZMO, MOVEMENT, ESCALERAS, ESTAMPADOS, PRIMARY_WEAPONS, PRISMAS, ROUNDS, SCENARIOS, SURFACES, TARGET, TEAMS, TELEPORTS, TUBES, ZIPLINES, coverHeight, coverTintedColor, esFotoDeFondo, esImagenDeEstampado, fisicaDeEscenario, giro180, scenarioRoom } from '../src/config.js'
 import { Avatar } from '../src/game/avatar.js'
 import { Engine } from '../src/game/engine.js'
 import { MovementController } from '../src/game/movement.js'
@@ -2507,6 +2507,23 @@ function anunciarLimites() {
 /** Escribe el estado en el panel. No al revés: el panel no guarda nada. */
 function pintarPanel() {
   $('clave').value = mapa.clave ?? ''
+  /**
+   * **Y si esa clave es la de un escenario del juego, se dice** (vuelta 94).
+   * `SCENARIOS` funde los integrados con los de fichero dejando ganar al
+   * fichero, así que guardar aquí con la clave de uno de ellos **lo sustituye
+   * en todo el juego**: en el selector de entrenamiento, en el desplegable del
+   * duelo y en el huésped. Eso es una decisión legítima —es cómo se edita un
+   * mapa integrado— pero no puede tomarse sin enterarse: pasó con `empty`, y el
+   * selector de entrenamiento se quedó con un solo escenario sin un aviso en
+   * ninguna pantalla.
+   */
+  const choca = CLAVES_INTEGRADAS.includes(mapa.clave)
+  $('clave-nota').hidden = !choca
+  if (choca) {
+    $('clave-nota').textContent =
+      `Esta clave es la de un escenario del juego: al guardar, este mapa lo `
+      + `sustituye en todo Vektor. Si no era la idea, cámbiala antes de guardar.`
+  }
   $('label').value = mapa.label ?? ''
   /**
    * **Publicado** (vuelta 88). `undefined` es publicado, que es lo que hace que

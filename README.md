@@ -689,11 +689,31 @@ que no existen.
 Va en **tres pasos**, y cada uno hace una pregunta:
 
 1. El **logotipo** y un solo botón, **Jugar ahora**.
-2. **Entrenamiento** y **Duelo 1v1**, los dos en verde; debajo, **Armería** y
-   **Opciones** en gris. El color separa *jugar* de *prepararse*.
+2. **Entrenamiento** y **Duelo 1v1**, los dos en verde y **del mismo tamaño y
+   el mismo color**; debajo, **Armería** y **Opciones** en gris. El color separa
+   *jugar* de *prepararse*. Y debajo, los controles como **pares de tecla y
+   verbo** —`WASD` moverte, `SPACE` saltar— en vez de los tres renglones de
+   texto de antes: un párrafo de controles no lo lee nadie antes de jugar.
 3. Pulsando Entrenamiento, la pantalla donde **se configura la partida**: los
    dos modos arriba y, debajo, el mapa, el tipo de diana, cuántas a la vez, el
-   modo dinámico, la dificultad, la duración y el resto.
+   modo dinámico, la dificultad, la duración y el resto, **en tres grupos**.
+
+**Tres cosas cambiaron en la vuelta 94, y las tres salieron de mirar una
+captura:**
+
+- **Los dos botones de empezar ya no se van de la pantalla.** La lista de
+  ajustes es más larga que el panel, así que bajar a tocar el cono se los
+  llevaba fuera de la vista y había que subir a buscarlos. Ahora están pegados
+  arriba: siguen siendo lo primero y ya no se van.
+- **El foco dejó de elegir por ti.** De los dos modos, el que traía el foco
+  salía **relleno de verde** y el otro hueco — o sea un menú que señala un
+  ganador que nadie decidió. Ahora el foco es un anillo, y los dos se dibujan
+  igual.
+- **Un ajuste que el juego va a ignorar sale apagado.** La distancia y el cono
+  de aparición con un mapa con cobertura, la velocidad de patrulla con el modo
+  dinámico apagado y la dificultad sin muñecos que disparen: lo decía una frase
+  gris y el control seguía entero y respondiendo. Se atenúan y no admiten
+  entrada; la frase se queda, porque es la que dice por qué.
 
 Hasta la vuelta 91 todo eso vivía dentro de **Opciones**, y ése era el problema:
 nadie entra en opciones a ver a qué se puede jugar, así que quien abría Vektor

@@ -227,6 +227,75 @@ que acaba de acabar es ofrecer retocarla— y **el dibujo del cono de aparición
 fue con su slider**, porque dejar el ajuste en un panel y su efecto en otro es
 lo que la convención de la 78 prohíbe.
 
+**La acción no se va de la pantalla, y el foco no elige por ti** (vuelta 94).
+Es el retrabajo de los menús, y son cuatro reglas que valen para cualquier
+pantalla que se añada — las cuatro salieron de **mirar una captura**, que es la
+disciplina de la vuelta 89.
+
+- **Lo que hay que pulsar sigue a la vista después de configurar.** La vuelta 92
+  puso los dos modos arriba en la pantalla de entrenamiento con un argumento
+  correcto —al final de once ajustes hay que buscarlos con la rueda— y se quedó
+  a medio camino: el panel mide 850 px y su contenido 1416, así que **configurar
+  es exactamente el gesto que se los lleva fuera de la vista**. La cabecera pasa
+  a ser **pegajosa** (`.training__cabecera`), que cumple las dos cosas a la vez:
+  siguen siendo lo primero y ya no se van. Duplicarlos en una barra de abajo
+  habría sido dos controles que hacen lo mismo, o sea la vuelta 63 por la puerta
+  del menú.
+- **El foco no designa un ganador.** `.button--primary:focus-visible` **rellenaba**
+  el botón, así que de dos modos del mismo tamaño y del mismo color uno salía
+  macizo y el otro en contorno, y cuál dependía de dónde cayera un `autoFocus`.
+  Medido en la captura de la pantalla de inicio: «Entrenamiento» verde entero
+  con texto negro y «Duelo 1v1» hueco. El foco tiene que verse —se navega con el
+  teclado—, así que es un **anillo**, que dice «estás aquí» sin decir «esto es lo
+  importante». Y conserva su color: la regla genérica `.button:focus-visible`
+  tiñe de naranja, que es el color de las dianas, y con la misma especificidad
+  gana la de después.
+- **Un ajuste que el juego va a ignorar se apaga, no se anota al pie**
+  (`field--inerte`, en `fields.jsx`). Cuatro filas de la pantalla de
+  entrenamiento no significan nada según lo que haya elegido encima —distancia y
+  cono con un escenario con cobertura, patrulla con el dinámico apagado,
+  dificultad sin muñecos que disparen— y hasta aquí lo único que lo decía era una
+  frase gris **con el control entero funcionando**: la vuelta 67 en pequeño. No
+  se esconde, porque vuelve a valer en cuanto se cambia lo de arriba y aparecer y
+  desaparecer movería la lista con cada clic; se atenúa y deja de admitir
+  entrada. **La frase se queda**, porque es la que dice por qué.
+- **Y un control que casi nunca se usa no puede pesar como una etiqueta.** El
+  «por defecto» de cada fila tenía caja, y once cajas grises a la altura de once
+  rótulos convertían lo más repetido de la pantalla en el botón que menos se
+  toca. Sin caja es lo que es —un enlace— y con los ajustes de fábrica **no hay
+  ninguno encendido**. Lo que no cambia es que sigue **en su sitio y
+  deshabilitado** y no oculto, que es la regla de la 92: un botón que aparece y
+  desaparece mueve la fila cada vez que se roza un slider.
+
+Y dos cosas de forma que van con ellas: **los once ajustes se agrupan** —dónde
+se juega, contra qué disparas, cómo se mueven y cuánto aprietan— porque en una
+lista de once cosas iguales no hay ninguna que sea *la* que hay que tocar, que
+es literalmente el diagnóstico con el que la 92 los sacó de opciones; y **los
+controles se miran, no se leen**: eran tres renglones de texto corrido bajo los
+modos y pasan a ser pares de tecla y verbo (`.teclas`), porque nadie se lee un
+párrafo de controles antes de jugar.
+
+Medido (`menu94`, a 1920×1080, 1600×900, 1366×768 y 1280×860): los dos modos con
+**el mismo fondo y el mismo color** y 225×81 los dos; con la lista hasta abajo
+los dos botones de empezar **dentro del panel y pinchables**; cuatro filas
+apagadas con todos sus controles sin admitir entrada; **0 de 11** «por defecto»
+encendidos; ningún control inalcanzable y cero errores de página. Con la regla
+vieja delante, el banco sale **rojo** en la primera fila (`rgb(47,203,130)` sobre
+`rgb(10,10,10)` contra transparente), que es lo que lo hace una medida y no un
+informe.
+
+**Un mapa de fichero puede sustituir a un escenario del juego, y ahora se dice**
+(vuelta 94). `SCENARIOS` funde `ESCENARIOS_INTEGRADOS` con `MAPAS_DE_FICHERO`
+dejando ganar al fichero, y eso es correcto —es cómo se edita un integrado desde
+Alchemist—, pero era **silencioso**. Pasó: un mapa guardado con la clave `empty`
+sustituyó a la **Sala vacía**, así que `TRAINER_SCENARIOS` se quedó con **un solo
+escenario** y el Gridshot de siempre desapareció del selector; y como ese mapa
+declara `soloDuelo`, la Sala vacía pasó a ofrecerse **como mapa de duelo**, que
+es un mapa sin salidas. Sin un error en ninguna pantalla, y justo en la pantalla
+que la vuelta 92 construyó para enseñar que hay más de un escenario. El editor
+avisa ahora al ver la clave (`CLAVES_INTEGRADAS`), antes de guardar. Lo que no
+se ha tocado es el mapa: es de quien lo hizo.
+
 **Todo el tuning en `config.js`.** Ninguna constante de juego vive suelta en un
 módulo. Si necesitas un número nuevo, va a `config.js` aunque lo use un solo
 sitio.
@@ -6041,18 +6110,24 @@ se dicen bajo el raíl; lo que este modo no puede dar (un chaleco) lo dice en ve
 de no hacer nada.
 
 **Pantalla de inicio, en tres pasos** (vuelta 92): el **logotipo y «Jugar
-ahora»**; luego **Entrenamiento** y **Duelo 1v1** en verde con **Armería** y
-**Opciones** debajo en gris; y pulsando Entrenamiento, la pantalla de configurar
-la partida.
+ahora»**; luego **Entrenamiento** y **Duelo 1v1** en verde —**del mismo tamaño y
+del mismo color desde la vuelta 94**, que es cuando el foco dejó de rellenar uno
+de los dos— con **Armería** y **Opciones** debajo en gris y, debajo, **los
+controles como pares de tecla y verbo**; y pulsando Entrenamiento, la pantalla de
+configurar la partida.
 
 **Configurar entrenamiento** (lo que hasta la 91 estaba dentro de opciones):
 arriba **los dos modos** —ronda cronometrada o con explosivo, y Deathmatch o
-práctica libre según el mapa— y debajo escenario (con su plano y su ficha), tipo
-de diana, dianas simultáneas, **modo dinámico** y velocidad de patrulla (1.5–8
-u/s, por defecto 4), **dificultad de los muñecos**, **duración de la sesión**
-—la del modo / sin límite / 30 s / 1 / 3 / 5 / 10 minutos, y vale para los dos
-modos desde la vuelta 78—, tamaño de diana, cadencia, distancia de aparición y
-**ancho del cono de aparición** (que se ve dibujado delante mientras se mueve).
+práctica libre según el mapa—, **pegados a la cabecera desde la vuelta 94**, así
+que siguen a la vista con la lista hasta abajo. Debajo, los once ajustes **en
+tres grupos**: *dónde se juega* (escenario con su plano y su ficha, duración de
+la sesión —la del modo / sin límite / 30 s / 1 / 3 / 5 / 10 minutos, y vale para
+los dos modos desde la 78—), *contra qué disparas* (tipo de diana, simultáneas,
+tamaño, cadencia, distancia de aparición y **ancho del cono**, que se ve dibujado
+delante mientras se mueve) y *cómo se mueven y cuánto aprietan* (**modo
+dinámico**, velocidad de patrulla 1.5–8 u/s y **dificultad de los muñecos**). Los
+que no significan nada con lo elegido arriba salen **apagados y sin admitir
+entrada**, con su frase diciendo por qué.
 
 **Opciones** (desde el menú y desde la pausa, persistidas) se queda con lo que
 es **del jugador y de su máquina**: sensibilidad, **sensibilidad con mirilla**,

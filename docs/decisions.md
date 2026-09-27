@@ -13529,3 +13529,118 @@ es la lección de `subir93`): una imagen nueva aparece en la lista de imágenes
 (0 → 1) **sin tocar la cuenta de mapas ni la de otros**, el `git add --dry-run`
 de la subida la recoge, un `.txt` en esa carpeta se cuenta con el registro y no
 como estampado, y quitando los cebos se vuelve a la línea base dígito a dígito.
+
+### §94.3 — Los menús, medidos contra su captura
+
+El encargo pedía un retrabajo «más pulido e intuitivo para jugadores nuevos, con
+la dirección que propongáis vosotros». La dirección que salió no se eligió
+leyendo el código: se eligió **abriendo el juego y mirando las tres pantallas**,
+que es la disciplina de la vuelta 89 —«está en pantalla» y «se ve» son dos
+medidas distintas—. Lo que se vio, en este orden:
+
+**1. De los dos modos, uno salía macizo y el otro hueco.** Se declaran con la
+misma clase y el mismo tamaño, así que sobre el papel son iguales; en la captura,
+«Entrenamiento» estaba **relleno de verde con texto negro** y «Duelo 1v1» en
+contorno. La causa: `.button--primary:focus-visible` rellenaba, y «Entrenamiento»
+lleva `autoFocus`. O sea que el menú **designaba un ganador que nadie decidió**,
+y cuál era dependía de dónde cayera el foco.
+
+Es exactamente lo que la vuelta 43 prohibió en la armería —cinco botones iguales
+obligan a leerlos todos para saber cuál actúa— por la puerta contraria: aquí, dos
+botones que tienen que ser iguales dejaban de serlo. El foco tiene que verse
+—esta pantalla se navega con el teclado— así que pasa a ser un **anillo**: dice
+«estás aquí» sin decir «esto es lo importante». Y hubo que devolverle además su
+color, porque la regla genérica `.button:focus-visible` tiñe de naranja y con la
+misma especificidad gana la de después: un botón de acción que al enfocarse se
+vuelve del color de las dianas es el mismo fallo con otro disfraz.
+
+**2. La acción se iba de la pantalla justo al usarla.** La pantalla de
+entrenamiento mide 850 px de alto y su contenido 1416, y los dos botones de
+empezar están arriba —la decisión de la vuelta 92, con su argumento correcto: al
+final de once ajustes hay que buscarlos con la rueda—. Lo que no se vio entonces
+es la otra mitad: **configurar es el gesto que se los lleva fuera de la vista**.
+Quien baja a tocar el cono y quiere jugar tiene que volver a subir.
+
+La respuesta obvia —una barra de abajo con los dos botones— es dos controles que
+hacen lo mismo, o sea la vuelta 63 por la puerta del menú. La cabecera se queda
+donde está y pasa a ser **pegajosa**: un solo control, el primero, y no se va
+nunca. Su fondo es opaco a propósito, porque el panel es translúcido sobre la
+escena y con la cabecera translúcida las filas se leerían **a través** de los
+botones al pasar por debajo.
+
+**3. Cuatro ajustes estaban a la vista, funcionando, y el juego los ignoraba.**
+La distancia y el cono de aparición no deciden nada con un escenario con
+cobertura —las dianas salen en puntos de ruta—, la velocidad de patrulla no hace
+nada con el modo dinámico apagado, y la dificultad de los muñecos no existe sin
+muñecos que disparen. Lo decía una frase gris debajo de cada uno, **con el slider
+entero y respondiendo**: la vuelta 67 en pequeño, un control que promete lo que
+el juego ignora.
+
+Allí se arregló quitando el control. Aquí no se puede: el ajuste vuelve a valer
+en cuanto se cambia lo de arriba, y esconderlo lo haría aparecer y desaparecer
+con cada clic, moviendo la lista entera. Se **apaga** —atenuado y sin admitir
+entrada—, y la frase se queda, porque es la única que dice por qué.
+
+**4. Lo más repetido de la pantalla era el botón que menos se usa.** Once cajas
+grises rotuladas «POR DEFECTO», una por fila y a la altura de su etiqueta. La
+vuelta 92 tiene razón en que no puede ocultarse —un botón que aparece y
+desaparece mueve la fila cada vez que se roza un slider— pero eso obliga a que
+esté, no a que pese. Sin caja es lo que es, un enlace; y con los ajustes de
+fábrica **no hay ninguno encendido**, así que la pantalla de un jugador nuevo no
+lo lleva ni una vez.
+
+Y dos cosas de forma que van con lo anterior: **los once ajustes se agrupan** en
+tres secciones, porque en una lista de once cosas iguales no hay ninguna que sea
+*la* que hay que tocar —que es el mismo diagnóstico con el que la 92 los sacó de
+opciones, aplicado a la pantalla a la que se mudaron—; y **los controles pasan a
+ser pares de tecla y verbo**, porque eran tres renglones de texto corrido y nadie
+se lee un párrafo de controles antes de jugar. El título de un grupo **no lleva
+el naranja**: en este mismo panel el naranja es «ésta es la opción elegida», y un
+título en naranja competiría con la única cosa que ahí significa algo por color.
+
+Medido (`menu94`, a 1920×1080, 1600×900, 1366×768 y 1280×860): los dos modos con
+el mismo fondo y el mismo color y **225×81 los dos**; con la lista hasta abajo,
+los dos botones de empezar **dentro del panel y pinchables** en los cuatro
+tamaños; cuatro filas apagadas con todos sus controles sin admitir entrada;
+**0 de 11** «por defecto» encendidos; ningún control inalcanzable y cero errores
+de página.
+
+**Y el banco se comprobó contra el código de antes**, que es lo que lo separa de
+un informe (§4): con la regla vieja puesta sale **rojo** en la primera fila
+—`rgb(47,203,130)` sobre `rgb(10,10,10)` contra transparente—, y verde con la
+nueva.
+
+### §94.4 — Un mapa de fichero había borrado la Sala vacía
+
+Midiendo lo anterior salió que **el selector de escenarios del entrenamiento
+tiene una sola opción**. No es un fallo del selector: `TRAINER_SCENARIOS` tiene
+un escenario, y debería tener dos.
+
+`SCENARIOS` es `{ ...ESCENARIOS_INTEGRADOS, ...MAPAS_DE_FICHERO }`, así que un
+mapa de fichero con la clave de un integrado **lo sustituye**. Y eso es correcto
+—es cómo se edita un escenario del juego desde Alchemist: se abre, se toca, se
+guarda—. Lo que no es correcto es que sea **silencioso**.
+
+`src/maps/empty.js` declara `clave: "empty"`, que es la de la **Sala vacía**, y
+declara además `soloDuelo: true`. De ahí salen tres cosas a la vez, y ninguna da
+un error:
+
+- El **Gridshot de siempre desapareció** del selector de entrenamiento, que se
+  quedó con Largo y Puerta y nada más — justo en la pantalla que la vuelta 92
+  construyó para enseñar que hay más de un escenario.
+- Con él se fueron **los tres ajustes que sólo significan algo ahí**: distancia
+  de aparición, ancho del cono y el muestreo por cono. Hoy salen apagados
+  siempre, y la causa no es la que dice su frase.
+- Y la Sala vacía pasó a **ofrecerse como mapa de duelo**, que es un mapa sin
+  `duelo.salidas`: los dos jugadores saldrían del mismo sitio, que es el fallo
+  que la vuelta 66 arregló construyendo El Espejo.
+
+**El mapa no se toca**: es de quien lo hizo, y guardar un mapa sobre un integrado
+es una acción legítima. Lo que se arregla es el silencio: `config.js` publica
+`CLAVES_INTEGRADAS` y el editor **lo dice al ver la clave**, antes de guardar —
+«esta clave es la de un escenario del juego: al guardar, este mapa lo sustituye
+en todo Vektor». Es la regla de la vuelta 74 (**lo que el saneado tira, lo
+cuenta**) aplicada a algo que el saneado no tira sino que reemplaza.
+
+Recuperar la Sala vacía es **cambiarle la clave a ese mapa en Alchemist** y
+volver a subirlo; el fichero viejo se borra solo al regenerarse el registro.

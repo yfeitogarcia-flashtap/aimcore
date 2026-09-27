@@ -101,13 +101,42 @@ export function FieldHead({ setting, value, onChange, htmlFor = null }) {
   )
 }
 
+/**
+ * **Un ajuste que el juego va a ignorar se apaga, no se anota al pie** (vuelta
+ * 94).
+ *
+ * Tres filas de la pantalla de entrenamiento no significan nada según lo que
+ * haya elegido encima —la distancia y el cono de aparición con un escenario con
+ * cobertura, la velocidad de patrulla con el modo dinámico apagado, la
+ * dificultad sin muñecos que disparen—, y hasta aquí lo único que lo decía era
+ * una frase gris debajo, con el control **entero a la vista y funcionando**.
+ *
+ * O sea la vuelta 67 en pequeño: un control que promete lo que el juego ignora.
+ * Ahí se arregló quitando el control; aquí no se puede quitar, porque el ajuste
+ * vuelve a valer en cuanto se cambia lo de arriba y esconderlo lo haría
+ * desaparecer y reaparecer con cada clic. Lo que se hace es **apagarlo**: se
+ * atenúa entero y sus controles no admiten entrada. La frase se queda, porque es
+ * la que dice **por qué**.
+ *
+ * `aria-disabled` además del `disabled` de cada control: lo que un lector de
+ * pantalla tiene que oír es que la fila está apagada, no tres botones apagados
+ * sin contexto.
+ */
+function Field({ inerte = false, children }) {
+  return (
+    <div className={inerte ? 'field field--inerte' : 'field'} aria-disabled={inerte || undefined}>
+      {children}
+    </div>
+  )
+}
+
 /** Fila con etiqueta, slider y lectura del valor (o campo editable). */
-export function SliderRow({ id, setting, value, onChange, suffix = '', editable = false, hint = null }) {
+export function SliderRow({ id, setting, value, onChange, suffix = '', editable = false, hint = null, inerte = false }) {
   const spec = SETTINGS[setting]
   const commit = (next) => onChange({ [setting]: next })
 
   return (
-    <div className="field">
+    <Field inerte={inerte}>
       <FieldHead setting={setting} value={value} onChange={onChange} htmlFor={id} />
       <div className="field__control">
         <input
@@ -118,6 +147,7 @@ export function SliderRow({ id, setting, value, onChange, suffix = '', editable 
           max={spec.max}
           step={spec.step}
           value={value}
+          disabled={inerte}
           onChange={(event) => commit(Number(event.target.value))}
         />
         {editable ? (
@@ -130,14 +160,14 @@ export function SliderRow({ id, setting, value, onChange, suffix = '', editable 
         )}
       </div>
       {hint ? <span className="field__hint">{hint}</span> : null}
-    </div>
+    </Field>
   )
 }
 
 /** Fila de opciones excluyentes, con la etiqueta de cada una del catálogo. */
-export function SegmentedRow({ setting, catalog, value, onChange, hint = null }) {
+export function SegmentedRow({ setting, catalog, value, onChange, hint = null, inerte = false }) {
   return (
-    <div className="field">
+    <Field inerte={inerte}>
       <FieldHead setting={setting} value={value} onChange={onChange} />
       <div className="segmented">
         {Object.keys(catalog).map((key) => (
@@ -146,6 +176,7 @@ export function SegmentedRow({ setting, catalog, value, onChange, hint = null })
             type="button"
             className="segmented__option"
             aria-pressed={value === key}
+            disabled={inerte}
             onClick={() => onChange({ [setting]: key })}
           >
             {catalog[key].label}
@@ -153,26 +184,27 @@ export function SegmentedRow({ setting, catalog, value, onChange, hint = null })
         ))}
       </div>
       {hint ? <span className="field__hint">{hint}</span> : null}
-    </div>
+    </Field>
   )
 }
 
 /** Fila de interruptor on/off con su explicación al lado. */
-export function ToggleRow({ setting, value, onChange, hint }) {
+export function ToggleRow({ setting, value, onChange, hint, inerte = false }) {
   return (
-    <div className="field">
+    <Field inerte={inerte}>
       <FieldHead setting={setting} value={value} onChange={onChange} />
       <div className="field__control">
         <button
           type="button"
           className="toggle"
           aria-pressed={value}
+          disabled={inerte}
           onClick={() => onChange({ [setting]: !value })}
         >
           {value ? 'Activado' : 'Desactivado'}
         </button>
         <span className="field__hint">{hint}</span>
       </div>
-    </div>
+    </Field>
   )
 }

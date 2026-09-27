@@ -107,6 +107,12 @@
             <section>
               <h2>Identidad</h2>
               <label>Clave <input id="clave" type="text" spellcheck="false" /></label>
+              <!-- **Una clave que ya trae el juego sustituye a ese escenario**
+                   (vuelta 94). Es correcto —es cómo se edita un integrado desde
+                   aquí— y era silencioso: guardar con la clave `empty` deja el
+                   selector de entrenamiento con un escenario menos y nada lo
+                   dice. Pasó, y por eso esto está aquí. -->
+              <p id="clave-nota" class="nota aviso" hidden></p>
               <label>Nombre <input id="label" type="text" /></label>
               <!-- **Publicado** (vuelta 88): guardar sigue escribiendo el
                    fichero, pero un mapa sin publicar no se le ofrece a nadie.

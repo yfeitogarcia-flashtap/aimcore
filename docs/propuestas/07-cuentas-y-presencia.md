@@ -5,6 +5,13 @@ exactamente eso: «igual que hicisteis con el editor de mapas: proponednos una
 división en fases, empezando por lo mínimo imprescindible para que exista una
 cuenta y una sesión, y qué de esta lista encaja en cada fase».
 
+**Ampliada en la vuelta 94**, que volvió a pedir lo mismo con una instrucción
+añadida —«empezad por lo mínimo para que exista una cuenta y una sesión»— y
+nombró lo que desbloquea. Lo que se añade es **el corte mínimo de la fase 2**
+(§3, al final: exactamente qué se escribe y qué no), **§10**, que dice en qué
+fase queda desbloqueado cada uno de los tres proyectos que dependen de esto, y un
+§9 reescrito para contestar a esa instrucción en vez de a la pregunta general.
+
 **Qué se pide:** un listado en la pantalla de inicio de los jugadores conectados
 ahora mismo, desde el que se pueda **invitar a un duelo**, **agregar a amigos**,
 **ver estadísticas** e **invitar a un grupo** cuando exista multijugador por
@@ -33,6 +40,12 @@ roadmap) — que hoy no puede existir porque un mapa no tiene autor.
 De la lista del encargo: **invitar a duelo** cae en la 4, **agregar amigo** en la
 4, **ver estadísticas** en la 5 y **invitar a grupo** en la 6. El **login o
 invitado** se reparte entre la 1 (invitado) y la 2 (login).
+
+**Y si hay que empezar por algo, es la 1 y luego el corte mínimo de la 2** — dos
+tablas, tres rutas y un testigo en una cookie, escrito con nombres al final de
+§3, con §9 explicando por qué la 1 no es un desvío. En qué fase queda
+desbloqueado cada uno de los tres proyectos que dependen de esto —buscador de
+partidas, rangos y la comunidad de Alchemist—, en **§10**.
 
 Y una advertencia de tamaño, porque es la diferencia con el editor de mapas:
 **el editor era una pantalla sobre lógica que ya existía** (propuesta 05 §1).
@@ -139,7 +152,52 @@ Lo que rompe, y hay que decidirlo antes de escribir:
 - **Y `localStorage` es por origen** (vuelta 60): la sesión se pierde al mudar
   de dominio, una vez. Conviene saberlo antes y no después.
 
-**Coste:** el mayor de las seis. **Bloqueante:** fase 1.
+### El corte mínimo, que es por dónde empezar
+
+La instrucción de la vuelta 94 fue «lo mínimo para que exista una cuenta y una
+sesión», así que conviene escribir ese corte con nombres concretos — porque la
+fase 2 admite crecer sin límite y lo que la hace abordable es saber dónde se
+para.
+
+**Lo que se escribe, y nada más:**
+
+- **Dos tablas.** `cuentas` (identificador, correo, nick, cuándo se creó) y
+  `sesiones` (testigo, de quién es, cuándo caduca). Nada de perfil, nada de
+  historial, nada de ajustes: eso es la fase 5 y la copia de la que habla más
+  arriba.
+- **Tres rutas** en el huésped de Fly: pedir el enlace de entrada, canjearlo por
+  una sesión, y decir quién soy. Cerrar sesión es borrar la fila, así que es la
+  primera con otro verbo y no una cuarta idea.
+- **Un testigo en una cookie `httpOnly`**, no en `localStorage`. No es
+  preferencia: `localStorage` lo lee el JavaScript de la página, y esta página
+  ya carga cosas que no escribimos nosotros —el logo de un estampado de un mapa
+  (vuelta 93)—. Un secreto de una persona no se guarda donde lo alcanza
+  cualquier script. Y de paso se cae el aviso de la vuelta 60 sobre mudar de
+  dominio, porque una cookie de sesión no es material del juego que se pierda.
+- **Y el nick sale de la fase 1**, ya escrito y ya saneado. Eso es la mitad del
+  motivo de hacer la 1 primero: si no, la fase 2 es un login **más** un sistema
+  de nombres.
+
+**Lo que explícitamente no entra en el corte mínimo**, para que no se cuele:
+
+- Presencia, amigos, invitaciones, estadísticas y rangos. Son las fases 3 a 5 y
+  cada una tiene su sección.
+- Recuperar una cuenta perdida, cambiar de correo, borrar la cuenta. Lo tercero
+  hay que tenerlo **antes de abrir el registro a nadie de fuera**; los dos
+  primeros pueden esperar a que exista una segunda persona con cuenta.
+- Sincronizar ajustes. La decisión está tomada arriba —manda el dispositivo— y
+  construirla no es de este corte.
+
+**Cómo se sabe que está terminado**, que es lo que falta en una fase que no se
+puede medir con un banco de frames: **se entra con el correo en un navegador, se
+cierra el navegador, se vuelve a abrir y sigues siendo tú**; un testigo caducado
+manda al invitado y **no a una pantalla colgada** (vuelta 51: quedarse fuera se
+dice, no se sufre); y **el enlace por código sigue funcionando sin haber entrado
+nunca**, que es la promesa que esta fase no puede romper.
+
+**Coste:** el mayor de las seis, incluso en el corte mínimo — porque lo que
+cuesta no es escribirlo, es que a partir de ese día hay copias de seguridad y
+datos de personas. **Bloqueante:** fase 1.
 
 ---
 
@@ -266,12 +324,93 @@ sólo puede jugar en parejas.
 
 ---
 
-## 9. Qué hacer primero, si hay que elegir una
+## 9. Qué hacer primero
 
-**La fase 1.** Cuesta poco, no compromete nada, y es la que se nota: hoy en un
-duelo el rival se llama `VK-01`. Y deja hecho lo único de esta propuesta que
-hay que escribir con cuidado aunque no haya servidor — tratar el nombre de otra
-persona como datos ajenos.
+La vuelta 94 lo pidió así: **«empezad por lo mínimo para que exista una cuenta y
+una sesión»**. La respuesta es **la fase 1 y luego el corte mínimo de la 2**
+(§3, al final), en ese orden, y conviene decir por qué la 1 no es un desvío.
 
-Todo lo demás espera a que haya una razón concreta para pagar la fase 2, porque
-esa fase no se deshace.
+**La fase 1 es la parte de «una cuenta» que no necesita servidor.** Una cuenta
+sirve para dos cosas: que te llames algo y que eso sea tuyo. Lo primero se puede
+hacer entero hoy, sin base de datos, y es lo que se nota —en un duelo el rival se
+llama `VK-01`—. Saltársela no ahorra trabajo: lo mete dentro de la fase 2, que
+pasaría a ser un login **más** un sistema de nombres, y encima con datos de
+personas ya en juego mientras se decide cómo se dibuja un nick ajeno. Hacerla
+antes deja escrito y probado lo único de esta propuesta que hay que escribir con
+cuidado aunque no haya nada que guardar: **tratar el nombre de otra persona como
+datos ajenos**.
+
+Después, el corte mínimo de la fase 2 y **nada más de la lista**: ni presencia,
+ni amigos, ni estadísticas. Eso es lo que la instrucción pide, y es lo correcto
+por una razón que no es de esfuerzo — **la fase 2 no se deshace**. Las fases 3 a
+6 se pueden empezar y aparcar; una base de datos con cuentas de gente dentro, no.
+Así que la 2 se paga cuando haya una razón concreta, y la razón no es «para tener
+cuentas»: es una de las tres de §10.
+
+Y una prueba de que el corte es el bueno: **al acabarlo, el juego se juega
+exactamente igual sin haber entrado**. Si al terminar la fase 2 hay algo que
+sólo se puede hacer con cuenta, el corte se ha pasado de largo.
+
+---
+
+## 10. Qué desbloquea, y dónde queda desbloqueado
+
+Tres proyectos de `docs/roadmap.md` están hoy parados **por lo mismo**: nada en
+Vektor sabe quién eres. Vale la pena escribir en qué fase deja de estarlo cada
+uno, porque es lo que convierte esta propuesta en una decisión y no en una lista
+de deseos: la pregunta útil no es «¿queremos cuentas?» sino «¿cuál de estas tres
+queremos, y qué fases hay que pagar para tenerla?».
+
+| Lo que está parado | Fase que lo desbloquea | Lo que sigue faltando después |
+|---|---|---|
+| **Buscador de partidas** (aplazado en la 88) | **3**, la presencia | La decisión de la vuelta 47, que sigue en pie |
+| **Rangos y experiencia** (roadmap §3.2) | **5**, y sólo su primera mitad | Cerrar la mirilla del cliente |
+| **Comunidad de Alchemist** (roadmap §4) | **2**, el corte mínimo | Moderación, que es trabajo de personas |
+
+**El buscador de partidas no lo desbloquea la presencia sola.** La fase 3 da
+«quién está conectado y libre», que es suficiente para retar a alguien, y **no**
+es un registro de salas: la vuelta 47 decidió que no hubiera lista de partidas
+porque `idFromName(código)` *es* el encaminado —sin matchmaking y sin nada que
+limpiar cuando una partida acaba—. Un buscador de partidas públicas es
+exactamente ese registro, así que sigue siendo una decisión aparte con su propio
+precio: alguien tiene que llevar la lista, caducar lo que ya no existe y decidir
+qué pasa con una sala que se llena entre que se lista y se pincha. Lo que la
+fase 3 sí da gratis es **la mitad del valor de un buscador** —encontrar a una
+persona en vez de una sala— y esa mitad no cuesta la decisión.
+
+**Los rangos los desbloquea la primera mitad de la fase 5**, que es «que el
+servidor cuente». Es la parte barata y la que además cierra el residuo de la
+vuelta 88 (la tabla con HS, KN, U2 y BOW): `Partida` ya resuelve todos los
+disparos y todas las bajas desde la vuelta 56, así que es llevar la cuenta, no
+inventar un sistema. Lo que no desbloquea es **llamarlo competitivo**: la mirilla
+es del cliente desde la vuelta 70 y el destello del Titan se puede ocultar desde
+un cliente modificado (vuelta 90, precio conocido y escrito). Sin ranking eso es
+una curiosidad; con ranking es lo primero que hay que cerrar.
+
+**Y la comunidad de Alchemist la desbloquea la fase 2 y nada más**, que es el
+dato que no estaba en esta propuesta y conviene tener delante:
+
+- **Hoy un mapa no tiene autor.** El fichero declara su `clave` y su geometría; de
+  quién es lo sabe git, o sea el historial del repositorio, que no es una
+  identidad del juego. Con el corte mínimo de la fase 2 un mapa puede llevar el
+  identificador de su creador, y de ahí salen las tres cosas que la visión de
+  comunidad pide: quién lo hizo, un listado por autor, y poder quitar los de
+  alguien.
+- **Y cierra el residuo que la vuelta 93 dejó anotado**, que es el más concreto
+  de los tres: «sólo game masters» en los estampados **sale hoy por
+  construcción** —se colocan en Alchemist, que no entra en `dist/`, y la imagen
+  tiene que estar en el repositorio—, así que no hay nada que moderar. El día que
+  un mapa venga de fuera ese «por construcción» deja de valer, y hasta entonces
+  la regla escrita es que **un mapa de comunidad no puede llevar estampados**. Lo
+  que convierte esa regla en una puerta de verdad es un identificador con un
+  papel: o sea la fase 2. No la 3, no la 5 — la 2.
+- **Lo que no desbloquea es la moderación.** Un mapa de fuera es contenido de
+  otra persona en tu juego, y con estampados es además **una imagen** de otra
+  persona. Eso es trabajo de gente, no una fase de esta propuesta, y es lo que
+  hay que querer antes de abrir Alchemist a nadie.
+
+**Lo que se sigue de la tabla, y es la recomendación:** si de las tres la que se
+quiere es la de Alchemist, el camino es corto —fase 1 y el corte mínimo de la 2, y
+ahí se para—. Si es el buscador o los rangos, hay que pagar la 3 o la 5 encima, y
+las dos traen una decisión que no es técnica: a quién ve quién, y qué significa
+que un número sea justo.
