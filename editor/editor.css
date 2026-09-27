@@ -466,6 +466,9 @@ body.jugando #lienzo { display: none; }
    lo va a buscar, y el naranja es el color de la marca, no de un botón. */
 #barra .aviso { color: var(--naranja); }
 #barra .aviso[hidden] { display: none; }
+/* Un conflicto no es un aviso más: es lo que impide subir (vuelta 99). */
+#barra .conflicto { color: #0A0A0A; background: #FF3B3B; padding: 2px 8px; font-weight: 700; }
+#barra .conflicto[hidden] { display: none; }
 
 #pendientes { margin: 6px 0 0; padding: 0; list-style: none; max-height: 110px; overflow-y: auto; }
 #pendientes li {

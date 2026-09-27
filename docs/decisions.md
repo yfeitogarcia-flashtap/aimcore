@@ -14581,3 +14581,88 @@ juego (las siluetas son las del juego, trazadas del mismo `weaponPaths.js`):
 
 La elegida se construye como **un sistema** —tokens y componentes una vez, en el
 juego y en la página del duelo— y no pantalla a pantalla.
+
+
+---
+
+## §99 — Alchemist que no pisa, el borrador que no resucita, y Cabina
+
+### 99.1 — Tres fallos de los lanzadores, y una sola causa
+
+Reportado por Yago, con los tres a la vez: dos ventanas abiertas de un doble clic,
+la primera falló con «cannot lock ref»; la segunda chocó en `largoYPuerta.js` y
+dejó las marcas de conflicto dentro, con lo que el editor no arrancó; y la pantalla
+de «Mapas e imágenes sin subir» ofreció subir ese fichero en `UU`.
+
+Lo que se encontró leyendo los dos lanzadores:
+
+- `git pull --rebase --autostash` tiene dos sitios donde chocar. En el rebase,
+  falla y el `rebase --abort` lo deshace: ése es el caso que el comentario
+  prometía. **En la devolución de lo apartado**, que es el caso normal cuando los
+  dos tocan el mismo mapa, git dice «Applying autostash resulted in conflicts»,
+  **sale con éxito**, deja las marcas y guarda la copia en `git stash`. El
+  lanzador no podía distinguirlo.
+- El camino de fallo hacía `git stash pop` a ciegas. `pop` saca la entrada de
+  arriba de la pila, no la que se acaba de crear —y si el fallo fue antes de
+  apartar nada, saca una de otro día—. Con las copias que dejaba cada choque
+  anterior, **cualquier fallo del lanzador** (otra ventana, la red) ponía en el
+  disco la versión de Yago de hace una semana. Es la explicación de que el
+  `spawnZone` volviera siempre con el mismo valor, «sin editar el mapa».
+- Dos ventanas a la vez: la primera fallaba en el cerrojo de git y su camino de
+  fallo (`rebase --abort` + `stash pop`) actuaba **sobre la operación de la
+  segunda**.
+- La subida hacía `git status` y `git add` sin mirar nada más.
+
+Lo que se decidió:
+
+1. **Una sola implementación** en `scripts/lib/alchemist-git.mjs`, sin
+   dependencias, llamada por los dos lanzadores y por el botón del editor. Tres
+   copias de «qué es un conflicto» es cómo una de las tres dejó pasar uno.
+2. **Traer sólo avanza** (`merge --ff-only`) y sólo si ningún fichero cambiado
+   aquí cambió fuera; si hay commits locales sin subir y el árbol está limpio, un
+   `rebase` que se aborta si no entra. Nada que pueda dejar algo a medias.
+   Alternativa descartada: seguir con `--autostash` y comprobar después si quedó
+   un conflicto. Detecta el síntoma y deja la pila creciendo.
+3. **Nada de `git stash`**. Quedarse con la del juego copia antes el fichero a
+   `alchemist-rescate/<fecha>/` (en `.gitignore`), que se abre con el explorador.
+   Las entradas viejas de la pila se cuentan y no se tocan: son trabajo de alguien.
+4. **El conflicto para las tres puertas**, buscado por dos vías: `--diff-filter=U`
+   en todo el árbol y las tres marcas seguidas en los ficheros de texto de las
+   carpetas de Alchemist (las tres, en orden y a principio de línea, para no
+   confundir un nombre de mapa con un conflicto).
+5. **Una instancia**: en Windows, `9>"%TEMP%\vektor-alchemist.lock" call
+   :principal`, que falla si otra ventana tiene el fichero abierto y lo suelta el
+   sistema al cerrarla; en Mac y Linux, `mkdir` atómico con el PID dentro.
+6. **El `.bat` corre desde una copia** en `%TEMP%`, porque `cmd.exe` relee el
+   fichero por el byte donde iba y un `git` que lo reescribe le hace ejecutar el
+   nuevo por la mitad. Para el `.bat` viejo, que la primera vez sí se reescribe
+   mientras corre, las primeras ~2.900 bytes del nuevo llevan un colchón de líneas
+   de espacios (la línea del `git pull` viejo terminaba en el byte 1.694 con
+   finales de Windows, 1.649 sin ellos) seguido de un aviso de «vuelve a abrirlo».
+   Una línea de espacios es un comando vacío aunque se empiece a leer por la mitad.
+7. **Al arrancar, lo pendiente se puede descartar** (D), con rescate. Es lo que
+   Yago necesita para quitarse la copia desenterrada que ya tiene en el disco sin
+   escribir un comando de git.
+
+`sh` no tiene el problema del punto 6: mantiene abierto el fichero viejo, y git
+reescribe creando uno nuevo.
+
+### 99.2 — El borrador que abría lo viejo
+
+La segunda puerta del mismo síntoma. `anotarBorrador` se llamaba en cada remontado,
+y el primer frame de cualquier mapa remonta: el borrador era «el último mapa que
+abriste», escrito entero. `recuperarBorrador` lo abría por delante de lo que
+hubiera en el disco. Con git cambiando el fichero por debajo, lo que se tenía
+delante al abrir `/editor/` era la versión de antes, y un guardado cualquiera la
+escribía entera.
+
+Ahora el borrador lleva su base (el mapa del disco, pasado por `comoSeAbre`, la
+misma función con la que se abre); no se escribe si el mapa es igual a su base; y
+al volver, si el disco no es la base —o el borrador no la trae—, se aparta a otra
+clave, se abre el disco y la hoja de Archivo ofrece abrirlo o tirarlo. Tirarlo sin
+preguntar se descartó: sería el editor perdiendo trabajo por su cuenta, que es lo
+que el borrador vino a evitar.
+
+La base de un mapa abierto es **lo que hay en el disco con esa clave**, venga de
+donde venga lo abierto: así una copia, una versión restaurada del historial o un
+mapa nuevo cuentan como pendientes, y abrir un mapa del disco no.

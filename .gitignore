@@ -39,3 +39,8 @@ escritorio/src-tauri/icons
 # Y las dos imágenes del instalador (vuelta 97), por lo mismo que los iconos:
 # salen de `Reference/Logo/` con `npm run escritorio:instalador`.
 escritorio/src-tauri/instalador
+
+# **Las copias que Alchemist aparta** (vuelta 99) antes de dejar un fichero como
+# está en el juego. Son de quien las tenía en su PC, a la vista y a mano; no se
+# suben ni las saca nadie solo, que es lo contrario de `git stash`.
+alchemist-rescate/

@@ -114,6 +114,31 @@ let aplazado = 0
 const BORRADOR = 'vektor.editor.borrador.v1'
 
 /**
+ * **El borrador sabe de qué versión del disco salió** (vuelta 99), y por eso no
+ * pisa lo que ha cambiado debajo.
+ *
+ * Era una de las dos puertas por las que `spawnZone` de Largo y Puerta volvía a
+ * `z:16, d:4` en el PC de Yago. Dos cosas, y las dos hacían falta:
+ *
+ * - **Se escribía con sólo abrir un mapa**, sin tocarlo: el primer frame lo
+ *   remonta y remontar anotaba el borrador. O sea que el borrador era «el
+ *   último mapa que abriste», con lo que tuviera ese día.
+ * - **Y al volver se abría por delante del fichero**, aunque el fichero
+ *   hubiera cambiado después —por git, por otro PC, por un conflicto resuelto a
+ *   mano—. Lo que se tenía delante era la copia vieja entera, y cualquier
+ *   guardado la escribía encima de la nueva.
+ *
+ * Ahora el borrador guarda **el mapa y su base** —lo que había en el disco al
+ * abrirlo— y sólo se escribe si el mapa se aparta de esa base. Al volver, si el
+ * disco ya no es esa base, no se abre solo: se aparta (`APARTADO`) y la hoja de
+ * Archivo ofrece abrirlo o tirarlo. Un borrador de antes de la 99 no sabe su
+ * base, así que se aparta siempre: es justo el que puede traer lo viejo.
+ */
+const APARTADO = 'vektor.editor.borrador-apartado.v1'
+/** Lo que había en el disco cuando se abrió lo que hay delante, como texto. */
+let base = ''
+
+/**
  * **El relevo de después de guardar.**
  *
  * Guardar escribe un fichero que `config.js` importa, así que Vite recarga la
@@ -4946,14 +4971,33 @@ $('borrar').addEventListener('click', () => {
 
 // ---------------------------------------------------------------- abrir y guardar
 
-function cargar(definicion, clave) {
+/**
+ * Un mapa **como lo deja abrirlo**: saneado y con la sala materializada. Lo
+ * usan `cargar` y la comparación del borrador con el disco, que tienen que
+ * decir lo mismo byte a byte (vuelta 83: el saneado es un punto fijo).
+ */
+function comoSeAbre(definicion, clave) {
   const { mapa: limpio, problemas } = sanearMapa({ ...definicion, clave: clave ?? definicion.clave })
-  mapa = limpio
   // La sala se materializa al abrir: un escenario puede no declararla —la sala
   // vacía no lo hace— y entonces los tres campos del panel no tendrían qué
   // escribir. `scenarioRoom` es la misma función de la que sale en el juego.
   const sala = scenarioRoom(limpio)
-  mapa.room = { width: sala.width, depth: sala.depth, height: sala.height }
+  limpio.room = { width: sala.width, depth: sala.depth, height: sala.height }
+  return { limpio, problemas }
+}
+
+/** Lo que hay en el disco de esa clave, como lo abriría el editor; `''` si no hay. */
+function enElDisco(clave) {
+  return clave && SCENARIOS[clave] ? JSON.stringify(comoSeAbre(SCENARIOS[clave], clave).limpio) : ''
+}
+
+function cargar(definicion, clave, baseDelDisco = null) {
+  const { limpio, problemas } = comoSeAbre(definicion, clave)
+  mapa = limpio
+  // La base es **lo que hay en el disco con esa clave**, venga de donde venga
+  // lo que se abre: abrir un mapa del disco no deja nada pendiente, y una copia,
+  // una versión restaurada o un mapa nuevo sí. Un borrador trae la suya.
+  base = baseDelDisco ?? enElDisco(limpio.clave)
   seleccion = -1
   sucio = true
   pila.atras.length = 0
@@ -5130,8 +5174,20 @@ async function pintarPendientes() {
   const lista = $('pendientes')
   try {
     const respuesta = await fetch('/__editor/mapas-sin-subir')
-    const { mapas, imagenes = [], otros, rama } = await respuesta.json()
+    const { mapas, imagenes = [], otros, rama, conflictos = [], enCurso = null } = await respuesta.json()
     const hayAlgo = mapas.length > 0 || imagenes.length > 0 || otros > 0
+    /**
+     * **Un conflicto no se ofrece subir** (vuelta 99). Con un fichero de mapa
+     * a medias de un choque —las marcas `<<<<<<<` dentro— el juego publicado no
+     * cargaría, así que el botón se apaga y la barra lo dice en rojo, antes que
+     * la cuenta de lo que falta por subir. El servidor se niega igual si se le
+     * pide: esto es decirlo, no la puerta.
+     */
+    const hayConflicto = conflictos.length > 0 || enCurso !== null
+    $('conflicto').hidden = !hayConflicto
+    $('conflicto').textContent = hayConflicto
+      ? `conflicto en ${conflictos.length ? conflictos.map((r) => r.split('/').pop()).join(', ') : `un ${enCurso} a medias`} · no se puede subir`
+      : ''
     // Las imágenes van marcadas: en la lista, «nike.webp» al lado de
     // «espejo.js» no diría que una es geometría y la otra un asset.
     lista.innerHTML = [
@@ -5139,12 +5195,13 @@ async function pintarPendientes() {
       ...imagenes.map((i) => `<li>${escapar(i)} <span class="nota">imagen de estampado</span></li>`),
     ].join('')
     $('nada-pendiente').hidden = hayAlgo
-    $('subir').disabled = !hayAlgo
+    $('subir').disabled = !hayAlgo || hayConflicto
     // El registro y el historial no son mapas, pero suben con ellos: se dicen
     // aparte y no se cuentan, que es lo que deja que el número sea el número.
     $('subir-nota').textContent = [
       rama ? `rama: ${rama}` : '',
       otros ? `y ${otros} fichero(s) del registro y el historial` : '',
+      hayConflicto ? 'hay un conflicto sin resolver: cierra Alchemist y vuelve a abrirlo, que el lanzador ofrece arreglarlo' : '',
     ].filter(Boolean).join(' · ')
     const aviso = $('sin-subir')
     aviso.hidden = !hayAlgo
@@ -5154,6 +5211,7 @@ async function pintarPendientes() {
     lista.innerHTML = ''
     $('subir').disabled = true
     $('sin-subir').hidden = true
+    $('conflicto').hidden = true
   }
 }
 
@@ -5599,18 +5657,59 @@ function anotarBorrador() {
     // Sin persistencia se edita igual, pero tragárselo en silencio es
     // indistinguible de un editor que pierde el trabajo por su cuenta
     // (la regla del `try/catch` de la vuelta 60).
-    try { localStorage.setItem(BORRADOR, JSON.stringify(mapa)) } catch (error) {
+    try {
+      const texto = JSON.stringify(mapa)
+      // **Abrir no es editar** (vuelta 99): igual que la base, no hay nada que
+      // salvar y un borrador ahí sólo serviría para resucitar esta versión el
+      // día que el disco cambie.
+      if (texto === base) localStorage.removeItem(BORRADOR)
+      else localStorage.setItem(BORRADOR, JSON.stringify({ v: 2, mapa, base }))
+    } catch (error) {
       contar([`no se puede guardar el borrador: ${error.message}`], '')
     }
   }, 400)
 }
+
+/** Enseña u oculta el borrador apartado en la hoja de Archivo. */
+function pintarApartado(nota = '') {
+  let guardado = null
+  try { guardado = localStorage.getItem(APARTADO) } catch { /* sin almacén no hay apartado */ }
+  let clave = ''
+  try { clave = guardado ? (JSON.parse(guardado).mapa?.clave ?? '') : '' } catch { /* roto: se ofrece tirarlo */ }
+  $('apartado').hidden = !guardado
+  $('apartado-nota').hidden = !guardado && !nota
+  $('apartado-nota').textContent = nota || (guardado
+    ? `Hay un borrador de «${clave || 'un mapa'}» de antes de que ese mapa cambiara en el disco. `
+      + 'No se abre solo: guardarlo pisaría lo nuevo con lo viejo.'
+    : '')
+}
+
+$('abrir-apartado').addEventListener('click', () => {
+  let guardado = null
+  try { guardado = JSON.parse(localStorage.getItem(APARTADO) ?? 'null') } catch { /* roto */ }
+  if (!guardado?.mapa) { pintarApartado('El borrador apartado no se puede leer.'); return }
+  // Se abre con la base **del disco de hoy**: lo que tienes delante ya no es
+  // lo guardado, así que el borrador vuelve a contar como cambio pendiente.
+  cargar(guardado.mapa, undefined, enElDisco(guardado.mapa.clave) || null)
+  try { localStorage.removeItem(APARTADO) } catch { /* da igual */ }
+  pintarApartado()
+  contar([], 'borrador apartado abierto · ojo: es anterior a lo que hay en el disco')
+})
+
+$('tirar-apartado').addEventListener('click', () => {
+  try { localStorage.removeItem(APARTADO) } catch { /* da igual */ }
+  pintarApartado('Borrador apartado tirado.')
+})
 
 function recuperarBorrador(pedido) {
   let guardado = null
   try { guardado = localStorage.getItem(BORRADOR) } catch { return false }
   if (!guardado) return false
   try {
-    const borrador = JSON.parse(guardado)
+    const leido = JSON.parse(guardado)
+    // Antes de la 99 el borrador era el mapa a secas, sin su base.
+    const borrador = leido?.v === 2 ? leido.mapa : leido
+    const suBase = leido?.v === 2 ? leido.base : null
     /**
      * **Un borrador de otro mapa no manda sobre la dirección** (vuelta 76). El
      * borrador es «lo que estabas haciendo» y por eso gana por defecto; pero si
@@ -5619,7 +5718,25 @@ function recuperarBorrador(pedido) {
      * hubiera tocado y no había forma de decir cuál se quiere.
      */
     if (pedido && borrador.clave !== pedido) return false
-    cargar(borrador)
+    /**
+     * **Y un borrador no manda sobre un disco que ha cambiado** (vuelta 99).
+     * Si su mapa existe en el disco y no es la versión de la que salió —o no
+     * se sabe, porque es de antes de la 99—, se aparta y se abre lo del disco.
+     */
+    const disco = enElDisco(borrador.clave)
+    if (disco && suBase !== disco) {
+      try {
+        localStorage.setItem(APARTADO, JSON.stringify({ v: 2, mapa: borrador, base: suBase }))
+        localStorage.removeItem(BORRADOR)
+      } catch { /* sin almacén no hay a dónde apartarlo; al menos no se abre */ }
+      // Se abre lo que hay en el disco de ese mismo mapa: es lo que se estaba
+      // editando, en su versión de hoy.
+      if (!pedido) cargar(SCENARIOS[borrador.clave], borrador.clave)
+      contar([], `el borrador de ${borrador.clave} era de antes de que el mapa cambiara: `
+        + 'se ha apartado sin abrirlo (hoja Archivo)')
+      return !pedido
+    }
+    cargar(borrador, undefined, suBase ?? '')
     contar([], 'borrador recuperado · «Abrir» lo descarta')
     return true
   } catch {
@@ -5647,7 +5764,9 @@ function recuperarRelevo() {
   try { sessionStorage.removeItem(RELEVO) } catch { /* da igual */ }
   try {
     const { mapa: guardadoMapa, orbita: vista, estado } = JSON.parse(guardado)
-    cargar(guardadoMapa)
+    // Lo que llega por el relevo **acaba de escribirse** en el disco, aunque el
+    // registro que lo trae todavía no esté servido: es su propia base.
+    cargar(guardadoMapa, undefined, JSON.stringify(comoSeAbre(guardadoMapa).limpio))
     if (vista) { orbita.radio = vista.radio; orbita.yaw = vista.yaw; orbita.pitch = vista.pitch }
     contar([], estado ?? '')
     return true
@@ -5664,7 +5783,8 @@ function abrirLoQueToque() {
   if (recuperarBorrador(SCENARIOS[deLaBarra] ? deLaBarra : '')) return
   if (deLaBarra && SCENARIOS[deLaBarra]) {
     cargar(SCENARIOS[deLaBarra], deLaBarra)
-    contar([], `abierto ${deLaBarra} · guardado en src/maps/`)
+    // Si el borrador de este mapa se acaba de apartar, lo que se dice es eso.
+    if (!$('estado').textContent) contar([], `abierto ${deLaBarra} · guardado en src/maps/`)
     return
   }
   cargar(mapaNuevo())
@@ -6555,6 +6675,7 @@ $('est-buscar').addEventListener('click', async () => {
       : `${cuantas} ${cuantas === 1 ? 'imagen' : 'imágenes'} en la carpeta.`
 })
 abrirLoQueToque()
+pintarApartado()
 elegirPestana(pestanaActual)
 redimensionar()
 frame()
@@ -6595,6 +6716,8 @@ window.vektorEditor = {
   elegirMarca,
   moverMarca,
   sanear: () => sanearMapa(mapa),
+  /** Para un banco que edita el mapa a mano: lo que haría cualquier control. */
+  marcarSucio() { sucio = true },
   probar,
   dejarDeProbar,
   /**

@@ -296,17 +296,42 @@ usa el del sistema que tengas.
 
 Hace cuatro cosas y las dice por pantalla:
 
-1. **Trae lo último sin pisar tus mapas.** Usa `git pull --rebase --autostash`,
-   que guarda lo que tengas a medias, trae lo nuevo y lo vuelve a poner encima.
-   Si chocara —sólo puede pasar si hemos tocado el mismo fichero que tú— se
-   deshace solo, te lo dice, y **no se pierde nada**.
+1. **Trae lo último sin mezclar nunca** (vuelta 99). Sólo avanza si nada de lo
+   que tienes cambiado en tu PC ha cambiado también en el juego. Si choca, te
+   dice qué ficheros son, **no toca nada** y te pregunta: quedarte con la del
+   juego (tu copia se guarda antes en la carpeta `alchemist-rescate/`), abrir
+   Alchemist con lo que hay, o parar. Y si encuentra un fichero con un
+   conflicto a medias —las marcas `<<<<<<<` dentro—, te lo dice y **no abre el
+   editor** hasta que se resuelva, con la misma oferta de quedarse con la del
+   juego. Hasta la 98 usaba `git pull --rebase --autostash`, que cuando chocaba
+   al final **terminaba «bien» y dejaba las marcas dentro del mapa**; y su camino
+   de fallo desenterraba copias viejas de una pila de git. De ahí salía el
+   `spawnZone` de Largo y Puerta que volvía solo.
 2. **Instala lo que haya cambiado**, y sólo si ha cambiado: compara el fichero
    de dependencias con la copia de la última instalación de verdad.
 3. **Abre Alchemist** en el navegador. Con él levantado, el juego está en esa
    misma dirección sin el `/editor/`.
 4. **Y te avisa si tienes mapas o imágenes sin subir**, al arrancar y al cerrar.
    Guardar un mapa en Alchemist lo escribe en tu PC y nada más: el juego que se
-   juega es el desplegado, y ahí llega lo que se sube al repositorio.
+   juega es el desplegado, y ahí llega lo que se sube al repositorio. Al
+   arrancar puedes además **descartarlos** (tecla D): se quedan como en el juego,
+   con tu copia apartada antes en `alchemist-rescate/`.
+
+**Sólo abre una ventana a la vez** (vuelta 99). Si le das doble clic dos veces,
+la segunda te dice que ya hay un Alchemist abierto y no toca nada: dos a la vez
+se peleaban por los mismos ficheros (el «cannot lock ref»).
+
+**Y nunca ofrece subir un conflicto** (vuelta 99), ni al cerrar ni desde el
+editor: la barra de arriba sale en rojo con el nombre del fichero y el botón
+**Subir al juego** se apaga. Si le pides subir igualmente, se niega y dice por
+qué.
+
+**El borrador del editor ya no resucita versiones viejas** (vuelta 99). Alchemist
+guarda en el navegador lo que tienes a medio hacer; hasta la 98 lo escribía con
+sólo abrir un mapa y lo volvía a abrir por delante del fichero aunque el fichero
+hubiera cambiado. Ahora sólo se guarda si has cambiado algo, sabe de qué versión
+salió, y si el mapa ha cambiado en el disco desde entonces **no se abre solo**:
+se aparta, y en **Archivo** puedes abrirlo o tirarlo.
 
 **Subir los mapas se hace desde el editor**, con el botón de **Archivo → Subir al
 juego** — y la barra de arriba te dice si tienes alguno pendiente, así que no hay

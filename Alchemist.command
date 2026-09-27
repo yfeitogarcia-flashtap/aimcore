@@ -1,9 +1,11 @@
 #!/bin/sh
-# **Alchemist en un doble clic** (vuelta 81).
+# **Alchemist en un doble clic** (vuelta 81; rehecho en la 99).
 #
-# Hace lo que antes había que escribir a mano y en orden —traer lo último,
-# instalar lo que haya cambiado y abrir el editor—, y si algo sale mal lo dice
-# en castellano en vez de dejar un error de git en una ventana que se cierra.
+# Trae lo último, instala lo que haya cambiado, abre el editor y, al cerrar,
+# ofrece subir los mapas. Todo lo que toca git lo hace `scripts/alchemist.mjs`,
+# que es lo mismo que usa el botón «Subir al juego» del editor y
+# `Alchemist.bat`: tres copias de «qué es un conflicto» es como una de las tres
+# acabó ofreciendo subir un fichero con las marcas de conflicto dentro.
 #
 # En **macOS**: doble clic en este fichero. La primera vez, si el sistema no lo
 # deja ejecutar, abre la Terminal en esta carpeta y pega `chmod +x
@@ -22,6 +24,29 @@ fin() {
   exit "${2:-1}"
 }
 
+# --------------------------------------------------------------------------
+# **Una sola ventana a la vez** (vuelta 99). Dos a la vez peleaban por el mismo
+# repositorio: la primera fallaba con «cannot lock ref» y su camino de fallo
+# deshacía lo que estaba haciendo la segunda.
+#
+# El cerrojo es una carpeta —`mkdir` es atómico— con el número del proceso
+# dentro. Si la ventana se cerró de golpe y la carpeta se quedó, el número ya
+# no corresponde a nadie vivo y se toma el cerrojo; así no hace falta borrarlo
+# a mano nunca.
+# --------------------------------------------------------------------------
+CERROJO="${TMPDIR:-/tmp}/vektor-alchemist.lock"
+if ! mkdir "$CERROJO" 2>/dev/null; then
+  otro="$(cat "$CERROJO/pid" 2>/dev/null)"
+  if [ -n "$otro" ] && kill -0 "$otro" 2>/dev/null; then
+    fin "Ya hay otro Alchemist abierto: usa esa ventana. Abrir dos a la vez hace que las dos peleen por los mismos ficheros. Ésta no ha tocado nada."
+  fi
+  rm -rf "$CERROJO"
+  mkdir "$CERROJO" 2>/dev/null || fin "No he podido tomar el cerrojo de Alchemist en $CERROJO. Pásaselo a Code."
+fi
+echo $$ > "$CERROJO/pid"
+trap 'rm -rf "$CERROJO"' EXIT
+trap 'exit 1' HUP INT TERM
+
 echo "================================================"
 echo "  Vektor · Alchemist"
 echo "================================================"
@@ -31,32 +56,19 @@ command -v git  >/dev/null 2>&1 || fin "No encuentro git. Instálalo desde https
 command -v node >/dev/null 2>&1 || fin "No encuentro Node.js. Instálalo desde https://nodejs.org (versión LTS) y vuelve a abrir esto."
 
 # --------------------------------------------------------------------------
-# 1. Traer lo último **sin perder tus mapas**.
+# 1. Traer lo último **sin mezclar nunca** (vuelta 99).
 #
-# Tú editas mapas en `src/maps/` y nosotros tocamos código: las dos cosas caen
-# en el mismo repositorio. `--autostash` guarda lo tuyo, trae lo nuestro y lo
-# vuelve a poner encima. Sólo choca si hemos tocado el mismo fichero que tú, y
-# en ese caso se deshace solo y te lo dice, en vez de dejarte a medias.
+# Antes era `git pull --rebase --autostash`, y cuando chocaba al devolver tus
+# cambios git terminaba «bien», dejaba las marcas dentro del mapa y guardaba
+# tu copia en una pila de la que el camino de fallo sacaba luego la que no era.
+# Ahora sólo se avanza si nada tuyo choca con lo nuevo; si choca, lo dice, no
+# toca nada y pregunta. Si sale con error, aquí se para: no se abre el editor.
 # --------------------------------------------------------------------------
-echo "[1/3] Trayendo la última versión..."
-rama="$(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
-echo "      rama: $rama"
-
-if ! git pull --rebase --autostash origin "$rama"; then
-  git rebase --abort >/dev/null 2>&1
-  git stash pop    >/dev/null 2>&1
-  fin "No he podido traer la última versión sin pisar algo tuyo.
-Tus cambios siguen donde estaban: no se ha perdido nada.
-Pásaselo a Code tal cual y lo resolvemos."
-fi
+node scripts/alchemist.mjs actualizar || fin "No se ha abierto el editor." 1
 
 # --------------------------------------------------------------------------
-# 2. Instalar sólo si hace falta.
-#
-# Se compara el fichero de dependencias con la copia que se guardó la última
-# vez que se instaló de verdad. Una marca de fecha no vale: `git pull` reescribe
-# el fichero aunque su contenido no haya cambiado, y entonces se instalaría en
-# cada arranque.
+# 2. Instalar sólo si hace falta: se compara el fichero de dependencias con la
+# copia de la última vez que se instaló de verdad.
 # --------------------------------------------------------------------------
 echo ""
 echo "[2/3] Revisando dependencias..."
@@ -68,28 +80,9 @@ else
 fi
 
 # --------------------------------------------------------------------------
-# 3. Abrir el editor.
-#
-# `npm run editor` levanta Vite y abre el navegador en `/editor/`. Con él
-# levantado, el juego también está en la raíz de esa misma dirección.
+# 3. Abrir el editor, avisando antes de lo que haya sin subir (vuelta 93).
 # --------------------------------------------------------------------------
-# **Y se avisa también al arrancar** (vuelta 93). Subir vive dentro del editor
-# desde esta vuelta, pero una sesión que se cerró sin pulsarlo —o un mapa
-# guardado antes de la 93— deja cambios aquí y no en el juego.
-#
-# **Las dos carpetas que escribe Alchemist** (vuelta 94): los mapas y las
-# imágenes de estampado, que son media pieza de un mapa que las use. Las dos
-# están en el repositorio, así que el camino existe siempre tras un clon.
-sin_subir="$(git status --porcelain -- src/maps public/estampados 2>/dev/null)"
-if [ -n "$sin_subir" ]; then
-  echo ""
-  echo "  OJO: tienes cosas cambiadas en este ordenador y NO en el juego:"
-  echo ""
-  echo "$sin_subir"
-  echo ""
-  echo "  Súbelos desde Alchemist: Archivo > Subir al juego."
-fi
-
+node scripts/alchemist.mjs avisar
 echo ""
 echo "[3/3] Abriendo Alchemist..."
 echo ""
@@ -103,52 +96,11 @@ echo "  Para cerrarlo: cierra esta ventana cuando hayas subido."
 echo ""
 npm run editor
 
-# -----------------------------------------------------------------------------
-# 4. Al cerrar, la red (vuelta 91, corregida en la 93).
-#
-# Guardar un mapa en Alchemist escribe src/maps/<clave>.js en ESTE ordenador y
-# nada más: el juego que se juega es el desplegado, y ahí llega lo que se sube
-# al repositorio.
-#
-# Esto era el único sitio donde se subía, y por eso no subía: está DETRÁS de
-# `npm run editor`, que no vuelve hasta que Vite muere, y las dos formas de
-# cerrar que este script anunciaba lo matan antes de llegar aquí —Ctrl+C va al
-# grupo de procesos entero, incluido este script, y cerrar la ventana también—.
-# Un paso inalcanzable justo como se usa es un paso que no existe, y no daba
-# ningún error. Desde la 93 se sube desde el editor; esto es la red.
-#
-# Se suben SÓLO src/maps y public/estampados: si tienes cualquier otra cosa a
-# medias, se queda donde está. Y lo normal es que sí: pulsar Intro sube.
-# -----------------------------------------------------------------------------
-echo ""
-echo "================================================"
-echo "  Mapas e imágenes sin subir"
-echo "================================================"
-pendientes="$(git status --porcelain -- src/maps public/estampados 2>/dev/null)"
-if [ -z "$pendientes" ]; then
-  fin "Nada que subir: lo que hay aquí es lo que hay en el juego." 0
+# --------------------------------------------------------------------------
+# 4. Al cerrar, la red (vuelta 91, corregida en la 93 y en la 99): no ofrece
+# subir NADA si hay un conflicto dentro. Lo dice y para.
+# --------------------------------------------------------------------------
+if node scripts/alchemist.mjs subir; then
+  fin "" 0
 fi
-echo "  Esto está cambiado en este ordenador y NO en el juego:"
-echo ""
-echo "$pendientes"
-echo ""
-printf "  ¿Subirlos ahora? [S/n] "
-read -r subir
-case "$subir" in
-  n|N)
-    fin "Vale, se quedan aquí. La próxima vez te lo vuelvo a preguntar." 0
-    ;;
-esac
-
-git add -- src/maps public/estampados
-if ! git commit -q -m "mapas: cambios desde Alchemist"; then
-  fin "No he podido anotar los cambios. Pásaselo a Code tal cual." 1
-fi
-# Traer lo de fuera antes de empujar: si mientras editabas ha entrado código
-# nuevo, empujar sin esto se rechaza y no dice por qué.
-git pull --rebase --autostash origin "$rama" >/dev/null 2>&1
-if ! git push origin "$rama"; then
-  fin "No he podido subirlos. Tus mapas siguen aquí, anotados y sin perder nada: pásale a Code lo que pone arriba." 1
-fi
-
-fin "Subidos. En unos minutos están en el juego." 0
+fin "" 1

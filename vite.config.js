@@ -2,7 +2,9 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
-import { execFileSync } from 'node:child_process'
+import {
+  CARPETAS_QUE_SUBEN, EXTENSIONES_ESTAMPADO, NO_SON_MAPAS, estadoDeMapasEn, subirMapasEn,
+} from './scripts/lib/alchemist-git.mjs'
 /**
  * **La configuración de Vite no importa nada de `src/`, y eso resuelve tres
  * cosas a la vez** (vuelta 75).
@@ -75,7 +77,6 @@ const duelo = {
  * desarrollo**, que es donde está el repositorio en el que escribe.
  */
 const CARPETA_MAPAS = resolve(import.meta.dirname, 'src/maps')
-const NO_SON_MAPAS = new Set(['index.js', 'formato.js'])
 
 /**
  * **El historial de un mapa, y por qué no es git** (vuelta 75).
@@ -124,7 +125,6 @@ function fondosDisponibles() {
  * producción deba hacer, y ahí las imágenes son las que alguien commiteó.
  */
 const CARPETA_ESTAMPADOS = resolve(import.meta.dirname, 'public/estampados')
-const EXTENSIONES_ESTAMPADO = ['.webp', '.png', '.jpg', '.jpeg', '.avif']
 
 function estampadosDisponibles() {
   if (!existsSync(CARPETA_ESTAMPADOS)) return []
@@ -273,134 +273,14 @@ function avisarDeEstampados(servidor) {
 }
 
 /**
- * **Los mapas que hay en este PC y no en el juego** (vuelta 93), y subirlos.
+ * **Los mapas que hay en este PC y no en el juego, y subirlos** (vuelta 93).
  *
- * `git` se llama con `execFileSync` y argumentos sueltos, nunca con una cadena
- * de shell: los nombres de fichero salen del disco, y un mapa que se llamase
- * con una comilla sería una orden.
+ * Desde la vuelta 99 viven en `scripts/lib/alchemist-git.mjs`, que es también
+ * lo que llaman los dos lanzadores: tres copias de «qué es un conflicto» es
+ * como una de las tres dejó subir un fichero con las marcas dentro. Se
+ * re-exportan aquí porque los bancos las importan de aquí.
  */
-const git = (donde, ...argumentos) =>
-  execFileSync('git', argumentos, { cwd: donde, encoding: 'utf-8' })
-
-/**
- * **Y `git status` no se recorta entero.** La primera línea de una salida de
- * `--porcelain` empieza por un espacio cuando el cambio no está anotado
- * (« M src/maps/…»), así que un `.trim()` de toda la salida le come ese espacio
- * y el `slice(3)` que parte el estado del nombre se lleva por delante la
- * primera letra: medido, «rc/maps/index.js». Se recorta **cada línea por el
- * final**, que es lo único que sobra.
- */
-/**
- * **Lo que Alchemist escribe son dos carpetas, no una** (vuelta 94). Subir era
- * `src/maps` y nada más, y eso dejaba fuera **la mitad de un mapa con
- * estampados**: la imagen vive en `public/estampados/` (vuelta 93), nace
- * invisible a propósito y **el mundo no la espera**, así que un mapa subido sin
- * su imagen llega al juego con el logo apagado —exactamente lo que el estampado
- * promete cuando el fichero no está— y sin un error en ninguna pantalla.
- *
- * Y sigue siendo **sólo lo que Alchemist escribe**, que es la regla de la 91:
- * cualquier otra cosa a medias se queda donde está.
- */
-// Se exporta porque **el banco tiene que probar este camino, no declarar el
-// suyo**: una segunda lista en la prueba mediría la lista de la prueba.
-export const CARPETAS_QUE_SUBEN = ['src/maps', 'public/estampados']
-
-/**
- * Una carpeta que no está **no se le pasa a git**: `git status -- <ruta>` con un
- * camino que no existe es un error fatal, así que una copia sin
- * `public/estampados/` dejaría el editor diciendo que no hay repositorio.
- */
-const carpetasQueSuben = (donde) =>
-  CARPETAS_QUE_SUBEN.filter((carpeta) => existsSync(resolve(donde, carpeta)))
-
-export function estadoDeMapasEn(donde) {
-  try {
-    const carpetas = carpetasQueSuben(donde)
-    if (!carpetas.length) throw new Error('no hay nada que Alchemist escriba en este árbol')
-    const salida = git(donde, 'status', '--porcelain', '--', ...carpetas)
-    const rutas = salida.split('\n')
-      .filter((l) => l.length > 3)
-      .map((l) => l.slice(3).trimEnd().replace(/^"|"$/g, ''))
-
-    /**
-     * **Un mapa y el registro no son la misma cosa en pantalla.** Añadir un
-     * mapa cambia también `src/maps/index.js` —es generado (vuelta 74)— y sus
-     * versiones en `historial/`, y las tres tienen que subir o el juego
-     * importaría un fichero que no está. Pero contarlas como mapas haría que
-     * un mapa nuevo se anunciase como «3 mapas sin subir», y ése es el número
-     * que alguien mira para saber si ha perdido trabajo.
-     *
-     * Qué es un mapa lo dice **el mismo dato que el registro**: un `.js` de la
-     * carpeta que declara su `clave`. Borrado no se puede leer, y entonces lo
-     * era.
-     */
-    const esMapa = (ruta) => {
-      if (!ruta.startsWith('src/maps/')) return false
-      const nombre = ruta.slice('src/maps/'.length)
-      if (nombre.includes('/') || !nombre.endsWith('.js')) return false
-      if (NO_SON_MAPAS.has(nombre)) return false
-      try {
-        return /clave:\s*"/.test(readFileSync(resolve(donde, ruta), 'utf8'))
-      } catch { return true }
-    }
-
-    /**
-     * Y una imagen de estampado se reconoce **por la misma lista de extensiones
-     * que la ofrece en el panel**: un `.txt` que alguien deje en esa carpeta no
-     * es un estampado, así que se cuenta con el registro y el historial.
-     */
-    const esImagen = (ruta) => {
-      if (!ruta.startsWith('public/estampados/')) return false
-      const nombre = ruta.slice('public/estampados/'.length)
-      if (nombre.includes('/')) return false
-      return EXTENSIONES_ESTAMPADO.some((ext) => nombre.toLowerCase().endsWith(ext))
-    }
-
-    return {
-      // Lo que se enseña es el nombre del mapa, no la línea de `git status`:
-      // «M  src/maps/duelo.js» no es lo que alguien reconoce de su trabajo.
-      mapas: rutas.filter(esMapa).map((r) => r.slice('src/maps/'.length)),
-      imagenes: rutas.filter(esImagen).map((r) => r.slice('public/estampados/'.length)),
-      otros: rutas.filter((r) => !esMapa(r) && !esImagen(r)).length,
-      rama: git(donde, 'rev-parse', '--abbrev-ref', 'HEAD').trim(),
-    }
-  } catch (error) {
-    // Sin git —una copia descargada en zip— el editor sigue sirviendo. Lo que
-    // no puede es fingir que ha subido algo.
-    return { mapas: [], imagenes: [], otros: 0, rama: null, error: error.message }
-  }
-}
-
-/**
- * **El mensaje dice qué llevaba, porque la historia está curada** (vuelta 75).
- * Un commit que dice «mapas» cuando lo único que subía era una imagen es una
- * historia que hay que abrir para leer.
- */
-function mensajeDeSubida(mapas, imagenes) {
-  if (mapas.length && imagenes.length) return 'mapas y estampados: cambios desde Alchemist'
-  if (imagenes.length) return 'estampados: imágenes desde Alchemist'
-  return 'mapas: cambios desde Alchemist'
-}
-
-/**
- * **Un commit por subida, no por guardado.** La historia de este repositorio
- * está curada (vuelta 75): cuarenta commits de «he movido una caja» la
- * degradarían.
- */
-export function subirMapasEn(donde) {
-  const { mapas, imagenes, otros, rama } = estadoDeMapasEn(donde)
-  if (!rama) throw new Error('aquí no hay un repositorio de git')
-  if (!mapas.length && !imagenes.length && !otros) {
-    return { subidos: [], imagenes: [], nota: 'no había nada que subir' }
-  }
-  git(donde, 'add', '--', ...carpetasQueSuben(donde))
-  git(donde, '-c', 'core.editor=true', 'commit', '-q', '-m', mensajeDeSubida(mapas, imagenes))
-  // Traer lo de fuera antes de empujar: si mientras editabas ha entrado código
-  // nuevo, empujar sin esto se rechaza y no dice por qué.
-  try { git(donde, 'pull', '--rebase', '--autostash', 'origin', rama) } catch { /* ya lo dirá el push */ }
-  git(donde, 'push', 'origin', rama)
-  return { subidos: mapas, imagenes, otros, rama }
-}
+export { CARPETAS_QUE_SUBEN, estadoDeMapasEn, subirMapasEn }
 
 const estadoDeMapas = () => estadoDeMapasEn(import.meta.dirname)
 const subirMapas = () => subirMapasEn(import.meta.dirname)

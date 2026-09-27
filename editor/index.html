@@ -42,6 +42,9 @@
            juega es el desplegado. Hasta aquí enterarse de que un mapa no había
            llegado era abrir el juego y no verlo. -->
       <span id="sin-subir" class="dato aviso" hidden></span>
+      <!-- **Y un conflicto va delante y en rojo** (vuelta 99): con uno dentro el
+           juego publicado no cargaría, así que no se ofrece subir. -->
+      <span id="conflicto" class="dato conflicto" hidden></span>
       <span class="hueco"></span>
       <button id="probar" type="button" class="accion">Probar</button>
       <button id="guardar" type="button" class="accion">Guardar</button>
@@ -872,6 +875,15 @@
                 <button id="duplicar-mapa" type="button">Duplicar este mapa</button>
               </div>
               <p id="duplicar-nota" class="nota"></p>
+              <!-- **El borrador apartado** (vuelta 99): uno de un mapa que cambió en
+                   el disco después de empezarlo no se abre solo, porque guardarlo
+                   pisaría lo nuevo con lo viejo. Se queda aquí, y abrirlo es una
+                   decisión. -->
+              <div id="apartado" class="botonera" hidden>
+                <button id="abrir-apartado" type="button">Abrir el borrador apartado</button>
+                <button id="tirar-apartado" type="button">Tirarlo</button>
+              </div>
+              <p id="apartado-nota" class="nota" hidden></p>
             </section>
 
             <!-- **Subir es una acción del editor, no del script que lo abre**

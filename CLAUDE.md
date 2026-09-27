@@ -101,6 +101,7 @@ geometría. Está entero en §3 y en `docs/decisions.md` §93.8. Para todo lo de
 | Estampados | `src/game/estampados.js` | Los logos a color que un mapa pega en una superficie (vuelta 93). **El único asset externo del proyecto.** Un plano con su textura y nada más: fuera de `occluders`, sin colisión, sin recibir rayos y **sin montarse en Node**, que no dibuja. |
 | Escalera | `src/maps/escalera.js` | La segunda macro: **un** objeto en el fichero y escalones en el motor, como el tubo. Garantiza por construcción que cada escalón se sube andando. **Sin `three` y sin `config.js`**, porque lo monta también el servidor. |
 | Actualización | `src/ui/actualizacion.js` | Pregunta a `/salud` si el build desplegado ha cambiado, y recarga **cuando la página dice que se puede**. Lo montan las dos páginas con su propia condición. |
+| Alchemist y git | `scripts/lib/alchemist-git.mjs` | Traer sin mezclar, detectar conflictos, rescatar y subir. **La única lógica de git del PC de alguien**: la llaman los dos lanzadores (por `scripts/alchemist.mjs`) y el botón «Subir al juego». Sin dependencias, porque corre antes de `npm install`. |
 | Tubo | `src/maps/tubo.js` | Despliega un pozo declarado como **un** objeto en las cajas AABB que el motor sabe chocar. **Lo llaman `Scenario` y el editor**, que es lo que evita que el fichero y el mundo digan cosas distintas. |
 | Prisma | `src/maps/prisma.js` | Un sólido convexo de N caras: sus vértices, **sus caras como semiplanos** y la banda de un eje. Con cuatro lados **es una caja girada**. **Lo llaman `Scenario`, el editor y la miniatura**, que es lo que evita que el mapa se dibuje de una forma y se choque de otra. |
 | Formato de mapa | `src/maps/formato.js` | Qué campos tiene un mapa, el saneado y el serializador. **Lo miran el editor y el cargador**, que es lo que evita que un mapa se guarde con su física y se abra sin ella. |
@@ -824,6 +825,72 @@ del duelo era el mismo al crear la sala y a media partida: ofrecía «Salir de l
 partida» sin partida y no tenía cómo volver. Cuelga del mismo `ocupadas` que cierra
 las opciones de la sala (vuelta 67): sin rival, **Volver**; con rival, **Pausar** y
 **Salir**, y Volver se va, porque a media partida volver **es** abandonar.
+
+**Traer lo nuevo nunca mezcla, y un conflicto no sube** (vuelta 99). **Ésta es la
+convención permanente para cualquier cosa que toque git en el PC de alguien.** Se
+reportó entera en el PC de Yago y eran tres fallos de los lanzadores, con una causa
+común: cada uno llevaba su copia de la lógica en su shell, y las dos copias tenían
+los tres.
+
+- **`git pull --rebase --autostash` no se deshace solo cuando choca al final.** Si
+  el choque es al devolver lo apartado —el caso normal: tú tocaste un mapa y
+  nosotros también—, git **termina con éxito**, deja las marcas `<<<<<<<` dentro
+  del fichero y guarda la copia en `git stash`. El lanzador leía ese éxito y abría
+  el editor contra un mapa roto.
+- **El camino de fallo hacía `git stash pop` a ciegas**, que no saca lo que se
+  acaba de apartar sino **lo último de la pila**, y en la pila se quedaban las
+  copias de cada choque anterior. Así volvía el `spawnZone` de Largo y Puerta a
+  `z:16, d:4` sin abrir el mapa: cualquier fallo —otra ventana a la vez, la red—
+  desenterraba la copia de hace una semana.
+- **La subida no miraba si había conflicto**, y ofreció un fichero en `UU` con las
+  marcas dentro.
+
+Cuatro reglas que se quedan:
+
+- **Una sola implementación**: `scripts/lib/alchemist-git.mjs`. La llaman los dos
+  lanzadores (a través de `scripts/alchemist.mjs`, que sólo pregunta y habla) y el
+  botón «Subir al juego» (por `vite.config.js`). Sólo usa lo que trae Node, porque
+  corre antes de `npm install`.
+- **Traer sólo avanza** (`merge --ff-only`), y sólo si ningún fichero cambiado aquí
+  ha cambiado fuera: git no empieza nada que pueda dejar a medias. Si chocan, se
+  nombran y **no se toca nada**; quedarse con la del juego es una pregunta, y la
+  copia se guarda antes en `alchemist-rescate/` —a la vista, fuera de git, y que no
+  saca nadie solo, que es lo contrario de `git stash`—. **Nada de `stash` en
+  ningún lanzador**: lo que no se aparta no se puede desenterrar. Las copias viejas
+  que ya haya en la pila se cuentan y no se tocan.
+- **Un conflicto se busca de dos formas y para en las tres puertas**: lo que git
+  marca sin resolver (`--diff-filter=U`, en todo el árbol) **y** las tres marcas
+  escritas en los ficheros de las carpetas de Alchemist, porque una resolución a
+  medias las deja en un fichero que git ya da por resuelto. Con uno delante no se
+  abre el editor, no se ofrece subir, la barra de Alchemist lo dice en rojo y el
+  servidor se niega aunque se le pida.
+- **Una ventana a la vez.** En Windows el cerrojo es un fichero abierto por la
+  ventana (`9>`), que el sistema suelta al cerrarla aunque sea de golpe; en Mac y
+  Linux, una carpeta con el número del proceso, que se toma si ese proceso ya no
+  vive. Y **el `.bat` corre desde una copia en `%TEMP%`**: `cmd.exe` relee el
+  fichero línea a línea por el byte donde iba, así que un `.bat` que se reescribe a
+  sí mismo al actualizarse sigue ejecutando **el fichero nuevo por la mitad**. El
+  colchón de espacios del principio es para el `.bat` de antes de la 99, que no se
+  copiaba: es donde cae la primera vez, y dice que se vuelva a abrir.
+
+**Y el borrador del editor sabe de qué versión salió** (vuelta 99), que era la otra
+puerta del mismo síntoma. Se escribía **con sólo abrir un mapa** —el primer frame
+lo remonta— y al volver se abría por delante del fichero aunque el fichero hubiera
+cambiado: la copia vieja entera delante, y cualquier guardado la escribía encima de
+la nueva. Ahora guarda `{ mapa, base }`, donde la base es **lo que hay en el disco
+con esa clave** (`enElDisco`, con la misma función que abre un mapa, `comoSeAbre`,
+para que comparen byte a byte); sólo se escribe si el mapa se aparta de su base; y
+si al volver el disco ya no es esa base —o el borrador es de antes de la 99 y no la
+sabe— **se aparta sin abrirse** y la hoja de Archivo ofrece abrirlo o tirarlo.
+
+Medido (`alchemist99`, contra un remoto de juguete y el módulo de verdad; y
+`borrador99`, contra la página): lo nuevo entra sin tocar un mapa a medias y sin una
+entrada en `git stash`; un choque se nombra con la copia intacta; quedarse con la del
+juego la deja en el rescate y avanza; un `UU` con marcas se ve por las dos vías, para
+la actualización y la subida —sin commit local ni nada en el remoto— y se ve también
+cuando git ya lo da por resuelto; abrir Largo y Puerta sin tocarlo no escribe
+borrador; y el borrador del PC de Yago, con `z:16`, queda apartado con el disco
+delante.
 
 **Todo el tuning en `config.js`.** Ninguna constante de juego vive suelta en un
 módulo. Si necesitas un número nuevo, va a `config.js` aunque lo use un solo
@@ -5866,8 +5933,8 @@ reloj y cable:
   manual es guardar `FLY_API_TOKEN` como secreto del repositorio, una vez, en la
   web de GitHub. Y para lo que sigue necesitando el PC —el editor, que a
   propósito no entra en el despliegue— están `Alchemist.bat` y
-  `Alchemist.command` en la raíz: doble clic, `git pull --rebase --autostash`
-  para no pisar los mapas locales, instalar sólo si el fichero de dependencias
+  `Alchemist.command` en la raíz: doble clic, traer lo último **sin mezclar
+  nunca** (vuelta 99, `scripts/lib/alchemist-git.mjs`), instalar sólo si el fichero de dependencias
   ha cambiado de verdad, y abrir. **Y al cerrar, subir los mapas** (vuelta 91):
   un mapa guardado en Alchemist estaba sólo en ese PC, y el juego que se juega
   es el desplegado — así que editar o despublicar uno y no acordarse de subirlo
