@@ -15180,3 +15180,59 @@ el aire contadas por frame, y la cola del servidor a 18 fps— con el error de
 reconciliación en cero; con `git stash` y el código de la 100, **los mismos rojos y
 uno más** (a 20 fps). Son del contenedor, que es lo que el §4 manda comprobar antes
 de creérselo.
+
+### 101.15 — ESC es un «atrás» forzado, y la tienda no lleva al menú del código
+
+Dos cosas de la primera prueba de la 101, y las dos son la misma: **salir de lo
+que tengas delante tiene que acabar en la partida**.
+
+**Aporrear ESC no volvía.** La regla de la vuelta 89 tiraba cualquier ESC que
+llegara dentro de `RESUME_KEY_DELAY_MS` (1.3 s) desde que se soltó el ratón, con
+dos motivos correctos: que el ESC que *abre* el menú no lo cerrara de rebote, y que
+Chrome rechaza en silencio una captura pedida antes de ese segundo. Lo que no
+estaba escrito es lo que hace cualquiera que quiere volver: **pulsar varias veces
+seguidas**, y todas caían dentro de la espera. Y la vuelta 91 empeoraba lo de la
+tienda a propósito —cerrarla con ESC **reiniciaba** la espera, para que el menú
+llegara a verse—.
+
+Ahora es una pieza sola, `src/ui/volverConEscape.js`, que usan **las dos páginas**
+(la convención de la 63):
+
+- **Una pulsación dentro de la espera no se tira: se anota** y la captura se pide
+  en cuanto el navegador la admite. Fuera de la espera, en el acto.
+- **El eco de la salida se sigue descartando**, pero con su propio número y no con
+  la espera entera: `ESC_MISMA_PULSACION_MS` (300 ms desde el
+  `pointerlockchange`). El orden entre ese evento y el `keydown` no está
+  garantizado, y ésa es la única pulsación que no puede significar «volver».
+- **Salvo que cierre algo.** Un ESC que cierra la tienda o un panel no pudo soltar
+  el ratón —lo soltó abrirlos—, así que aunque llegue pegado a la apertura es una
+  vuelta (`pedir(ahora, cierraAlgo)`).
+- **Y ESC cierra lo de encima de camino**: tienda, opciones, armería, tabla de
+  controles. La captura de una tecla en *Controles* sigue siendo la excepción —su
+  escucha va en captura y para el evento—, que es lo que deja cancelar un bind.
+
+**La segunda B llevaba al menú del código.** La tecla de armería abría la tienda
+soltando el ratón, y cerrarla —para comprar otra cosa o para irse— lo dejaba
+suelto, y con el ratón suelto lo que se enseña es el menú de ESC, **con el código
+de la sala y el enlace en grande**. En mitad de una ronda. Dos arreglos, uno por
+cada mitad:
+
+- **Cerrar la tienda es volver a jugar**, con su tecla o con ESC. Mientras se
+  espera al navegador el menú no asoma (`volviendo()`), y si la captura no llega en
+  un par de segundos —el navegador la rechazó— el menú vuelve a salir, para que
+  nadie se quede mirando el HUD sin mando.
+- **Y el código no sale si no se pide**: el menú de ESC lleva *Invitar · ver el
+  código*, que despliega el código y el enlace, y se vuelven a esconder al volver a
+  jugar. Lo que se busca al soltar el ratón con la partida en marcha es volver,
+  pausar o las opciones.
+
+Medido (`esc101`, teclas de verdad contra el producto): en el entrenamiento, tres
+ESC seguidos dentro de la espera devuelven a la partida en **0.6 s**, un ESC con
+opciones las cierra y vuelve, y un ESC **150 ms** después de abrir la armería con
+la B la cierra y vuelve; en el multijugador, la segunda B cierra la tienda y
+recaptura en **17 ms**, un ESC pegado a la apertura también, y **el menú del código
+no asoma ni un frame** en toda la secuencia; soltando el ratón sale el menú **sin
+el código**, «Invitar» lo enseña, y cuatro ESC seguidos devuelven a jugar.
+`esc89b` y `esc91` medían la regla vieja —un ESC dentro de la espera *no*
+reanudaba, y cerrar la tienda dejaba el menú delante— y quedan sustituidos.
+

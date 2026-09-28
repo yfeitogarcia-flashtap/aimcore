@@ -33,6 +33,7 @@ import { montarCapaDeDuelo } from '../src/ui/duelo.jsx'
 import { montarLobby } from '../src/ui/Lobby.jsx'
 import { vigilarActualizaciones } from '../src/ui/actualizacion.js'
 import { montarPantallaCompleta } from '../src/escritorio.js'
+import { crearVueltaConEscape } from '../src/ui/volverConEscape.js'
 import { getKeybinds, keyLabel, keysOf, subscribeKeybinds } from '../src/keybinds.js'
 import { MSG, compraAbierta } from './protocolo.js'
 import { codigoDeLaDireccion, direccionDeLaBarra, enlaceDeSala, mapaDeLaDireccion, modoDeLaDireccion, urlDeSala } from './sala-cliente.js'
@@ -138,9 +139,22 @@ const motor = new Engine(lienzo, {
    * no hacía nada en Los Pilares, que era honesto y seguía sin enseñar los
    * números.
    */
+  /**
+   * **Y la misma tecla la cierra y te devuelve a jugar** (vuelta 101). Cerrarla
+   * dejaba el ratón suelto, y lo que se enseña con el ratón suelto es el menú
+   * de ESC —el del código de la sala—: la segunda B, la de volver a comprar o la
+   * de cerrar, acababa en esa pantalla. Cerrar la tienda es volver a la partida.
+   */
   onArmoury: () => {
-    if (cliente.conEconomia) alternarTienda()
-    else capa.panel(capa.hayPanel() ? null : 'ficha')
+    const abierta = cliente.conEconomia ? !tienda.hidden : capa.hayPanel()
+    if (abierta) {
+      volviendo()
+      vuelta.cancelar()
+      motor.requestLock()
+      return
+    }
+    if (cliente.conEconomia) alternarTienda(true)
+    else capa.panel('ficha')
   },
   /**
    * **Apuntando con mirilla se quita la mira de la página** (vuelta 70): la
@@ -755,6 +769,12 @@ function pintarControles(binds) {
  * **El botón del teclado abre y cierra la tabla.** Es un `.control`: se pincha
  * con el ratón suelto y su clic no cuenta como el que captura (vuelta 48).
  */
+$('invitar').addEventListener('click', () => {
+  const abierta = $('invitacion').hidden
+  $('invitacion').hidden = !abierta
+  $('invitar').setAttribute('aria-expanded', String(abierta))
+})
+
 $('teclado').addEventListener('click', () => {
   const abierta = $('tablaControles').hidden
   $('tablaControles').hidden = !abierta
@@ -887,14 +907,37 @@ addEventListener('blur', () => {
  * mando de depuración se hacen con el ratón suelto, y capturarlo al tocarlos
  * dejaría el enlace a medias y la partida empezada.
  */
-/** Cuándo se soltó el ratón por última vez. Ver el manejador de ESC de abajo. */
-let soltadoEn = 0
+/**
+ * **La vuelta a la partida** (vuelta 101): cierra lo que haya abierto encima y
+ * pide la captura. ESC, la tecla de armería con la tienda abierta y el clic
+ * llegan todos aquí. Mientras se espera al navegador, el menú no asoma —se está
+ * volviendo—, y si la captura no llega en un par de segundos (el navegador la
+ * rechazó) vuelve a salir, para que nadie se quede mirando el HUD sin mando.
+ */
+const vuelta = crearVueltaConEscape(() => motor.requestLock())
+let volviendoHasta = 0
+function cerrarLoDeEncima() {
+  if (!tienda.hidden) alternarTienda(false)
+  if (capa.hayPanel()) capa.panel(null)
+  $('tablaControles').hidden = true
+  $('teclado').setAttribute('aria-expanded', 'false')
+}
+function volviendo() {
+  cerrarLoDeEncima()
+  aviso.hidden = true
+  volviendoHasta = performance.now() + RESUME_KEY_DELAY_MS + 900
+  setTimeout(() => {
+    if (document.pointerLockElement === lienzo || vista !== 'juego') return
+    if (performance.now() < volviendoHasta) return
+    aviso.hidden = !tienda.hidden || capa.hayPanel() || $('fin').classList.contains('puesto')
+  }, RESUME_KEY_DELAY_MS + 1000)
+}
 
 addEventListener('click', (e) => {
   if (vista !== 'juego') return
   if (document.pointerLockElement === lienzo) return
   if (e.target.closest('.control')) return
-  soltadoEn = 0
+  vuelta.cancelar()
   // **Capturar es cosa del motor** desde la vuelta 56: además del `pointerLock`
   // arranca el contexto de audio —que no existe sin un gesto y éste es el único
   // que hay seguro—, pide las muestras de disparo y engancha el listener
@@ -904,32 +947,23 @@ addEventListener('click', (e) => {
 })
 
 /**
- * **Y ESC devuelve a la partida** (vuelta 89), que es la otra mitad de lo que
- * la 88 dejó a medias: aprendió a cerrar el panel de opciones y ahí se paró,
- * así que con el menú delante la única forma de volver era ir a buscar el
- * lienzo con el ratón.
+ * **ESC es un «atrás» forzado, y acaba en la partida** (vuelta 89; desde la 101,
+ * de una vez). Jugando, ESC es del navegador y abre el menú. Con el menú puesto,
+ * **cualquier ESC** cierra lo que haya encima —la tienda, las opciones, la tabla
+ * de controles— y vuelve a la partida; si cae dentro de la espera del navegador
+ * (`RESUME_KEY_DELAY_MS`) no se tira, se anota y se cumple en cuanto se puede
+ * (`crearVueltaConEscape`). Hasta la 101 esas pulsaciones se perdían, y quien
+ * aporreaba ESC para volver se quedaba en el menú.
  *
- * Aquí no hay pausa que levantar —en el duelo el mundo sigue corriendo con el
- * menú puesto (vuelta 60)—, así que «reanudar» es exactamente lo que hace el
- * clic: volver a capturar. Cuatro guardas, y cada una tapa un sitio donde esa
- * tecla ya significa algo:
- *
- * - **Jugando, no**: ahí ESC es del navegador y es cómo se abre el menú.
- * - **Con la tienda abierta, no**: ESC la cierra (su manejador está más abajo).
- * - **Con un panel del juego abierto, no**: ESC lo cierra (`Options`).
- * - **Y no antes de `RESUME_KEY_DELAY_MS`** desde que se soltó el ratón, que es
- *   lo que impide que el ESC que abre el menú lo cierre de rebote —el orden
- *   entre el `pointerlockchange` del navegador y este `keydown` no está
- *   garantizado— y de paso espera a que Chrome vuelva a admitir la captura.
+ * El ESC de la tienda lo recibe antes su manejador (está en `document`), que la
+ * cierra y nada más: la vuelta es de aquí.
  */
 addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return
   if (vista !== 'juego' || $('fin').classList.contains('puesto')) return
   if (document.pointerLockElement === lienzo) return
-  if (!tienda.hidden || capa.hayPanel()) return
-  if (performance.now() - soltadoEn < RESUME_KEY_DELAY_MS) return
   e.preventDefault()
-  motor.requestLock()
+  if (vuelta.pedir()) volviendo()
 })
 
 /**
@@ -948,7 +982,14 @@ addEventListener('keydown', (e) => {
 // con su instante real. Esta página ya no toca el gatillo.
 document.addEventListener('pointerlockchange', () => {
   const capturado = document.pointerLockElement === lienzo
-  if (!capturado) soltadoEn = performance.now()
+  if (!capturado) vuelta.soltado()
+  else {
+    vuelta.cancelar()
+    volviendoHasta = 0
+    // El código se vuelve a esconder: se enseña cuando se pide (vuelta 101).
+    $('invitacion').hidden = true
+    $('invitar').setAttribute('aria-expanded', 'false')
+  }
   // **Soltar el ratón ya no pide pausa** (vuelta 60). Lo hizo desde la 53, y la
   // idea era buena —que el mundo no siguiera corriendo con el menú puesto— pero
   // el precio se veía jugando: abrir el menú para mirar el código, copiar el
@@ -983,7 +1024,7 @@ document.addEventListener('pointerlockchange', () => {
   if (!capturado) pintarPausa()
   // Y si lo que hay abierto es la tienda, el menú no vuelve: son dos pantallas
   // de la misma situación —el ratón suelto— y sólo cabe una.
-  aviso.hidden = vista !== 'juego' || capturado || !tienda.hidden || capa.hayPanel()
+  aviso.hidden = vista !== 'juego' || capturado || !tienda.hidden || capa.hayPanel() || performance.now() < volviendoHasta
   // **La mira es de jugar**: con el ratón suelto no se apunta a nada y tapa el
   // menú. El resto del HUD se queda puesto, que es lo que hace el juego.
   document.body.classList.toggle('jugando', capturado)
@@ -1667,23 +1708,16 @@ function alternarTienda(abrir = tienda.hidden) {
 document.addEventListener('keydown', (evento) => {
   if (tienda.hidden) return
   if (evento.key === 'Escape') {
+    // **Cerrarla con ESC es volver a la partida** (vuelta 101): el menú del
+    // código no asoma por detrás. El manejador de ESC de la ventana recibe esta
+    // misma pulsación después, así que se para aquí: pedir la captura dos veces
+    // en el mismo instante es una petición de sobra al navegador.
+    evento.stopPropagation()
     alternarTienda(false)
-    /**
-     * **Y la tecla que cierra la tienda no reanuda** (vuelta 91). Este
-     * manejador está en `document` y el de reanudar en `window`, así que un
-     * evento que burbujea pasa por los dos: con la tienda ya cerrada, el
-     * segundo veía el camino libre y pedía la captura **en la misma
-     * pulsación**. Medido (`esc91`): ESC dentro de la tienda devolvía al
-     * juego de un salto y el menú no llegaba a verse.
-     *
-     * Es el problema de la vuelta 89 —dos escuchas del mismo `window` y el
-     * orden de una tecla— con dos targets en vez de uno, así que la respuesta
-     * es la misma: no pelearse por el orden. Cerrar **reinicia la espera**, y
-     * de paso el número ya significa lo que hace falta aquí —Chrome tarda algo
-     * más de un segundo en volver a admitir una captura tras un Escape— así
-     * que no hay que inventar un segundo reloj.
-     */
-    soltadoEn = performance.now()
+    if (vuelta.pedir(performance.now(), true)) volviendo()
+    // La vuelta 91 hacía lo contrario —cerrar reiniciaba la espera para que se
+    // viera el menú— y jugando se leyó como lo que era: la tienda llevaba a la
+    // pantalla del código de la sala en mitad de una ronda.
     return
   }
   if (!/^[0-9]$/.test(evento.key)) return

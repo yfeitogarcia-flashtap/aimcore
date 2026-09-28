@@ -228,6 +228,7 @@
      debajo. En verde de acción porque eso es lo que hay que hacer aquí, y
      pegado al campo —margen de abajo a cero— para que se lean como una cosa y
      no como una frase suelta encima de otra. */
+  .volver-esc { margin: 6px 0 12px; color: var(--cab-texto-apagado); font-size: var(--cab-t-pequeno); }
   .invita { margin: 12px 0 0; color: var(--cab-accion); font-size: var(--cab-t-pequeno); line-height: 1.4; width: 340px; }
   .linea input { flex: 1; min-width: 0; background: var(--cab-fondo); color: var(--cab-texto-suave); border: 0;
     padding: 8px 10px; font: inherit; }
@@ -388,11 +389,19 @@
          mapa y la fase de compra se eligen allí, con botones y antes de jugar.
          Aquí se queda lo que sirve con la partida en marcha: el código y el
          enlace, para invitar a alguien más al todos contra todos. -->
-    <div class="fila"><span class="apagado">código de la sala</span><span id="codigoMenu" class="codigo-menu">—</span></div>
-    <p class="invita" id="invita">Copia y comparte este link para que entren más jugadores</p>
-    <div class="linea"><input id="enlaceMenu" readonly /><button id="copiarMenu" class="button button--primary button--pequeno">Copiar</button></div>
-    <hr />
+    <!-- **Y el código no sale si no se pide** (vuelta 101). Con la partida en
+         marcha, lo que se busca al soltar el ratón es volver, pausar o las
+         opciones; el código y el enlace son para invitar a alguien, y sólo se
+         enseñan pulsando «Invitar». Se esconden otra vez al volver a jugar. -->
     <div class="fila"><span class="apagado">tú</span><span id="quien">conectando…</span></div>
+    <p class="volver-esc">ESC o clic · volver a la partida</p>
+    <button id="invitar" class="control button button--quiet button--pequeno" aria-expanded="false" aria-controls="invitacion">Invitar · ver el código</button>
+    <div id="invitacion" hidden>
+      <hr />
+      <div class="fila"><span class="apagado">código de la sala</span><span id="codigoMenu" class="codigo-menu">—</span></div>
+      <p class="invita" id="invita">Copia y comparte este link para que entren más jugadores</p>
+      <div class="linea"><input id="enlaceMenu" readonly /><button id="copiarMenu" class="button button--primary button--pequeno">Copiar</button></div>
+    </div>
   </div>
   <!-- **Y este renglón se fue con la línea nueva** (vuelta 92). Decía «Pásale
        el enlace a la otra persona y haz clic para jugar», que es exactamente lo

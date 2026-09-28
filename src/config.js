@@ -5709,6 +5709,22 @@ export const SESSION_MODES = {
  */
 export const RESUME_KEY_DELAY_MS = 1300
 
+/**
+ * **Y lo que se pulsa dentro de esa espera no se tira: se anota** (vuelta 101).
+ * La nota de arriba acababa en «un humano que lee el menú y vuelve a pulsar
+ * tarda mucho más que esto», y jugando salió lo contrario: quien quiere volver
+ * **no lee el menú, aporrea ESC**, y todas sus pulsaciones caían dentro de la
+ * espera y se perdían. ESC es un «atrás» forzado: una pulsación dentro de la
+ * espera deja pedida la vuelta y se cumple en cuanto el navegador admite la
+ * captura (`src/ui/volverConEscape.js`).
+ *
+ * Lo único que sigue sin contar es **la pulsación que soltó el ratón**, si la
+ * página llega a recibirla: cae a estos milisegundos del `pointerlockchange`, y
+ * sin este margen ESC dejaría de abrir el menú. Una segunda pulsación de verdad
+ * tarda más que esto.
+ */
+export const ESC_MISMA_PULSACION_MS = 300
+
 export const SESSION_DURATIONS = {
   mode: { label: 'La del modo', seconds: null },
   none: { label: 'Sin límite', seconds: 0 },

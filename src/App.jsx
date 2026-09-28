@@ -2,6 +2,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -12,7 +13,6 @@ import {
   FEEDBACK,
   MOVEMENT,
   NET,
-  RESUME_KEY_DELAY_MS,
 } from './config.js'
 import { Engine, PHASE } from './game/engine.js'
 import { disposeAudio } from './audio/sfx.js'
@@ -27,6 +27,7 @@ import Options from './ui/Options.jsx'
 import Training from './ui/Training.jsx'
 import Cabina, { Icono } from './ui/Cabina.jsx'
 import { vigilarActualizaciones } from './ui/actualizacion.js'
+import { crearVueltaConEscape } from './ui/volverConEscape.js'
 import Summary from './ui/Summary.jsx'
 
 /**
@@ -403,41 +404,34 @@ export default function App() {
   }, [])
 
   /**
-   * **Y ESC reanuda** (vuelta 89). La 88 le enseñó a cerrar el panel de
-   * opciones y ahí se quedó: con el panel ya cerrado, la única salida de la
-   * pausa era encontrar «Reanudar» con el ratón, que es lo contrario de lo que
-   * promete una tecla que ya hace lo de al lado.
-   *
-   * Tres guardas, y ninguna es de adorno:
-   *
-   * - **Con un panel abierto, no.** Ese ESC es suyo —lo cierra— y `panelOpen`
-   *   todavía vale `true` en el manejador de esa misma pulsación, porque el
-   *   estado de React no se ha confirmado aún. Así que cerrar y reanudar nunca
-   *   caen en la misma tecla, y no hace falta pelearse por el orden de dos
-   *   escuchas de `window` (`stopPropagation` no para a las hermanas).
-   * - **Y sólo estando en pausa de verdad**, con el ratón ya suelto.
-   * - **Y no antes de `RESUME_KEY_DELAY_MS`**, que es lo que impide que el ESC
-   *   que *provoca* la pausa la levante de rebote, y de paso espera a que el
-   *   navegador vuelva a admitir la captura. Ver el porqué en `config.js`.
+   * **Desde la vuelta 101 ESC es un «atrás» forzado**: con el juego en pausa,
+   * cualquier ESC cierra lo que haya abierto —opciones, armería— y vuelve a la
+   * partida, y una pulsación dentro de la espera del navegador **no se tira**:
+   * se anota y se cumple en cuanto se puede. Es la misma pieza que usa la página
+   * del multijugador (`crearVueltaConEscape`). Lo que sigue siendo de otro es la
+   * captura de una tecla en Controles: esa escucha en captura y para el evento
+   * antes de que llegue aquí, que es lo que deja cancelar un bind con ESC.
    */
-  const pausadoDesde = useRef(0)
+  const panelAbierto = useRef(false)
+  panelAbierto.current = panelOpen
+  const vuelta = useMemo(() => crearVueltaConEscape(() => engineRef.current?.requestLock()), [])
   useEffect(() => {
-    if (phase !== PHASE.PAUSED) return undefined
-    pausadoDesde.current = performance.now()
-    return undefined
-  }, [phase])
+    if (phase === PHASE.PAUSED) vuelta.soltado()
+    else vuelta.cancelar()
+  }, [phase, vuelta])
 
   useEffect(() => {
-    if (phase !== PHASE.PAUSED || panelOpen) return undefined
+    if (phase !== PHASE.PAUSED) return undefined
     const onKey = (event) => {
       if (event.key !== 'Escape') return
-      if (performance.now() - pausadoDesde.current < RESUME_KEY_DELAY_MS) return
+      if (!vuelta.pedir(performance.now(), panelAbierto.current)) return
       event.preventDefault()
-      lock()
+      setOptionsOpen(false)
+      setArmouryOpen(false)
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [phase, panelOpen, lock])
+  }, [phase, vuelta])
 
   return (
     <div className="app">

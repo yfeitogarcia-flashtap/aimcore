@@ -1868,38 +1868,43 @@ existe, mide, no tiene nada encima y es opaco —lo afirmó cinco veces— y el
 jugador seguir sin verlo. Eso se comprueba **mirando la captura y preguntándose
 contra qué compite**.
 
-**Y ESC también reanuda desde la tienda** (vuelta 91), que es lo que la 89 dejó
-a medias por el otro lado. Lo reportado era que ESC llevaba al menú y el
-siguiente no volvía al juego; lo que se midió antes de tocar nada fue un fallo
-**distinto y en la dirección contraria** — ESC cerraba la tienda **y volvía al
-juego de un salto**, sin que el menú llegara a verse. La causa: el manejador de
-la tienda vive en `document` y el de reanudar en `window`, así que un evento que
-burbujea pasa por los dos. Es el problema de la 89 con dos targets en vez de uno,
-y la respuesta es la misma —**no pelearse por el orden**—: cerrar la tienda
-**reinicia la espera**, con el mismo número que ya significa «espera a que
-Chrome vuelva a admitir la captura».
+**ESC es un «atrás» forzado, y acaba siempre en la partida** (vuelta 89; desde
+la 101, de una vez). **Ésta es la convención permanente para cualquier pantalla
+que se abra encima de una partida.** Con el menú, la tienda, opciones o la armería
+delante, un ESC cierra lo que haya y devuelve a jugar, en el entrenamiento y en el
+multijugador, con **una sola pieza** (`src/ui/volverConEscape.js`, la regla de la
+63). La 89 y la 91 hacían lo contrario a medias —tiraban cualquier ESC dentro de la
+espera del navegador, y cerrar la tienda la reiniciaba para que el menú se viera—
+y jugando se leyó como lo que era: quien aporrea ESC para volver se queda en el
+menú. Cuatro reglas que son el mecanismo:
 
-**ESC cierra y también vuelve** (vuelta 89). La 88 le enseñó a cerrar el panel de
-opciones y se quedó a mitad: con el panel cerrado, la única salida de la pausa
-era buscar «Reanudar» con el ratón. Ahora reanuda, en el entrenamiento y en el
-duelo, y lo que tiene de mecanismo es **por qué es una espera y no una
-condición** (`RESUME_KEY_DELAY_MS`, 1300 ms):
+- **Una pulsación dentro de la espera no se tira: se anota.** Chrome rechaza
+  `requestPointerLock` durante algo más de un segundo tras una salida provocada
+  por el usuario, **sin error visible** (`RESUME_KEY_DELAY_MS`, 1300 ms); la
+  vuelta se pide en cuanto se puede.
+- **El eco de la salida sí se descarta**, con su propio número y no con la espera
+  entera (`ESC_MISMA_PULSACION_MS`, 300 ms desde el `pointerlockchange`): el orden
+  entre ese evento y el `keydown` no está garantizado, y ésa es la única pulsación
+  que no puede significar «volver».
+- **Salvo que cierre algo**: un ESC que cierra una tienda o un panel no pudo
+  soltar el ratón —lo soltó abrirlos—, así que es una vuelta aunque llegue pegado.
+  Lo decide `panelOpen` leído en esa misma pulsación, antes de que React confirme
+  el cierre.
+- **La captura de una tecla en Controles es la excepción**: escucha en captura y
+  para el evento antes de que llegue aquí, que es lo que deja cancelar un bind.
 
-- **Quien suelta el ratón al pulsar ESC es el navegador**, y el orden entre su
-  `pointerlockchange` y el `keydown` no está garantizado: sin espera, una sola
-  pulsación podría pausar y reanudar a la vez y ESC dejaría de abrir el menú.
-  Deducirlo del estado no vale — el estado es justo lo que puede haber cambiado.
-- **Y Chrome rechaza `requestPointerLock`** durante algo más de un segundo tras
-  una salida provocada por el usuario, **sin error visible**: no pasa nada, que
-  es el fallo que se está arreglando.
-- **Y el panel abierto se gatea con `panelOpen`, no con el evento.** En la
-  pulsación que cierra el panel ese estado todavía vale `true` porque React no
-  lo ha confirmado, así que cerrar y reanudar nunca caen en la misma tecla — y
-  no hace falta pelearse por el orden de dos escuchas del mismo `window`, donde
-  `stopPropagation` no para a las hermanas.
+**Y cerrar la tienda es volver a jugar, no ir al menú del código** (vuelta 101).
+La tecla de armería la abre y la cierra; cerrarla —con esa tecla o con ESC— pide
+la captura y el menú de ESC no asoma mientras se espera (`volviendo()`), salvo que
+la captura no llegue, que entonces sale para que nadie se quede sin mando. **Y el
+código de la sala no sale si no se pide**: el menú de ESC lleva *Invitar · ver el
+código*, y se vuelve a esconder al volver a jugar. Una pantalla de invitar en
+mitad de una ronda es la tienda llevándote a otro sitio.
 
-Medido (`esc89b`): dentro de la espera no reanuda, pasada sí; con opciones
-abiertas las cierra y no reanuda, y el siguiente ESC sí.
+Medido (`esc101`): tres ESC seguidos dentro de la espera vuelven en 0.6 s; un ESC
+150 ms después de abrir la armería o la tienda la cierra y vuelve; la segunda B
+recaptura en 17 ms; y **el menú del código no asoma ni un frame** en toda la
+secuencia. `esc89b` y `esc91` medían la regla vieja.
 
 **Y bajo el logo no va ningún rótulo destacado** (vuelta 89). Había uno —«RONDA
 CON EXPLOSIVO»— que decía qué se juega al pulsar el primer botón, y **mentía
@@ -6971,7 +6976,7 @@ ranura: «Equipar» en una de ellas escribe `settings.throwable`, no
 `settings.weapon`. Sus filas dicen lo suyo —la mecha, el radio y qué hace al
 estallar— en vez de repetir un daño por zonas que una granada no tiene. Se cierra con **Escape**,
 con **B** o con su botón, y abrirla **pausa** la sesión igual que Escape. Y desde
-la vuelta 89 **el Escape siguiente reanuda**, sin tener que ir a «Reanudar».
+la vuelta 89 **el Escape siguiente reanuda**, sin tener que ir a «Reanudar» —y desde la 101 cualquier ESC, aunque se pulse varias veces seguidas: la vuelta se anota y se cumple en cuanto el navegador devuelve el ratón—.
 
 **Los precios se ven aunque aquí no se pague** (vuelta 92): salen de
 `catalogoDeTienda()`, el mismo catálogo que cobra el servidor del duelo, así que

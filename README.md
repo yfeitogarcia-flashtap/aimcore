@@ -441,8 +441,17 @@ entero, así que teclear seis caracteres no lleva a ningún sitio al que el enla
 no lleve ya — y sí puede llevar a una sala equivocada si se teclean mal.
 
 **El menú de ESC es el de dentro de una partida** (desde la vuelta 101, que crear
-la sala es cosa del lobby): el código y el enlace para invitar, *Pausar la
-partida*, *Opciones*, *Controles* y *Salir de la partida*. Las opciones son las mismas del
+la sala es cosa del lobby): *Pausar la partida*, *Opciones*, *Controles*, *Salir
+de la partida* y **Invitar · ver el código**, que es lo único que enseña el código
+y el enlace — con la partida en marcha no salen si no se piden, y se vuelven a
+esconder al volver a jugar.
+
+**ESC es un «atrás» forzado, y acaba siempre en la partida.** Con el menú, la
+tienda o las opciones delante, un ESC cierra lo que haya y te devuelve a jugar; si
+lo pulsas varias veces seguidas no se pierde ninguna —el navegador tarda algo más
+de un segundo en devolver el ratón tras soltarlo, y la vuelta se cumple en cuanto
+puede—. Igual en el entrenamiento. **Y la tecla de la tienda la abre y la cierra**:
+cerrarla con esa misma tecla, o con ESC, es volver a jugar, no ir al menú. Las opciones son las mismas del
 juego y se abren **sin salir de la partida**; el mundo sigue corriendo mientras
 las miras, así que ahí eres un blanco. Pausar es lo único que para el mundo, y lo
 para para los dos.
