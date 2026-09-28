@@ -584,6 +584,12 @@ quien crea la partida elige cuántos o si no la hay— con cada jugador encerrad
 en su zona y sin ver al otro. Ahí se abre la armería con **B** (reasignable en
 opciones): el mundo sigue corriendo, pero el ratón se suelta para poder pinchar.
 
+**Y para jugar entre amigos, compra sin límite:** en el lobby, *Fase de compra →
+Sin límite*. No hay reloj: la ronda empieza cuando **todos** pulsan **Listo** en la
+tienda (o Intro con la tienda abierta), y arriba se ve cuántos lo han dicho
+(«LISTOS 1/2»). Se puede desmarcar para seguir comprando, y quien se cae no deja a
+los demás esperando. Las opciones con reloj siguen ahí y son las de competición.
+
 **Y si eliges partida sin fase de compra, la tienda no cierra:** se compra
 durante la ronda entera, cuando puedas. No hay ventana entre rondas donde meterla,
 así que la ventana es la ronda — con el mundo corriendo, que es el precio: con el

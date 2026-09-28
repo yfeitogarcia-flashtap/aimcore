@@ -117,6 +117,14 @@ export const MSG = {
    */
   COMPRAR: 'm',
   /**
+   * **Listo para empezar la ronda** (vuelta 102), sólo en la compra **sin
+   * límite**: ahí no hay reloj que la cierre, así que la cierra que todos los
+   * que están conectados lo digan. `v` es 1 o 0 —se puede desmarcar— y el
+   * estado vuelve en la foto (`rd.li`), como todo lo que tienen que ver igual
+   * todos. No empieza por `l` a propósito: eso es del lobby (`esDelLobby`).
+   */
+  LISTO_COMPRA: 'cl',
+  /**
    * **Lo que tienes y lo que puedes** (vuelta 64). Del servidor a **un** jugador:
    * dinero, inventario y el techo de la ronda. Va como mensaje suelto y no en la
    * foto por dos motivos: cambia cada pocos minutos, no sesenta veces por
@@ -266,5 +274,8 @@ export function esDelLobby(t) {
  */
 export function compraAbierta(fase, compraSegundos) {
   if (fase === 'compra') return true
-  return compraSegundos <= 0 && fase === 'ronda'
+  // **Cero es «sin fase», y sólo cero** (vuelta 102): la compra sin límite es
+  // un número negativo (`ROUNDS.compraSinLimite`) y **sí** tiene fase —la más
+  // larga—, así que ahí la tienda cierra al empezar la ronda como en las demás.
+  return compraSegundos === 0 && fase === 'ronda'
 }

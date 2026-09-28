@@ -270,6 +270,11 @@ export class Partida {
       prorroga: false,
       /** Rondas jugadas al entrar en prórroga, para contar las tandas. */
       prorrogaDesde: 0,
+      /**
+       * **Quién ha dicho «listo» en una compra sin límite** (vuelta 102), por
+       * ranura. Vacío en cualquier otra fase y en las compras con reloj.
+       */
+      listos: new Set(),
     }
     /**
      * **Las salidas las declara el mapa** (vuelta 66). En el de duelo están en
@@ -328,7 +333,42 @@ export class Partida {
     // control que promete algo que el servidor no va a hacer.
     if (this.dotacion) { this.compraSegundos = 0; return }
     if (!Number.isFinite(segundos)) return
+    // **Sin límite es un valor, no un tope** (vuelta 102): se guarda tal cual y
+    // cada sitio que preguntaba `<= 0` («no hay fase») pregunta `=== 0`.
+    if (segundos === ROUNDS.compraSinLimite) { this.compraSegundos = ROUNDS.compraSinLimite; return }
     this.compraSegundos = Math.max(0, Math.min(60, Math.round(segundos)))
+  }
+
+  /** ¿La fase de compra de esta sala la cierra un «listo» de todos y no un reloj? */
+  get compraSinLimite() {
+    return this.compraSegundos === ROUNDS.compraSinLimite
+  }
+
+  /**
+   * **Los que tienen que decir «listo»** (vuelta 102): los que juegan y siguen
+   * conectados. Quien se ha caído no bloquea la ronda —si no, una caída sería
+   * una pausa sin tope—, y cuando vuelve se le vuelve a esperar.
+   */
+  _faltanListos() {
+    let faltan = 0
+    for (const j of this.jugadores.values()) {
+      if (j.bando === null || j.desconectado) continue
+      if (!this.rondas.listos.has(j.ranura)) faltan += 1
+    }
+    return faltan
+  }
+
+  /**
+   * **«Listo» en una compra sin límite** (vuelta 102). Sólo cuenta ahí: en las
+   * compras con reloj —las de competición— no hay forma de acortarla, que es lo
+   * que las hace iguales para los dos. Se puede desmarcar, y la ronda empieza
+   * en el paso siguiente al último «listo» (`_rondasTick`), no aquí dentro de
+   * un mensaje.
+   */
+  _listoParaRonda(jugador, listo) {
+    if (!this.compraSinLimite || this.rondas.fase !== 'compra' || jugador.bando === null) return
+    if (listo) this.rondas.listos.add(jugador.ranura)
+    else this.rondas.listos.delete(jugador.ranura)
   }
 
   get llena() {
@@ -814,6 +854,10 @@ export class Partida {
       this._comprar(jugador, mensaje.q, mensaje.a)
       return
     }
+    if (mensaje.t === MSG.LISTO_COMPRA) {
+      this._listoParaRonda(jugador, Boolean(mensaje.v))
+      return
+    }
     if (mensaje.t !== MSG.ENTRADA) return
     // Una entrada de un paso que ya se ejecutó llega tarde y no sirve: volver
     // atrás sería rehacer el mundo entero, y el cliente ya no la espera.
@@ -1122,7 +1166,9 @@ export class Partida {
     texto += `,"rd":${JSON.stringify({
       n: r.n,
       f: r.fase,
-      resta: r.hastaPaso ? Math.max(0, (r.hastaPaso - this.paso) * SIM_STEP_MS) : 0,
+      // Sin límite no hay «cuánto queda»: -1, y la lista de los que están listos.
+      resta: r.hastaPaso === Infinity ? -1 : r.hastaPaso ? Math.max(0, (r.hastaPaso - this.paso) * SIM_STEP_MS) : 0,
+      ...(r.fase === 'compra' && this.compraSinLimite ? { li: [...r.listos], nl: this._faltanListos() } : null),
       m: r.marcador,
       ...(r.ganador !== null ? { g: r.ganador, mot: r.motivo } : null),
       ...(r.ultima ? { u: r.ultima } : null),
@@ -2405,12 +2451,16 @@ export class Partida {
     // nadie se queda encerrado en su caja. No es un caso raro que haya que
     // esquivar, es una partida rápida — y por eso se decide aquí, donde está la
     // regla, y no en el reloj de fases.
-    if (this.compraSegundos <= 0) {
+    if (this.compraSegundos === 0) {
       this._empezarRonda()
       return
     }
     this.rondas.fase = 'compra'
-    this.rondas.hastaPaso = this.paso + this._pasosDe(this.compraSegundos)
+    this.rondas.listos.clear()
+    // **Sin límite no tiene final en el reloj** (vuelta 102): la cierra el
+    // último «listo», en `_rondasTick`. `Infinity` y no un número muy grande,
+    // para que ninguna cuenta de «cuánto queda» pueda parecer un tiempo.
+    this.rondas.hastaPaso = this.compraSinLimite ? Infinity : this.paso + this._pasosDe(this.compraSegundos)
     for (const jugador of this.jugadores.values()) {
       jugador.movimiento.setCorralito(this._cajaDe(jugador.ranura))
     }
@@ -2490,6 +2540,7 @@ export class Partida {
       if (cambio) this._enviarEconomia(jugador)
     }
     this.rondas.fase = 'ronda'
+    this.rondas.listos.clear()
     this.rondas.hastaPaso = this.paso + this._pasosDe(ROUNDS.duracionSegundos)
     /**
      * **La gracia de salida, si el mapa la pide** (vuelta 78).
@@ -2611,6 +2662,10 @@ export class Partida {
         this._terminarRonda(ganador, ganador === null ? 'empate' : 'muerte')
         return
       }
+    }
+    if (r.fase === 'compra' && this.compraSinLimite && this._faltanListos() === 0) {
+      this._empezarRonda()
+      return
     }
     if (this.paso < r.hastaPaso) return
     if (r.fase === 'compra') this._empezarRonda()

@@ -15236,3 +15236,70 @@ el código**, «Invitar» lo enseña, y cuatro ESC seguidos devuelven a jugar.
 `esc89b` y `esc91` medían la regla vieja —un ESC dentro de la espera *no*
 reanudaba, y cerrar la tienda dejaba el menú delante— y quedan sustituidos.
 
+---
+
+## §102 — La compra sin límite, el disparo «doble» y el lag de la primera prueba
+
+Tres cosas de la segunda prueba con dos PCs, más un solapamiento que se vio de
+paso. Lo del ESC y la B está en §101.15.
+
+### 102.1 — Compra sin límite, para jugar entre amigos
+
+Se pidió «tiempo de compra indefinido para partidas for fun, sin quitar las reglas
+de competición». Es una opción más del selector del lobby —*Sin límite*— al lado
+de 0, 5, 10, 15, 20 y 30 s, que siguen igual.
+
+**Qué la cierra.** Sin reloj, alguien tiene que decir que ya está, y la respuesta
+que no deja a nadie fuera es **todos**: la ronda empieza cuando todos los
+conectados han pulsado **Listo** en la tienda (o Intro con la tienda abierta).
+Marcarlo cierra la tienda y te devuelve a la partida —cerrar la tienda es volver
+(§101.15)—; desmarcarlo no, porque quien se desmarca va a comprar algo más.
+
+**Un valor, no una bandera.** `ROUNDS.compraSinLimite` vale −1 y viaja por los
+mismos sitios que los segundos. Lo que cuesta es auditar cada `<= 0`, que
+significaba «no hay fase»: con −1 habrían leído «sin límite» como «sin compra».
+Pasan a `=== 0` en `compraAbierta` (la usan los dos extremos) y en
+`_empezarCompra`. En la foto, `resta: -1` y la lista de listos; el reloj de la
+ronda enseña «LISTOS 1/2» y el rótulo, la tecla de la tienda leída del bind.
+
+**Quien se cae no bloquea.** Se cuentan los conectados: si contara las butacas,
+una caída sería una pausa sin tope por la puerta de atrás. Y en las compras con
+reloj el «listo» se ignora: nadie puede acortar la de competición.
+
+Medido: `compra102` (contra `Lobby` y `Partida`) y `compra102nav` (dos navegadores:
+el lobby la ofrece, el reloj dice «LISTOS 0/2», pasan segundos y sigue, el botón
+cierra la tienda y cuenta, el otro lo ve y su Intro empieza la ronda).
+
+### 102.2 — El disparo «doble» era el otro PC
+
+Se reportó que la Pulse sacaba dos disparos por clic —sonido y destello dobles—
+contando una sola bala. Medido antes de tocar nada (`doble102`, con dos
+navegadores, contando llamadas en el motor y voces creadas en el contexto de
+audio): **un clic es un disparo en la pantalla de quien dispara** —un `_shoot`,
+una voz (3 osciladores y un búfer, lo mismo que en el entrenamiento), una marca y
+un veredicto—, también con el lobby y la compra de por medio. Lo que sí pasa es
+que **el otro navegador dibuja y oye ese mismo disparo** (`_tiroDeRival`: el
+fogonazo y la voz del arma del rival, que existen desde §101.10). Con dos PCs uno
+al lado del otro, eso son dos disparos separados por un viaje de red: el de tu
+pantalla al clic y el del otro PC un momento después.
+
+No se ha tocado nada, a propósito: que el rival suene y se vea disparar es la
+convención de la 63. Si en una partida real —un PC por persona— se sigue oyendo
+doble, es otro fallo y hay que medirlo con ese PC.
+
+### 102.3 — El lag: lo que se puede y no se puede saber desde aquí
+
+El servidor está en París (Fly, `cdg`) y todo va por WebSocket, o sea por TCP: un
+paquete perdido en el wifi **para todo lo que viene detrás** hasta que se
+reenvía, y eso se nota como un tirón aunque el ping medio sea bueno. Con dos PCs
+en el mismo wifi, los dos comparten el aire. No hay registro de esa partida, así
+que no se puede afirmar; lo que sí da el juego es **F3**, con el RTT, las fotos
+que llegan y las correcciones: si en un tirón el RTT salta o las correcciones
+suben, es la red; si no se mueven y los FPS caen, es el PC.
+
+### 102.4 — El código de la tienda se pintaba encima del precio
+
+Visto en la captura de la tienda: la combinación («1 1») iba en absoluto en la
+esquina de arriba, justo encima del precio. Ahora va en el flujo, debajo del
+precio, y no puede pisar nada.
+

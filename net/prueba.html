@@ -228,6 +228,8 @@
      debajo. En verde de acción porque eso es lo que hay que hacer aquí, y
      pegado al campo —margen de abajo a cero— para que se lean como una cosa y
      no como una frase suelta encima de otra. */
+  .tienda-listo { text-align: center; margin: 8px 0 4px; }
+  .tienda-listo button[hidden] { display: none; }
   .volver-esc { margin: 6px 0 12px; color: var(--cab-texto-apagado); font-size: var(--cab-t-pequeno); }
   .invita { margin: 12px 0 0; color: var(--cab-accion); font-size: var(--cab-t-pequeno); line-height: 1.4; width: 340px; }
   .linea input { flex: 1; min-width: 0; background: var(--cab-fondo); color: var(--cab-texto-suave); border: 0;
@@ -283,7 +285,11 @@
     letter-spacing: .04em; cursor: pointer; }
   .art:hover { border-color: #2FCB82; color: #FFF; }
   .art .precio { color: var(--cab-accion); font-weight: 700; font-variant-numeric: tabular-nums; }
-  .art .codigo { position: absolute; top: 3px; right: 6px; font-size: var(--cab-t-micro); font-weight: 700;
+  /* **Debajo del precio y en su renglón** (vuelta 102): en la esquina, en
+     absoluto, se pintaba encima del precio —«1 1» sobre «$1600»—, que es justo
+     lo que hay que leer de un artículo. En el flujo no puede pisar nada. */
+  .art .der { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+  .art .codigo { display: block; font-size: var(--cab-t-micro); font-weight: 700;
     letter-spacing: .14em; color: var(--cab-elegido); }
   /* Lo que no se puede comprar se ve, con su precio y su código, y no se puede
      pulsar: esconderlo sería no poder aprenderse la combinación. */
@@ -466,6 +472,9 @@
     <span id="tiendaTecleado">&nbsp;</span>
     <em id="tiendaFase">&nbsp;</em>
   </div>
+  <!-- **«Listo»**, sólo en la compra sin límite (vuelta 102): ahí no hay reloj
+       que cierre la fase, la cierra que todos lo digan. Intro también vale. -->
+  <p class="tienda-listo"><button id="tiendaListo" class="control button" aria-pressed="false" hidden>Listo</button></p>
   <div id="tiendaGrid"></div>
   <p class="apagado" style="max-width:980px;margin:9px auto 0">
     <kbd id="tiendaCierra">B</kbd> cierra · clic para comprar · o teclea <b>categoría + código</b>

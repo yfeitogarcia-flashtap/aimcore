@@ -1388,6 +1388,19 @@ function pintarRonda() {
   // queda*, no hasta cuándo: los relojes de las dos pantallas y el del servidor
   // no coinciden. Y como el reloj de la ronda es el número de paso, en pausa no
   // baja sola: deja de bajar porque el mundo deja de avanzar.
+  /**
+   * **En la compra sin límite no hay cuenta: hay listos** (vuelta 102). Lo que
+   * se enseña en el sitio del reloj es cuántos han dicho «listo» de cuántos, y
+   * se repinta el botón de la tienda con el mismo cambio, que es cuando cambia.
+   */
+  if (r.fase === 'compra' && r.sinLimite) {
+    const texto = `LISTOS ${r.listos.length}/${r.listos.length + r.faltan}`
+    if (texto === restaPintada) return
+    restaPintada = texto
+    $('rondaTiempo').textContent = texto
+    pintarListo()
+    return
+  }
   const seg = Math.ceil(Math.max(0, r.resta) / 1000)
   const texto = `${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, '0')}`
   if (texto === restaPintada) return
@@ -1437,7 +1450,12 @@ function pintarFaseDeRonda(r) {
     espera: cliente.porEquipo > 1 ? 'ESPERANDO A LOS EQUIPOS' : 'ESPERANDO AL RIVAL',
     fin: ' ',
   }
-  $('rondaFase').textContent = dice[r.fase] ?? ' '
+  // **Y en la sin límite, cómo se termina** (vuelta 102): con la tecla de la
+  // tienda, que es donde está el «Listo». La tecla sale del bind (vuelta 97).
+  const comoSeAcaba = r.fase === 'compra' && r.sinLimite
+    ? ` · ${keyLabel(keysOf('armoury', getKeybinds())[0])} → LISTO`
+    : ''
+  $('rondaFase').textContent = (dice[r.fase] ?? ' ') + comoSeAcaba
   // **Al acabar la compra, la tienda se cierra sola.** Dejarla abierta sería
   // dejar al jugador con el ratón suelto justo cuando empieza la ronda; y fuera
   // de la fase no hay nada que comprar. Se repinta en cada cambio de fase por lo
@@ -1583,8 +1601,8 @@ function montarTienda() {
       boton.type = 'button'
       boton.innerHTML =
         `<span>${item.nombre}<span class="nota">&nbsp;</span></span>` +
-        `<span class="precio">${item.deSerie ? 'de serie' : `$${item.precio}`}</span>` +
-        `<span class="codigo">${item.categoria} ${item.codigo}</span>` +
+        `<span class="der"><span class="precio">${item.deSerie ? 'de serie' : `$${item.precio}`}</span>` +
+        `<span class="codigo">${item.categoria} ${item.codigo}</span></span>` +
         // **El precinto de lo que no existe** (vuelta 65). Va en el montaje y no
         // en el repintado porque no depende de nada: una granada no existe hoy y
         // no existirá a mitad de partida. Lo que sí se repinta es lo demás.
@@ -1641,12 +1659,43 @@ function porQueNo(item, eco, fase) {
   return null
 }
 
+/**
+ * **El «Listo» de la compra sin límite** (vuelta 102), en la tienda: es donde
+ * se está al comprar, así que es donde se dice que ya se ha terminado. Sólo se
+ * enseña en esa fase; dice cuántos faltan y si el tuyo ya cuenta. Marcarlo
+ * cierra la tienda y te devuelve a la partida —cerrar la tienda es volver
+ * (vuelta 101)—; desmarcarlo no, porque quien se desmarca va a comprar algo más.
+ */
+function pintarListo() {
+  const boton = $('tiendaListo')
+  const r = cliente.rondas
+  const ver = r.fase === 'compra' && r.sinLimite
+  boton.hidden = !ver
+  if (!ver) return
+  const listo = cliente.listoEnCompra
+  boton.setAttribute('aria-pressed', String(listo))
+  boton.classList.toggle('button--primary', !listo)
+  boton.textContent = listo
+    ? `Listo ✓ · faltan ${r.faltan} · pulsa para desmarcar`
+    : `Listo · empezar la ronda (${r.listos.length}/${r.listos.length + r.faltan})`
+}
+$('tiendaListo').addEventListener('click', () => marcarListo())
+function marcarListo() {
+  const listo = !cliente.listoEnCompra
+  cliente.listoParaRonda(listo)
+  if (!listo) return
+  volviendo()
+  vuelta.cancelar()
+  motor.requestLock()
+}
+
 /** Repinta la tienda con lo que dice el servidor. */
 function pintarTienda() {
   const eco = cliente.economia
   const fase = cliente.rondas.fase
   if (tienda.hidden) return
   $('tiendaDinero').textContent = `$${eco.dinero}`
+  pintarListo()
   $('tiendaFase').textContent = !compraAbierta(fase, eco.compra)
     ? 'sólo se compra entre rondas'
     : fase === 'compra'
@@ -1707,6 +1756,13 @@ function alternarTienda(abrir = tienda.hidden) {
  */
 document.addEventListener('keydown', (evento) => {
   if (tienda.hidden) return
+  // **Intro es «Listo»** en la compra sin límite (vuelta 102): la tienda es un
+  // panel de teclado —se compra tecleando— y el botón se alcanza sin el ratón.
+  if (evento.key === 'Enter' && cliente.rondas.sinLimite && cliente.rondas.fase === 'compra') {
+    evento.preventDefault()
+    marcarListo()
+    return
+  }
   if (evento.key === 'Escape') {
     // **Cerrarla con ESC es volver a la partida** (vuelta 101): el menú del
     // código no asoma por detrás. El manejador de ESC de la ventana recibe esta

@@ -103,6 +103,17 @@ function Hueco({ hueco, miembro, tu, anfitrion, color, etiqueta, onSentarse }) {
   )
 }
 
+/**
+ * **Cómo se llama cada opción de compra** (vuelta 102), en el selector y en el
+ * resumen: cero es «sin fase» y `compraSinLimite` es la que cierra un «listo»
+ * de todos. Una sola función para que las dos columnas digan lo mismo.
+ */
+function nombreDeCompra(segundos, largo = false) {
+  if (segundos === 0) return largo ? 'sin fase (rápida)' : 'Sin fase'
+  if (segundos === ROUNDS.compraSinLimite) return largo ? 'sin límite · hasta que todos estén listos' : 'Sin límite'
+  return `${segundos} s`
+}
+
 function Lobby({ estado, codigo, enlace, reconectar, api }) {
   const [copiado, setCopiado] = useState(null)
   useEffect(() => {
@@ -157,7 +168,7 @@ function Lobby({ estado, codigo, enlace, reconectar, api }) {
   const resumen = [
     ['Modo', ficha.label],
     ['Mapa', mapa?.label ?? '—'],
-    ['Compra', !equipos ? 'no hay' : reparte ? 'el mapa reparte' : estado.compra > 0 ? `${estado.compra} s` : 'sin fase (rápida)'],
+    ['Compra', !equipos ? 'no hay' : reparte ? 'el mapa reparte' : nombreDeCompra(estado.compra, true)],
     ['Listos', equipos
       ? `${listosPorBando[0]} azul · ${listosPorBando[1]} magenta`
       : `${req.listos} de ${estado.huecos} (mín. ${req.minimo})`],
@@ -241,7 +252,7 @@ function Lobby({ estado, codigo, enlace, reconectar, api }) {
                   disabled={!puedeConfigurar || !equipos || reparte}
                   onClick={() => api.config({ compra: segundos })}
                 >
-                  {segundos === 0 ? 'Sin fase' : `${segundos} s`}
+                  {nombreDeCompra(segundos)}
                 </button>
               ))}
             </div>
@@ -250,7 +261,9 @@ function Lobby({ estado, codigo, enlace, reconectar, api }) {
                 ? 'El todos contra todos no tiene rondas ni tienda: cada uno sale con lo que elija en la armería.'
                 : reparte
                   ? 'Este mapa reparte el equipo: no hay tienda ni fase de compra.'
-                  : 'Lo que dura la compra entre rondas. Sin fase, la tienda está abierta toda la ronda.'}
+                  : estado.compra === ROUNDS.compraSinLimite
+                    ? 'Sin límite: la ronda empieza cuando todos pulsan «Listo» en la tienda. Para jugar entre amigos; las opciones con reloj son las de competición.'
+                    : 'Lo que dura la compra entre rondas. Sin fase, la tienda está abierta toda la ronda; sin límite, empieza cuando todos están listos.'}
             </span>
           </Grupo>
 

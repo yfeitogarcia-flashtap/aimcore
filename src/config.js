@@ -7336,8 +7336,23 @@ export const ROUNDS = {
    * que miden el motor, que hasta ahora se apañaban con `VEKTOR_RONDAS=0`).
    */
   compraSegundos: 15,
-  /** Lo que ofrece el selector de la pantalla del duelo. El 0 es «sin fase». */
-  compraOpciones: [0, 5, 10, 15, 20, 30],
+  /**
+   * Lo que ofrece el selector del lobby. El 0 es «sin fase» y
+   * `compraSinLimite` es la compra **sin reloj** (vuelta 102).
+   */
+  compraOpciones: [0, 5, 10, 15, 20, 30, -1],
+  /**
+   * **La compra sin límite** (vuelta 102), para partidas entre amigos: la fase
+   * no la cierra un reloj sino **que todos digan «listo»**. Es un número y no
+   * otra bandera porque viaja por los mismos sitios que los segundos —el
+   * selector, la dirección, el lobby, la bienvenida— y dos campos serían dos
+   * verdades sobre lo mismo.
+   *
+   * Negativo a propósito y **no cero**: cero significa lo contrario —que no hay
+   * fase— y por eso cada sitio que preguntaba `<= 0` pasa a preguntar `=== 0`.
+   * Las opciones con reloj se quedan como estaban: son las de competición.
+   */
+  compraSinLimite: -1,
   /**
    * **La prórroga se juega en tandas, no a muerte súbita.** Con una sola ronda
    * de desempate, las trece anteriores valdrían lo mismo que la catorceava. Al

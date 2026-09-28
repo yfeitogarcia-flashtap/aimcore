@@ -1893,6 +1893,26 @@ menú. Cuatro reglas que son el mecanismo:
 - **La captura de una tecla en Controles es la excepción**: escucha en captura y
   para el evento antes de que llegue aquí, que es lo que deja cancelar un bind.
 
+**Una fase de compra sin reloj la cierra un «listo» de todos, y es un valor y no
+una bandera** (vuelta 102). `ROUNDS.compraSinLimite` (−1) viaja por los mismos
+sitios que los segundos —selector del lobby, dirección, bienvenida, economía— y
+por eso no hay dos verdades sobre cuánto dura una compra. Tres reglas:
+
+- **Cero es «sin fase», y sólo cero.** Cada sitio que preguntaba `<= 0` pregunta
+  `=== 0` (`compraAbierta`, `_empezarCompra`): con `<=`, la compra sin límite se
+  habría leído como la ausencia de compra, que es lo contrario.
+- **Lo decide el servidor en el paso, no en el mensaje.** `MSG.LISTO_COMPRA` sólo
+  anota (y se puede desmarcar); la ronda empieza en `_rondasTick` cuando no falta
+  nadie **conectado** —una caída no puede ser una pausa sin tope—. El estado
+  vuelve en la foto (`rd.li`, `rd.nl`, `resta: -1`), como todo lo que tienen que
+  ver igual todos. No empieza por `l`: eso es del lobby (`esDelLobby`).
+- **Y en las compras con reloj el «listo» no hace nada**: son las de competición,
+  y lo que las hace iguales para todos es que nadie las puede acortar.
+
+Medido (`compra102`, sin navegador; `compra102nav`, con dos): 90 s sin cerrarse,
+tres de cuatro no bastan, desmarcar se nota, el último «listo» empieza la ronda,
+un caído no bloquea y en una compra de 15 s el «listo» no hace nada.
+
 **Y cerrar la tienda es volver a jugar, no ir al menú del código** (vuelta 101).
 La tecla de armería la abre y la cierra; cerrarla —con esa tecla o con ESC— pide
 la captura y el menú de ESC no asoma mientras se espera (`volviendo()`), salvo que
@@ -6278,7 +6298,9 @@ entre ronda y ronda hay una fase de compra —**15 s de fábrica y elegible al c
 la partida**, incluida la opción de no tenerla— con cada jugador encerrado en su
 caja y sin recibir la posición del otro. Tuning en `ROUNDS` y `ECONOMY`.
 **Sin fase** (la opción de partida rápida) la tienda no cierra: se compra durante
-la ronda entera, con el mundo corriendo (vuelta 65). Y desde la **72 un mapa
+la ronda entera, con el mundo corriendo (vuelta 65). Y desde la **102** hay
+**compra sin límite**, para partidas entre amigos: la cierra que todos pulsen
+«Listo» en la tienda, no un reloj. Y desde la **72 un mapa
 puede no tener economía en absoluto** —Los Pilares reparte— que es lo contrario
 de «sin fase», no lo mismo.
 

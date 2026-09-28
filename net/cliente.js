@@ -184,7 +184,7 @@ export class ClienteRed {
      * y se dibuja. La misma regla que la pausa, y por el mismo motivo.
      */
     this.rondas = { n: 0, fase: 'espera', resta: 0, marcador: [0, 0], ganador: null,
-                    motivo: null, ultima: null, prorroga: false }
+                    motivo: null, ultima: null, prorroga: false, sinLimite: false, listos: [], faltan: 0 }
     /** El pase de reconexión, que da la bienvenida. Lo guarda la página. */
     this.pase = null
     /**
@@ -970,6 +970,22 @@ export class ClienteRed {
     this.transporte.send(JSON.stringify({ t: MSG.COMPRAR, q: clave, ...(arma ? { a: arma } : null) }))
   }
 
+  /** ¿He dicho «listo» en esta compra sin límite? Lo dice el servidor, en la foto. */
+  get listoEnCompra() {
+    return this.rondas.listos.includes(this.ranura)
+  }
+
+  /**
+   * **«Listo» en la compra sin límite** (vuelta 102). Sólo se pide: quién está
+   * listo y cuándo empieza la ronda lo decide el servidor, que lo devuelve en
+   * la foto. Fuera de esa fase no manda nada.
+   */
+  listoParaRonda(listo = !this.listoEnCompra) {
+    if (!this.conectado || !this.rondas.sinLimite || this.rondas.fase !== 'compra') return
+    this.transporte.send(JSON.stringify({ t: MSG.LISTO_COMPRA, v: listo ? 1 : 0 }))
+  }
+
+
   /**
    * **Las rondas salen enteras de la foto**, como la pausa. Lo único que hace
    * el cliente con ellas es obedecer:
@@ -999,6 +1015,14 @@ export class ClienteRed {
       motivo: r.mot ?? null,
       ultima: r.u ?? null,
       prorroga: !!r.pr,
+      /**
+       * **La compra sin límite** (vuelta 102): no hay cuenta (`resta` −1) y lo
+       * que se enseña es quién está listo. `listos` son ranuras; `faltan`, los
+       * conectados que aún no lo han dicho — los dos los cuenta el servidor.
+       */
+      sinLimite: r.resta === -1,
+      listos: r.li ?? [],
+      faltan: r.nl ?? 0,
     }
     if (!cambia) return
     this.pendientes.length = 0
@@ -1411,7 +1435,7 @@ export class ClienteRed {
     this.muertes = 0
     this.marcador = []
     this.marcadorVersion += 1
-    this.rondas = { n: 0, fase: 'espera', resta: 0, marcador: [0, 0], ganador: null, motivo: null, ultima: null, prorroga: false }
+    this.rondas = { n: 0, fase: 'espera', resta: 0, marcador: [0, 0], ganador: null, motivo: null, ultima: null, prorroga: false, sinLimite: false, listos: [], faltan: 0 }
     this.todos = { n: 0, fase: 'espera', resta: 0, objetivo: 0, ganador: null }
     this.pausa = { pausada: false, por: null, mia: false, libres: PAUSE.free, rivalLibres: PAUSE.free, motivo: null }
     this.votacion = { activa: false, por: null, mia: false, votado: false }
