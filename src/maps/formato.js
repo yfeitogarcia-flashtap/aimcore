@@ -10,7 +10,7 @@
  * Nada de geometría: eso es de `scenario.js`, que monta **estos mismos datos**.
  */
 
-import { COVER, MODOS_DE_MAPA, ESCALERAS, ESTAMPADOS, FANS, FONDOS, PRIMARY_WEAPONS, PRISMAS, ROOM, ROUNDS, SURFACES, TUBES, ZIPLINES, coverHeight, esFotoDeFondo, esImagenDeEstampado } from '../config.js'
+import { COVER, MODOS_DE_MAPA, ESCALERAS, ESTAMPADOS, FANS, FONDOS, PRIMARY_WEAPONS, PRISMAS, ROOM, ROUNDS, SURFACES, TODOS, TUBES, ZIPLINES, coverHeight, esFotoDeFondo, esImagenDeEstampado } from '../config.js'
 
 /**
  * **Todos los campos que puede tener un mapa, en el orden en que se escriben.**
@@ -21,7 +21,7 @@ import { COVER, MODOS_DE_MAPA, ESCALERAS, ESTAMPADOS, FANS, FONDOS, PRIMARY_WEAP
  * campo a un escenario, va aquí y en `sanearMapa`.
  */
 export const CAMPOS = [
-  'clave', 'label', 'card', 'modos', 'publicado', 'soloDuelo', 'fondo', 'room', 'spawn', 'fisica', 'duelo',
+  'clave', 'label', 'card', 'modos', 'publicado', 'soloDuelo', 'fondo', 'room', 'spawn', 'fisica', 'duelo', 'todos',
   'boxes', 'prismas', 'ramps', 'tubos', 'escaleras', 'estampados', 'ventiladores', 'tirolinas', 'teletransportes', 'spawnZone', 'objectiveSites', 'pickups', 'routes',
   'anchors',
 ]
@@ -667,6 +667,18 @@ export function sanearMapa(bruto) {
 
   const duelo = sanearDuelo(bruto.duelo, problemas)
   if (duelo) mapa.duelo = duelo
+  const todos = sanearTodos(bruto.todos, problemas)
+  if (todos) mapa.todos = todos
+  /**
+   * **Y no se publica en el todos contra todos lo que no tiene sus salidas**
+   * (vuelta 100). Es la misma regla que el duelo de arriba, con el número que
+   * le toca: la sala reparte `todos.salidas[ranura]` y cuántos caben sale de
+   * cuántas hay. Va después de sanear el bloque porque es de él de donde sale.
+   */
+  if (mapa.modos?.includes('todos') && (mapa.todos?.salidas?.length ?? 0) < TODOS.minSalidas) {
+    mapa.modos = mapa.modos.filter((m) => m !== 'todos')
+    problemas.push(`modos: el todos contra todos necesita al menos ${TODOS.minSalidas} salidas; se quita`)
+  }
 
   const listas = {
     boxes: (b, i) => sanearPieza(b, problemas, `pieza ${i}`),
@@ -709,6 +721,46 @@ export function sanearMapa(bruto) {
  * midan lo mismo—: eso son medidas, y las hace el editor contra la geometría
  * montada. El saneado dice si el dato es un dato.
  */
+/**
+ * **Una salida, saneada**: la usan el duelo y el todos contra todos, que son la
+ * misma cosa —un punto con su rumbo— puesta en dos listas.
+ */
+function sanearSalida(s, i, problemas, donde) {
+  if (!finito(s?.x) || !finito(s?.z)) { problemas.push(`${donde} ${i}: x o z no son números`); return null }
+  // **El rumbo es opcional y su ausencia se dice**: sin él, el que sale en el
+  // sur aparece mirando a la pared del fondo (vuelta 66). Vale 0 para no
+  // inventarse nada, pero que valga 0 por defecto no puede pasar desapercibido.
+  if (!finito(s.yaw)) problemas.push(`${donde} ${i}: sin rumbo, saldrá mirando a −Z`)
+  return { x: s.x, z: s.z, yaw: finito(s.yaw) ? s.yaw : 0 }
+}
+
+/**
+ * **El bloque del todos contra todos** (vuelta 100): sus salidas y nada más.
+ *
+ * Es una lista aparte de `duelo.salidas` a propósito, aunque las dos sean
+ * puntos con rumbo: un mapa se puede publicar en los dos modos, y lo que hace
+ * bueno un reparto de dos —extremos opuestos con el centro tapado— no es lo
+ * que hace bueno uno de ocho. Y **cuántas hay es cuántos caben**: no hay un
+ * número de jugadores aparte que pueda contradecir a la lista, que es la regla
+ * de `TRAINER_SCENARIOS` derivándose de un dato y no de una segunda lista.
+ */
+function sanearTodos(bruto, problemas) {
+  if (!bruto || typeof bruto !== 'object') return null
+  if (!Array.isArray(bruto.salidas)) {
+    problemas.push('todos: las salidas no son una lista')
+    return null
+  }
+  let salidas = bruto.salidas.map((s, i) => sanearSalida(s, i, problemas, 'salida de todos')).filter(Boolean)
+  if (salidas.length > TODOS.maxJugadores) {
+    problemas.push(`todos: ${salidas.length} salidas y caben ${TODOS.maxJugadores}; sobran las últimas`)
+    salidas = salidas.slice(0, TODOS.maxJugadores)
+  }
+  if (salidas.length && salidas.length < TODOS.minSalidas) {
+    problemas.push(`todos: hay ${salidas.length} salida(s) y hacen falta ${TODOS.minSalidas} para que no sea un duelo`)
+  }
+  return { salidas }
+}
+
 /** Tope de la gracia de inicio de ronda. Por encima, el mapa no se puede jugar. */
 export const INVULNERABILIDAD_MAX = 10000
 
@@ -719,15 +771,7 @@ function sanearDuelo(bruto, problemas) {
   if (bruto.salidas !== undefined) {
     if (!Array.isArray(bruto.salidas)) problemas.push('duelo: las salidas no son una lista')
     else {
-      duelo.salidas = bruto.salidas.map((s, i) => {
-        if (!finito(s?.x) || !finito(s?.z)) { problemas.push(`salida ${i}: x o z no son números`); return null }
-        // **El rumbo es opcional y su ausencia se dice**: sin él, el que sale
-        // en el sur aparece mirando a la pared del fondo (vuelta 66). Vale 0
-        // para no inventarse nada, pero que valga 0 por defecto no puede pasar
-        // desapercibido en un mapa de dos extremos.
-        if (!finito(s.yaw)) problemas.push(`salida ${i}: sin rumbo, saldrá mirando a −Z`)
-        return { x: s.x, z: s.z, yaw: finito(s.yaw) ? s.yaw : 0 }
-      }).filter(Boolean)
+      duelo.salidas = bruto.salidas.map((s, i) => sanearSalida(s, i, problemas, 'salida')).filter(Boolean)
       if (duelo.salidas.length && duelo.salidas.length !== 2) {
         problemas.push(`duelo: hay ${duelo.salidas.length} salida(s) y un 1v1 necesita dos`)
       }

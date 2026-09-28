@@ -24,7 +24,7 @@
  */
 
 import * as THREE from 'three'
-import { CLAVES_INTEGRADAS, COLORS, MODOS_DE_MAPA, modosDeMapa, COVER, FANS, FONDOS, GIZMO, MOVEMENT, ESCALERAS, ESTAMPADOS, PRIMARY_WEAPONS, PRISMAS, ROUNDS, SCENARIOS, SURFACES, TARGET, TEAMS, TELEPORTS, TUBES, ZIPLINES, coverHeight, coverTintedColor, esFotoDeFondo, esImagenDeEstampado, fisicaDeEscenario, giro180, scenarioRoom } from '../src/config.js'
+import { CLAVES_INTEGRADAS, COLORS, MODOS_DE_MAPA, modosDeMapa, COVER, FANS, FONDOS, GIZMO, MOVEMENT, ESCALERAS, ESTAMPADOS, PRIMARY_WEAPONS, PRISMAS, ROUNDS, SCENARIOS, SURFACES, TARGET, TEAMS, TELEPORTS, TODOS, TUBES, ZIPLINES, coverHeight, coverTintedColor, esFotoDeFondo, esImagenDeEstampado, fisicaDeEscenario, giro180, scenarioRoom } from '../src/config.js'
 import { Avatar } from '../src/game/avatar.js'
 import { Engine } from '../src/game/engine.js'
 import { MovementController } from '../src/game/movement.js'
@@ -366,6 +366,13 @@ scene.add(marcas)
 /** Los colores de equipo del juego, que son los que se ven jugando. */
 const COLORES_SALIDA = Object.values(TEAMS).map((t) => t.color)
 const colorDeSalida = (i) => COLORES_SALIDA[i % COLORES_SALIDA.length]
+/**
+ * **Las del todos contra todos, en blanco** (vuelta 100). No son de ningún
+ * equipo —en ese modo todos los rivales son del mismo color (propuesta 11 §1)—
+ * y un mapa puede tener las dos listas a la vez: con el mismo azul y magenta,
+ * no se sabría cuál es cuál.
+ */
+const COLOR_TODOS = 0xe8e8e8
 
 /**
  * Radio del tirador de una esquina. Lo bastante gordo para pillarlo con el
@@ -1028,6 +1035,44 @@ function pintarMarcas() {
     pinchables.push(esquinaCaja)
     void relleno
 
+    marcas.add(grupo)
+  }
+
+  /**
+   * **Las salidas del todos contra todos** (vuelta 100), con el mismo gesto que
+   * las del duelo: el cono se arrastra y la punta de la flecha gira. Sin caja de
+   * compra, que ese modo no tiene tienda. Se leen sin crear la lista (vuelta
+   * 83): pintar no puede escribir en el mapa.
+   */
+  for (const [i, salida] of salidasDeTodosLeer().entries()) {
+    if (estaOculto('salidasTodos', i)) continue
+    const grupo = new THREE.Group()
+    grupo.position.set(salida.x, 0, salida.z)
+    const cono = new THREE.Mesh(
+      new THREE.ConeGeometry(0.45, 1.8, 6),
+      new THREE.MeshBasicMaterial({ color: COLOR_TODOS, wireframe: true }),
+    )
+    cono.position.y = 0.9
+    cono.userData.marca = { que: 'todos', i, prioridad: PRIORIDAD.cuerpo }
+    realceQueCrece(cono)
+    grupo.add(cono)
+    pinchables.push(cono)
+    const yaw = salida.yaw ?? 0
+    const fx = -Math.sin(yaw)
+    const fz = -Math.cos(yaw)
+    const largo = 3
+    grupo.add(new THREE.Line(
+      new THREE.BufferGeometry().setFromPoints([
+        new THREE.Vector3(0, 0.2, 0),
+        new THREE.Vector3(fx * largo, 0.2, fz * largo),
+      ]),
+      new THREE.LineBasicMaterial({ color: COLOR_TODOS }),
+    ))
+    const punta = tirador(COLOR_TODOS)
+    punta.position.set(fx * largo, 0.2, fz * largo)
+    punta.userData.marca = { que: 'todos-rumbo', i, prioridad: PRIORIDAD.tirador }
+    grupo.add(punta)
+    pinchables.push(punta)
     marcas.add(grupo)
   }
 
@@ -2218,6 +2263,11 @@ function comenzarArrastreDeMarca(marca, punto) {
     return { que: 'salida', i: marca.i, dx: s.x - punto.x, dz: s.z - punto.z }
   }
   if (marca.que === 'rumbo') return { que: 'rumbo', i: marca.i }
+  if (marca.que === 'todos') {
+    const s = salidasDeTodosLeer()[marca.i]
+    return { que: 'todos', i: marca.i, dx: s.x - punto.x, dz: s.z - punto.z }
+  }
+  if (marca.que === 'todos-rumbo') return { que: 'todos-rumbo', i: marca.i }
   if (marca.que === 'caja') return { que: 'caja' }
   if (marca.que === 'zona') {
     const z = mapa.spawnZone[marca.i]
@@ -2314,6 +2364,23 @@ function moverMarca(arrastre, punto) {
     const s = salidasDe()[arrastre.i]
     s.x = aRejilla(punto.x + arrastre.dx)
     s.z = aRejilla(punto.z + arrastre.dz)
+    return
+  }
+  if (arrastre.que === 'todos') {
+    const s = salidasDeTodosLeer()[arrastre.i]
+    if (!s) return
+    s.x = aRejilla(punto.x + arrastre.dx)
+    s.z = aRejilla(punto.z + arrastre.dz)
+    return
+  }
+  if (arrastre.que === 'todos-rumbo') {
+    const s = salidasDeTodosLeer()[arrastre.i]
+    if (!s) return
+    // El mismo rumbo que una salida de duelo: `atan2(−dx, −dz)`, a grados enteros.
+    const dx = punto.x - s.x
+    const dz = punto.z - s.z
+    if (Math.hypot(dx, dz) < 0.2) return
+    s.yaw = aRadianes(Math.round((Math.atan2(-dx, -dz) * 180) / Math.PI))
     return
   }
   if (arrastre.que === 'rumbo') {
@@ -3072,13 +3139,11 @@ function pintarPanel() {
   const modos = modosDeMapa(mapa)
   $('modo-entrenamiento').checked = modos.includes('entrenamiento')
   $('modo-duelo').checked = modos.includes('duelo')
+  $('modo-todos').checked = modos.includes('todos')
+  const nombres = { entrenamiento: 'el selector del entrenamiento', duelo: 'el desplegable del duelo', todos: 'el del todos contra todos' }
   $('publicado-nota').textContent = !modos.length
     ? 'Borrador: se guarda y se puede probar aquí, pero no aparece en el juego.'
-    : modos.length === 2
-      ? 'Sale en los dos modos: en el selector del entrenamiento y en el del duelo.'
-      : modos[0] === 'duelo'
-        ? 'Sale sólo en el desplegable del duelo.'
-        : 'Sale sólo en el selector del entrenamiento.'
+    : `Sale en ${modos.map((m) => nombres[m]).join(' y en ')}.`
   // **La sala sale del mapa, no del escenario montado.** Remontar va con
   // bandera y ocurre en el frame siguiente, así que preguntarle al escenario
   // enseñaba la sala del mapa *anterior*: abrir Los Pilares decía 40×40.
@@ -3264,6 +3329,19 @@ function listaDe(campo) {
 function listaParaEscribir(campo) {
   if (!Array.isArray(mapa[campo])) mapa[campo] = []
   return mapa[campo]
+}
+
+/**
+ * **Las salidas del todos contra todos** (vuelta 100): la lista para leer, que
+ * no crea nada, y la de escribir, que crea el bloque `todos` si no está.
+ */
+function salidasDeTodosLeer() {
+  return Array.isArray(mapa.todos?.salidas) ? mapa.todos.salidas : LISTA_VACIA
+}
+function salidasDeTodosParaEscribir() {
+  if (!mapa.todos || typeof mapa.todos !== 'object') mapa.todos = {}
+  if (!Array.isArray(mapa.todos.salidas)) mapa.todos.salidas = []
+  return mapa.todos.salidas
 }
 
 /** Los prismas del mapa. */
@@ -3534,6 +3612,18 @@ const TIPOS_DE_MAPA = [
      * `pintarMarcas` las dibuja: en los demás no significan nada.
      */
     lista: () => (mapa.soloDuelo && Array.isArray(mapa.duelo?.salidas) ? mapa.duelo.salidas : []),
+    fila: (s, i) => `salida ${i + 1} · (${s.x}, ${s.z})`,
+  },
+  {
+    /**
+     * **Y las del todos contra todos** (vuelta 100), con su propia fila porque
+     * son otra lista: un mapa puede tener las dos. Se leen sin crear nada, por
+     * lo mismo que las de arriba.
+     */
+    clave: 'salidasTodos',
+    prefijo: 'todos',
+    nombre: 'Salidas (todos contra todos)',
+    lista: () => salidasDeTodosLeer(),
     fila: (s, i) => `salida ${i + 1} · (${s.x}, ${s.z})`,
   },
 ]
@@ -3989,10 +4079,18 @@ function escribirModos() {
     mapa.soloDuelo = true
     salidasDe()
   }
+  // **Y marcar el todos contra todos le pone sus salidas** (vuelta 100), por lo
+  // mismo que el duelo: sin ellas el saneado quitaría el modo al guardar. Se
+  // proponen ocho, que es lo que cabe cómodo en un mapa de unos 64 × 64
+  // (propuesta 11 §2.2), y se colocan arrastrándolas en la hoja Duelo.
+  if (modos.includes('todos') && salidasDeTodosLeer().length < TODOS.minSalidas) {
+    while (salidasDeTodosLeer().length < 8) anadirSalidaDeTodos()
+  }
   anotarEnLaBarra(mapa.clave)
 }
 campo('modo-entrenamiento', escribirModos)
 campo('modo-duelo', escribirModos)
+campo('modo-todos', escribirModos)
 
 /**
  * **Duplicar el mapa entero** (vuelta 98). Es la puerta que se pidió para sacar
@@ -5311,8 +5409,11 @@ function probar() {
    *   construcción (vuelta 66) pero *verla* pide mirar las dos, y si siempre
    *   saliera por la misma, la mitad del mapa no se probaría nunca.
    */
-  const salidas = motor.scenario?.salidasDeDuelo
-  if (limpio.soloDuelo && salidas?.length) {
+  // **Y uno de todos contra todos, desde sus salidas** (vuelta 100), por lo
+  // mismo: su `spawn` tampoco es donde se sale.
+  const deTodos = motor.scenario?.salidasDeTodos ?? []
+  const salidas = limpio.soloDuelo ? motor.scenario?.salidasDeDuelo : deTodos.length ? deTodos : null
+  if (salidas?.length) {
     const cual = ladoDeDuelo++ % salidas.length
     const salida = salidas[cual]
     motor.movement.ponerSalida(salida.x, salida.z, salida.yaw ?? 0)
@@ -5846,6 +5947,7 @@ function pintarDuelo() {
 
   const duelo = mapa.duelo ?? {}
   pintarFichasDeSalida()
+  pintarTodos()
   $('caja-compra').value = duelo.cajaCompra?.ancho ?? ROUNDS.cajaCompra.ancho
   $('invulnerabilidad').value = duelo.invulnerabilidadMs ?? 0
   $('invulnerabilidad').max = INVULNERABILIDAD_MAX
@@ -5963,6 +6065,145 @@ $('salida-anadir').addEventListener('click', () => {
   sucio = true
   refrescarPanel()
   contar([], `spawner ${salidas.length} puesto en ${x},${z} · arrástralo por la rejilla`)
+})
+
+/**
+ * **La sección del todos contra todos** (vuelta 100). Se rellena al abrir el
+ * panel, como el resto de la hoja: el número de jugadores **es** el número de
+ * salidas, y las fichas son las del duelo con otro color.
+ */
+function pintarTodos() {
+  const salidas = salidasDeTodosLeer()
+  $('todos-jugadores').value = salidas.length
+  $('todos-jugadores').max = TODOS.maxJugadores
+  const cabe = salidas.length >= TODOS.minSalidas
+  $('cuenta-todos').textContent = salidas.length
+    ? `${salidas.length} salidas · caben ${salidas.length}${cabe ? '' : ` · hacen falta ${TODOS.minSalidas}`}`
+    : ''
+  $('cuenta-todos').className = `nota ${cabe ? 'cabe' : 'aprieta'}`
+  $('todos-fichas').innerHTML = salidas.map((s, i) => {
+    const puesta = marcaElegida?.que === 'todos' && marcaElegida.i === i
+    return `<div class="ficha-salida ${puesta ? 'puesta' : ''}" style="--filo:#e8e8e8">
+      <h4><span class="punto"></span>Salida ${i + 1}
+        <button type="button" data-quitar-todos="${i}" title="Quitar esta salida">✕</button></h4>
+      <div class="trio">
+        <label>X <input data-todos="${i}" data-clave="x" type="number" step="0.5" value="${s.x}" /></label>
+        <label>Z <input data-todos="${i}" data-clave="z" type="number" step="0.5" value="${s.z}" /></label>
+        <label>Rumbo <input data-todos="${i}" data-clave="yaw" type="number" step="15" value="${aGrados(s.yaw)}" /></label>
+      </div>
+    </div>`
+  }).join('')
+}
+
+/**
+ * **Una salida nueva, en un sitio libre de la sala**: sobre un anillo al 70 %
+ * del lado, repartidas por ángulo, y mirando al centro. No es el sitio bueno
+ * —eso lo decide quien construye, arrastrando— sino uno que no está encima de
+ * otra salida ni fuera del recinto.
+ */
+function anadirSalidaDeTodos() {
+  const salidas = salidasDeTodosParaEscribir()
+  if (salidas.length >= TODOS.maxJugadores) {
+    contar([], `caben ${TODOS.maxJugadores} jugadores como mucho`)
+    return null
+  }
+  const sala = scenarioRoom(mapa)
+  const n = salidas.length
+  const angulo = (n * 2 * Math.PI) / Math.max(TODOS.minSalidas, n + 1) + n * 0.39
+  const x = aRejilla(Math.sin(angulo) * sala.width * 0.35)
+  const z = aRejilla(Math.cos(angulo) * sala.depth * 0.35)
+  salidas.push({ x, z, yaw: aRadianes(Math.round((Math.atan2(x, z) * 180) / Math.PI)) })
+  return salidas.length - 1
+}
+
+$('todos-anadir').addEventListener('click', () => {
+  anotarParaDeshacer()
+  const i = anadirSalidaDeTodos()
+  if (i === null) return
+  marcaElegida = { que: 'todos', i }
+  sucio = true
+  refrescarPanel()
+  contar([], `salida ${i + 1} del todos contra todos · arrástrala por la rejilla`)
+})
+
+/**
+ * **El número de jugadores pone y quita salidas** (vuelta 100): tantos
+ * jugadores, tantas salidas. Subirlo añade las que falten en sitios libres;
+ * bajarlo quita las **últimas**, que son las que se pusieron después.
+ */
+campo('todos-jugadores', (v) => {
+  const quiere = Math.max(0, Math.min(TODOS.maxJugadores, Math.round(Number(v) || 0)))
+  const salidas = salidasDeTodosParaEscribir()
+  while (salidas.length < quiere) anadirSalidaDeTodos()
+  if (salidas.length > quiere) salidas.splice(quiere)
+  if (!salidas.length) delete mapa.todos
+  marcaElegida = null
+  pintarTodos()
+})
+
+$('todos-fichas').addEventListener('change', (evento) => {
+  const entrada = evento.target.closest('input[data-todos]')
+  if (!entrada) return
+  anotarParaDeshacer()
+  const s = salidasDeTodosLeer()[Number(entrada.dataset.todos)]
+  if (!s) return
+  const clave = entrada.dataset.clave
+  s[clave] = clave === 'yaw' ? aRadianes(entrada.value) : (Number(entrada.value) || 0)
+  sucio = true
+  refrescarPanel()
+})
+
+$('todos-fichas').addEventListener('click', (evento) => {
+  const boton = evento.target.closest('button[data-quitar-todos]')
+  if (!boton) return
+  anotarParaDeshacer()
+  salidasDeTodosParaEscribir().splice(Number(boton.dataset.quitarTodos), 1)
+  if (!mapa.todos.salidas.length) delete mapa.todos
+  marcaElegida = null
+  sucio = true
+  refrescarPanel()
+})
+
+/** Todas mirando al centro de la sala: `atan2(x, z)`, la cuenta de `salidasGiro90`. */
+$('t-centro').addEventListener('click', () => {
+  const salidas = salidasDeTodosLeer()
+  if (!salidas.length) return
+  anotarParaDeshacer()
+  for (const s of salidas) s.yaw = aRadianes(Math.round((Math.atan2(s.x, s.z) * 180) / Math.PI))
+  sucio = true
+  refrescarPanel()
+})
+
+/**
+ * **Lo que un mapa de todos contra todos tiene que garantizar se mide**: que
+ * ninguna salida vea a otra, con el mismo rayo que la aparición y contra el mapa
+ * entero —ocultar una pieza no puede cambiar el veredicto—. Y la distancia más
+ * corta entre dos, que es cuánto aire tiene quien acaba de aparecer.
+ */
+$('t-medir').addEventListener('click', () => {
+  const salidas = salidasDeTodosLeer()
+  if (salidas.length < 2) {
+    $('t-medida').textContent = 'Hacen falta al menos dos salidas para medir.'
+    return
+  }
+  const ojos = 1.7
+  const seVen = []
+  let cerca = Infinity
+  for (let i = 0; i < salidas.length; i++) {
+    for (let j = i + 1; j < salidas.length; j++) {
+      const a = salidas[i]
+      const b = salidas[j]
+      cerca = Math.min(cerca, Math.hypot(b.x - a.x, b.z - a.z))
+      if (escenarioMedido && hasLineOfSight(
+        new THREE.Vector3(a.x, ojos, a.z), new THREE.Vector3(b.x, ojos, b.z), escenarioMedido.occluders,
+      )) seVen.push(`${i + 1}–${j + 1}`)
+    }
+  }
+  const pares = (salidas.length * (salidas.length - 1)) / 2
+  $('t-medida').textContent = `${cerca.toFixed(1)} u entre las dos más cercanas · ` + (seVen.length
+    ? `SE VEN ${seVen.length} de ${pares} pares (${seVen.slice(0, 6).join(', ')}${seVen.length > 6 ? '…' : ''}): mete algo en medio`
+    : `ninguna ve a otra (${pares} pares)`)
+  $('t-medida').className = `nota ${seVen.length ? 'aprieta' : 'cabe'}`
 })
 
 /**

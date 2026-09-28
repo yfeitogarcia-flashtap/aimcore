@@ -17,7 +17,7 @@
  * Y sigue sin tener código de juego: importa `movement.js`, `scenario.js`,
  * `hitPlayer` y `hasLineOfSight` tal cual.
  */
-import { ECONOMY, NET, PAUSE, PROJECTILES, ROUNDS, SIM, SIM_STEP_MS, WEAPONS, WEAPON_ORDER, catalogoDeTienda } from '../src/config.js'
+import { ECONOMY, NET, PAUSE, PLAYER, PROJECTILES, ROUNDS, SIM, SIM_STEP_MS, TODOS, WEAPONS, WEAPON_ORDER, catalogoDeTienda } from '../src/config.js'
 import { MovementController } from '../src/game/movement.js'
 import { encajarImpacto, hitPlayer, zoneDamage } from '../src/game/player.js'
 import { Clavadas } from '../src/game/clavadas.js'
@@ -40,6 +40,7 @@ const tiroDeProyectil = (tipo) => WEAPONS[claveDeProyectil(tipo)]?.tiro ?? null
 import { crearPose, cuerpoDeJugador } from './pose.js'
 import { direccionDeMira, resolverCuchillada, resolverDisparo, resolverEscopeta } from './disparo.js'
 import { MSG, compraAbierta, desempaquetarTeclas, instanteDePaso, instanteEnPaso } from './protocolo.js'
+import { Interes } from './interes.js'
 
 /** Temporales del vuelo de un proyectil: el bucle del servidor no asigna. */
 const _ojos = { x: 0, y: 0, z: 0 }
@@ -103,8 +104,41 @@ export class Partida {
     depurar = false,
     rondas = true,
     compraSegundos = ROUNDS.compraSegundos,
+    modo = 'duelo',
   }) {
     this.escenario = escenario
+    /**
+     * **El modo de la sala** (vuelta 100): `duelo` o `todos`. Se decide al nacer
+     * —viaja en la dirección del socket, como el mapa y la fase de compra— y lo
+     * que cambia son tres cosas: de qué lista salen las salidas, cuántos caben y
+     * si hay rondas. El todos contra todos **no tiene rondas, ni economía, ni
+     * pausa**: es un marcador y un cronómetro encima de la reaparición por
+     * reloj de entradas de la vuelta 52 (propuesta 11 §5).
+     */
+    this.modo = modo === 'todos' ? 'todos' : 'duelo'
+    const todos = this.modo === 'todos'
+    if (todos) rondas = false
+    /**
+     * **Cada cuántos pasos sale una foto** en esta sala. Ver `NET.fotoCada`: el
+     * duelo se queda a 60 Hz y el todos contra todos va a 20.
+     */
+    this.fotoCada = NET.fotoCada[this.modo] ?? 1
+    /**
+     * **La partida del todos contra todos**, que no son rondas: una fase
+     * (`espera`, `juego` o `fin`), su final en número de paso y el ganador.
+     * `n` cuenta partidas y es lo que el cliente mira para tirar su cola sin
+     * confirmar cuando todos reaparecen a la vez — la misma regla que un
+     * cambio de fase en las rondas (vuelta 62).
+     */
+    this.todos = { n: 0, fase: 'espera', hastaPaso: 0, ganador: null }
+    /**
+     * **El marcador sale cuando cambia, no en cada foto** (vuelta 100). Son
+     * bajas, muertes y pausas de todos los de la sala, y con cincuenta dentro
+     * mandarlo en cada foto a cada uno serían dos megas por segundo de algo que
+     * cambia cada muchos segundos. El transporte no pierde mensajes (es un
+     * WebSocket), así que basta con mandarlo al cambiar y a quien entra.
+     */
+    this._marcadorSucio = true
     /**
      * **Lo que hay volando, y es del mundo y no de nadie** (vuelta 85). Un
      * cohete sobrevive a quien lo lanzó —que es la mitad de lo que lo hace
@@ -129,7 +163,9 @@ export class Partida {
      * mapa que reparte no tiene fase, y eso no puede depender del orden en que
      * el constructor lea sus campos.
      */
-    this.dotacion = escenario.dotacionDeDuelo
+    // En el todos contra todos no se reparte (vuelta 100): cada uno sale con lo
+    // que haya elegido en su armería — ver `libres` en la bienvenida.
+    this.dotacion = todos ? null : escenario.dotacionDeDuelo
     this.compraSegundos = ROUNDS.compraSegundos
     this.configurarCompra(compraSegundos)
     this.colchon = colchon
@@ -204,7 +240,13 @@ export class Partida {
      * que dos jugadores no aparecieran uno dentro del otro, y puesto a servir de
      * 1v1 empezaba la ronda con los dos a cinco unidades.
      */
-    this.salidas = escenario.salidasDeDuelo
+    this.salidas = todos ? escenario.salidasDeTodos : escenario.salidasDeDuelo
+    /**
+     * **Cuántos caben**: dos en un duelo y, en el todos contra todos, **tantos
+     * como salidas declara el mapa** —la propuesta 11 §4: el tope se deriva de
+     * la lista, no es un número aparte que la pueda contradecir—.
+     */
+    this.plazas = todos ? Math.min(this.salidas.length, TODOS.maxJugadores) : 2
   }
 
   /**
@@ -229,7 +271,7 @@ export class Partida {
   }
 
   get llena() {
-    return this.jugadores.size >= 2
+    return this.jugadores.size >= this.plazas
   }
 
   /**
@@ -396,8 +438,21 @@ export class Partida {
       pase: this._nuevoPase(),
       /** `{ desde }` mientras esté sin cable, o null. */
       desconectado: null,
+      /** Quién entra en su foto, con su memoria. Ver `net/interes.js`. */
+      interes: new Interes(),
+      /**
+       * **Por qué salida vuelve** (vuelta 100), o null para la suya. En el todos
+       * contra todos no es la de su butaca: sería reaparecer siempre en el mismo
+       * sitio, que es donde le espera quien acaba de matarle. La elige el
+       * servidor al matarle y viaja en su foto, así que el cliente predice la
+       * reaparición en el sitio bueno y no hay corrección que pagar.
+       */
+      salidaSiguiente: null,
+      /** Quién le hizo daño por última vez, para la cuña de dirección. */
+      golpeadoPor: null,
     }
     this.jugadores.set(jugador.id, jugador)
+    this._marcadorSucio = true
 
     this._bienvenida(jugador)
     this._enviarEconomia(jugador)
@@ -464,6 +519,30 @@ export class Partida {
          * punta.
          */
         eco: this.conRondas && !this.dotacion ? 1 : 0,
+        /**
+         * **El modo, el ritmo de la foto y cuántos caben** (vuelta 100). Los
+         * tres los decide la sala al nacer y el cliente los necesita antes de
+         * la primera foto: el ritmo, para saber con cuánto retraso dibujar a
+         * los demás; las plazas, para montar tantos cuerpos como pueda haber.
+         */
+        modo: this.modo,
+        fc: this.fotoCada,
+        plazas: this.plazas,
+        /**
+         * **Y todas las salidas, en el todos contra todos**: el servidor elige
+         * por cuál reaparece cada uno (ver `salidaSiguiente`) y lo dice por su
+         * número, así que el cliente tiene que tener la lista para predecirlo.
+         * En el duelo no hace falta: se vuelve siempre a la propia.
+         */
+        ...(this.modo === 'todos' ? { salidas: this.salidas } : null),
+        /**
+         * **Si las armas son libres** (vuelta 100): ni se compran ni las
+         * reparte el mapa, así que las elige cada uno en su armería. El
+         * servidor no pierde nada que no perdiera ya —valida la cadencia del
+         * arma que cada entrada declara (vuelta 56)—, y es lo que hace un todos
+         * contra todos sin rondas.
+         */
+        libres: this.modo === 'todos' && !this.dotacion ? 1 : 0,
       }),
     )
   }
@@ -483,6 +562,7 @@ export class Partida {
     jugador.cola.length = 0
     jugador.cebado = false
     jugador.ack = -1
+    this._marcadorSucio = true
     this._bienvenida(jugador)
     // **La pausa por caída la levanta volver, no un botón.** Se va en cuanto no
     // queda ninguna butaca sin cable: es del mundo, no de nadie, así que nadie
@@ -511,7 +591,12 @@ export class Partida {
     if (!jugador || jugador.desconectado) return
     // **Con la partida acabada no hay a qué volver**, así que la butaca se
     // suelta entera: reservarla sería dejar la sala llena para nadie.
-    if (this.rondas.fase === 'fin' || this.rondas.fase === 'espera') {
+    // En el todos contra todos, la partida en marcha es `todos.fase` y no las
+    // rondas, que ahí no existen.
+    const enMarcha = this.modo === 'todos'
+      ? this.todos.fase === 'juego'
+      : this.rondas.fase !== 'fin' && this.rondas.fase !== 'espera'
+    if (!enMarcha) {
       this.sale(id)
       return
     }
@@ -522,6 +607,7 @@ export class Partida {
     // para que al volver no le caiga encima un segundo de entradas viejas.
     jugador.cola.length = 0
     this._soltarLoSuyo(id)
+    this._marcadorSucio = true
     // **El mundo se para para el que sigue**, y esta pausa no es de nadie: no
     // gasta libres, no la levanta un botón y tiene su propio tope, que es la
     // ventana de reconexión.
@@ -543,7 +629,7 @@ export class Partida {
   abandona(id) {
     const jugador = this.jugadores.get(id)
     if (!jugador) return
-    const rival = [...this.jugadores.values()].find((j) => j !== jugador)
+    const rival = this.modo === 'duelo' ? [...this.jugadores.values()].find((j) => j !== jugador) : null
     this.sale(id)
     if (rival && this.rondas.fase !== 'espera' && !this.rondas.ganador) {
       this._terminarRonda(rival.equipo, 'abandono')
@@ -555,6 +641,11 @@ export class Partida {
     if (this.jugadores.get(id)?.desconectado) this._caidos -= 1
     this.jugadores.delete(id)
     this._soltarLoSuyo(id)
+    for (const otro of this.jugadores.values()) otro.interes.olvidar(id)
+    this._marcadorSucio = true
+    // Un todos contra todos con uno solo dentro no es una partida: vuelve a la
+    // espera, y el que quede sigue andando por el mapa hasta que llegue otro.
+    if (this.modo === 'todos' && this.conectados.length < 2) this._esperarTodos()
     // **Sin butacas, la partida vuelve a empezar.** El número de paso se
     // conserva —eso es del mundo, y volver con el mismo código no es empezar
     // otra partida (vueltas 47 y 58)— pero el marcador no: si no, dos amigos que
@@ -636,6 +727,10 @@ export class Partida {
    * se quiere, no lo que se supone.
    */
   _pausa(jugador, que) {
+    // **En el todos contra todos no se pausa** (vuelta 100). Pausar es parar el
+    // mundo de todos (vuelta 53), y que uno de diez congele a los otros nueve
+    // no es una conversación que se pueda tener en la misma habitación.
+    if (this.modo === 'todos') return
     if (que === 'reanudar') {
       // **Sólo levanta la pausa quien la puso.** Si la levantase el otro, pedir
       // una pausa no serviría de nada.
@@ -828,91 +923,89 @@ export class Partida {
     // los veredictos de este paso anotados. Cerrar una ronda a mitad de un
     // disparo sería dejar el tiro que la cierra sin contestar.
     this._rondasTick()
+    if (this.modo === 'todos') this._todosTick()
 
-    if (this.paso % NET.snapshotEvery !== 0) return
+    if (this.paso % this.fotoCada !== 0) return
     this._enviarFoto()
   }
 
+  /**
+   * **La foto, y desde la vuelta 100 es una por destinatario.**
+   *
+   * Hasta aquí salía una sola y la recibían todos, con todos dentro: el
+   * cuadrado —N fotos de N cuerpos— que con diez jugadores son 33 Mbit/s de
+   * una sala (`salas97`). Ahora cada uno recibe **la suya**, y la hacen tres
+   * piezas que se escriben una vez por foto y se juntan por destinatario:
+   *
+   * - **Lo común** —el paso, las butacas, la pausa, las rondas, la partida del
+   *   todos contra todos y, sólo cuando cambia, el marcador—, que es lo mismo
+   *   para todos y se serializa una vez.
+   * - **Tu entrada**, entera: es la que reconcilia tu predicción, así que lleva
+   *   todo lo que llevaba (el `ack`, tu movimiento completo, tus veredictos).
+   * - **La de cada uno de los demás que entre en tu foto**, y **ligera**: dónde
+   *   está, hacia dónde mira, si está vivo y con qué arma. Es lo único que
+   *   hace falta para dibujarle, y su movimiento completo —treinta y tantos
+   *   campos— era la mitad de los bytes de una foto que no lo usaba para nada.
+   *   Se serializa **una vez por foto**, la pida uno o la pidan nueve.
+   *
+   * Quién entra en tu foto **no se decide aquí**: lo decide `net/interes.js`,
+   * y es el único sitio. La fase de compra (vuelta 62) era una rama aparte de
+   * este método y ahora es un caso más de esa regla.
+   */
   _enviarFoto() {
+    const comun = this._fotoComun()
+    const sala = { fase: this.rondas.fase, escenario: this.escenario }
+    // Las ligeras se hacen a demanda y se guardan lo que dura esta foto.
+    for (const j of this.jugadores.values()) j._ligera = null
+    for (const jugador of this.jugadores.values()) {
+      // Veredictos: se descuentan aquí, una vez por foto y jugador, se le mande
+      // o no — quien está sin cable no los necesita y no pueden acumularse.
+      const propia = this._entradaPropia(jugador)
+      if (jugador.desconectado) continue
+      let texto = `${comun}"${jugador.id}":${propia}`
+      for (const otro of this.jugadores.values()) {
+        if (otro === jugador) continue
+        if (!jugador.interes.entra(jugador, otro, sala, this.paso)) continue
+        if (otro._ligera === null) otro._ligera = `,"${otro.id}":${JSON.stringify(this._entradaLigera(otro))}`
+        texto += otro._ligera
+      }
+      texto += '}}'
+      jugador.enviar(texto)
+      jugador.bytesSalida += texto.length
+    }
+  }
+
+  /**
+   * **Lo que llevan todas las fotos**, hasta la apertura de `p` incluida. Se
+   * escribe a mano como texto porque cada destinatario le pega detrás lo suyo,
+   * y es lo que evita serializar diez veces lo mismo.
+   */
+  _fotoComun() {
     /**
      * **Cuántas butacas están ocupadas** (vuelta 67). Un número, y hace falta
-     * porque durante la fase de compra la foto sale **por destinatario** y no
-     * lleva al rival (vuelta 62): desde el cliente, «¿ha entrado ya alguien?» no
-     * se puede contestar mirando si hay pose. El panel decía «esperando» los
-     * quince segundos enteros con el rival dentro, y lo que de verdad dependía
-     * de ello —si las opciones de la partida siguen siendo tuyas— se quedaba
-     * abierto cuando ya no debía.
-     *
-     * Cuenta **butacas**, no cables: quien se está cayendo sigue ocupando la
-     * suya, y su sitio no está libre para nadie.
+     * porque la foto sale **por destinatario** y no tiene por qué llevar a
+     * nadie más: desde el cliente, «¿ha entrado ya alguien?» no se puede
+     * contestar mirando si hay pose. Cuenta **butacas**, no cables.
      */
-    const foto = { t: MSG.FOTO, n: this.paso, p: {}, ocupadas: this.jugadores.size }
-    // Sólo cuando hay algo que contar: en una partida normal esto no ocupa nada.
-    // `resta` son los milisegundos que le quedan a la pausa —o a la votación—,
-    // y se calculan **aquí**: el cliente no tiene el reloj del servidor, y una
-    // cuenta atrás que cada pantalla calculase por su cuenta acabaría diciendo
-    // dos cosas distintas del mismo cartel.
+    let texto = `{"t":"${MSG.FOTO}","n":${this.paso},"ocupadas":${this.jugadores.size}`
+    // Sólo cuando hay algo que contar. `resta` son los milisegundos que le
+    // quedan a la pausa —o a la votación—, y se calculan **aquí**: el cliente
+    // no tiene el reloj del servidor.
     if (this.pausa) {
-      foto.pa = {
+      texto += `,"pa":${JSON.stringify({
         por: this.pausa.por,
         resta: Math.max(0, this.pausa.expiraEn - Date.now()),
-        // Y por qué: una pausa por caída no tiene dueño, así que el cartel del
-        // que espera no puede ser el mismo que el de una pausa pedida.
+        // Y por qué: una pausa por caída no tiene dueño.
         ...(this.pausa.motivo ? { motivo: this.pausa.motivo, quien: this.pausa.quien } : null),
-      }
+      })}`
     }
     if (this.votacion) {
-      foto.vo = { por: this.votacion.por, resta: Math.max(0, this.votacion.expiraEn - Date.now()) }
-    }
-    for (const jugador of this.jugadores.values()) {
-      foto.p[jugador.id] = {
-        ack: jugador.ack,
-        hambre: jugador.hambre,
-        vida: jugador.vida,
-        // Escudo y casco viajan con la vida porque son lo mismo: cuánto aguantas
-        // (vuelta 64). El **dinero** no, que ése es privado y va por su mensaje.
-        esc: jugador.escudo,
-        cas: jugador.casco ? 1 : 0,
-        vivoEn: jugador.vivoEn,
-        // **Lo que le queda de gracia, en ms**, y sólo mientras la tenga: el
-        // HUD ya sabe dibujar ese marco desde el entrenamiento y lo único que
-        // le faltaba era el número. Va calculado por el servidor, como el reloj
-        // de la ronda y por la misma razón (vuelta 54): los relojes de las dos
-        // pantallas y el suyo no coinciden.
-        ...(jugador.invulnerableHasta > this.paso
-          ? { inv: (jugador.invulnerableHasta - this.paso) * SIM_STEP_MS }
-          : null),
-        libres: jugador.pausasLibres,
-        // Quién ha votado ya, para que su cartel se retire. Va por jugador y no
-        // como lista en `vo` porque a cada cliente sólo le importa el suyo.
-        ...(this.votacion?.votos.has(jugador.id) ? { vv: 1 } : null),
-        // Y el arma que lleva, para la ficha flotante del rival. Sólo cuando se
-        // sabe —o sea, desde su primer disparo—: antes no hay nada que decir.
-        ...(jugador.arma ? { arma: jugador.arma } : null),
-        // **El destello de mira, y sólo cuando lo hay** (vuelta 90): lo que
-        // vale su valor de fábrica no viaja (vuelta 83), así que una foto sin
-        // francotiradores pesa exactamente lo que pesaba.
-        ...(jugador.mirilla ? { mir: 1 } : null),
-        bajas: jugador.bajas,
-        muertes: jugador.muertes,
-        yaw: jugador.pose.rotation.y,
-        s: jugador.movimiento.snapshot(jugador.estado),
-      }
-      // Los veredictos de disparo se repiten unas cuantas fotos: si se mandaran
-      // una sola vez, perder esa foto perdería el veredicto para siempre. El
-      // cliente los descarta por número, así que repetirlos no cuesta nada.
-      if (jugador.disparos.length > 0) {
-        foto.p[jugador.id].disparos = jugador.disparos.map((d) => d.dato)
-        for (const d of jugador.disparos) d.ttl -= 1
-        jugador.disparos = jugador.disparos.filter((d) => d.ttl > 0)
-      }
+      texto += `,"vo":${JSON.stringify({ por: this.votacion.por, resta: Math.max(0, this.votacion.expiraEn - Date.now()) })}`
     }
     // **Las rondas, que son del mundo y las ven los dos igual.** Lo que viaja es
-    // *cuánto queda* de la fase —calculado aquí, sobre el reloj de pasos— y no
-    // hasta cuándo: el cliente no tiene ese reloj. Misma regla que la cuenta de
-    // la pausa (vuelta 54).
+    // *cuánto queda* de la fase, no hasta cuándo (vuelta 54).
     const r = this.rondas
-    foto.rd = {
+    texto += `,"rd":${JSON.stringify({
       n: r.n,
       f: r.fase,
       resta: r.hastaPaso ? Math.max(0, (r.hastaPaso - this.paso) * SIM_STEP_MS) : 0,
@@ -920,27 +1013,101 @@ export class Partida {
       ...(r.ganador !== null ? { g: r.ganador, mot: r.motivo } : null),
       ...(r.ultima ? { u: r.ultima } : null),
       ...(r.prorroga ? { pr: 1 } : null),
+    })}`
+    // **Y la partida del todos contra todos**, con la misma forma.
+    if (this.modo === 'todos') {
+      const t = this.todos
+      texto += `,"td":${JSON.stringify({
+        n: t.n,
+        f: t.fase,
+        resta: t.hastaPaso ? Math.max(0, (t.hastaPaso - this.paso) * SIM_STEP_MS) : 0,
+        obj: TODOS.bajasParaGanar,
+        ...(t.ganador !== null ? { g: t.ganador } : null),
+      })}`
     }
-
-    // **En la fase de compra nadie ve al otro, y eso lo garantiza el servidor**
-    // (vuelta 62). No es que el cliente no lo dibuje: es que **no le llega** su
-    // posición. Cuesta una foto por destinatario durante quince segundos de cada
-    // ronda, y a cambio «no pueden verse» deja de depender de que el cliente
-    // colabore, que es el único sitio donde esa promesa se puede romper.
-    if (r.fase === 'compra') {
-      for (const jugador of this.conectados) {
-        const suya = { ...foto, p: { [jugador.id]: foto.p[jugador.id] } }
-        const texto = JSON.stringify(suya)
-        jugador.enviar(texto)
-        jugador.bytesSalida += texto.length
-      }
-      return
+    if (this._marcadorSucio) {
+      this._marcadorSucio = false
+      texto += `,"mc":${JSON.stringify(this._marcador())}`
     }
+    return `${texto},"p":{`
+  }
 
-    const texto = JSON.stringify(foto)
-    for (const jugador of this.jugadores.values()) {
-      jugador.enviar(texto)
-      jugador.bytesSalida += texto.length
+  /**
+   * **El marcador de la sala**: una fila por butaca, con su ranura, sus bajas,
+   * sus muertes y sus pausas libres. Viaja cuando cambia (`_marcadorSucio`).
+   * `c` vale 1 si esa butaca está sin cable.
+   */
+  _marcador() {
+    return [...this.jugadores.values()].map((j) => ({
+      id: j.id, r: j.equipo, b: j.bajas, m: j.muertes, l: j.pausasLibres,
+      ...(j.desconectado ? { c: 1 } : null),
+    }))
+  }
+
+  /**
+   * **Tu entrada de la foto, entera.** Es la que tenía cada jugador hasta la
+   * vuelta 99, más su ranura y —en el todos contra todos— por dónde vuelve y
+   * quién le ha dado. Devuelve el texto ya serializado.
+   */
+  _entradaPropia(jugador) {
+    const e = {
+      ack: jugador.ack,
+      hambre: jugador.hambre,
+      vida: jugador.vida,
+      // Escudo y casco viajan con la vida porque son lo mismo: cuánto aguantas
+      // (vuelta 64). El **dinero** no, que ése es privado y va por su mensaje.
+      esc: jugador.escudo,
+      cas: jugador.casco ? 1 : 0,
+      vivoEn: jugador.vivoEn,
+      // **Lo que le queda de gracia, en ms**, y sólo mientras la tenga.
+      ...(jugador.invulnerableHasta > this.paso
+        ? { inv: (jugador.invulnerableHasta - this.paso) * SIM_STEP_MS }
+        : null),
+      libres: jugador.pausasLibres,
+      // Quién ha votado ya, para que su cartel se retire.
+      ...(this.votacion?.votos.has(jugador.id) ? { vv: 1 } : null),
+      ...(jugador.arma ? { arma: jugador.arma } : null),
+      // **El destello de mira, y sólo cuando lo hay** (vuelta 90).
+      ...(jugador.mirilla ? { mir: 1 } : null),
+      bajas: jugador.bajas,
+      muertes: jugador.muertes,
+      // **Por qué salida vuelve**, mientras está abatido y sólo si no es la
+      // suya: el cliente predice la reaparición y tiene que saber dónde.
+      ...(jugador.vivoEn > 0 && jugador.salidaSiguiente !== null ? { sal: jugador.salidaSiguiente } : null),
+      // **Quién le ha dado por última vez** (vuelta 100). Con un solo rival la
+      // cuña de daño apuntaba a «el otro»; con nueve hay que decir cuál.
+      ...(jugador.golpeadoPor ? { gp: jugador.golpeadoPor } : null),
+      yaw: jugador.pose.rotation.y,
+      s: jugador.movimiento.snapshot(jugador.estado),
+    }
+    // Los veredictos de disparo se repiten unas cuantas fotos: si se mandaran
+    // una sola vez, perder esa foto perdería el veredicto para siempre. El
+    // cliente los descarta por número, así que repetirlos no cuesta nada.
+    if (jugador.disparos.length > 0) {
+      e.disparos = jugador.disparos.map((d) => d.dato)
+      for (const d of jugador.disparos) d.ttl -= 1
+      jugador.disparos = jugador.disparos.filter((d) => d.ttl > 0)
+    }
+    return JSON.stringify(e)
+  }
+
+  /**
+   * **La entrada de otro, ligera** (vuelta 100): lo que hace falta para
+   * dibujarle y nada más. Su movimiento se reduce a lo que usa quien dibuja
+   * —posición, pies, ojos y la época de pose, que es lo que dice que ha saltado
+   * sin recorrer el camino (vuelta 50)— y **redondeado al milímetro**: esto no
+   * reconcilia nada, sólo se pinta, y un milímetro no se ve.
+   */
+  _entradaLigera(jugador) {
+    const s = jugador.movimiento.snapshot(jugador.estado)
+    const mm = (v) => Math.round(v * 1000) / 1000
+    return {
+      r: jugador.equipo,
+      vida: jugador.vida,
+      ...(jugador.arma ? { arma: jugador.arma } : null),
+      ...(jugador.mirilla ? { mir: 1 } : null),
+      yaw: mm(jugador.pose.rotation.y),
+      s: { x: mm(s.x), z: mm(s.z), feetY: mm(s.feetY), eyeHeight: mm(s.eyeHeight), poseEpoch: s.poseEpoch },
     }
   }
 
@@ -1146,6 +1313,9 @@ export class Partida {
         t: MSG.PROYECTIL,
         n: this.paso,
         k: l.tipo,
+        // **De quién es** (vuelta 100): con más de un rival, «el rival» ya no
+        // dice nada, y quien dibuja lo necesita para saber si es suyo.
+        de: tirador.id,
         x: +l.x.toFixed(3), y: +l.y.toFixed(3), z: +l.z.toFixed(3),
         vx: +l.vx.toFixed(3), vy: +l.vy.toFixed(3), vz: +l.vz.toFixed(3),
         g: l.g,
@@ -1408,7 +1578,6 @@ export class Partida {
    */
   _resolverTiro(tirador, entrada) {
     const d = entrada.d
-    const rival = [...this.jugadores.values()].find((j) => j !== tirador)
     const salida = {
       seq: d.seq, impacto: false, zona: null, dano: 0, tapado: false, baja: false,
       sinRebobinar: false, retroceso: 0, lateral: 0, rebobinadoMs: 0,
@@ -1434,6 +1603,13 @@ export class Partida {
       this._anotarVeredicto(tirador, salida)
       return
     }
+    // **Y con el resultado en pantalla tampoco** (vuelta 100): la partida del
+    // todos contra todos se ha acabado, y lo que se dispare entonces no cuenta.
+    if (this.modo === 'todos' && this.todos.fase === 'fin') {
+      salida.rechazado = true
+      this._anotarVeredicto(tirador, salida)
+      return
+    }
     if (!tirador.vida) {
       this._anotarVeredicto(tirador, salida)
       return
@@ -1451,10 +1627,7 @@ export class Partida {
       this._anotarVeredicto(tirador, salida)
       return
     }
-    if (!rival) {
-      this._anotarVeredicto(tirador, salida)
-      return
-    }
+
 
     // El historial llega hasta `paso − 1`: este paso todavía no se ha anotado.
     const masViejo = this.paso - 1 - NET.maxRewindMs / SIM_STEP_MS
@@ -1466,8 +1639,6 @@ export class Partida {
     salida.pedidoMs = +((this.paso - 1 - pedido) * SIM_STEP_MS).toFixed(1)
     salida.topado = salida.pedidoMs > salida.rebobinadoMs + 0.01
 
-    const ahora = this._cuerpoRebobinado(rival, this.paso - 1)
-    const cuerpo = this._cuerpoRebobinado(rival, objetivo) ?? ahora
     const p = tirador.pose.position
     const origen = { x: p.x, y: p.y, z: p.z }
 
@@ -1502,10 +1673,38 @@ export class Partida {
           ? resolverEscopeta(origen, d.yaw, d.pitch, semilla, contra, this.escenario.occluders, tirador.arma)
           : resolverDisparo(origen, d.yaw, d.pitch, contra, this.escenario.occluders, tirador.arma)
     )
-    const veredicto = resolver(cuerpo)
+    /**
+     * **Contra todos los demás, y gana el más cercano** (vuelta 100). Hasta aquí
+     * había «el rival» y se resolvía contra él; con más de dos, la bala es la
+     * misma y lo que cambia es contra quién se prueba. Cada uno se rebobina a
+     * **su** instante —el mismo `objetivo`, porque el tirador los tiene a todos
+     * dibujados con el mismo reloj de fotos— y de los que entran, se queda el
+     * primero que la bala toca, que es lo que haría un rayo.
+     */
+    let rival = null
+    let veredicto = null
+    let cuerpo = null
+    let ahora = null
+    for (const otro of this.jugadores.values()) {
+      if (otro === tirador || otro.desconectado) continue
+      const suAhora = this._cuerpoRebobinado(otro, this.paso - 1)
+      const suCuerpo = this._cuerpoRebobinado(otro, objetivo) ?? suAhora
+      if (!suCuerpo) continue
+      const v = resolver(suCuerpo)
+      if (!rival || (v.impacto && (!veredicto.impacto || v.distancia < veredicto.distancia))) {
+        rival = otro
+        veredicto = v
+        cuerpo = suCuerpo
+        ahora = suAhora
+      }
+    }
+    if (!rival) {
+      this._anotarVeredicto(tirador, salida)
+      return
+    }
     // **El control**: el mismo disparo sin rebobinar nada. No decide nada, se
     // manda para poder medir qué compra la compensación.
-    const sin = resolver(ahora)
+    const sin = ahora ? resolver(ahora) : veredicto
 
     salida.impacto = veredicto.impacto
     salida.zona = veredicto.zona
@@ -1598,6 +1797,12 @@ export class Partida {
    */
   _aplicarDano(victima, dano, tirador, zona = 'torso', mortal = false) {
     if (victima.vida <= 0) return false
+    // **A quien no tiene cable no se le hace daño** (vuelta 100): no está en la
+    // foto de nadie (`net/interes.js`), así que un golpe suyo sería un golpe a
+    // algo que nadie ve. Y con el resultado de un todos contra todos en
+    // pantalla, tampoco: la partida se ha acabado.
+    if (victima.desconectado) return false
+    if (this.modo === 'todos' && this.todos.fase === 'fin') return false
     // **La gracia de salida se mira aquí y no en quien dispara** (vuelta 78):
     // es el único sitio por el que pasan las cuatro formas de hacer daño —bala,
     // cuchillada, cuchillada por la espalda y lo que venga—, así que una
@@ -1612,13 +1817,19 @@ export class Partida {
     victima.escudo = tras.shield
     victima.casco = tras.helmet
     victima.vida = tras.health
+    if (tirador && tirador !== victima) victima.golpeadoPor = tirador.id
     if (victima.vida > 0) return false
     victima.muertes += 1
-    tirador.bajas += 1
+    // Un suicidio —la onda de tu propio cohete— no es una baja de nadie.
+    if (tirador && tirador !== victima) tirador.bajas += 1
+    this._marcadorSucio = true
+    // **Y por dónde vuelve**, en el todos contra todos: la salida más lejos de
+    // quien siga vivo (ver `_salidaMasLibre`).
+    if (this.modo === 'todos') victima.salidaSiguiente = this._salidaMasLibre(victima)
     // **Matar paga**, y se paga al instante: en un 1v1 la baja cierra la ronda,
     // así que sumarlo aquí o al repartir sería lo mismo — salvo el día que haya
     // más de dos, que es la razón de que vaya donde ocurre.
-    if (this.conRondas) this._pagar(tirador, ECONOMY.premios.baja)
+    if (this.conRondas && tirador && tirador !== victima) this._pagar(tirador, ECONOMY.premios.baja)
     // **Con rondas, una muerte no se reaparece: cierra la ronda** (vuelta 62).
     // El que vuelve a poner a los dos en pie es el reinicio de ronda, y hasta
     // entonces el muerto no se mueve — que es lo que ya hacía `vivoEn`, con un
@@ -1634,7 +1845,9 @@ export class Partida {
   _reaparecer(jugador) {
     // Su ranura de siempre: reaparecer no te cambia de sitio ni de color. Antes
     // salía de `indexOf` sobre el mapa, que cambia cuando alguien se va.
-    const salida = this.salidas[jugador.equipo]
+    // En el todos contra todos, la que le haya elegido el servidor al caer.
+    const salida = this.salidas[jugador.salidaSiguiente ?? jugador.equipo] ?? this.salidas[jugador.equipo]
+    jugador.salidaSiguiente = null
     jugador.movimiento.reset()
     jugador.pose.position.x = salida.x
     jugador.pose.position.z = salida.z
@@ -1647,6 +1860,15 @@ export class Partida {
     // La gracia es de **empezar la ronda**, no de reaparecer: sin rondas en
     // marcha, quien vuelve lo hace con las mismas reglas que tenía al caer.
     jugador.invulnerableHasta = 0
+    /**
+     * **En el todos contra todos, sí** (vuelta 100): ahí reaparecer **es**
+     * empezar, y con ocho en un mapa alguien puede estar mirando a tu salida.
+     * La misma gracia que el entrenamiento (`PLAYER.respawn.invulnerableMs`),
+     * que es de donde el HUD ya sabe pintarla.
+     */
+    if (this.modo === 'todos') {
+      jugador.invulnerableHasta = this.paso + Math.round(PLAYER.respawn.invulnerableMs / SIM_STEP_MS)
+    }
     jugador.hambre = 0
     // Reaparecer recarga, así que el reloj de cadencia vuelve a cero: arrastrar
     // el del último disparo de antes de morir castigaría el primer tiro nuevo.
@@ -1943,6 +2165,10 @@ export class Partida {
    * con una silla vacía no es la ronda 1 corriendo sola: es la sala de espera.
    */
   _quizaArrancar() {
+    if (this.modo === 'todos') {
+      if (this.todos.fase === 'espera' && this.conectados.length >= 2) this._empezarTodos()
+      return
+    }
     if (!this.conRondas) return
     if (this.rondas.fase !== 'espera') return
     if (this.conectados.length < 2) return
@@ -2188,5 +2414,100 @@ export class Partida {
       const fin = this._rondaPorTiempo()
       this._terminarRonda(fin.ganador, fin.motivo)
     }
+  }
+
+  // ------------------------------------------------------ todos contra todos
+
+  /**
+   * **La salida por la que vuelve un abatido** (vuelta 100): la que queda más
+   * lejos del vivo más cercano. Es la regla más simple que evita lo único que
+   * no puede pasar en un todos contra todos —volver delante de quien acaba de
+   * matarte— y no pide nada que el servidor no tenga ya: posiciones y la lista
+   * de salidas. Con los que tienen gracia no se cuenta, que están saliendo.
+   */
+  _salidaMasLibre(quien) {
+    let mejor = quien.equipo
+    let lejos = -1
+    for (let i = 0; i < this.salidas.length; i++) {
+      const s = this.salidas[i]
+      let cerca = Infinity
+      for (const otro of this.jugadores.values()) {
+        if (otro === quien || otro.desconectado || otro.vida <= 0) continue
+        const p = otro.pose.position
+        const d = Math.hypot(p.x - s.x, p.z - s.z)
+        if (d < cerca) cerca = d
+      }
+      if (cerca > lejos) { lejos = cerca; mejor = i }
+    }
+    return mejor
+  }
+
+  /** Se abre una partida: marcador a cero, todos en pie y el reloj en marcha. */
+  _empezarTodos() {
+    const t = this.todos
+    t.n += 1
+    t.fase = 'juego'
+    t.ganador = null
+    t.hastaPaso = this.paso + this._pasosDe(TODOS.minutos * 60)
+    // **Todos reaparecen a la vez**, cada uno en su salida: es lo que hace que
+    // la partida empiece igual para todos. Es un teletransporte que decide el
+    // servidor —sube la época de pose (vuelta 50)— y el cliente lo lee porque
+    // `td.n` ha cambiado, que es la misma señal que un cambio de ronda.
+    for (const j of this.jugadores.values()) {
+      j.bajas = 0
+      j.muertes = 0
+      j.salidaSiguiente = null
+      j.golpeadoPor = null
+      this._reaparecer(j)
+      j.historial.fill(null)
+    }
+    this.proyectiles.apagarTodos()
+    this.clavadas.limpiar()
+    this._avisarClavadas({ t: MSG.CLAVADA, l: 1 })
+    this._marcadorSucio = true
+  }
+
+  /** Sin rivales no hay partida: se espera, con el marcador como esté. */
+  _esperarTodos() {
+    const t = this.todos
+    t.fase = 'espera'
+    t.hastaPaso = 0
+    t.ganador = null
+  }
+
+  /**
+   * **Quién gana**: el primero en llegar a las bajas, o el que más lleve al
+   * acabarse el tiempo. Un empate arriba no tiene ganador — se dice, no se
+   * sortea.
+   */
+  _terminarTodos() {
+    const t = this.todos
+    let mejor = null
+    let empate = false
+    for (const j of this.jugadores.values()) {
+      if (!mejor || j.bajas > mejor.bajas) { mejor = j; empate = false }
+      else if (j.bajas === mejor.bajas) empate = true
+    }
+    t.fase = 'fin'
+    t.ganador = mejor && !empate ? mejor.equipo : -1
+    t.hastaPaso = this.paso + this._pasosDe(TODOS.finSegundos)
+  }
+
+  /** El reloj de la partida, al final de cada paso, como el de las rondas. */
+  _todosTick() {
+    const t = this.todos
+    if (t.fase === 'espera') return
+    if (t.fase === 'juego') {
+      for (const j of this.jugadores.values()) {
+        if (j.bajas >= TODOS.bajasParaGanar) { this._terminarTodos(); return }
+      }
+      if (this.paso >= t.hastaPaso) this._terminarTodos()
+      return
+    }
+    // Con el resultado puesto, se espera y se vuelve a empezar — o a esperar,
+    // si en ese rato se ha ido todo el mundo menos uno.
+    if (this.paso < t.hastaPaso) return
+    if (this.conectados.length >= 2) this._empezarTodos()
+    else this._esperarTodos()
   }
 }

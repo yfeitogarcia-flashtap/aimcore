@@ -523,6 +523,30 @@ dar la partida por abandonada cuando quiera.
 
 Recargar la página **no** es irse: es como se vuelve.
 
+## Todos contra todos
+
+En la misma página del duelo, **Modo → Todos contra todos** crea una sala para
+varios: entra todo el que abra el enlace, hasta llenar el mapa. El de fábrica es
+**La Rotonda** (64 × 64, ocho jugadores); un mapa hecho en Alchemist sale aquí si se
+publica en este modo con sus salidas.
+
+- **Sin rondas, sin tienda y sin pausa.** Cada uno sale con lo que tenga elegido en
+  su **armería** (tecla B), que aquí sí equipa.
+- **Al morir se vuelve a los 2 s**, por la salida más lejos de los que siguen vivos
+  y con 2 s de gracia.
+- **Gana el primero que llegue a 20 bajas**, o el que más lleve a los 8 minutos.
+  Diez segundos con el resultado y empieza otra, con el marcador a cero.
+- **TAB** abre el marcador de la sala, y arriba se ven el reloj, tus bajas y las del
+  que va primero.
+- **Todos los rivales son del mismo color**: para ti todos son un rival. Quién es
+  cada uno lo dice su ficha al apuntarle.
+
+Lo que te llega de los demás lo decide el servidor: a quien está cerca —donde se le
+oiría andar— siempre, a quien está a media distancia sólo si se ve, y a quien está a
+más de 80 unidades, nunca. Así una sala de diez gasta una décima parte que con el
+protocolo de antes, y lo que no te llega no te lo puede enseñar un programa de
+trampas. El porqué y las medidas, en `docs/propuestas/11-salas-de-varios.md`.
+
 ## La armería del duelo: dinero, rondas y compra
 
 Entre ronda y ronda hay una **fase de compra** —quince segundos de fábrica, y
@@ -1181,8 +1205,8 @@ prisma se comporta como una caja, no como una cosa nueva que haya que aprender.
 ### Capas: la lista de todo lo que hay
 
 La hoja **Capas** del raíl lista **todo** lo que tiene el mapa —piezas, prismas,
-tubos, rampas, escaleras, estampados, ventiladores, tirolinas, teletransportes y
-salidas de duelo—, agrupado por tipo y con la cuenta al lado. **Pinchar una fila
+tubos, rampas, escaleras, estampados, ventiladores, tirolinas, teletransportes,
+salidas de duelo y salidas del todos contra todos—, agrupado por tipo y con la cuenta al lado. **Pinchar una fila
 elige ese elemento en la vista**, que es para lo que existe: encontrar algo en un
 mapa de cuarenta piezas mirándolo desde arriba no siempre se puede.
 
@@ -1207,6 +1231,20 @@ Y cada fila tiene un **ojo** que la quita del editor. Con él puesto:
 cada elemento tenga nombre propio, y hoy se identifica por su posición en la
 lista, así que borrar uno renumeraría los demás y un candado acabaría apuntando a
 otra pieza. El plan por fases está en `docs/propuestas/10-panel-de-capas.md`.
+
+### Salidas del todos contra todos
+
+Un mapa se publica en el todos contra todos marcando la casilla en **Mapa →
+Publicado en**, y eso le pone **ocho salidas**. Se colocan en la hoja **Duelo**:
+
+- **Jugadores** pone y quita salidas: caben tantos jugadores como salidas haya.
+- Cada salida es un **cono blanco**: se arrastra por la rejilla y se gira por la
+  **punta de su flecha**, igual que las del duelo. Salen en **Capas** y **Supr** las
+  borra.
+- **Al centro** las pone todas mirando al centro de la sala.
+- **Medir** dice cuántos pares de salidas se ven entre sí, que es lo que un mapa así
+  tiene que evitar: nadie tendría que aparecer delante de otro.
+- **Probar** sale por una de ellas, y por otra la vez siguiente.
 
 ### Todo se coloca, se elige y se borra igual
 

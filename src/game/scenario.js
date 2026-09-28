@@ -17,7 +17,7 @@
 
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { COLORS, COVER, FANS, ROUNDS, SURFACES, TELEPORTS, ZIPLINES, claveDeEscenario, coverColor, coverEdgeColor, coverHeight, coverTintedColor, definicionDeEscenario, fisicaDeEscenario, fondoDeEscenario, scenarioRoom } from '../config.js'
+import { COLORS, COVER, FANS, ROUNDS, SURFACES, TELEPORTS, TODOS, ZIPLINES, claveDeEscenario, coverColor, coverEdgeColor, coverHeight, coverTintedColor, definicionDeEscenario, fisicaDeEscenario, fondoDeEscenario, scenarioRoom } from '../config.js'
 import { bandaDePrisma, carasDePrisma, dentroDePrisma, envolventeDePrisma, puntosDePrisma } from '../maps/prisma.js'
 import { cajasDeTubos } from '../maps/tubo.js'
 import { cajasDeEscaleras } from '../maps/escalera.js'
@@ -348,6 +348,18 @@ export class Scenario {
       { x: spawn.x - 2.5, z: spawn.z, yaw: 0 },
       { x: spawn.x + 2.5, z: spawn.z, yaw: 0 },
     ]
+  }
+
+  /**
+   * **Las salidas del todos contra todos** (vuelta 100): tantas como jugadores
+   * caben, y cuántos caben **es** cuántas hay. Una lista vacía es «este mapa no
+   * se juega en ese modo», que es lo que el saneado ya garantiza para uno
+   * publicado; no se inventa un reparto como en `salidasDeDuelo`, porque ocho
+   * salidas a ojo son ocho sitios que no ha decidido nadie.
+   */
+  get salidasDeTodos() {
+    const suyas = this.definition.todos?.salidas
+    return Array.isArray(suyas) ? suyas.slice(0, TODOS.maxJugadores) : []
   }
 
   /**

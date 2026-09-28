@@ -56,7 +56,12 @@ import '../styles.css'
  * que hay que enseñar y publica sus dos asas imperativas. Quien decide cuándo
  * cambia algo es la página, que es la que tiene el cliente.
  */
-function CapaDuelo({ api, alCerrarPanel }) {
+/**
+ * `equipa` (vuelta 100): en un todos contra todos las armas son libres —ni se
+ * compran ni las reparte el mapa—, así que ahí la armería **sí equipa**, como
+ * en el entrenamiento. En el duelo sigue enseñando y nada más.
+ */
+function CapaDuelo({ api, alCerrarPanel, equipa = false }) {
   const [arma, setArma] = useState({ weaponKey: 'pulse', suppressed: false })
   /**
    * **El dinero, que se enseña siempre** (vuelta 88). Vive aquí y no en `stats`
@@ -146,7 +151,7 @@ function CapaDuelo({ api, alCerrarPanel }) {
               equipped={arma}
               onChange={updateSettings}
               onClose={cerrar}
-              soloFicha
+              soloFicha={!equipa}
             />
           )}
         </div>
@@ -160,16 +165,16 @@ function CapaDuelo({ api, alCerrarPanel }) {
  *
  * @param {HTMLElement} contenedor dónde vive la capa. Va fuera del lienzo y por
  *   encima de él, como en el juego.
- * @param {{ alCerrarPanel?: () => void }} [opciones] qué hacer al cerrar un panel:
+ * @param {{ alCerrarPanel?: () => void, equipa?: boolean }} [opciones] qué hacer al cerrar un panel:
  *   lo decide la página, que es la que sabe qué había debajo.
  */
-export function montarCapaDeDuelo(contenedor, { alCerrarPanel } = {}) {
+export function montarCapaDeDuelo(contenedor, { alCerrarPanel, equipa = false } = {}) {
   // La tipografía del juego, que no es la de esta página (ver `.hud-layer`).
   contenedor.classList.add('hud-layer')
   const api = {}
   createRoot(contenedor).render(
     <StrictMode>
-      <CapaDuelo api={api} alCerrarPanel={alCerrarPanel} />
+      <CapaDuelo api={api} alCerrarPanel={alCerrarPanel} equipa={equipa} />
     </StrictMode>,
   )
   return {

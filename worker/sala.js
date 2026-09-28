@@ -26,7 +26,7 @@
  * Es la misma decisión que ya se tomó en la vuelta 44 y el mismo número.
  */
 import * as THREE from 'three'
-import { NET, SIM, SIM_STEP_MS, definicionDeDuelo, escenarioDeDuelo } from '../src/config.js'
+import { NET, SIM, SIM_STEP_MS, definicionDeDuelo, definicionDeSala, escenarioDeSala, modoDeSala } from '../src/config.js'
 import { Scenario } from '../src/game/scenario.js'
 import { MSG } from '../net/protocolo.js'
 import { Partida } from '../net/partida.js'
@@ -97,10 +97,12 @@ export class Sala {
      */
     if (!this._mapaPuesto && this.partida.vacia) {
       this._mapaPuesto = true
-      const mapa = escenarioDeDuelo(consulta.get('mapa') ?? ESCENARIO)
-      if (mapa !== this.escenario.key) {
-        this.escenario = new Scenario(new THREE.Scene(), definicionDeDuelo(mapa))
-        this.partida = new Partida({ escenario: this.escenario, depurar: !!this.env.VEKTOR_DEBUG })
+      // Y el modo (vuelta 100), que decide de qué lista sale el mapa.
+      const modo = modoDeSala(consulta.get('modo'))
+      const mapa = escenarioDeSala(modo, consulta.get('mapa') ?? (modo === 'duelo' ? ESCENARIO : null))
+      if (mapa !== this.escenario.key || modo !== this.partida.modo) {
+        this.escenario = new Scenario(new THREE.Scene(), definicionDeSala(modo, mapa))
+        this.partida = new Partida({ escenario: this.escenario, depurar: !!this.env.VEKTOR_DEBUG, modo })
         if (this._compraPuesta) this.partida.configurarCompra(Number(consulta.get('compra')))
       }
     }

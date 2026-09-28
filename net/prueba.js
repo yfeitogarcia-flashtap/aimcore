@@ -21,7 +21,7 @@
  * avisos de conexión, las pausas y los números de F3.
  */
 import { masterGain, playEquip, playRoundTick } from '../src/audio/sfx.js'
-import { COLORS, CROSSHAIR, DUEL_SCENARIOS, ECONOMY, NET, RESUME_KEY_DELAY_MS, ROUNDS, TARGET, TEAMS, WEAPONS, articuloDeCombinacion, catalogoDeTienda, definicionDeDuelo } from '../src/config.js'
+import { COLORS, CROSSHAIR, ECONOMY, NET, RESUME_KEY_DELAY_MS, ROUNDS, TARGET, TEAMS, TODOS, WEAPONS, articuloDeCombinacion, catalogoDeTienda, definicionDeSala, escenariosDeSala } from '../src/config.js'
 import { Engine } from '../src/game/engine.js'
 import { Avatar } from '../src/game/avatar.js'
 import { hasLineOfSight } from '../src/game/sight.js'
@@ -34,7 +34,8 @@ import { vigilarActualizaciones } from '../src/ui/actualizacion.js'
 import { montarPantallaCompleta } from '../src/escritorio.js'
 import { getKeybinds, keyLabel, keysOf, subscribeKeybinds } from '../src/keybinds.js'
 import { compraAbierta } from './protocolo.js'
-import { codigoDeLaDireccion, direccionDeLaBarra, enlaceDeSala, mapaDeLaDireccion, urlDeSala } from './sala-cliente.js'
+import { codigoDeLaDireccion, direccionDeLaBarra, enlaceDeSala, mapaDeLaDireccion, modoDeLaDireccion, urlDeSala } from './sala-cliente.js'
+import { nickDeRanura } from './cliente.js'
 
 const lienzo = document.getElementById('lienzo')
 const aviso = document.getElementById('aviso')
@@ -79,6 +80,13 @@ for (const [nombre, valor] of [
  * (ver `onBienvenida`). Es el mismo reparto que el resto de las opciones de la
  * sala desde la vuelta 67: el cliente propone, la sala dispone.
  */
+/**
+ * **Y el modo** (vuelta 100): un duelo o un todos contra todos. Sale de la
+ * dirección como el mapa, por el mismo motivo y con el mismo reparto —lo decide
+ * quien crea la sala—, y va antes que él porque cada modo tiene su lista.
+ */
+const MODO = modoDeLaDireccion()
+const TODOS_CONTRA_TODOS = MODO === 'todos'
 const ESCENARIO = mapaDeLaDireccion()
 
 /**
@@ -96,6 +104,8 @@ const ESCENARIO = mapaDeLaDireccion()
  * motor porque sus callbacks la usan desde el primer frame.
  */
 const capa = montarCapaDeDuelo(document.getElementById('capa'), {
+  // En el todos contra todos la armería equipa: ahí las armas son libres.
+  equipa: TODOS_CONTRA_TODOS,
   // Al cerrar un panel vuelve lo que había debajo: con el ratón suelto, el menú.
   alCerrarPanel: () => {
     aviso.hidden = document.pointerLockElement === lienzo || !tienda.hidden
@@ -137,7 +147,7 @@ const motor = new Engine(lienzo, {
    * llega como pulsación —al entrar y al salir del alcance—, no por frame.
    */
   onMeleeRange: (dentro, espalda) => capa.aCuchillo(dentro, espalda),
-}, { escenario: definicionDeDuelo(ESCENARIO) })
+}, { escenario: definicionDeSala(MODO, ESCENARIO) })
 
 /**
  * **El fantasma: dónde dice el servidor que estás tú.** Es lo que hace visible
@@ -176,7 +186,13 @@ const enlace = { latenciaMs: 0, jitterMs: 0, perdida: 0 }
 const codigo = codigoDeLaDireccion()
 history.replaceState(null, '', direccionDeLaBarra(codigo))
 $('codigo').textContent = codigo
-$('enlace').value = enlaceDeSala(codigo, window.location, ESCENARIO)
+// **La página dice a qué se juega** (vuelta 100): es la misma página para los
+// dos modos, y el título y la invitación tienen que decir cuál.
+if (TODOS_CONTRA_TODOS) {
+  $('titulo').textContent = 'Vektor · Todos contra todos'
+  $('invita').textContent = 'Copia y comparte este link: entra todo el que lo abra, hasta llenar el mapa'
+}
+$('enlace').value = enlaceDeSala(codigo, window.location, ESCENARIO, MODO)
 
 /**
  * **La página ensambla la red; el motor sólo la usa.** El cliente se construye
@@ -263,7 +279,7 @@ const cliente = new ClienteRed({
   controles: motor.controls,
   oclusores: motor.scenario.occluders,
   transporte: conRedSimulada(
-    transporteWebSocket(urlDeSala(codigo, window.location, paseDeVuelta, compraElegida, ESCENARIO)),
+    transporteWebSocket(urlDeSala(codigo, window.location, paseDeVuelta, compraElegida, ESCENARIO, MODO)),
     enlace,
   ),
 })
@@ -279,8 +295,8 @@ cliente.onBienvenida = (m) => {
    * geometría que el servidor no tiene sería una corrección por paso contra
    * paredes que sólo existen en una pantalla.
    */
-  if (m.escenario && m.escenario !== ESCENARIO) {
-    window.location.href = enlaceDeSala(codigo, window.location, m.escenario)
+  if ((m.escenario && m.escenario !== ESCENARIO) || (m.modo && m.modo !== MODO)) {
+    window.location.href = enlaceDeSala(codigo, window.location, m.escenario, m.modo)
     return
   }
   const mio = equipos[m.equipo % equipos.length]
@@ -425,7 +441,10 @@ function pintarPausa() {
   // distinto precio, y dos botones juntos obligan a leerlos para saber cuál.
   // **Y sin rival no hay partida que pausar** (vuelta 98): el menú es entonces
   // el de crear la sala (`pintarBotonesDelMenu`).
-  const sinPartida = cliente.ocupadas < 2
+  // **Y en el todos contra todos no se pausa** (vuelta 100): uno de diez no
+  // puede parar el mundo a los otros nueve, y el servidor lo ignora. Un botón
+  // que promete lo que el servidor no va a hacer es el fallo de la vuelta 67.
+  const sinPartida = cliente.ocupadas < 2 || TODOS_CONTRA_TODOS
   $('pausar').hidden = sinPartida || p.libres <= 0 || p.pausada || cliente.votacion.activa
   $('pedirVoto').hidden = sinPartida || p.libres > 0 || p.pausada || cliente.votacion.activa
   if (p.pausada && p.motivo === 'caida') {
@@ -927,6 +946,68 @@ $('gho').addEventListener('change', (e) => { fantasma.group.visible = e.target.c
  * `engine._advanceNet()`, que es donde puede haber **uno solo**. Esta página se
  * engancha por `onFrame`, que el motor publica una vez por fotograma.
  */
+/**
+ * **El todos contra todos, arriba y centrado** (vuelta 100), en el mismo sitio
+ * que el marcador de ronda y con su misma regla: lo que cambia de fase se
+ * escribe al cambiar y la cuenta sólo cuando cambia el segundo. Lo que enseña es
+ * lo que un todos contra todos pregunta de reojo: cuánto queda, cuántas llevas
+ * y cuántas lleva el que va primero.
+ */
+let todosPintado = ''
+function pintarTodos() {
+  const t = cliente.todos
+  const seg = Math.ceil(Math.max(0, t.resta) / 1000)
+  const reloj = t.fase === 'juego' ? `${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, '0')}` : ' '
+  const mias = cliente.bajas ?? 0
+  let lider = 0
+  for (const f of cliente.marcador) if (f.b > lider) lider = f.b
+  const linea = `${mias} · líder ${lider} / ${t.objetivo || TODOS.bajasParaGanar}`
+  const clave = `${reloj}|${linea}|${t.fase}`
+  if (clave === todosPintado) return
+  todosPintado = clave
+  $('rondaTiempo').textContent = reloj
+  $('rondaMarcador').textContent = linea
+}
+
+function pintarFaseTodos(t) {
+  $('rondaN').textContent = 'TODOS CONTRA TODOS'
+  $('rondaFase').textContent = t.fase === 'espera' ? 'ESPERANDO RIVALES' : t.fase === 'fin' ? 'NUEVA PARTIDA EN UNOS SEGUNDOS' : ' '
+  todosPintado = ''
+  // **El cartel del final, sin salida obligada**: aquí la partida no se acaba,
+  // vuelve a empezar sola (`TODOS.finSegundos`). El botón de salir sigue ahí
+  // para quien quiera irse.
+  const acabo = t.fase === 'fin'
+  $('fin').classList.toggle('puesto', acabo)
+  if (!acabo) return
+  const gane = t.ganador === cliente.equipo
+  $('finQuien').textContent = t.ganador === -1 ? 'EMPATE ARRIBA' : gane ? 'HAS GANADO' : `GANA ${nickDeRanura(t.ganador)}`
+  $('finQuien').style.color = gane ? '#2FCB82' : '#EDEDED'
+  $('finDetalle').textContent = `${cliente.bajas ?? 0} bajas tuyas · la siguiente empieza sola`
+  if (document.pointerLockElement === lienzo) document.exitPointerLock()
+}
+cliente.onTodos = (t) => pintarFaseTodos(t)
+if (TODOS_CONTRA_TODOS) pintarFaseTodos(cliente.todos)
+
+/**
+ * **El marcador de la sala, con TAB** (vuelta 100). Es la misma tecla y la
+ * misma forma que el del entrenamiento —abierto mientras se mantiene, y sólo
+ * jugando—, y aquí por fin tiene más de una fila. Se rehace cuando cambia
+ * (`marcadorVersion`), no por frame.
+ */
+let tablaVersion = -1
+function pintarTabla(abierta) {
+  const tabla = $('tablaTodos')
+  tabla.hidden = !abierta
+  if (!abierta || tablaVersion === cliente.marcadorVersion) return
+  tablaVersion = cliente.marcadorVersion
+  const filas = [...cliente.marcador].sort((a, b) => b.b - a.b || a.m - b.m)
+  $('tablaFilas').innerHTML = filas.map((f) => {
+    const yo = f.id === cliente.id
+    return `<tr class="${yo ? 'yo' : ''}${f.c ? ' caido' : ''}"><td>${nickDeRanura(f.r)}${yo ? ' · tú' : ''}${f.c ? ' · sin conexión' : ''}</td>` +
+      `<td>${f.b}</td><td>${f.m}</td><td>${f.m ? (f.b / f.m).toFixed(2) : f.b.toFixed(2)}</td></tr>`
+  }).join('')
+}
+
 // **Lo que cambia de fase se pinta al cambiar, no por frame.**
 cliente.onRonda = (r) => {
   pintarFaseDeRonda(r)
@@ -1020,6 +1101,7 @@ function pintarHud(stats) {
   }
   pintarRestas(ahora)
   pintarRonda()
+  if (TODOS_CONTRA_TODOS) pintarTabla(Boolean(stats.scoreboard))
   pintarRed(ahora)
   pintarPanel()
 }
@@ -1034,6 +1116,10 @@ let restaPintada = ''
 /** El último segundo que ya ha pitado, para que cada uno suene una vez. */
 let segPitado = -1
 function pintarRonda() {
+  if (TODOS_CONTRA_TODOS) {
+    pintarTodos()
+    return
+  }
   const r = cliente.rondas
   if (r.fase === 'espera' || r.fase === 'fin') {
     if (restaPintada !== '') {
@@ -1158,7 +1244,9 @@ function pintarPanel() {
     pintarConfigurable()
     pintarBotonesDelMenu()
   }
-  $('hayRival').textContent = dentro ? 'dentro' : 'esperando'
+  $('hayRival').textContent = TODOS_CONTRA_TODOS
+    ? `${Math.max(0, cliente.ocupadas - 1)} dentro · caben ${cliente.plazas}`
+    : dentro ? 'dentro' : 'esperando'
   // El caudal se mide sobre la ventana, así que hay que vaciarlo aunque el panel
   // esté cerrado: si no, al abrirlo la primera lectura sería la suma de todo lo
   // que ha pasado desde que se cerró.
@@ -1470,6 +1558,34 @@ cliente.onEconomia = (eco) => {
 }
 
 /**
+ * **El selector de modo** (vuelta 100), el primero de todos y con las reglas de
+ * los otros dos: es del anfitrión, sólo mientras no haya entrado nadie, y
+ * cambiarlo **empieza otra partida**. Al cambiar de modo se suelta el mapa:
+ * cada modo tiene su lista, y el de uno no tiene por qué existir en el otro.
+ */
+const modoSel = $('modoSel')
+for (const [valor, texto] of [['duelo', 'Duelo 1v1'], ['todos', 'Todos contra todos']]) {
+  const opcion = document.createElement('option')
+  opcion.value = valor
+  opcion.textContent = texto
+  modoSel.appendChild(opcion)
+}
+modoSel.value = MODO
+modoSel.addEventListener('change', () => {
+  if (!puedeConfigurar()) {
+    pintarConfigurable()
+    return
+  }
+  const destino = new URL(window.location.href)
+  if (modoSel.value === 'duelo') destino.searchParams.delete('modo')
+  else destino.searchParams.set('modo', modoSel.value)
+  destino.searchParams.delete('mapa')
+  destino.hash = ''
+  destino.pathname = destino.pathname.replace(/\/duelo\/[^/]+$/, '/duelo')
+  window.location.href = destino.toString()
+})
+
+/**
  * **El selector de mapa** (vuelta 72), al lado del de la fase de compra y con
  * exactamente las mismas reglas: es del anfitrión, sólo mientras no haya
  * entrado nadie, y cambiarlo **empieza otra partida** —una sala ya creada no se
@@ -1477,7 +1593,7 @@ cliente.onEconomia = (eco) => {
  * añadir un mapa de duelo es marcarlo `soloDuelo`, no tocar este desplegable.
  */
 const mapaSel = $('mapaSel')
-for (const [clave, def] of Object.entries(DUEL_SCENARIOS)) {
+for (const [clave, def] of Object.entries(escenariosDeSala(MODO))) {
   const opcion = document.createElement('option')
   opcion.value = clave
   opcion.textContent = def.label
@@ -1562,15 +1678,22 @@ function puedeConfigurar() {
  * dato del escenario y no al servidor: la respuesta no depende de la sala.
  */
 function reparteElMapa(clave) {
-  return Boolean(DUEL_SCENARIOS[clave]?.duelo?.dotacion)
+  return Boolean(escenariosDeSala(MODO)[clave]?.duelo?.dotacion)
 }
 
 function pintarConfigurable() {
   const puede = puedeConfigurar()
   const reparte = reparteElMapa(mapaSel.value)
-  selector.disabled = !puede || reparte
+  // **En el todos contra todos no hay fase de compra, ni rondas** (vuelta 100):
+  // el selector se apaga y lo dice, que es la regla de la vuelta 94 — un control
+  // que el juego va a ignorar se atenúa, no se esconde, porque vuelve a valer
+  // en cuanto se elige el duelo encima.
+  selector.disabled = !puede || reparte || TODOS_CONTRA_TODOS
   mapaSel.disabled = !puede
-  selector.title = reparte
+  modoSel.disabled = !puede
+  selector.title = TODOS_CONTRA_TODOS
+    ? 'el todos contra todos no tiene rondas ni tienda'
+    : reparte
     ? 'este mapa reparte el equipo: no hay tienda ni fase de compra'
     : puede
       ? 'cambiarla empieza una partida nueva, con otro código'
@@ -1578,7 +1701,9 @@ function pintarConfigurable() {
         ? 'ya hay alguien dentro: cambiarla le dejaría fuera'
         : 'la elige quien crea la partida'
   // Corto a propósito: va en la fila del número, y el menú no puede crecer.
-  $('compraQuien').textContent = reparte
+  $('compraQuien').textContent = TODOS_CONTRA_TODOS
+    ? '· sin rondas'
+    : reparte
     ? '· el mapa reparte'
     : puede
       ? '· cambiarla empieza otra'

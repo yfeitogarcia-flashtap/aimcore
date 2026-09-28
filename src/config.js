@@ -3950,6 +3950,36 @@ export function giro180(piezas) {
 }
 
 /**
+ * **Giro de 90°, cuatro veces** (vuelta 100): lo mismo que `giro180` para un
+ * mapa de cuatro lados. Se declara un cuarto y salen los otros tres, cada uno
+ * girado un cuarto de vuelta alrededor del origen, así que **ninguna salida
+ * tiene un sitio mejor que otra** por construcción.
+ *
+ * Un cuarto de vuelta lleva el punto (x, z) a (−z, x), y una caja —esquina
+ * mínima, ancho y fondo— a la esquina que queda mínima después: x' = −(z + d),
+ * z' = x, y el ancho y el fondo se intercambian.
+ */
+export function giro90(piezas) {
+  const vueltas = [piezas]
+  for (let k = 1; k < 4; k++) {
+    vueltas.push(vueltas[k - 1].map((p) => ({ ...p, x: -(p.z + p.d), z: p.x, w: p.d, d: p.w })))
+  }
+  return vueltas.flat()
+}
+
+/**
+ * **Y las salidas, con el mismo giro**: un punto girado y, de rumbo, **mirando
+ * al centro**. Una cámara mira a −Z con yaw 0 (la convención del movimiento,
+ * `forward = (−sin, −cos)`), así que mirar al origen desde (x, z) es
+ * `atan2(x, z)`.
+ */
+export function salidasGiro90(puntos) {
+  const vueltas = [puntos]
+  for (let k = 1; k < 4; k++) vueltas.push(vueltas[k - 1].map((p) => ({ x: -p.z, z: p.x })))
+  return vueltas.flat().map((p) => ({ x: p.x, z: p.z, yaw: +Math.atan2(p.x, p.z).toFixed(4) }))
+}
+
+/**
  * **Las herramientas del editor** (vuelta 77), y son tuning como todo lo demás.
  *
  * Van juntas y aparte del juego a propósito: **ninguna de estas dos cosas
@@ -4880,6 +4910,65 @@ const ESCENARIOS_INTEGRADOS = {
     routes: [],
   },
 
+  /**
+   * **La Rotonda — el mapa del todos contra todos** (vuelta 100).
+   *
+   * El primero para más de dos, y con las cuatro reglas de El Espejo llevadas a
+   * ocho: **simetría por construcción** (giro de 90°, cuatro veces: ninguna
+   * salida es mejor que otra), **salidas declaradas con su rumbo** —mirando al
+   * centro—, **fuera de los selectores de los otros modos** (`modos`) y plano,
+   * que la altura se mide jugando.
+   *
+   * El tamaño sale de la propuesta 11 §2.2 —300 a 500 u² transitables por
+   * jugador— y no del gusto: 64 × 64 son ~4 000 u² de suelo, o sea ocho
+   * jugadores cómodos y diez apretados. Cruzarlo en diagonal son ~14 s.
+   *
+   * **Cada salida tiene su bolsillo**: dos muros altos a los lados y una
+   * pantalla delante, con dos huecos para salir. Lo que tiene que garantizar un
+   * mapa de todos contra todos no es simetría entre dos, es que **ninguna salida
+   * vea a otra** — que es una medida (`todos100`), no una promesa.
+   */
+  rotonda: {
+    label: 'La Rotonda',
+    modos: ['todos'],
+    room: { width: 64, depth: 64, height: 10 },
+    spawn: { x: 0, z: 28.5 },
+    todos: {
+      // Dos por cuarto: una en el centro del borde y otra en la esquina.
+      salidas: salidasGiro90([
+        { x: 0, z: 28.5 },
+        { x: 24, z: 24 },
+      ]),
+    },
+    boxes: [
+      ...giro90([
+        // El bolsillo de la salida del borde: dos costados altos y una pantalla
+        // media delante, con un hueco de 2.5 u a cada lado para salir.
+        { x: -5.5, z: 25.5, w: 1, d: 6.5, kind: 'alta' },
+        { x: 4.5, z: 25.5, w: 1, d: 6.5, kind: 'alta' },
+        { x: -3, z: 22.5, w: 6, d: 1, kind: 'media' },
+        // El de la esquina, en L: se sale pegado a una de las dos paredes.
+        { x: 20, z: 19.5, w: 6, d: 1, kind: 'alta' },
+        { x: 19.5, z: 20.5, w: 1, d: 6, kind: 'alta' },
+        // Y el medio: cobertura a tres alturas, que es el vocabulario de siempre.
+        { x: -1.5, z: 13, w: 3, d: 3, kind: 'media' },
+        // El pilar de la diagonal: corta la recta entre dos salidas de borde
+        // vecinas, que sin él se veían por los huecos de sus bolsillos
+        // (lo cazó `todos100`: 4 de 28 pares).
+        { x: 13, z: 13, w: 2.5, d: 2.5, kind: 'alta' },
+        { x: 8, z: 17, w: 5, d: 1.2, kind: 'bordillo' },
+        { x: 13, z: 4, w: 3, d: 1.5, kind: 'baja' },
+      ]),
+      // **El bloque central**, fuera del giro por estar centrado en el origen.
+      { x: -3, z: -3, w: 6, d: 6, kind: 'alta' },
+    ],
+    ramps: [],
+    spawnZone: [],
+    objectiveSites: [],
+    pickups: [],
+    routes: [],
+  },
+
   largoYPuerta: {
     label: 'Largo y Puerta',
     /**
@@ -5332,7 +5421,7 @@ export const SCENARIOS = { ...ESCENARIOS_INTEGRADOS, ...MAPAS_DE_FICHERO }
  * **Los modos en los que se puede publicar un mapa** (vuelta 98), en el orden en
  * que el saneado los escribe.
  */
-export const MODOS_DE_MAPA = ['entrenamiento', 'duelo']
+export const MODOS_DE_MAPA = ['entrenamiento', 'duelo', 'todos']
 
 /**
  * **En qué modos se ofrece un mapa** (vuelta 98). Es la única pregunta que
@@ -5424,6 +5513,45 @@ export function escenarioDeDuelo(key) {
  */
 export function definicionDeDuelo(key) {
   return DUEL_SCENARIOS[escenarioDeDuelo(key)] ?? ESCENARIOS_INTEGRADOS[NET.escenario]
+}
+
+/**
+ * **Los mapas del todos contra todos** (vuelta 100), del mismo dato que los
+ * otros dos modos. Lo que publica un mapa aquí es tener sus salidas: el saneado
+ * quita el modo si no las tiene (`src/maps/formato.js`).
+ */
+export const TODOS_SCENARIOS = escenariosDeModo('todos')
+
+/** El de fábrica: el primero de la lista, que sin mapas de fichero es La Rotonda. */
+export const TODOS_ESCENARIO = TODOS_SCENARIOS.rotonda ? 'rotonda' : Object.keys(TODOS_SCENARIOS)[0]
+
+/** Qué mapa juega una sala de todos contra todos, saneado — como `escenarioDeDuelo`. */
+export function escenarioDeTodos(key) {
+  return TODOS_SCENARIOS[key] ? key : TODOS_ESCENARIO
+}
+
+/** La definición que monta una sala de todos contra todos. */
+export function definicionDeTodos(key) {
+  return TODOS_SCENARIOS[escenarioDeTodos(key)] ?? ESCENARIOS_INTEGRADOS.rotonda
+}
+
+/**
+ * **Los modos de una sala en red** (vuelta 100) y lo único que cambia entre
+ * ellos a la hora de montarla: qué lista de mapas se ofrece y qué definición se
+ * monta. Lo miran los dos huéspedes y la página, así que va aquí una vez.
+ */
+export const MODOS_DE_SALA = ['duelo', 'todos']
+export function modoDeSala(modo) {
+  return MODOS_DE_SALA.includes(modo) ? modo : 'duelo'
+}
+export function definicionDeSala(modo, key) {
+  return modoDeSala(modo) === 'todos' ? definicionDeTodos(key) : definicionDeDuelo(key)
+}
+export function escenarioDeSala(modo, key) {
+  return modoDeSala(modo) === 'todos' ? escenarioDeTodos(key) : escenarioDeDuelo(key)
+}
+export function escenariosDeSala(modo) {
+  return modoDeSala(modo) === 'todos' ? TODOS_SCENARIOS : DUEL_SCENARIOS
 }
 
 export function scenarioHasCover(escenario) {
@@ -7359,6 +7487,86 @@ export const NET = {
    * Punto de partida, a calibrar jugando.
    */
   offlineMs: 1000,
+  /**
+   * **Cada cuántos pasos sale una foto, según el modo de la sala** (vuelta 100).
+   * `snapshotEvery` era uno para todo; ahora es la del duelo, y el todos contra
+   * todos va a una de cada tres (20 Hz).
+   *
+   * Bajar el ritmo no toca la simulación —el mundo sigue a 60 Hz fijos y cada
+   * entrada viaja con su paso— y el rival **ya** se dibujaba interpolando entre
+   * dos fotos con el reloj de las fotos (vuelta 45). Lo que se paga es que se le
+   * dibuja más atrás: ver `interpolarFotos`.
+   *
+   * **El duelo se queda a 60 Hz a propósito**: son dos cuerpos por foto, y
+   * cuesta lo mismo que antes de esta vuelta con la foto ligera del rival (ver
+   * `net/interes.js`). No hay nada que ganar degradándolo. El ritmo lo decide
+   * la sala al nacer y lo dice la bienvenida (`fc`), así que el cliente no
+   * tiene que adivinarlo.
+   */
+  fotoCada: { duelo: 1, todos: 3 },
+  /**
+   * **Con cuánta holgura se dibuja al rival, en fotos** (vuelta 100). El
+   * retraso de dibujado es `max(interpDelayTicks, fotoCada · esto)` pasos: con
+   * fotos a 60 Hz sale el de siempre (3 pasos, 50 ms) y a 20 Hz, 6 pasos
+   * (100 ms), que son **dos fotos** — lo que hace falta para que una foto que
+   * llega un poco tarde no deje al rival sin pareja entre la que interpolar.
+   * Es la cuenta de Source (`cl_interp` 0.1 a 20 Hz), y por lo mismo: una foto
+   * de colchón.
+   */
+  interpolarFotos: 2,
+  /**
+   * **Quién entra en la foto de cada uno** (vuelta 100). La regla está escrita
+   * en `net/interes.js` y en ningún otro sitio; aquí están sus tres números.
+   *
+   * - `cercaU`: a esta distancia entras **siempre**, se te vea o no. Es el radio
+   *   de las pisadas (`FOOTSTEPS.maxDistanceU`, 16 u) más lo que se recorre
+   *   corriendo mientras una foto viaja y se interpola (~8 u de colchón): el
+   *   oído no hay que apuntarlo a ninguna parte (vueltas 60 y 73), así que quien
+   *   se oye a través de una pared tiene que estar en la foto aunque no se vea.
+   * - `lejosU`: más allá **no entra nadie**, se vea o no. No es de gusto: es
+   *   algo más que el alcance de un disparo en red (`shotRange`, 60 u), así que
+   *   a quien queda fuera no le puedes dar ni te puede dar con una bala, y a 80
+   *   u un cuerpo de 1.8 son unos diez píxeles. Es la palanca que deja una sala
+   *   grande abierta en un número que no crece con el tamaño del mapa.
+   * - `memoriaMs`: quien ha entrado por verse se queda este rato aunque deje de
+   *   verse. Sin esto, alguien que asoma y se esconde tras una columna parpadea
+   *   —sale de la foto, se le borra el búfer, vuelve a hacer falta dos fotos
+   *   para dibujarle— y en la frontera de `cercaU` pasaría lo mismo.
+   * - `margenU`: cuánto se ensancha el cuerpo de quien se mira al preguntar si
+   *   se ve (ver `seVen`). Más que el radio del cuerpo a propósito: quien saca
+   *   medio hombro por una esquina se ve, y el centro de su pecho sigue tapado.
+   */
+  interes: { cercaU: 24, lejosU: 80, memoriaMs: 1000, margenU: 1 },
+}
+
+/**
+ * **Todos contra todos** (vuelta 100, fase 1 de la propuesta 11).
+ *
+ * Es la primera sala de más de dos, y es la barata a propósito: **no tiene
+ * rondas, ni economía, ni equipos**. Es un marcador y un cronómetro encima de
+ * la reaparición por reloj de entradas que ya existe desde la vuelta 52. Lo que
+ * sí es nuevo son los números de aquí.
+ */
+export const TODOS = {
+  /**
+   * Tope de butacas, sea cual sea el mapa. Un mapa declara cuántas salidas
+   * tiene (`todos.salidas`) y de ahí sale cuántos caben — como `TRAINER_SCENARIOS`
+   * se deriva de `soloDuelo`, sin un número aparte que lo contradiga—, pero no
+   * por encima de esto. 16 es la cuenta de `salas100`: ver
+   * `docs/propuestas/11-salas-de-varios.md` §2.3.
+   */
+  maxJugadores: 16,
+  /** Por debajo no hay todos contra todos: con dos es un duelo sin rondas. */
+  minSalidas: 3,
+  /** Bajas para ganar. Punto de partida, a calibrar jugando. */
+  bajasParaGanar: 20,
+  /** Y si nadie llega, lo que dura una partida. */
+  minutos: 8,
+  /**
+   * Lo que se queda el resultado en pantalla antes de empezar otra. Durante
+   * este rato no se dispara, y al acabar todos reaparecen a la vez.
+   */
+  finSegundos: 10,
 }
 
 /**

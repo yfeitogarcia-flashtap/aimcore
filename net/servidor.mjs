@@ -37,7 +37,7 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as THREE from 'three'
 import { WebSocketServer } from 'ws'
-import { ESCRITORIO, NET, SIM, SIM_STEP_MS, definicionDeDuelo, escenarioDeDuelo } from '../src/config.js'
+import { ESCRITORIO, NET, SIM, SIM_STEP_MS, definicionDeSala, escenarioDeSala, modoDeSala } from '../src/config.js'
 import { Scenario } from '../src/game/scenario.js'
 import { MSG } from './protocolo.js'
 import { Partida } from './partida.js'
@@ -150,15 +150,21 @@ class Sala {
    *   antes de que llegue ningún mensaje. Quien entra después no la cambia — el
    *   segundo jugador no puede reescribirle la partida al primero.
    */
-  constructor(codigo, compraSegundos = null, mapa = null) {
+  constructor(codigo, compraSegundos = null, mapa = null, modo = null) {
     this.codigo = codigo
+    /**
+     * **Y en qué modo** (vuelta 100): un duelo o un todos contra todos. Por el
+     * mismo camino que el mapa y con el mismo reparto —lo decide quien crea la
+     * sala—, y antes que el mapa, porque cada modo tiene su lista de mapas.
+     */
+    this.modo = modoDeSala(modo)
     /**
      * **En qué mapa se juega esta sala** (vuelta 72). Como la fase de compra:
      * lo decide quien la crea, viaja en la dirección del socket y al segundo en
      * entrar se le ignora. El saneado es el compartido (`escenarioDeDuelo`), no
      * uno de aquí: dos saneados es como una sala acaba jugándose en dos mapas.
      */
-    this.mapa = escenarioDeDuelo(mapa ?? ESCENARIO)
+    this.mapa = escenarioDeSala(this.modo, mapa ?? (this.modo === 'duelo' ? ESCENARIO : null))
     /**
      * El escenario se monta **una vez por sala**, no por conexión: son 20 piezas
      * de geometría con sus oclusores, y montarlo dos veces serían dos mundos
@@ -166,12 +172,13 @@ class Sala {
      */
     // La definición de la lista del duelo y no la clave (vuelta 98): una clave
     // resuelve contra `SCENARIOS`, que deja ganar al fichero en todos los modos.
-    this.escenario = new Scenario(new THREE.Scene(), definicionDeDuelo(this.mapa))
+    this.escenario = new Scenario(new THREE.Scene(), definicionDeSala(this.modo, this.mapa))
     this.partida = new Partida({
       escenario: this.escenario,
       colchon: COLCHON,
       depurar: DEPURAR,
       rondas: RONDAS,
+      modo: this.modo,
       ...(compraSegundos === null ? null : { compraSegundos }),
     })
     this.reloj = null
@@ -346,10 +353,10 @@ class Sala {
  */
 const salas = new Map()
 
-function salaDe(codigo, compraSegundos = null, mapa = null) {
+function salaDe(codigo, compraSegundos = null, mapa = null, modo = null) {
   let sala = salas.get(codigo)
   if (!sala) {
-    sala = new Sala(codigo, compraSegundos, mapa)
+    sala = new Sala(codigo, compraSegundos, mapa, modo)
     salas.set(codigo, sala)
   }
   return sala
@@ -637,7 +644,10 @@ servidor.on('upgrade', (peticion, socket, cabeza) => {
     const segundos = compra === null ? null : Number(compra)
     // Y el mapa, por el mismo camino y con el mismo reparto: sólo cuenta el de
     // quien crea la sala.
-    const sala = salaDe(codigo, Number.isFinite(segundos) ? segundos : null, url.searchParams.get('mapa'))
+    const sala = salaDe(
+      codigo, Number.isFinite(segundos) ? segundos : null,
+      url.searchParams.get('mapa'), url.searchParams.get('modo'),
+    )
     sala.entra(ws, url.searchParams.get('pase'))
   })
 })

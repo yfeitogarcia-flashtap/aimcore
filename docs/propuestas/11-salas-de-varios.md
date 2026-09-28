@@ -1,7 +1,9 @@
 # Propuesta 11 — Salas de varios, espectador y lobby de evento
 
-**Estado: escrita, sin construir.** Es el bloque que el encargo de la vuelta 97
-puso por delante de las propuestas 08 (armas del mapa) y 09 (perforación).
+**Estado: fase 1 construida en la vuelta 100** —el protocolo nuevo, el todos
+contra todos y las N salidas en Alchemist (ver §9)—; las fases 2 a 4, escritas y
+sin construir. Es el bloque que el encargo de la vuelta 97 puso por delante de las
+propuestas 08 (armas del mapa) y 09 (perforación).
 
 Lo que se pidió son tres cosas, y el encargo ya trae la observación que las une:
 **las tres dependen de que una sala pueda tener más de dos personas dentro.**
@@ -208,6 +210,127 @@ se corre a 6.5 u/s. Para que diez se encuentren sin pasar minutos solos:
 Nada de esto se construye ahora: está aquí para que el protocolo de la fase 1 no
 lo cierre sin querer.
 
+### 2.3 El caso extremo: 50 en una sala abierta de 200 × 200 (vuelta 100)
+
+Pedido antes de prometer salas grandes: cincuenta jugadores en una sola sala sin
+paredes que filtren, para saber **dónde está el límite de verdad**. Medido con el
+protocolo de la vuelta 100 (`salas100`, contra `Partida` y contando los bytes que
+el servidor manda; `dibujo100`, contra el motor en un navegador). Los cincuenta
+andan repartidos por la sala —rumbo nuevo al azar cada dos segundos—, porque
+juntarlos en el centro dejaría al filtro sin nada que filtrar.
+
+| 50 en 200 × 200 | CPU del servidor por paso | subida de la sala | por jugador | rivales por foto |
+|---|---|---|---|---|
+| sin filtro, 60 Hz (el protocolo de antes, con la foto ligera) | 1.46 ms (8.8 %) | 19.4 MiB/s (156 Mbit/s) | 398 KiB/s | 49 |
+| sin filtro, 20 Hz | 0.45 ms (2.7 %) | 6.5 MiB/s | 133 KiB/s | 49 |
+| **filtro de serie (80 u), 20 Hz** | **0.37 ms (2.2 %)** | **3.1 MiB/s (25 Mbit/s)** | **63 KiB/s** | **19.7** |
+| filtro a 60 u, 20 Hz | 0.32 ms | 2.2 MiB/s | 46 KiB/s | 12.3 |
+| filtro de serie, 10 Hz | 0.21 ms | 1.5 MiB/s | 32 KiB/s | 19.7 |
+
+Y el cliente, que era la tercera pregunta:
+
+- **Recibir** una foto con 49 dentro (6.6 KiB) cuesta 0.05 ms de `JSON.parse` y
+  0.05 ms de leerla: **2 ms de CPU por segundo** a 20 Hz.
+- **Interpolar** a los 49 cada frame: **0.01 ms**.
+- **Dibujarlos**: cada cuerpo son **3 llamadas de dibujo** (sus tres zonas); 49
+  añaden ~150 llamadas y ~0.4 ms de `render()` **en SwiftShader**, o sea la CPU
+  haciendo de tarjeta gráfica. En un PC con gráfica es calderilla; lo que vale de
+  la cifra es la pendiente, y es plana.
+
+**Dónde está el límite, entonces: en el cable, no en la CPU ni en el cliente.**
+
+- **La CPU** aguanta ~40 salas así por núcleo (2.2 % de un paso cada una).
+- **El cliente** recibe 0.5 Mbit/s y dibuja 150 llamadas más: cabe en cualquier
+  PC que ya mueva el juego.
+- **El cable**: 25 Mbit/s de subida **por sala de cincuenta**. En la máquina de
+  Fly de hoy eso es una sala, quizá dos, y ~70 $/mes si se juega dos horas al día
+  (3.2 TiB). Es el mismo cuadrado de §2 con otro número: sin paredes, lo único que
+  lo corta es la distancia, y a 80 u en una sala de 200 cada uno sigue viendo a
+  veinte.
+
+**La siguiente palanca no es de interés, es de formato.** De los 6.6 KiB de esa
+foto, cada rival pesa ~138 B en JSON —cinco números con tres decimales, su arma,
+su vida, su ranura—. En binario son unos 16 B (posición y rumbo en enteros de 16
+bits, época, vida y arma en bytes): **ocho veces menos**, y 50 en una sala abierta
+pasaría a ~400 KiB/s. Eso es cambiar `JSON.stringify` por un empaquetado en los
+dos extremos y **no toca nada más** —el cable ya es de texto por decisión de la
+vuelta 45 («se lee en el inspector»)— y es lo primero que habría que hacer el día
+que las salas de cincuenta sean un producto y no una medida. Detrás, dos más ya
+medidas: foto a 10 Hz para los que están lejos (la última fila) y un `lejosU`
+más corto.
+
+**¿Tiene sentido ampliar el tamaño máximo de sala (hoy 200 u de lado)?** **No,
+y por tres motivos:**
+
+- **No hace falta para cincuenta.** Con la cuenta de §2.2 —300 a 500 u² por
+  jugador—, cincuenta piden 15 000–25 000 u², o sea una sala de **125 a 160 de
+  lado**. 200 × 200 son 800 u² por jugador: ya es un mapa **vacío** para
+  cincuenta, no uno apretado.
+- **Crecer abierto no escala el tráfico, lo esparce.** Medido: en 300 × 300 cada
+  uno ve a 10 y en 400 × 400 a 6, que es lo mismo que decir que la mitad del tiempo
+  no ves a nadie. Lo que escala de verdad es **el grafo de salas** de §2.2: el
+  tráfico sale de la densidad de tu sala y la de al lado, no del tamaño del mundo.
+- **Y hay tres cosas atadas a 200** que habría que mover a la vez: el plano
+  lejano de la cámara (`CAMERA.far`, 200 u —más allá no se dibuja nada—), el
+  alcance de una bala en red (`NET.shotRange`, 60 u) y el propio `lejosU` (80 u).
+  Una sala de 400 sería un mapa donde la mitad del suelo que tienes delante no se
+  ve y a la mitad de lo que se ve no se le puede dar.
+
+Lo correcto para un mundo grande es **varias salas unidas**, no una más grande.
+
+### 2.4 Embudos: la guía para los mapas de varias salas (vuelta 100)
+
+La preocupación del encargo es la correcta, y tiene nombre: **un embudo** es un
+sitio por el que hay que pasar para ir de un lado al otro, y en un mapa de varias
+salas con diez jugadores se convierte en el sitio donde alguien espera apuntando
+a la boca de un túnel. Cuatro reglas para las guías de construcción y para las
+medidas de Alchemist, de más a menos importante:
+
+1. **Cada sala, al menos dos entradas; mejor tres.** Una sala con una sola
+   entrada es una ratonera: quien está dentro no puede salir sin cruzar el sitio
+   que el de fuera está mirando, y quien quiere entrar tampoco. Es el recinto de
+   la vuelta 42 —«una única boca, y todo lo que hubiera enfrente te veía por
+   ella»— a escala de mapa, y la vuelta 43 lo resolvió igual: **salir por los dos
+   extremos**.
+2. **Circuitos, no ramas.** Las salas y los túneles forman un grafo, y lo que se
+   pide es que **no tenga puentes**: ningún túnel cuyo corte deje el mapa en dos.
+   Un puente es un embudo por definición —todo el que va de un lado al otro pasa
+   por él—; en un grafo sin puentes siempre hay otro camino, así que esperar en
+   una boca deja de ser una estrategia que gana sola. Las salas sin salida (una
+   hoja del grafo) son el caso extremo de lo mismo.
+3. **Túneles cortos y anchos, o con huecos a los lados.** Lo que hace malo un
+   túnel no es que exista, es **cuánto rato estás dentro sin poder hacer nada**:
+   uno de 12 u son casi dos segundos en línea recta, de espaldas a todo. La cuenta
+   de §2.2 ya pedía 8-12 u; a eso se suma **un ancho mínimo de dos cuerpos y medio**
+   (~2.5 u, el paso de La Puerta del Plano A) para que dos puedan cruzarse, y en
+   los largos, **ventanas o huecos laterales** que den a la sala de al lado: un
+   túnel con ventanas es un pasillo que se juega, no un tubo que se cruza.
+4. **La boca no se ve de lejos.** Si la salida de un túnel se ve desde el fondo de
+   la sala a la que da, quien sale lo hace a campo abierto contra alguien que
+   lleva rato apuntando. Una pieza delante de cada boca —la pantalla de aparición
+   del Plano A, otra vez— convierte el campeo en un asomo.
+
+**Y lo que Alchemist medirá**, el día que existan las salas (la fase de mapas de
+varias salas, detrás de la 2 y la 3): las salas y sus puertas son **datos** —una
+sala es un recinto y una puerta es un hueco que la une con otra—, así que el
+grafo se deriva de ellos y las cuatro reglas son **métricas**, no consejos:
+
+- **Aviso en rojo: una sala con una sola entrada.** Es la que pidió el encargo y
+  la más barata: contar puertas por sala.
+- **Aviso: puentes del grafo** —el túnel que, si se tapa, parte el mapa—, que es
+  la regla 2 y sale de un recorrido del grafo (los puentes de Tarjan; decenas de
+  salas, microsegundos).
+- **Ficha de cada túnel**: largo, ancho mínimo y segundos que se tarda en
+  cruzarlo a la marcha de carrera, con el aviso encima de 12 u o por debajo de 2.5
+  de ancho sin huecos laterales.
+- **Y por cada boca, desde dónde se ve**: el mismo barrido de línea de visión que
+  ya mide si dos salidas se ven, apuntado a la boca.
+
+Hoy no hay salas en el formato, así que ninguna de las cuatro se puede medir
+todavía; lo que sí mide Alchemist desde esta vuelta es la regla que las cuatro
+tienen detrás en un mapa de una sala: **que ninguna salida vea a otra**
+(«Medir», en la hoja Duelo).
+
 ## 3. Qué toca del protocolo, y qué no
 
 **No toca:**
@@ -375,13 +498,27 @@ cola de diez minutos.
 
 ## 9. Las fases, y qué depende de qué
 
-**Fase 1 — La sala deja de ser de dos** *(la gorda, y la que hay que medir)*
+**Fase 1 — La sala deja de ser de dos** *(construida en la vuelta 100)*
 - Separar `ranura` de `equipo`, con el 1v1 saliendo dígito a dígito igual.
 - `duelo.salidas` como lista de N, y el tope de la sala derivado de su longitud.
 - **La foto por destinatario y por distancia**, y su ritmo bajado (§2).
 - **Todos contra todos**: marcador, cronómetro, reaparición — nada de rondas.
 - Medida de cierre: una sala de 10 por debajo de **700 KB/s** y con error de
   reconciliación cero, que es el listón que `red45` lleva midiendo desde la 45.
+
+  **Cumplida** (vuelta 100): una sala de 10 en La Rotonda son **309 KiB/s**
+  (`salas100`, contra los 4 147 del protocolo de antes) y tres navegadores
+  andando y saltando cuatro segundos a 20 Hz dan **0 correcciones** y error máximo
+  0 (`todos100nav`). Lo que se construyó, y lo que quedó fuera:
+
+  - Hecho: la foto por destinatario (`net/interes.js`), la entrada ligera del
+    otro, el marcador por separado, el ritmo por sala (60 Hz el duelo, 20 el todos
+    contra todos), el todos contra todos entero, La Rotonda, `todos.salidas` en el
+    formato y en Alchemist.
+  - **Separar `ranura` de `equipo` no hizo falta todavía**: sin equipos, la ranura
+    sigue siendo el sitio y el nick, y el color de los rivales en el todos contra
+    todos es uno para todos (§1). Se separan en la fase 2, que es la primera que
+    tiene dos jugadores en el mismo bando.
 
 **Fase 2 — Equipos** *(depende de 1)*
 - 3v3 primero. Fin de ronda por equipo caído, desempate, economía por bando, y la

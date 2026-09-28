@@ -32,7 +32,7 @@
  * palanca manual para hablar con el huésped desde la página de desarrollo, que
  * es lo que usan los bancos.
  */
-import { NET, escenarioDeDuelo } from '../src/config.js'
+import { NET, escenarioDeSala, modoDeSala } from '../src/config.js'
 import { generarCodigo, normalizarCodigo, rutaDeSala } from './codigo.js'
 
 /** El código que pide la dirección, o uno nuevo. */
@@ -52,7 +52,7 @@ export function codigoDeLaDireccion(ubicacion = window.location) {
  * @param {string} codigo
  * @param {Location} [ubicacion]
  */
-export function urlDeSala(codigo, ubicacion = window.location, pase = null, compra = null, mapa = null) {
+export function urlDeSala(codigo, ubicacion = window.location, pase = null, compra = null, mapa = null, modo = null) {
   // **El pase de reconexión viaja en la dirección** (vuelta 62), no en un
   // mensaje: el servidor tiene que decidir si esto es una butaca nueva o una que
   // ya estaba **antes** de que llegue ningún mensaje, que es cuando reparte
@@ -72,6 +72,9 @@ export function urlDeSala(codigo, ubicacion = window.location, pase = null, comp
    * la creó.
    */
   if (mapa) partes.push(`mapa=${encodeURIComponent(mapa)}`)
+  // **Y en qué modo** (vuelta 100), igual que el mapa. El duelo no se escribe:
+  // es lo de fábrica, y así las direcciones de siempre no cambian.
+  if (modo && modo !== 'duelo') partes.push(`modo=${encodeURIComponent(modo)}`)
   const cola = partes.length ? `?${partes.join('&')}` : ''
   if (sirveElHuesped(ubicacion)) {
     const esquema = ubicacion.protocol === 'https:' ? 'wss:' : 'ws:'
@@ -105,7 +108,7 @@ export function sirveElHuesped(ubicacion = window.location) {
  * dictar; con Vite esa ruta la inventa su servidor de desarrollo pero el enlace
  * sigue saliendo con almohadilla, que es lo que valía hasta ahora.
  */
-export function enlaceDeSala(codigo, ubicacion = window.location, mapa = null) {
+export function enlaceDeSala(codigo, ubicacion = window.location, mapa = null, modo = null) {
   /**
    * **Y el mapa va en el enlace** (vuelta 72). Podría no ir —el servidor dice
    * en la bienvenida en qué mapa se juega de verdad, y la página se corrige—,
@@ -114,14 +117,24 @@ export function enlaceDeSala(codigo, ubicacion = window.location, mapa = null) {
    * puesto, monta el bueno a la primera. Sigue siendo el servidor quien manda:
    * esto sólo ahorra el rebote.
    */
-  const cola = mapa ? `?mapa=${encodeURIComponent(mapa)}` : ''
+  const partes = []
+  if (mapa) partes.push(`mapa=${encodeURIComponent(mapa)}`)
+  // Y el modo, por lo mismo: quien abre el enlace de un todos contra todos
+  // tiene que montar el mapa de ese modo a la primera.
+  if (modo && modo !== 'duelo') partes.push(`modo=${encodeURIComponent(modo)}`)
+  const cola = partes.length ? `?${partes.join('&')}` : ''
   if (sirveElHuesped(ubicacion)) return `${ubicacion.origin}/duelo/${codigo}${cola}`
   return `${ubicacion.origin}${ubicacion.pathname}${cola}#${codigo}`
 }
 
-/** El mapa que pide la dirección, saneado contra el catálogo de duelo. */
+/** El modo que pide la dirección (vuelta 100): `duelo` si no dice nada. */
+export function modoDeLaDireccion(ubicacion = window.location) {
+  return modoDeSala(new URLSearchParams(ubicacion.search).get('modo'))
+}
+
+/** El mapa que pide la dirección, saneado contra el catálogo de su modo. */
 export function mapaDeLaDireccion(ubicacion = window.location) {
-  return escenarioDeDuelo(new URLSearchParams(ubicacion.search).get('mapa') ?? '')
+  return escenarioDeSala(modoDeLaDireccion(ubicacion), new URLSearchParams(ubicacion.search).get('mapa') ?? '')
 }
 
 /**

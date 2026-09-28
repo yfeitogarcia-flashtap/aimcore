@@ -133,6 +133,10 @@
                   Entrenamiento</label>
                 <label class="checkline"><input id="modo-duelo" type="checkbox" />
                   Duelo</label>
+                <!-- **Y el todos contra todos** (vuelta 100): sale si tiene sus
+                     salidas, que se colocan en la hoja Duelo. -->
+                <label class="checkline"><input id="modo-todos" type="checkbox" />
+                  Todos contra todos</label>
               </fieldset>
               <p id="publicado-nota" class="nota"></p>
             </section>
@@ -734,6 +738,30 @@
               <p class="nota">Lo que tarda en poder hacerte daño una bala después de
                 salir de la caja de compra. A 0 no hay gracia, que es como se
                 jugaba hasta ahora.</p>
+            </section>
+
+            <!-- **Las salidas del todos contra todos** (vuelta 100). Tantas como
+                 jugadores caben: el número de salidas **es** el tope de la sala,
+                 no un campo aparte que pueda decir otra cosa. Se colocan igual
+                 que las del duelo —un cono que se arrastra y una flecha que se
+                 gira por la punta— y en blanco, para no confundirlas con esas. -->
+            <section id="todos-campos">
+              <h2>Todos contra todos <span id="cuenta-todos" class="nota"></span></h2>
+              <div class="trio">
+                <label>Jugadores <input id="todos-jugadores" type="number" step="1" min="0" /></label>
+                <label class="ancho2">
+                  <button id="todos-anadir" type="button">+ Salida</button>
+                  <button id="t-centro" type="button" title="Pone cada rumbo mirando al centro de la sala">Al centro</button>
+                  <button id="t-medir" type="button">Medir</button>
+                </label>
+              </div>
+              <p class="nota">Cada salida es un <b>cono blanco</b>: arrástralo por la
+                rejilla y gira la <b>punta de la flecha</b>. Caben tantos jugadores
+                como salidas haya. Lo que tiene que garantizar un mapa así es que
+                <b>ninguna salida vea a otra</b>: «Medir» lo comprueba contra el mapa
+                entero.</p>
+              <div id="todos-fichas"></div>
+              <p id="t-medida" class="nota"></p>
             </section>
 
             <section>

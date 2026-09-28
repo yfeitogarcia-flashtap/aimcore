@@ -112,12 +112,13 @@ geometría. Está entero en §3 y en `docs/decisions.md` §93.8. Para todo lo de
 | Editor | `editor/` | La página de dibujar mapas (`/editor/`). **Sólo en desarrollo**: no entra en `dist/`. Hospeda el motor entero para probar, como el duelo. |
 | Banco de voces | `editor/sonidos.html` | Oír cada arma y sus variantes antes de decidir (`/editor/sonidos.html`). **Sólo en desarrollo**, como el editor, y las variantes viven ahí y no en el catálogo. |
 | Escritorio | `escritorio/` | La ventana de Tauri: carga la URL del despliegue y nada más. **No contiene el juego**, a propósito. |
-| Partida (servidor) | `net/partida.js` | **Todo lo que decide el servidor**, sin saber por dónde viaja: entradas, pasos, disparo, rebobinado y fotos. Un jugador entra con una función `enviar(texto)` y nada más. **No hay red en este fichero.** |
+| Partida (servidor) | `net/partida.js` | **Todo lo que decide el servidor**, sin saber por dónde viaja: entradas, pasos, disparo, rebobinado y fotos. Un jugador entra con una función `enviar(texto)` y nada más. **No hay red en este fichero.** Desde la vuelta 100, dos modos: `duelo` y `todos`. |
+| Interés | `net/interes.js` | **Quién entra en la foto de quién** (vuelta 100): `entraEnLaFoto(a, b, sala)` y su memoria. **La única regla**; el día de las salas contestará por el grafo sin que el cable se entere. |
 | Huésped de Node | `net/servidor.mjs` | Node + `ws`, y desde la vuelta 58 **el del despliegue**: encamina por código de sala, lleva un reloj por sala y sirve `dist/`. El mismo fichero en local y en Fly. |
 | Huésped de Cloudflare | `worker/sala.js` | El Durable Object. Lo mismo, con las piezas de Cloudflare. **Respaldo** desde la 58; ya no es donde se juega. |
 | Portero | `worker/index.js` | `/sala/<código>` → `idFromName(código)`; todo lo demás, los ficheros del juego. |
 | Código de sala | `net/codigo.js` | Alfabeto, normalización y forma de la ruta. **Lo usan el cliente y el Worker.** |
-| Duelo (pantalla) | `net/prueba.html`, `net/prueba.js` | La página del 1v1. **Hospeda el motor completo** (vuelta 56) y se queda con lo suyo: código de partida, menú, avisos, pausas y los números detrás de **F3**. Se llega por `/duelo/`, en los tres montajes. |
+| Duelo (pantalla) | `net/prueba.html`, `net/prueba.js` | La página del 1v1 **y del todos contra todos** (`?modo=todos`, vuelta 100). **Hospeda el motor completo** (vuelta 56) y se queda con lo suyo: código de partida, menú, avisos, pausas, el marcador de la sala (TAB) y los números detrás de **F3**. Se llega por `/duelo/`, en los tres montajes. |
 | Red (cliente) | `net/cliente.js`, `net/transporte.js` | Predicción, reconciliación, interpolación del rival y disparo. El transporte, detrás de tres funciones. |
 | Transporte | `net/transporte.js` | `send` / `onMessage` / `close`, y nada más. La red simulada es un transporte que envuelve a otro. |
 | Disparo en red | `net/disparo.js` | `hitPlayer` + `hasLineOfSight` en el orden que cuesta menos. **Lo llaman los dos extremos.** |
@@ -932,7 +933,8 @@ se construyó como sistema y no pantalla a pantalla. Cinco reglas:
 superficie— sí, para que editor y juego se sientan un producto; su distribución
 no, porque ya es una cabina —el raíl del juego viene del suyo— y lo que la hace
 útil (el panel de ancho arrastrable, la barra de estado del mapa) es de una
-herramienta. Hoy no está hecho.
+herramienta. **Aprobado así en la vuelta 100 —colores, letra y botones del
+sistema, la distribución se queda— y encolado**: hoy no está hecho.
 
 **Y SALIR sólo existe donde puede cumplirse** (vuelta 99). En la app de escritorio,
 abajo a la izquierda de la pantalla del logotipo, cierra la aplicación: pide
@@ -950,6 +952,75 @@ entrada y 0 «por defecto» encendidos; el raíl lleva a las cuatro secciones y 
 la puesta; el botón del duelo usa **la misma familia de letra** que los del juego;
 en un navegador no hay Salir, y en la app sale a 32 px del borde izquierdo y pide
 `salir`. Y `menu92` sigue en **430 px y 0 inalcanzables** a 700×460.
+
+**Quién aparece en la pantalla de cada uno lo decide una función, y es la única**
+(vuelta 100, fase 1 de la propuesta 11). **Ésta es la convención permanente para
+cualquier cosa que decida qué le llega a un jugador de los demás.** La foto sale
+**por destinatario**, y quién entra en la de cada uno lo contesta
+`entraEnLaFoto(a, b, sala)`, en `net/interes.js`. La fase de compra (vuelta 62)
+era una rama aparte de `_enviarFoto` y pasa a ser un caso de la misma regla. Por
+orden:
+
+- **Uno mismo, siempre**; **nadie en la compra**; **quien no tiene cable, nunca**
+  —y tampoco encaja daño—; **más allá de `lejosU` (80 u), nunca**.
+- **Dentro de `cercaU` (24 u), siempre, se vea o no.** Las pisadas se oyen a
+  través de las paredes hasta 16 u (vueltas 60 y 73): un criterio de sólo «lo que
+  ves» dejaría mudo a quien se acerca por detrás de un muro.
+- **En medio, sólo si se ven, y con margen**: cuatro rayos de `cortarSegmento`
+  (0.6 µs cada uno, no un `raycast`) a la cabeza, al pecho y a dos puntos a 1 u a
+  sus lados. **El centro del cuerpo es lo último que asoma por una esquina**, y sin
+  los laterales quien saca medio hombro vería sin ser visto. Es un anti-*wallhack*
+  aproximado, y así se dice.
+- **Con memoria de un segundo** (`Interes`), que no es una regla más sino lo que
+  evita el parpadeo: salir de la foto vacía la cola de interpolación, y volver pide
+  dos fotos. Los cortes duros no se recuerdan: cada uno es una promesa.
+
+**El día de los mapas de varias salas cambia esta función y nada más**: contestará
+por el grafo (tu sala y las contiguas, o la distancia, lo que sea mayor) y ni el
+cable ni el cliente se enterarán. Es la disciplina del transporte (vuelta 46)
+aplicada a una regla que se sabe que va a cambiar.
+
+**Tu foto entera, la de los demás ligera** (vuelta 100). Tu entrada lleva todo lo
+que reconcilia; la de cada otro, lo que hace falta para dibujarle —ranura, vida,
+arma, destello, rumbo y cinco números de movimiento al milímetro— y se serializa
+**una vez por foto**, la pida uno o la pidan nueve. El movimiento completo del
+rival era la mitad de los bytes. Tres cosas que son el mecanismo:
+
+- **El marcador sale cuando cambia** (`mc`, `_marcadorSucio`), no en cada foto:
+  con cincuenta serían dos megas por segundo de algo que cambia cada muchos
+  segundos. El transporte no pierde mensajes, así que basta con mandarlo al cambiar
+  y a quien entra o vuelve. Las pausas que le quedan al rival salen de ahí.
+- **El ritmo es de la sala** (`NET.fotoCada`): 60 Hz el duelo, 20 el todos contra
+  todos, y lo dice la bienvenida. El cliente dibuja a los demás **dos fotos por
+  detrás** con **un solo reloj de fotos** —el disparo viaja con un instante (`tv`)
+  y el servidor rebobina a uno— y **estima el paso del servidor entre fotos**, o
+  el enganche del reloj se quedaría corto de adelanto.
+- **Quien no viene en una foto ha salido de ella**, y se borra: el transporte no
+  pierde mensajes, así que no venir es no estar.
+
+**El todos contra todos no tiene rondas, ni economía, ni equipos, ni pausa**
+(vuelta 100). Es la fase barata de la propuesta 11: N butacas —**tantas como
+salidas declara el mapa** (`todos.salidas`, hasta `TODOS.maxJugadores`); no hay un
+número de jugadores aparte que pueda contradecir a la lista—, la reaparición por
+reloj de entradas de la vuelta 52, un marcador y un cronómetro. Cinco reglas:
+
+- **Se vuelve por la salida más lejos del vivo más cercano, y lo dice tu foto**
+  (`sal`), así que la reaparición se predice en el sitio bueno.
+- **Reaparecer da la gracia del entrenamiento** (2 s): ahí reaparecer **es**
+  empezar. En el duelo la gracia sigue siendo de la ronda (vuelta 78).
+- **Las armas son libres** y la armería equipa, que lo dice la bienvenida
+  (`libres`): deducirlo de «no hay economía» confundiría este modo con un mapa que
+  reparte.
+- **Todos los rivales del mismo color** (magenta): para ti todos son un rival, y la
+  paleta no tiene dieciséis colores libres. Quién es cada uno lo dice su ficha, con
+  nick de dos cifras (`VK-07`).
+- **Y quien se cae conserva la butaca** noventa segundos, fuera de todas las fotos
+  y sin encajar daño: aquí no hay pausa por caída que congele a los demás.
+
+Lo que un mapa de todos contra todos tiene que garantizar **no es simetría, es que
+ninguna salida vea a otra**, y es una medida (`todos100` para La Rotonda, «Medir»
+en Alchemist para cualquiera). La Rotonda salió con 4 de 28 pares viéndose en su
+primera versión, y un pilar en la diagonal lo cerró.
 
 **Todo el tuning en `config.js`.** Ninguna constante de juego vive suelta en un
 módulo. Si necesitas un número nuevo, va a `config.js` aunque lo use un solo
@@ -6101,6 +6172,18 @@ compra: las rondas se encadenan. Ojo con no confundirlo con «sin fase» (vuelta
 página del duelo antes de pasar el enlace, y viaja en la dirección del socket
 como la fase de compra.
 
+**Y desde la vuelta 100 hay un todos contra todos**, en la misma página:
+**Modo → Todos contra todos** en el menú de crear la sala (o `/duelo/?modo=todos`),
+y el enlace lleva el modo. Entran tantos como salidas tiene el mapa —el de fábrica
+es **La Rotonda**, 64 × 64 con ocho—; cada uno sale con lo que elija en la armería
+(que ahí sí equipa), vuelve a los 2 s por la salida más lejos de los vivos y con 2 s
+de gracia, y gana el primero que llegue a **20 bajas** o el que más lleve a los **8
+minutos**; diez segundos con el resultado y empieza otra. **TAB** abre el marcador
+de la sala, y arriba se ve el reloj, tus bajas y las del líder. No hay pausa, ni
+tienda, ni rondas. Tuning en `TODOS`. Y **la foto del duelo también es la nueva**
+(§3): cada uno recibe la suya, el rival llega ligero y detrás de una pared a media
+distancia no llega — la mitad de bytes a los mismos 60 Hz.
+
 **Y desde la vuelta 56 el duelo lo lleva el motor completo** (la «Opción B»).
 La página del duelo ya no monta una escena mínima: instancia `engine.js` y le
 entrega el cliente de red. Lo que eso trae a una partida real es **el arma de
@@ -6326,6 +6409,11 @@ Lo que se oculta se atenúa y se tacha en la lista, se dice cuántas hay ocultas
 hay un «ver todo». **Agrupar y bloquear no están**, y el porqué y las fases están
 en `docs/propuestas/10-panel-de-capas.md`: los dos piden que cada elemento tenga
 identidad propia, que es un campo nuevo en el formato.
+
+**Y desde la 100 un mapa se publica también en el todos contra todos**, con sus
+salidas: la casilla le pone ocho, **Jugadores** en la hoja Duelo pone y quita, y
+cada una es un **cono blanco** que se arrastra y se gira como las del duelo, con su
+fila en Capas, Supr y un **Medir** que dice cuántos pares de salidas se ven.
 
 **Y todo lo colocable se coloca, se elige, se arrastra y se borra igual** (vuelta
 96): nace delante de la cámara **y dentro de la sala**, se pincha por su cuerpo y
@@ -6882,18 +6970,20 @@ el botón no pueda apuntar a un ajuste distinto del que enseña la fila.
 Cuentas, guardado en la nube, rankings y minimapa. Si el encargo no
 lo pide explícitamente, no se añade.
 
-**Y la vuelta 98 fijó lo que va delante, y la 99 cumplió la primera parte**: el
-**rediseño elegido** (Cabina) está construido como sistema, en el juego y en la
-página del duelo (§3). Lo siguiente es la **11**, ya **aprobada**, empezando por su
-fase 1 (todos contra todos) **y el cambio de protocolo**. Las dos condiciones que
-puso la 98: la **estimación de coste** de tráfico en Fly está hecha (propuesta 11,
-§2.1: con el protocolo nuevo, 5 salas de 10 jugadores 2 h al día son **~15 $/mes**,
-contra ~92 con el de hoy) y queda la otra, **que Alchemist deje colocar tantas
-salidas como jugadores tenga el modo del mapa**. Y la visión de después —mapas de
-varias salas unidas por túneles— tiene respuesta en la propuesta 11 §2.2: el
-protocolo de la fase 1 se diseña con **una** función «¿entra B en la foto de A?»
-para que el día de las salas cambie el criterio y no el cable. Detrás, **que
-Alchemist adopte los tokens de Cabina** (§3).
+**Y la vuelta 98 fijó lo que va delante, la 99 cumplió la primera parte y la 100 la
+segunda**: Cabina está construida (§3) y la **fase 1 de la propuesta 11** también
+—el protocolo nuevo, el todos contra todos y las N salidas en Alchemist—, con su
+medida de cierre cumplida: una sala de diez son **309 KiB/s** (el listón era 700) y
+cero correcciones a 20 Hz. **Encolado y aprobado**, detrás: **que Alchemist adopte
+los tokens de Cabina** (colores, letra y botones; la distribución se queda, §3).
+Y escrito para cuando lleguen los mapas de varias salas, en la propuesta 11:
+**§2.3**, el caso extremo —cincuenta en 200 × 200 sin paredes: **el límite es el
+cable**, 25 Mbit/s por sala; la siguiente palanca es la foto en binario (~8× menos),
+que no está hecha; y **el tope de sala no se amplía**, porque un mundo grande son
+varias salas unidas— y **§2.4, los embudos**: al menos dos entradas por sala,
+circuitos sin puentes, túneles cortos y anchos o con huecos laterales, bocas que no
+se vean de lejos, y las métricas con las que Alchemist los avisará cuando existan
+las salas (en rojo, una sala con una sola entrada).
 
 **Y cuatro propuestas están escritas y sin construir, con su orden decidido por el
 encargo de la vuelta 97**: primero la **11** (salas de varios, espectador y lobby
@@ -6901,7 +6991,9 @@ de evento), detrás la **fase 2 de la 10** (agrupar y bloquear), y detrás las d
 la 95 (**08** y **09**). Están en `docs/propuestas/`; lo que hay que saber sin
 abrirlas:
 
-- **11 — salas de varios, espectador y lobby de evento** (vuelta 97). Las tres
+- **11 — salas de varios, espectador y lobby de evento** (vuelta 97; **su fase 1
+  está hecha** en la vuelta 100 —§3 y §5—, y lo que sigue es la fase 2, equipos).
+  Las tres
   cosas dependen de lo mismo: que una sala pueda tener más de dos dentro. Se
   escribió **con una medida delante** (`salas97`), y la medida cambia el plan: una
   sala de diez cuesta **0.32 ms de CPU por paso** —o sea ~50 salas en el núcleo de

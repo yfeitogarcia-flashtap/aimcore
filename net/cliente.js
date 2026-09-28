@@ -23,6 +23,17 @@ import { resolverCuchillada, resolverDisparo, resolverEscopeta } from './disparo
 import { cuerpoDeJugador } from './pose.js'
 import { MSG, desempaquetarTeclas, empaquetarTeclas, instanteDePaso, instanteEnPaso } from './protocolo.js'
 
+/** El rival de cuando no hay ninguno: sin id y sin fotos. Nadie lo escribe. */
+const RIVAL_VACIO = Object.freeze({ id: null, ranura: 0, buffer: Object.freeze([]), arma: null, vida: 100, mirilla: false })
+
+/**
+ * **El nick provisional de una ranura**, `VK-01`, `VK-02`… hasta que haya
+ * cuentas. Con dos cifras porque en un todos contra todos caben dieciséis.
+ */
+export function nickDeRanura(ranura) {
+  return `VK-${String((ranura ?? 0) + 1).padStart(2, '0')}`
+}
+
 export class ClienteRed {
   /**
    * @param {object} opciones
@@ -174,8 +185,45 @@ export class ClienteRed {
     this._acumulador = 0
     this._frenados = 0
 
-    /** Fotos del rival, para dibujarlo en el pasado. */
-    this.rival = { id: null, buffer: [], pose: null, arma: null, vida: 100, mirilla: false }
+    /**
+     * **Los demás, por id** (vuelta 100). Hasta aquí había «el rival», uno; en
+     * un todos contra todos son tantos como butacas, y cada uno trae su cola de
+     * fotos para dibujarlo en el pasado. **Sólo están los que entran en tu
+     * foto** (`net/interes.js`): quien sale de ella sale de aquí, y al volver
+     * empieza con una cola vacía — interpolar desde donde estaba hace diez
+     * segundos sería dibujarle cruzando paredes.
+     * @type {Map<string, {id: string, ranura: number, buffer: object[], arma: string|null, vida: number, mirilla: boolean}>}
+     */
+    this.rivales = new Map()
+    /**
+     * **El reloj de las fotos**, común a todos (vuelta 100): el paso de la
+     * última y cuándo llegó. Antes cada rival lo sacaba de su propia cola, que
+     * con uno solo es lo mismo; con varios, un reloj por rival haría que el
+     * disparo dijera un instante distinto por cada uno, y el servidor rebobina a
+     * **uno** (`tv`).
+     */
+    this._relojFotos = { n: 0, en: 0 }
+    /** El modo de la sala, cada cuántos pasos llega una foto y cuántos caben. */
+    this.modo = 'duelo'
+    this.fotoCada = 1
+    this.plazas = 2
+    /** Todas las salidas, en el todos contra todos. Las da la bienvenida. */
+    this.salidas = null
+    this.armasLibres = false
+    /** Por qué salida vuelves, si el servidor ha elegido otra que la tuya. */
+    this.salidaSiguiente = null
+    /** Quién te dio por última vez, para la cuña de dirección del daño. */
+    this.golpeadoPor = null
+    /**
+     * **El marcador de la sala**: una fila por butaca, tal cual la manda el
+     * servidor cuando cambia (vuelta 100). `marcadorVersion` sube con cada una,
+     * que es lo que mira quien lo pinta para no repintar por frame.
+     */
+    this.marcador = []
+    this.marcadorVersion = 0
+    /** La partida del todos contra todos, como las rondas: se lee y se pinta. */
+    this.todos = { n: 0, fase: 'espera', resta: 0, objetivo: 0, ganador: null }
+    this.onTodos = null
     /**
      * **Si estoy mirando por un visor de los que brillan** (vuelta 90). Lo
      * escribe el motor al poner y quitar la mirilla, y viaja en cada entrada
@@ -279,14 +327,31 @@ export class ClienteRed {
     return ahora - this._ultimaFotoEn
   }
 
+  /**
+   * **El rival, en singular**: el primero de `rivales`, o uno vacío. Es lo que
+   * tenía un 1v1 y lo que siguen mirando la página del duelo y los bancos de
+   * red; con más de dos es sólo «uno de ellos», y lo que dibuja a todos los
+   * recorre (`rivales`).
+   */
+  get rival() {
+    for (const r of this.rivales.values()) return r
+    return RIVAL_VACIO
+  }
+
   /** La ranura del rival: en un 1v1 es la otra. */
   get equipoRival() {
-    return this.equipo === 0 ? 1 : 0
+    const r = this.rival
+    return r.id ? r.ranura : this.equipo === 0 ? 1 : 0
   }
 
   /** Su nick provisional, de su ranura. Placeholder hasta que haya cuentas. */
   get nickRival() {
-    return `VK-0${this.equipoRival + 1}`
+    return nickDeRanura(this.equipoRival)
+  }
+
+  /** El nick de una ranura cualquiera. Ver `nickDeRanura`. */
+  nickDe(ranura) {
+    return nickDeRanura(ranura)
   }
 
   /**
@@ -572,37 +637,42 @@ export class ClienteRed {
         enPaso: null,
       }
     }
-    const pose = this.poseDelRival()
-    if (!pose) return { veredicto: { impacto: false, zona: null, distancia: 0, dano: 0, tapado: false }, enPaso: null }
-    const cuerpo = cuerpoDeJugador(pose.x, pose.z, pose.feetY, pose.eyeHeight)
-    // **Y hacia dónde mira**, que es lo que decide si el cuchillo entra por la
-    // espalda. Viene en la foto desde la vuelta 60 —de ahí sale la brújula del
-    // rival— así que no hace falta mandar nada nuevo.
-    cuerpo.yaw = pose.yaw ?? 0
-    if (d.m) {
-      return {
-        veredicto: resolverCuchillada(
+    /**
+     * **Contra todos los que se ven, y gana el más cercano** (vuelta 100), que
+     * es lo mismo que hace el servidor con los mismos cuerpos rebobinados. El
+     * instante es uno —el reloj de las fotos es común—, así que el `tv` que
+     * viaja vale para todos.
+     */
+    let mejor = null
+    const enPaso = this._relojFotos.n > 0 ? this.instanteDeDibujo() : null
+    for (const rival of this.rivales.values()) {
+      const pose = this.poseDe(rival)
+      if (!pose) continue
+      const cuerpo = cuerpoDeJugador(pose.x, pose.z, pose.feetY, pose.eyeHeight)
+      // **Y hacia dónde mira**, que es lo que decide si el cuchillo entra por la
+      // espalda. Viene en la foto desde la vuelta 60 —de ahí sale la brújula del
+      // rival— así que no hace falta mandar nada nuevo.
+      cuerpo.yaw = pose.yaw ?? 0
+      let v
+      if (d.m) {
+        v = resolverCuchillada(
           this.camara.position, d.yaw, d.pitch, cuerpo, this.oclusores, this.arma,
           d.m === 2 ? 'fuerte' : 'luz',
-        ),
-        enPaso: pose.enPaso,
-      }
-    }
-    // **Y una escopeta resuelve su patrón, no un rayo** (vuelta 91), con la
-    // misma función que corre el servidor: dos copias de la fórmula serían
-    // ocho perdigones que el tirador ve dar y el servidor ve fallar.
-    if (WEAPONS[this.arma]?.perdigones) {
-      return {
-        veredicto: resolverEscopeta(
+        )
+      } else if (WEAPONS[this.arma]?.perdigones) {
+        // **Y una escopeta resuelve su patrón, no un rayo** (vuelta 91), con la
+        // misma función que corre el servidor: dos copias de la fórmula serían
+        // ocho perdigones que el tirador ve dar y el servidor ve fallar.
+        v = resolverEscopeta(
           this.camara.position, d.yaw, d.pitch, d.p >>> 0, cuerpo, this.oclusores, this.arma,
-        ),
-        enPaso: pose.enPaso,
+        )
+      } else {
+        v = resolverDisparo(this.camara.position, d.yaw, d.pitch, cuerpo, this.oclusores, this.arma)
       }
+      if (!mejor || (v.impacto && (!mejor.impacto || v.distancia < mejor.distancia))) mejor = v
     }
-    return {
-      veredicto: resolverDisparo(this.camara.position, d.yaw, d.pitch, cuerpo, this.oclusores, this.arma),
-      enPaso: pose.enPaso,
-    }
+    if (!mejor) return { veredicto: { impacto: false, zona: null, distancia: 0, dano: 0, tapado: false }, enPaso }
+    return { veredicto: mejor, enPaso }
   }
 
   /** Apunta el veredicto del servidor contra el que se había sacado aquí. */
@@ -700,14 +770,18 @@ export class ClienteRed {
   _reaparecerAqui() {
     this.vivoEn = 0
     this.movimiento.reset()
-    if (this.salida) {
-      this.camara.position.x = this.salida.x
-      this.camara.position.z = this.salida.z
+    // **Por la salida que haya elegido el servidor** (vuelta 100), si ha elegido
+    // una: en el todos contra todos no es la tuya, y viaja en tu foto.
+    const salida = (this.salidaSiguiente !== null && this.salidas?.[this.salidaSiguiente]) || this.salida
+    this.salidaSiguiente = null
+    if (salida) {
+      this.camara.position.x = salida.x
+      this.camara.position.z = salida.z
       // **Y mirando hacia el mapa** (vuelta 66). Con las dos salidas en extremos
       // opuestos, el rumbo deja de ser un detalle: sin esto el que aparece en el
       // extremo sur lo hace mirando a la pared del fondo. Es lo mismo que hace
       // el servidor, así que no hay nada que corregir después.
-      this.controles?.lookAt(this.salida.yaw)
+      this.controles?.lookAt(salida.yaw ?? 0)
     }
   }
 
@@ -766,6 +840,17 @@ export class ClienteRed {
        * o del ajuste del jugador (ver `engine.usarRed`).
        */
       this.conEconomia = !!mensaje.eco
+      /**
+       * **El modo, el ritmo de la foto y cuántos caben** (vuelta 100). El
+       * ritmo decide con cuánto retraso se dibuja a los demás
+       * (`retrasoDeDibujo`); las plazas, cuántos cuerpos puede haber.
+       */
+      this.modo = mensaje.modo === 'todos' ? 'todos' : 'duelo'
+      this.fotoCada = Math.max(1, mensaje.fc ?? 1)
+      this.plazas = Math.max(2, mensaje.plazas ?? 2)
+      this.salidas = Array.isArray(mensaje.salidas) ? mensaje.salidas : null
+      /** Si lo que llevas lo eliges tú en la armería y no el servidor. */
+      this.armasLibres = !!mensaje.libres
       // **El pase es de la butaca, no de la conexión** (vuelta 62): quien vuelve
       // lo enseña y se sienta donde estaba. La página lo guarda; aquí sólo se
       // recoge, porque dónde se guarda una cosa entre visitas no es del netcode.
@@ -833,9 +918,29 @@ export class ClienteRed {
     }
     if (!cambia) return
     this.pendientes.length = 0
-    this.rival.buffer.length = 0
+    for (const r of this.rivales.values()) r.buffer.length = 0
     this.movimiento.setCorralito(r.f === 'compra' ? this._cajaDeCompra() : null)
     this.onRonda?.(this.rondas)
+  }
+
+  /**
+   * **La partida del todos contra todos** (vuelta 100), que se lee como las
+   * rondas y por lo mismo: aquí no se decide nada. Y con la misma regla al
+   * cambiar de partida —`n` sube—: **se tira la cola sin confirmar**, porque
+   * el servidor acaba de poner a todos en su salida y las entradas que viajaban
+   * son de un mundo que ya no existe.
+   */
+  _leerTodos(foto) {
+    const t = foto.td
+    if (!t) return
+    const cambia = this.todos.n !== t.n || this.todos.fase !== t.f
+    const nueva = this.todos.n !== t.n
+    this.todos = { n: t.n, fase: t.f, resta: t.resta ?? 0, objetivo: t.obj ?? 0, ganador: t.g ?? null }
+    if (nueva) {
+      this.pendientes.length = 0
+      for (const r of this.rivales.values()) r.buffer.length = 0
+    }
+    if (cambia) this.onTodos?.(this.todos)
   }
 
   /** La caja de la compra, centrada en la salida de esta ranura. */
@@ -893,20 +998,19 @@ export class ClienteRed {
     v.mia = v.por !== null && v.por === this.id
     this._votacionHasta = foto.vo ? performance.now() + foto.vo.resta : null
 
-    for (const id of Object.keys(foto.p)) {
-      const suyo = foto.p[id]
-      if (suyo.libres === undefined) continue
-      if (id === this.id) {
-        p.libres = suyo.libres
-        // **Si ya has votado, el cartel se retira**, y lo dice el servidor. Un
-        // «ya he pulsado» local se quedaría puesto contra una votación que el
-        // servidor no llegó a registrar —el mensaje puede perderse—, que es la
-        // misma clase de mentira que un «estoy en pausa» local.
-        v.votado = v.activa && !!suyo.vv
-      } else {
-        p.rivalLibres = suyo.libres
-      }
+    const suyo = foto.p[this.id]
+    if (suyo && suyo.libres !== undefined) {
+      p.libres = suyo.libres
+      // **Si ya has votado, el cartel se retira**, y lo dice el servidor. Un
+      // «ya he pulsado» local se quedaría puesto contra una votación que el
+      // servidor no llegó a registrar —el mensaje puede perderse—, que es la
+      // misma clase de mentira que un «estoy en pausa» local.
+      v.votado = v.activa && !!suyo.vv
     }
+    // **Las del rival salen del marcador** (vuelta 100): su entrada de la foto
+    // es ligera y no lo lleva, y además puede no estar en tu foto.
+    const otra = this.marcador.find((f) => f.id !== this.id)
+    if (otra) p.rivalLibres = otra.l
 
     if (p.pausada && !estaba) {
       /**
@@ -941,25 +1045,45 @@ export class ClienteRed {
     // están sin confirmar son de antes del reinicio de ronda, y reejecutarlas
     // encima del sitio de salida sacaría al jugador andando de su propia caja.
     this._leerRondas(foto)
+    this._leerTodos(foto)
+    if (foto.mc) {
+      this.marcador = foto.mc
+      this.marcadorVersion += 1
+    }
+    this._relojFotos.n = foto.n
+    this._relojFotos.en = performance.now()
 
-    // El rival, a su cola de interpolación.
+    // Los demás, cada uno a su cola de interpolación.
     for (const id of Object.keys(foto.p)) {
       if (id === this.id) continue
-      this.rival.id = id
+      const suyo = foto.p[id]
+      let rival = this.rivales.get(id)
+      if (!rival) {
+        rival = { id, ranura: suyo.r ?? 0, buffer: [], arma: null, vida: 100, mirilla: false, visto: 0 }
+        this.rivales.set(id, rival)
+      }
+      rival.visto = foto.n
+      if (suyo.r !== undefined) rival.ranura = suyo.r
       // `vivo` viaja con la foto porque **un cadáver no se dibuja**: hasta la
       // vuelta 52 el cuerpo del rival se quedaba en pie donde cayó.
-      this.rival.buffer.push({
-        n: foto.n, recibidoEn: performance.now(),
-        yaw: foto.p[id].yaw, s: foto.p[id].s, vivo: foto.p[id].vida > 0,
-      })
-      while (this.rival.buffer.length > 30) this.rival.buffer.shift()
+      rival.buffer.push({ n: foto.n, yaw: suyo.yaw, s: suyo.s, vivo: suyo.vida > 0 })
+      while (rival.buffer.length > 30) rival.buffer.shift()
       // Fuera del buffer: no se interpola ni se dibuja en el pasado, es una
       // etiqueta. La ficha flotante la lee y el HUD no la mira.
-      this.rival.vida = foto.p[id].vida
-      this.rival.arma = foto.p[id].arma ?? this.rival.arma
+      rival.vida = suyo.vida
+      rival.arma = suyo.arma ?? rival.arma
       // El destello es una etiqueta, como el arma: no se interpola, se lee de
       // la última foto. Su retraso es el del resto de lo que se sabe del rival.
-      this.rival.mirilla = foto.p[id].mir === 1
+      rival.mirilla = suyo.mir === 1
+    }
+    /**
+     * **Quien no viene en esta foto ha salido de ella** (vuelta 100): el
+     * servidor ha decidido que ya no te toca verle (`net/interes.js`). Se le
+     * quita entero, y al volver empieza con la cola vacía. El transporte no
+     * pierde mensajes, así que no venir es no estar, no una foto perdida.
+     */
+    for (const [id, rival] of this.rivales) {
+      if (rival.visto !== foto.n) this.rivales.delete(id)
     }
 
     const mio = foto.p[this.id]
@@ -973,6 +1097,8 @@ export class ClienteRed {
     // desfasar, y en pausa no baja porque en pausa no hay fotos nuevas.
     this.invulnerableMs = mio.inv ?? 0
     this.vivoEn = mio.vivoEn ?? 0
+    this.salidaSiguiente = mio.sal ?? null
+    this.golpeadoPor = mio.gp ?? null
     this.bajas = mio.bajas
     this.muertes = mio.muertes
     // Los veredictos de los disparos que estaban en vuelo.
@@ -1144,7 +1270,17 @@ export class ClienteRed {
     // servidor se quedaba sin entrada en un tercio de los pasos y el retraso
     // efectivo salía en 1.5 veces el RTT inyectado.
     const viaje = Math.ceil(this.medidas.rtt / SIM_STEP_MS)
-    return this.medidas.pasoServidor + NET.leadTicks + viaje
+    /**
+     * **Y lo que ha avanzado el servidor desde la última foto** (vuelta 100). A
+     * 60 Hz no es nada —llega una por paso—, pero con una de cada tres el
+     * `pasoServidor` se queda hasta dos pasos atrás entre foto y foto, y el
+     * cliente se engancharía a un reloj que va a saltos: se quedaría corto de
+     * adelanto la mitad del tiempo, que es un servidor sin entrada tuya.
+     */
+    const desde = this.fotoCada > 1 && this._ultimaFotoEn !== null
+      ? Math.min(this.fotoCada - 1, Math.floor((performance.now() - this._ultimaFotoEn) / SIM_STEP_MS))
+      : 0
+    return this.medidas.pasoServidor + desde + NET.leadTicks + viaje
   }
 
   /**
@@ -1162,12 +1298,34 @@ export class ClienteRed {
    * Devuelve null hasta que hay dos fotos.
    */
   poseDelRival() {
-    const buffer = this.rival.buffer
-    if (buffer.length < 2) return null
-    const ultima = buffer[buffer.length - 1]
-    const desde = (performance.now() - ultima.recibidoEn) / SIM_STEP_MS
+    return this.poseDe(this.rival)
+  }
+
+  /**
+   * **Con cuánto retraso se dibuja a los demás, en pasos** (vuelta 100): el de
+   * siempre con fotos a 60 Hz y dos fotos con fotos más espaciadas. Ver
+   * `NET.interpolarFotos`.
+   */
+  get retrasoDeDibujo() {
+    return Math.max(NET.interpDelayTicks, this.fotoCada * NET.interpolarFotos)
+  }
+
+  /**
+   * **El instante del servidor en que se dibuja a los demás**, en pasos
+   * fraccionarios. Es el mismo para todos —el reloj de las fotos es común—, y
+   * es lo que viaja con un disparo para que el servidor rebobine ahí.
+   */
+  instanteDeDibujo() {
+    const desde = (performance.now() - this._relojFotos.en) / SIM_STEP_MS
     // Nunca por delante de lo que se ha recibido: extrapolar es inventar.
-    const objetivo = Math.min(ultima.n, ultima.n - NET.interpDelayTicks + desde)
+    return Math.min(this._relojFotos.n, this._relojFotos.n - this.retrasoDeDibujo + desde)
+  }
+
+  /** Dónde se dibuja a un rival concreto ahora mismo. Ver `poseDelRival`. */
+  poseDe(rival) {
+    const buffer = rival?.buffer
+    if (!buffer || buffer.length < 2) return null
+    const objetivo = this.instanteDeDibujo()
 
     let a = buffer[0]
     let b = buffer[1]

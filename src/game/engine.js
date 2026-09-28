@@ -1224,7 +1224,7 @@ export class Engine {
     // (vuelta 64). Sin esta condición, el ajuste guardado del jugador le
     // devolvía el rifle en cuanto se aplicaba cualquier opción — o sea, un arma
     // que no ha pagado y que el servidor no le reconoce.
-    if (!this.enRed && settings.weapon !== this.slots.primary) {
+    if (!this._armasDelServidor && settings.weapon !== this.slots.primary) {
       delete this._stowed[this.slots.primary]
       delete this._stowed[settings.weapon]
       this.slots.primary = settings.weapon
@@ -1241,7 +1241,7 @@ export class Engine {
      * cualquier opción en mitad de un duelo le devolvería al jugador el Reaper
      * guardado en su navegador aunque en esa partida no lo haya comprado.
      */
-    if (!this.enRed && settings.secondary && settings.secondary !== this.slots.secondary) {
+    if (!this._armasDelServidor && settings.secondary && settings.secondary !== this.slots.secondary) {
       delete this._stowed[this.slots.secondary]
       delete this._stowed[settings.secondary]
       this.slots.secondary = settings.secondary
@@ -1258,7 +1258,7 @@ export class Engine {
      * ranura la que cambia, no lo que tienes en la mano — si estabas empuñando
      * una, la nueva sale llena por el camino de siempre.
      */
-    if (!this.enRed && settings.throwable !== this.slots.throwable) {
+    if (!this._armasDelServidor && settings.throwable !== this.slots.throwable) {
       delete this._stowed[this.slots.throwable]
       delete this._stowed[settings.throwable]
       delete this._reserva[this.slots.throwable]
@@ -1277,7 +1277,7 @@ export class Engine {
      * arco o el cohete se compran, y un ajuste guardado no puede devolverte un
      * arma que no has pagado.
      */
-    if (!this.enRed && settings.special && settings.special !== this.slots.special) {
+    if (!this._armasDelServidor && settings.special && settings.special !== this.slots.special) {
       delete this._stowed[this.slots.special]
       delete this._stowed[settings.special]
       delete this._reserva[this.slots.special]
@@ -1369,6 +1369,19 @@ export class Engine {
       this.targets.setRoundBudget(this.objectiveRunning ? this.targets.maxAlive : 0)
       this.targets.beginSession(this.camera, this.gameTime)
     }
+  }
+
+  /**
+   * **¿Lo que llevas lo decide el servidor?** (vuelta 100). En red, casi
+   * siempre: lo compras (vuelta 64) o te lo reparte el mapa (vuelta 72), y un
+   * ajuste guardado no puede darte un arma que no has pagado. **En un todos
+   * contra todos sin dotación, no**: no hay tienda ni reparto, así que cada uno
+   * sale con lo que haya elegido en la armería, y cambiarlo ahí vale en el acto
+   * — como en el entrenamiento. Lo dice la bienvenida (`libres`); deducirlo de
+   * que no haya economía confundiría un mapa que reparte con uno libre.
+   */
+  get _armasDelServidor() {
+    return this.enRed && !this.net?.armasLibres
   }
 
   /** El arma vigente, tal cual está descrita en config.js. */
@@ -2276,8 +2289,11 @@ export class Engine {
     // `_syncRival`. Una ranura, del tamaño del cuerpo de un jugador.
     if (this.enRed) {
       this.markers.setEnabled(true)
-      if (this.markers.slots.length !== 1 || this.markers.radius !== TARGET.radius) {
-        this.markers.build(1, TARGET.radius)
+      // Una ranura por cuerpo del montón: una en un duelo, las butacas menos
+      // una en un todos contra todos (vuelta 100).
+      const cuantos = this._rivales?.length ?? 1
+      if (this.markers.slots.length !== cuantos || this.markers.radius !== TARGET.radius) {
+        this.markers.build(cuantos, TARGET.radius)
       }
       return
     }
@@ -2317,29 +2333,31 @@ export class Engine {
    */
   _syncRival(now, deltaMs) {
     this._leerEstadoDeRed()
-    const pose = this.net.poseDelRival()
-    const avatar = this._rivalAvatar
-    const instancia = this._rivalInstancia
-    if (!avatar || !instancia) return
-    if (!pose || !pose.vivo) {
-      avatar.group.visible = false
-      instancia.state = 'down'
-      // Un abatido no pisa, y al reaparecer lo hace en otro sitio: sin esto, el
-      // salto del teletransporte contaría como suelo andado y sonaría una
-      // ráfaga de pisadas en el punto de aparición.
-      this._rivalPrevX = null
-      this._rivalPrevZ = null
-      /** La época de pose del rival en el frame anterior. Ver `_pisadasDelRival`. */
-      this._rivalEpoca = null
-      this._rivalPasoX = null
-      this._rivalPasoZ = null
-      this._rivalPasoT = 0
-      this._rivalPisadaT = 0
-    } else {
-      avatar.group.visible = true
-      avatar.group.position.set(pose.x, pose.feetY, pose.z)
-      avatar.group.rotation.y = pose.yaw
-      avatar.setEyeHeight(pose.eyeHeight)
+    this._asignarRivales()
+    for (const v of this._rivales) {
+      const instancia = v.instancia
+      const rival = v.id ? this.net.rivales.get(v.id) : null
+      const pose = rival ? this.net.poseDe(rival) : null
+      if (!pose || !pose.vivo) {
+        v.avatar.group.visible = false
+        instancia.state = 'down'
+        // Un abatido no pisa, y al reaparecer lo hace en otro sitio: sin esto, el
+        // salto del teletransporte contaría como suelo andado y sonaría una
+        // ráfaga de pisadas en el punto de aparición.
+        v.prevX = null
+        v.prevZ = null
+        /** La época de pose del rival en el frame anterior. Ver `_pisadasDelRival`. */
+        v.epoca = null
+        v.pasoX = null
+        v.pasoZ = null
+        v.pasoT = 0
+        v.pisadaT = 0
+        continue
+      }
+      v.avatar.group.visible = true
+      v.avatar.group.position.set(pose.x, pose.feetY, pose.z)
+      v.avatar.group.rotation.y = pose.yaw
+      v.avatar.setEyeHeight(pose.eyeHeight)
       instancia.state = 'alive'
       // **El yaw del rival es el de su cámara, y `facing` es de un marcador.**
       // Son convenciones opuestas —una mira a −Z y la otra a +Z— y pasarlo tal
@@ -2347,7 +2365,8 @@ export class Engine {
       // el yaw crudo a propósito: es un sólido de revolución, así que su giro
       // no se ve, y ponerle el de la brújula sería decir que tiene frente.
       instancia.facing = facingDesdeCamara(pose.yaw)
-      instancia.weaponKey = this.net.rival.arma ?? instancia.weaponKey
+      instancia.weaponKey = rival.arma ?? instancia.weaponKey
+      v.arma = rival.arma
       /**
        * **Y si está mirando por un visor que brilla** (vuelta 90). Es el
        * primer campo de esta instancia que dice lo que el rival **está
@@ -2356,10 +2375,56 @@ export class Engine {
        * saber que al otro lado hay una red — un muñeco no lo pone nunca y su
        * marcador sale apagado solo.
        */
-      instancia.mirilla = this.net.rival.mirilla === true
-      this._pisadasDelRival(pose)
+      instancia.mirilla = rival.mirilla === true
+      this._pisadasDelRival(v, pose)
     }
     this.markers.update(now, deltaMs, this._rivalInstancias, this.camera, _sinFase)
+  }
+
+  /**
+   * **Qué cuerpo del montón dibuja a quién** (vuelta 100). Cada rival que viene
+   * en tu foto se queda con un cuerpo mientras siga viniendo —el mismo, para
+   * que sus pisadas y su época no se mezclen con las de otro— y el que deja de
+   * venir lo suelta. Es una tabla de un puñado de entradas por paso, sin
+   * asignar memoria: el montón se monta entero al entrar (`_prepararRival`).
+   */
+  _asignarRivales() {
+    const rivales = this.net.rivales
+    for (const v of this._rivales) {
+      if (v.id && !rivales.has(v.id)) v.id = null
+    }
+    for (const rival of rivales.values()) {
+      let libre = null
+      let suyo = false
+      for (const v of this._rivales) {
+        if (v.id === rival.id) { suyo = true; break }
+        if (!v.id && !libre) libre = v
+      }
+      if (suyo || !libre) continue
+      libre.id = rival.id
+      libre.prevX = null
+      libre.prevZ = null
+      libre.epoca = null
+      libre.pasoX = null
+      libre.pasoZ = null
+      libre.pasoT = 0
+      libre.pisadaT = 0
+      libre.avatar.setColor(this._colorDeRival(rival.ranura))
+      libre.instancia.nick = this.net.nickDe(rival.ranura)
+    }
+  }
+
+  /**
+   * **De qué color es un rival** (vuelta 100). En un duelo, el de su equipo,
+   * que sale de su ranura (vuelta 49). **En un todos contra todos, todos del
+   * mismo**: para ti todos son lo mismo —un rival— y la paleta no tiene sitio
+   * para dieciséis colores que no signifiquen ya algo (propuesta 11 §1). A
+   * quién tienes delante lo dice su ficha flotante, con su nick.
+   */
+  _colorDeRival(ranura) {
+    const equipos = Object.keys(TEAMS)
+    if (this.net?.modo === 'todos') return TEAMS.magenta.color
+    return TEAMS[equipos[ranura % equipos.length]].color
   }
 
   /**
@@ -2414,20 +2479,20 @@ export class Engine {
     playDevice('puerta', this._emisorDispositivo)
   }
 
-  _pisadasDelRival(pose) {
-    const emisor = this._rivalEmisor
+  _pisadasDelRival(v, pose) {
+    const emisor = v.emisor
     if (!emisor) return
 
-    const previaX = this._rivalPrevX
-    const previaZ = this._rivalPrevZ
+    const previaX = v.prevX
+    const previaZ = v.prevZ
     const ahora = performance.now()
-    const antes = this._rivalPisadaT
-    this._rivalPrevX = pose.x
-    this._rivalPrevZ = pose.z
+    const antes = v.pisadaT
+    v.prevX = pose.x
+    v.prevZ = pose.z
     // Sin referencia —acaba de entrar, de reaparecer o de saltar— este frame
     // sólo sirve para sembrarla.
     if (previaX === null) {
-      this._rivalPisadaT = ahora
+      v.pisadaT = ahora
       return
     }
 
@@ -2441,7 +2506,7 @@ export class Engine {
     // **cero pisadas** con el rival andando de verdad—. El reloj de esto es el
     // de pared, que es el que mueve lo que se está midiendo.
     if (avance === 0) return
-    this._rivalPisadaT = ahora
+    v.pisadaT = ahora
     const dt = ahora - antes
     if (dt <= 0) return
     const velocidad = (avance / dt) * 1000
@@ -2456,16 +2521,16 @@ export class Engine {
      * camino (vuelta 50), y es exactamente la razón por la que existe en vez de
      * mirar cuánto se ha movido alguien.
      */
-    if (pose.epoca !== undefined && pose.epoca !== this._rivalEpoca) {
-      const antes = this._rivalEpoca
-      this._rivalEpoca = pose.epoca
+    if (pose.epoca !== undefined && pose.epoca !== v.epoca) {
+      const antes = v.epoca
+      v.epoca = pose.epoca
       // Y si el salto salió de una puerta del mapa, se oye desde donde se fue.
       // No hace falta un campo en el protocolo: los dos extremos montan el
       // mismo mapa, así que preguntarle dónde estaba es preguntárselo al mapa.
       if (antes !== null && previaX !== null) this._puertaDelRival(previaX, previaZ, pose)
-      this._rivalPasoX = null
-      this._rivalPasoZ = null
-      this._rivalPasoT = 0
+      v.pasoX = null
+      v.pasoZ = null
+      v.pasoT = 0
       return
     }
 
@@ -2489,18 +2554,18 @@ export class Engine {
     // avance de cada frame, el camino sale más largo que el recorrido y las
     // pisadas salen de más —medido, 11 en 13.3 u con una zancada de 1.9, o sea
     // media docena de sobra—. Se mide contra dónde se dio la última.
-    if (this._rivalPasoX === null) {
-      this._rivalPasoX = pose.x
-      this._rivalPasoZ = pose.z
-      this._rivalPasoT = ahora
+    if (v.pasoX === null) {
+      v.pasoX = pose.x
+      v.pasoZ = pose.z
+      v.pasoT = ahora
       return
     }
-    const zancada = Math.hypot(pose.x - this._rivalPasoX, pose.z - this._rivalPasoZ)
+    const zancada = Math.hypot(pose.x - v.pasoX, pose.z - v.pasoZ)
     if (zancada < FOOTSTEPS.strideU) return
-    const zancadaMs = ahora - this._rivalPasoT
-    this._rivalPasoX = pose.x
-    this._rivalPasoZ = pose.z
-    this._rivalPasoT = ahora
+    const zancadaMs = ahora - v.pasoT
+    v.pasoX = pose.x
+    v.pasoZ = pose.z
+    v.pasoT = ahora
 
     // **Y sólo se oye a quien corre**, medido **sobre la zancada** y no sobre el
     // frame. Andar con SHIFT compra **silencio**, no un volumen más bajo: para
@@ -2517,7 +2582,7 @@ export class Engine {
     // El umbral es fracción de **su** carrera, con el peso de su arma contado
     // por la misma función que frena al jugador: contra los 6.5 de la pistola,
     // un rival con la Rift (5.88) correría en silencio.
-    const suArma = WEAPONS[this.net?.rival?.arma]
+    const suArma = WEAPONS[v.arma]
     const suCarrera = MOVEMENT.speed * weaponSpeedFactor(suArma?.weight ?? 0)
     const marchaDeZancada = zancadaMs > 0 ? (zancada / zancadaMs) * 1000 : 0
     if (marchaDeZancada < suCarrera * FOOTSTEPS.runFraction) return
@@ -2527,66 +2592,80 @@ export class Engine {
     // se encarga el panner (la regla de siempre — con panner, atenuar además a
     // mano sería atenuar dos veces).
     this._rivalPisadas += 1
+    v.pisadas += 1
     playFootstep(1, emisor)
   }
 
   /**
-   * Monta el cuerpo del rival y su instancia de marcador. Se llama al empezar
-   * la sesión de red: el nick sale de la ranura que el servidor haya dado, que
-   * es la misma de la que sale su color.
+   * Monta **los cuerpos de los demás** y sus instancias de marcador. Se llama al
+   * empezar la sesión de red, y desde la vuelta 100 monta **tantos como
+   * butacas menos una** (`net.plazas`): un duelo, uno; un todos contra todos de
+   * ocho, siete. Se montan todos de golpe y se reutilizan —el bucle caliente no
+   * asigna memoria— y cuál dibuja a quién lo decide `_asignarRivales`.
    */
   _prepararRival() {
-    // `TEAMS` va por nombre y la ranura es un número: el orden de las claves es
-    // el mismo que usa el servidor para repartirlas (ver `salidas`).
-    const suyo = TEAMS[Object.keys(TEAMS)[this.net.equipoRival % Object.keys(TEAMS).length]]
-    if (!this._rivalAvatar) {
-      this._rivalAvatar = new Avatar(TARGET.radius, suyo.color)
-      this._rivalAvatar.group.visible = false
-      this.scene.add(this._rivalAvatar.group)
-      this._rivalInstancia = {
+    const cuantos = Math.max(1, (this.net.plazas ?? 2) - 1)
+    if (!this._rivales) this._rivales = []
+    while (this._rivales.length < cuantos) {
+      const avatar = new Avatar(TARGET.radius, this._colorDeRival(this._rivales.length + 1))
+      avatar.group.visible = false
+      this.scene.add(avatar.group)
+      const instancia = {
         state: 'down',
-        group: this._rivalAvatar.group,
+        group: avatar.group,
         facing: 0,
         friendly: false,
         nick: '',
         weaponKey: null,
       }
-      this._rivalInstancias = [this._rivalInstancia]
-      /**
-       * **El emisor cuelga del cuerpo del rival**, así que se mueve con él y
-       * nadie tiene que acordarse de colocarlo. Se crea una vez: un emisor por
-       * pisada serían sesenta nodos de audio por segundo.
-       *
-       * **Y lleva la curva de las pisadas, no la de la sala** (vuelta 63): pleno
-       * hasta `FOOTSTEPS.fullDistanceU` y apagado del todo en `maxDistanceU`.
-       * Con la de `SPATIAL` —pensada para que un sonido se oiga de punta a punta
-       * de un mapa de 55 u— una pisada a doce unidades salía a un decibelio de
-       * una a cuatro, que es un radar y no una pista. Por eso este emisor es
-       * hoy **el de las pisadas**: si el rival gana otra voz posicionada (su
-       * disparo, un grito), va en un emisor suyo, con su curva.
-       */
-      this._rivalEmisor = createEmitter(this._rivalAvatar.group, {
-        refDistance: FOOTSTEPS.fullDistanceU,
-        maxDistance: FOOTSTEPS.maxDistanceU,
-        rolloffFactor: 1,
+      this._rivales.push({
+        id: null,
+        avatar,
+        instancia,
+        /**
+         * **El emisor cuelga del cuerpo del rival**, así que se mueve con él y
+         * nadie tiene que acordarse de colocarlo. Se crea una vez: un emisor
+         * por pisada serían sesenta nodos de audio por segundo.
+         *
+         * **Y lleva la curva de las pisadas, no la de la sala** (vuelta 63):
+         * pleno hasta `FOOTSTEPS.fullDistanceU` y apagado del todo en
+         * `maxDistanceU`. Con la de `SPATIAL` una pisada a doce unidades salía
+         * a un decibelio de una a cuatro, que es un radar y no una pista. Por
+         * eso este emisor es hoy **el de las pisadas**: si el rival gana otra
+         * voz posicionada, va en un emisor suyo, con su curva.
+         */
+        emisor: createEmitter(avatar.group, {
+          refDistance: FOOTSTEPS.fullDistanceU,
+          maxDistance: FOOTSTEPS.maxDistanceU,
+          rolloffFactor: 1,
+        }),
+        arma: null,
+        /**
+         * Dónde y cuándo se dio la última pisada. Una zancada es **distancia**,
+         * y lo que tardó en darse es lo que dice si el rival corre o pasea: el
+         * frame suelto tiembla demasiado para decidirlo (vuelta 63).
+         */
+        pasoX: null,
+        pasoZ: null,
+        pasoT: 0,
+        prevX: null,
+        prevZ: null,
+        epoca: null,
+        /** Cuándo se leyó su pose por última vez, en reloj de pared. */
+        pisadaT: 0,
+        /** Cuántas pisadas suyas se han soltado. Lo miran los bancos. */
+        pisadas: 0,
       })
-      /**
-       * Dónde y cuándo se dio la última pisada. Una zancada es **distancia**, y
-       * lo que tardó en darse es lo que dice si el rival corre o pasea: el frame
-       * suelto tiembla demasiado para decidirlo (vuelta 63).
-       */
-      this._rivalPasoX = null
-      this._rivalPasoZ = null
-      this._rivalPasoT = 0
-      this._rivalPrevX = null
-      this._rivalPrevZ = null
-      /** Cuándo se leyó la pose del rival por última vez, en reloj de pared. */
-      this._rivalPisadaT = 0
-      /** Cuántas pisadas del rival se han soltado. Lo miran los bancos. */
-      this._rivalPisadas = 0
     }
-    this._rivalAvatar.setColor(suyo.color)
-    this._rivalInstancia.nick = this.net.nickRival
+    this._rivalInstancias = this._rivales.map((v) => v.instancia)
+    // **El primero, con los nombres de antes**: la página del duelo y los
+    // bancos de red miran «el rival» desde la vuelta 56, y en un 1v1 sigue
+    // siendo exactamente eso.
+    this._rivalAvatar = this._rivales[0].avatar
+    this._rivalInstancia = this._rivales[0].instancia
+    this._rivalEmisor = this._rivales[0].emisor
+    if (this._rivalPisadas === undefined) this._rivalPisadas = 0
+    for (const v of this._rivales) v.id = null
     this._syncMarkers(getSettings())
   }
 
@@ -2654,7 +2733,10 @@ export class Engine {
     const vida = this.net.vida
     const abatido = vida <= 0
     if (vida < this._vidaPrevia) {
-      const pose = this.net.poseDelRival()
+      // **La cuña apunta a quien te ha dado** (vuelta 100), que lo dice el
+      // servidor en tu foto: con un solo rival era «el otro», con nueve no.
+      const quien = this.net.golpeadoPor ? this.net.rivales.get(this.net.golpeadoPor) : null
+      const pose = quien ? this.net.poseDe(quien) : this.net.poseDelRival()
       const rumbo = pose ? this._bearingTo(pose.x, pose.z) : 0
       const cuanto = (this._vidaPrevia - vida) / PLAYER.maxHealth
       playDamage(Math.min(1, cuanto))
@@ -3364,7 +3446,7 @@ export class Engine {
        * tiempo, que es donde sirve.
        */
       if (this.enRed) {
-        const pose = this._rivalACuchillo() ? this.net?.poseDelRival?.() : null
+        const pose = this._rivalACuchillo()
         dentro = Boolean(pose)
         if (pose) {
           const p = this.camera.position
@@ -3405,15 +3487,25 @@ export class Engine {
    * que es la única fórmula: montar aquí una segunda serían dos siluetas.
    */
   _rivalACuchillo() {
-    const pose = this.net?.poseDelRival?.()
-    if (!pose || pose.vivo === false) return false
+    if (!this.net) return null
     const datos = this.weapon.melee
-    _cuerpoDelRival.position.x = pose.x
-    _cuerpoDelRival.position.z = pose.z
-    const cuerpo = playerBody(_cuerpoDelRival, pose.eyeHeight, pose.feetY)
     this.camera.updateMatrixWorld()
     this.raycaster.setFromCamera(SCREEN_CENTER, this.camera)
-    return Boolean(hitPlayer(this.camera.position, this.raycaster.ray.direction, cuerpo, datos.rangeU))
+    // **Y contra el más cercano de los que tengas delante** (vuelta 100): con
+    // varios, es a ése al que entraría el golpe, y es de ése de quien importa
+    // si te enseña la espalda. Devuelve su pose, o null.
+    let mejor = null
+    let cerca = Infinity
+    for (const rival of this.net.rivales.values()) {
+      const pose = this.net.poseDe(rival)
+      if (!pose || pose.vivo === false) continue
+      _cuerpoDelRival.position.x = pose.x
+      _cuerpoDelRival.position.z = pose.z
+      const cuerpo = playerBody(_cuerpoDelRival, pose.eyeHeight, pose.feetY)
+      const golpe = hitPlayer(this.camera.position, this.raycaster.ray.direction, cuerpo, datos.rangeU)
+      if (golpe && golpe.distance < cerca) { cerca = golpe.distance; mejor = pose }
+    }
+    return mejor
   }
 
   /**

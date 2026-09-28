@@ -550,7 +550,7 @@ export default function App() {
                 <span className="portada__cuando">02 · Con alguien</span>
                 <Icono nombre="duelo" className="portada__dibujo" />
                 <span className="portada__nombre">Duelo 1v1</span>
-                <span className="portada__sub">Crea una sala y manda el enlace. Catorce rondas, tienda entre ronda y ronda.</span>
+                <span className="portada__sub">Crea una sala y manda el enlace: un duelo a catorce rondas, o todos contra todos.</span>
                 <span className="portada__cta">Crear sala ▸</span>
               </button>
 

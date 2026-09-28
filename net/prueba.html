@@ -139,6 +139,22 @@
   #ronda span { font-size: 17px; font-weight: 700; color: #EDEDED; letter-spacing: .18em; }
   #ronda small { display: block; margin-top: 2px; font-size: 10px; letter-spacing: .22em; }
   #ronda.compra em { color: #2FCB82; }
+  /* El marcador del todos contra todos: centrado y encima del mundo, con los
+     tokens de la cabina (vuelta 99) — es un panel de menú, no el HUD. */
+  #tablaTodos { position: fixed; top: 22%; left: 50%; transform: translateX(-50%); z-index: 8;
+    min-width: 360px; padding: var(--cab-e4) var(--cab-e5); background: var(--cab-superficie-translucida);
+    clip-path: polygon(0 0, calc(100% - var(--cab-chaflan)) 0, 100% var(--cab-chaflan), 100% 100%, 0 100%);
+    pointer-events: none; font-family: var(--cab-letra-texto); color: var(--cab-texto); }
+  #tablaTodos[hidden] { display: none; }
+  #tablaTodos table { width: 100%; border-collapse: collapse; }
+  #tablaTodos th { font-family: var(--cab-letra-rotulo); font-stretch: condensed; font-size: var(--cab-t-micro);
+    letter-spacing: var(--cab-espaciado-rotulo); text-transform: uppercase; color: var(--cab-texto-rotulo);
+    text-align: right; padding: 0 0 var(--cab-e2); font-weight: 600; }
+  #tablaTodos th:first-child, #tablaTodos td:first-child { text-align: left; }
+  #tablaTodos td { padding: var(--cab-e1) 0; text-align: right; font-size: var(--cab-t-pequeno);
+    font-variant-numeric: tabular-nums; border-top: 1px solid var(--cab-linea); }
+  #tablaTodos tr.yo td { color: var(--cab-elegido); }
+  #tablaTodos tr.caido td { color: var(--cab-texto-muerto); }
   #ronda.poco em { color: #E4462B; }
   /* El cartel de fin de partida tapa la pantalla entera: la partida se acabó, no
      hay nada debajo que mirar. **Y por eso tiene que apagarse de verdad**: sin
@@ -189,12 +205,12 @@
   .invita { margin: 12px 0 0; color: var(--cab-accion); font-size: var(--cab-t-pequeno); line-height: 1.4; width: 340px; }
   .linea input { flex: 1; min-width: 0; background: var(--cab-fondo); color: var(--cab-texto-suave); border: 0;
     padding: 8px 10px; font: inherit; }
-  .linea select, #mapaSel, #compraSel { background: var(--cab-hueco); color: var(--cab-texto); border: 0;
+  .linea select, #modoSel, #mapaSel, #compraSel { background: var(--cab-hueco); color: var(--cab-texto); border: 0;
     padding: 6px 8px; font-family: var(--cab-letra-rotulo); font-stretch: condensed; font-size: var(--cab-t-texto); }
   /* **Un control que no es tuyo se ve apagado** (vuelta 67): el desplegable de
      la fase de compra sólo lo maneja quien creó la partida, y al que se une por
      el enlace tiene que decírselo la forma, no un intento fallido. */
-  #compraSel:disabled, #mapaSel:disabled { opacity: .45; cursor: not-allowed; border-style: dashed; }
+  #compraSel:disabled, #mapaSel:disabled, #modoSel:disabled { opacity: .45; cursor: not-allowed; border-style: dashed; }
   .linea .button { margin: 0; }
   #otro { text-transform: uppercase; letter-spacing: .12em; }
 
@@ -329,6 +345,11 @@
      frame; el resto sólo cuando cambia de fase — la regla del HUD de siempre. -->
 <div id="ronda"><b id="rondaN">—</b><em id="rondaTiempo">&nbsp;</em><span id="rondaMarcador">0 – 0</span>
   <small id="rondaFase">&nbsp;</small></div>
+<!-- **El marcador del todos contra todos** (vuelta 100), con TAB y sólo en ese
+     modo: una fila por butaca, ordenadas por bajas. Lo rellena `pintarTabla`
+     cuando cambia, no por frame. -->
+<div id="tablaTodos" hidden><table><thead><tr><th>Jugador</th><th>Bajas</th><th>Muertes</th><th>KD</th></tr></thead>
+  <tbody id="tablaFilas"></tbody></table></div>
 <div id="fin"><div><b id="finQuien">—</b><p id="finDetalle" class="apagado">&nbsp;</p>
   <!-- **Y una salida.** El cartel tapa la pantalla entera, así que sin un botón
        el jugador se queda mirándolo sin nada que pulsar: el menú está debajo. -->
@@ -336,7 +357,7 @@
 
 <div id="aviso"><div>
   <div id="sala" class="control">
-    <h1>Vektor · Duelo 1v1</h1>
+    <h1 id="titulo">Vektor · Duelo 1v1</h1>
     <!-- **Reconectar** (vuelta 62): sale sólo si en este navegador hay una
          partida a medias, y lleva su código escrito para que no haya que
          creerse nada. Vive aquí y no en la pantalla de inicio del juego: la red
@@ -347,7 +368,7 @@
          botón «copiar» sin una palabra alrededor, y lo que hay detrás —«así es
          como se invita a alguien»— es justo lo que un jugador nuevo no puede
          adivinar mirando una URL. -->
-    <p class="invita">Copia y comparte este link para retar a tus amigos a un duelo</p>
+    <p class="invita" id="invita">Copia y comparte este link para retar a tus amigos a un duelo</p>
     <div class="linea"><input id="enlace" readonly /><button id="copiar" class="button button--primary button--pequeno">Copiar</button></div>
     <!-- **Y el campo de código a mano se retira** (vuelta 92). Existía desde la
          47 como la otra puerta de entrada a una sala, y lo que se comparte es
@@ -368,6 +389,10 @@
          quitar. Dos desplegables en la misma fila con un rótulo común («mapa y
          compra») obligan a saber cuál es cuál por el orden; con su rótulo cada
          uno, se lee. -->
+    <!-- **El modo, el primero** (vuelta 100): cada modo tiene su lista de mapas,
+         así que va encima del mapa. -->
+    <div class="fila"><span class="apagado">modo</span>
+      <span><select id="modoSel" class="control"></select></span></div>
     <div class="fila"><span class="apagado">selección de mapa</span>
       <span><select id="mapaSel" class="control"></select></span></div>
     <!-- **Y el rótulo dice lo que el desplegable hace** (vuelta 92). El encargo

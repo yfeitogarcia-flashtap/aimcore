@@ -14758,3 +14758,185 @@ quién. Para diez jugadores, 3 000–5 000 u² transitables (≈70×70), 5-7 sal
 El cambio de protocolo **no está en esta vuelta**: es el trabajo de la siguiente,
 con la medida de cierre que ya fija la propuesta (una sala de 10 por debajo de 700
 KB/s con error de reconciliación cero).
+
+---
+
+## §100 — Quién aparece en la pantalla de cada uno, y el todos contra todos
+
+La fase 1 de la propuesta 11, entera: el cambio de protocolo, el todos contra
+todos y las salidas de N jugadores en Alchemist. Más la medida del caso extremo
+que se pidió antes de prometer salas grandes. Antes de nada, lo que se preguntó
+primero: el despliegue de `15f5a2e` y el `.exe` 0.4.0 **terminaron bien** (las
+dos ejecuciones de GitHub Actions en verde).
+
+### 100.1 — Una función decide quién entra en la foto de quién
+
+`net/interes.js`, `entraEnLaFoto(a, b, sala)`, y **en ningún otro sitio**. Por
+orden: uno mismo siempre; nadie en la fase de compra (era una rama aparte de
+`_enviarFoto` desde la 62 y pasa a ser un caso de la regla); quien no tiene cable,
+nunca; más allá de `NET.interes.lejosU` (80 u), nunca; dentro de `cercaU` (24 u),
+siempre; en medio, sólo si se ven.
+
+Tres decisiones con su porqué:
+
+- **La distancia corta manda sobre la vista**, porque las pisadas se oyen a través
+  de las paredes hasta 16 u (vueltas 60 y 73) y el oído es el canal que no hay que
+  apuntar. Si el criterio fuera «lo que ves», quien se acerca por detrás de un muro
+  no sonaría. 24 = 16 de pisadas + lo que se corre mientras una foto viaja.
+- **La vista cuenta con margen.** Cuatro rayos —cabeza, pecho y dos puntos a 1 u a
+  los lados del pecho— porque el centro del cuerpo es lo último que asoma por una
+  esquina: sin los laterales, quien saca medio hombro vería sin ser visto un viaje
+  de ida y vuelta. Con la aritmética de `cortarSegmento` (0.6 µs por rayo) y no con
+  un `raycast` (13 µs). Lo que se paga: un anti-*wallhack* aproximado — a un metro
+  de asomar ya viajas en la foto.
+- **Y una memoria de un segundo**, por destinatario (`Interes`): quien entra por
+  verse se queda aunque deje de verse. Sin ella, cada columna y la frontera de
+  `cercaU` serían un parpadeo (salir de la foto vacía la cola de interpolación, y
+  volver pide dos fotos). Los tres cortes duros —compra, cable, lejos— no se
+  recuerdan: cada uno es una promesa.
+
+El día de los mapas de varias salas, esta función contestará por el grafo (tu sala
+y las contiguas, o la distancia, lo que sea mayor) y ni el cable ni el cliente se
+enterarán: es la disciplina del transporte (vuelta 46) aplicada a una regla que se
+sabe que va a cambiar.
+
+### 100.2 — Tu foto entera, la de los demás ligera
+
+La foto se hace por destinatario, con tres piezas que se serializan una vez por foto
+y se pegan por destinatario: lo común (paso, butacas, pausa, rondas, partida del
+todos contra todos), **tu entrada entera** —la que reconcilia— y **la de cada otro
+que entre, ligera**: ranura, vida, arma, destello, rumbo y cinco números de
+movimiento (x, z, pies, ojos, época) redondeados al milímetro. El movimiento
+completo del rival —treinta y tantos campos— era **la mitad de los bytes** de una
+foto que no lo usaba para nada. Medido en el duelo, sin tocar el ritmo: de 1 459 a
+888 B por foto.
+
+**El marcador sale cuando cambia**, no en cada foto (`_marcadorSucio`): bajas,
+muertes y pausas de todos, que con cincuenta dentro serían dos megas por segundo de
+algo que cambia cada muchos segundos. El transporte no pierde mensajes, así que
+basta con mandarlo al cambiar y a quien entra o vuelve. De ahí sale también cuántas
+pausas le quedan al rival, que ya no viaja en su entrada.
+
+**El ritmo es de la sala** (`NET.fotoCada`): el duelo a 60 Hz —dos cuerpos, y
+cuesta menos que antes—, el todos contra todos a 20. Lo dice la bienvenida (`fc`).
+Tres consecuencias en el cliente:
+
+- **Un reloj de fotos común** (`instanteDeDibujo`): antes cada rival sacaba el suyo
+  de su cola, que con uno es lo mismo; con varios, el disparo diría un instante por
+  rival y el servidor rebobina a uno (`tv`).
+- **El retraso de dibujo es de dos fotos** (`NET.interpolarFotos`): 50 ms a 60 Hz
+  (el de siempre) y 100 a 20.
+- **Y se estima el paso del servidor entre fotos** en `pasoObjetivo`: a 20 Hz el
+  último `pasoServidor` va hasta dos pasos atrás, y el enganche del reloj se
+  quedaría corto de adelanto.
+
+Quien no viene en una foto **ha salido de ella** y se borra: el transporte no pierde
+mensajes, así que no venir es no estar.
+
+### 100.3 — El todos contra todos
+
+`modo=todos` en la dirección del socket, como el mapa y la fase de compra. Es la
+fase barata que la propuesta decía: **ni rondas, ni economía, ni equipos, ni
+pausa**. N butacas —tantas como `todos.salidas` declara el mapa, hasta
+`TODOS.maxJugadores` (16)—, la reaparición por reloj de entradas de la vuelta 52, un
+marcador y un cronómetro. Seis reglas:
+
+- **Se vuelve por la salida más lejos del vivo más cercano** (`_salidaMasLibre`), y
+  **la foto del abatido dice cuál** (`sal`): el cliente predice la reaparición en
+  el sitio bueno y no hay corrección. Volver siempre por la tuya sería volver
+  delante de quien acaba de matarte.
+- **Reaparecer da la gracia del entrenamiento** (`PLAYER.respawn.invulnerableMs`,
+  2 s): ahí reaparecer **es** empezar, y con ocho alguien puede estar mirando a tu
+  salida. En el duelo la gracia sigue siendo de empezar la ronda (vuelta 78).
+- **Las armas son libres**: cada uno sale con lo que elija en su armería, que en
+  este modo sí equipa (`libres` en la bienvenida, `armasLibres` en el cliente). No
+  se deduce de «no hay economía», que confundiría este modo con un mapa que reparte.
+- **Todos los rivales del mismo color** (magenta): para ti todos son un rival, y la
+  paleta no tiene sitio para dieciséis colores (propuesta 11 §1). Quién es cada uno
+  lo dice su ficha, con nick de dos cifras (`VK-07`).
+- **Sin pausa**: uno de diez no para el mundo a los otros nueve. El botón no sale y
+  el servidor lo ignora. Quien se cae **conserva la butaca** noventa segundos, pero
+  sale de todas las fotos y no encaja daño.
+- **Veinte bajas o ocho minutos**, diez segundos con el resultado —sin daño— y otra
+  partida con todo a cero; `td.n` sube y el cliente tira su cola sin confirmar, que
+  es la regla de un cambio de ronda (vuelta 62).
+
+Con N rivales cambian tres cosas del motor, y ninguna es un sistema nuevo: un montón
+de cuerpos (uno por butaca menos una) en vez de uno, con su emisor de pisadas cada
+uno; la cuña de daño apunta a **quien te dio** (`gp` en tu foto); y el cuchillo mira
+al más cercano de los que tienes delante. El disparo, en los dos extremos, se prueba
+contra todos y gana el primero que la bala toca.
+
+**La Rotonda** (`rotonda`, 64 × 64, ocho salidas) es el mapa de fábrica, con la
+disciplina de El Espejo llevada a cuatro lados: se declara un cuarto y `giro90` pone
+los otros tres. Lo que un mapa así tiene que garantizar no es simetría entre dos, es
+que **ninguna salida vea a otra**, y el banco lo cazó en la primera versión: 4 de 28
+pares se veían por los huecos de dos bolsillos vecinos. Un pilar en la diagonal lo
+cerró.
+
+### 100.4 — Alchemist: tantas salidas como jugadores
+
+`todos.salidas` en el formato —una lista aparte de `duelo.salidas`, porque un mapa
+puede publicarse en los dos modos y lo que hace bueno un reparto de dos no es lo que
+hace bueno uno de ocho—, y **cuántas hay es cuántos caben**: no hay un número de
+jugadores aparte que pueda contradecir a la lista. El saneado quita el modo si hay
+menos de tres.
+
+En el editor: la casilla «Todos contra todos» en *Publicado en* le pone ocho; en la
+hoja Duelo, **Jugadores** pone y quita salidas, cada una un **cono blanco** —no son
+de ningún equipo, y con azul y magenta no se distinguirían de las del duelo— que se
+arrastra y se gira por la punta de su flecha como las del duelo, con su fila en
+Capas, Supr para borrar y **Medir**, que cuenta los pares que se ven con su
+denominador. «Probar» sale por una de ellas y cambia de salida cada vez.
+
+### 100.5 — El caso extremo, y el tamaño de las salas
+
+Medido en `salas100` y `dibujo100`, y escrito entero en la propuesta 11 §2.3.
+Cincuenta en 200 × 200 sin paredes, con el filtro de serie y a 20 Hz: 0.37 ms de
+CPU por paso (2.2 %), **25 Mbit/s de subida por sala**, 63 KiB/s por jugador, 20
+rivales por foto; el cliente, 2 ms de CPU por segundo en fotos y ~150 llamadas de
+dibujo más. **El límite es el cable.** La siguiente palanca es el formato —el rival
+en binario, ~8× menos— y no está construida: el cable es de texto a propósito desde
+la 45, y cambiarlo es una vuelta propia.
+
+**No se amplía el tope de sala (200 u).** Para cincuenta ya es un mapa vacío (800
+u² por jugador contra los 300-500 de la cuenta de §2.2), crecer abierto esparce el
+tráfico en vez de escalarlo (en 400 × 400 cada uno ve a seis) y hay tres números
+atados a 200: el plano lejano de la cámara, el alcance de una bala en red (60 u) y
+`lejosU` (80). Un mundo grande son **varias salas unidas**.
+
+### 100.6 — Embudos
+
+Las cuatro reglas para los mapas de varias salas —al menos dos entradas por sala,
+circuitos sin puentes, túneles cortos y anchos o con huecos laterales, y bocas que
+no se vean de lejos— y las cuatro métricas que Alchemist medirá cuando existan las
+salas (la de una sola entrada, en rojo) están en la propuesta 11 §2.4. Hoy no hay
+salas en el formato; lo que se mide desde esta vuelta es su regla de fondo en un
+mapa de una sala: que ninguna salida vea a otra.
+
+### 100.7 — Alchemist y Cabina, a la cola
+
+Aprobado como se propuso en §99.4 —tokens de color, letra y los botones del
+sistema; la distribución de herramienta se queda— y **encolado, no hecho**. Va
+detrás de lo que siga de la propuesta 11.
+
+### 100.8 — Lo que costó ver
+
+- **Un banco con el spawn dentro de una caja mide otra cosa.** El primer rayo de
+  «medio hombro» salía mal porque `COLOCAR` resetea el movimiento en el spawn del
+  mapa, y en el mapa de prueba el spawn caía sobre el muro: el jugador tenía los
+  pies en el techo y veía por encima. La regla de la vuelta 57 —un banco comprueba
+  su premisa— por la puerta de la geometría.
+- **`hambre` no es de esta vuelta.** Con tres navegadores dibujando por CPU, el
+  servidor se queda sin entrada en ~30 % de los pasos — **igual a 60 Hz que a 20**,
+  medido cambiando sólo el ritmo. Es el contenedor, no el protocolo.
+- **`laser87` sale rojo con el código de antes también**: es anterior al arco en
+  la ranura 5 (vuelta 92) y equipa el arco por el ajuste viejo. No es de aquí;
+  queda anotado para rehacerlo.
+- **El menú del duelo pasa de 430 a 461 px** con la fila del modo: a 700 × 460 se
+  desplaza un píxel y `menu92` sigue sin controles inalcanzables.
+- **Y el aviso §4 otra vez, entero.** Con Vite levantado mientras se tocaba
+  `config.js`, `armeria98` salió con **20 fallos** —teclear un código no equipaba
+  nada—, y `controles97` y `escritorio98` con dos cada uno. Ninguno era de esta
+  vuelta: reiniciado el servidor de desarrollo, los tres en verde. Es el store de
+  ajustes duplicado por HMR, que es exactamente lo que dice §4.
