@@ -113,12 +113,14 @@ geometría. Está entero en §3 y en `docs/decisions.md` §93.8. Para todo lo de
 | Banco de voces | `editor/sonidos.html` | Oír cada arma y sus variantes antes de decidir (`/editor/sonidos.html`). **Sólo en desarrollo**, como el editor, y las variantes viven ahí y no en el catálogo. |
 | Escritorio | `escritorio/` | La ventana de Tauri: carga la URL del despliegue y nada más. **No contiene el juego**, a propósito. |
 | Partida (servidor) | `net/partida.js` | **Todo lo que decide el servidor**, sin saber por dónde viaja: entradas, pasos, disparo, rebobinado y fotos. Un jugador entra con una función `enviar(texto)` y nada más. **No hay red en este fichero.** Desde la vuelta 100, dos modos: `duelo` y `todos`. |
+| Lobby (servidor) | `net/lobby.js` | **La sala antes y entre partidas** (vuelta 101): quién está, en qué hueco, quién está listo, qué modo y mapa, y lanzar. Envuelve a `Partida` con su misma forma, así que los huéspedes no cambian; **cada partida es una `Partida` nueva** con el reloj de la sala siguiendo. |
+| Lobby (pantalla) | `src/ui/Lobby.jsx` | La cara del lobby en la página del multijugador, **con la carcasa de Cabina y las tarjetas del Entrenamiento**. Sólo pinta y pide: lo que decide es `net/lobby.js`. |
 | Interés | `net/interes.js` | **Quién entra en la foto de quién** (vuelta 100): `entraEnLaFoto(a, b, sala)` y su memoria. **La única regla**; el día de las salas contestará por el grafo sin que el cable se entere. |
 | Huésped de Node | `net/servidor.mjs` | Node + `ws`, y desde la vuelta 58 **el del despliegue**: encamina por código de sala, lleva un reloj por sala y sirve `dist/`. El mismo fichero en local y en Fly. |
 | Huésped de Cloudflare | `worker/sala.js` | El Durable Object. Lo mismo, con las piezas de Cloudflare. **Respaldo** desde la 58; ya no es donde se juega. |
 | Portero | `worker/index.js` | `/sala/<código>` → `idFromName(código)`; todo lo demás, los ficheros del juego. |
 | Código de sala | `net/codigo.js` | Alfabeto, normalización y forma de la ruta. **Lo usan el cliente y el Worker.** |
-| Duelo (pantalla) | `net/prueba.html`, `net/prueba.js` | La página del 1v1 **y del todos contra todos** (`?modo=todos`, vuelta 100). **Hospeda el motor completo** (vuelta 56) y se queda con lo suyo: código de partida, menú, avisos, pausas, el marcador de la sala (TAB) y los números detrás de **F3**. Se llega por `/duelo/`, en los tres montajes. |
+| Duelo (pantalla) | `net/prueba.html`, `net/prueba.js` | La página del **multijugador** (vuelta 101): el lobby, y detrás la partida de cualquier modo —duelo, 2v2 a 5v5, todos contra todos—. **Hospeda el motor completo** (vuelta 56) y se queda con lo suyo: código de partida, menú, avisos, pausas, el marcador de la sala (TAB) y los números detrás de **F3**. Se llega por `/duelo/`, en los tres montajes. |
 | Red (cliente) | `net/cliente.js`, `net/transporte.js` | Predicción, reconciliación, interpolación del rival y disparo. El transporte, detrás de tres funciones. |
 | Transporte | `net/transporte.js` | `send` / `onMessage` / `close`, y nada más. La red simulada es un transporte que envuelve a otro. |
 | Disparo en red | `net/disparo.js` | `hitPlayer` + `hasLineOfSight` en el orden que cuesta menos. **Lo llaman los dos extremos.** |
@@ -1011,8 +1013,9 @@ reloj de entradas de la vuelta 52, un marcador y un cronómetro. Cinco reglas:
 - **Las armas son libres** y la armería equipa, que lo dice la bienvenida
   (`libres`): deducirlo de «no hay economía» confundiría este modo con un mapa que
   reparte.
-- **Todos los rivales del mismo color** (magenta): para ti todos son un rival, y la
-  paleta no tiene dieciséis colores libres. Quién es cada uno lo dice su ficha, con
+- **Cada jugador con su color** (desde la vuelta 101; en la 100 eran todos
+  magenta): `COLORES_DE_JUGADOR`, diez colores elegidos por separación entre ellos
+  y no esquivando los del juego. Quién es cada uno lo dice además su ficha, con
   nick de dos cifras (`VK-07`).
 - **Y quien se cae conserva la butaca** noventa segundos, fuera de todas las fotos
   y sin encajar daño: aquí no hay pausa por caída que congele a los demás.
@@ -1021,6 +1024,61 @@ Lo que un mapa de todos contra todos tiene que garantizar **no es simetría, es 
 ninguna salida vea a otra**, y es una medida (`todos100` para La Rotonda, «Medir»
 en Alchemist para cualquiera). La Rotonda salió con 4 de 28 pares viéndose en su
 primera versión, y un pilar en la diagonal lo cerró.
+
+**Toda partida multijugador sale de un lobby, y el lobby es uno** (vuelta 101).
+**Ésta es la convención permanente para cualquier modo multijugador que se añada.**
+`net/lobby.js` es la sala antes y entre partidas —huecos, LISTO, modo, mapa, fase
+de compra, quién manda— y lanza cada partida como **una `Partida` nueva**, con el
+reloj de la sala siguiendo (`pasoInicial`). Cinco reglas:
+
+- **El lobby envuelve a la partida y ninguna de las dos sabe de la otra más que
+  eso.** Los huéspedes le hablan al lobby con la forma que tenían con `Partida`, y
+  el cliente aparta los mensajes del lobby (empiezan por `l`, `esDelLobby`) en el
+  transporte (`conLobby`) antes de que lleguen al netcode.
+- **Lo decide el anfitrión y lo ve todo el mundo.** Cambiar modo o mapa quita el
+  LISTO a todos; lanzar sólo se enciende con lo que diga `requisitos()`, que es
+  también lo que escribe el «faltan X».
+- **La pantalla es la del Entrenamiento** (`src/ui/Lobby.jsx`, en Cabina): mismas
+  tarjetas, botones y columna de la derecha. **Y el mundo no se dibuja detrás**
+  (`motor.dibujar(false)`): un mapa moviéndose bajo un menú marea.
+- **El final es uno para todos los modos**: resultado, **Volver a jugar** (vuelve
+  al lobby de la misma sala, listo) destacado y latiendo, y **Salir al menú**.
+- `VEKTOR_LOBBY=0` deja el huésped como hasta la 100 —quien llega juega—, y es lo
+  que usan los bancos de red.
+
+**Ranura y bando son dos cosas** (vuelta 101). La ranura es el sitio: butaca,
+salida y color en el todos contra todos. El bando es con quién: `ranura % 2` en
+equipos, `null` en el todos contra todos. **El duelo es un modo de equipos de uno**,
+y por eso sale igual. Las reglas de equipo —ronda por bando caído, **sin fuego
+amigo** (tu cohete sí te alcanza), economía por jugador con premio por bando,
+compañeros visibles en la compra, pausas del bando— están en `docs/decisions.md`
+§101.5. **Un mapa de equipos es un mapa de duelo**: los compañeros salen junto a
+la salida de su bando (`Scenario.salidasDeEquipos`), a la misma altura y en línea
+recta, y Alchemist avisa si alguno no cabe.
+
+**Lo que es un instante no espera a la foto** (vuelta 101). El veredicto de tu
+disparo (`MSG.VEREDICTO`), el golpe que recibes (`MSG.GOLPE`), la baja
+(`MSG.BAJA`) y **el disparo de otro** (`MSG.TIRO`) salen en el paso en que ocurren,
+por destinatario; la foto repite los veredictos por si uno se pierde. Medido
+(`retraso101`): a 20 Hz la baja esperaba de media 11 ms (hasta 33) y el cuerpo
+tardaba 111 en caer (hasta 133, contra 50 en el duelo); ahora las dos cosas en el
+acto. **La regla para lo que venga**: lo que suena o se ve **una vez** va por aviso;
+lo que **dura** (dónde está alguien, su vida) va en la foto.
+
+**Y un rival tiene lo que tiene un muñeco** (vuelta 101, la convención de la 63
+modo por modo). De `MSG.TIRO` salen, con el código del entrenamiento, el fogonazo,
+la voz del arma, el silbido de la que pasa cerca y el `!` de quien te dispara; un
+impacto destella en su zona y una baja hace el golpe de los muñecos. La ficha sale
+**apuntando al cuerpo**, no sólo a la cabeza, y a un compañero se le ve siempre.
+`paridad101nav` lo mide. Lo que no hay, a propósito: el tajo del rival no suena y
+el `?` no se puede deducir.
+
+**Un sitio en una sala es de una pestaña, no de un navegador** (vuelta 101).
+`localStorage` es por origen, así que dos pestañas compartían el pase de
+reconexión y **la segunda entraba en la butaca de la primera**: dos mandos, un
+jugador, y un recuento de tres siendo cuatro. El pase va con un identificador de
+pestaña (`sessionStorage`), y si un pase vuelve a entrar el huésped **cierra el
+cable viejo** en vez de dejar dos en una butaca.
 
 **Todo el tuning en `config.js`.** Ninguna constante de juego vive suelta en un
 módulo. Si necesitas un número nuevo, va a `config.js` aunque lo use un solo
@@ -6124,7 +6182,8 @@ reloj y cable:
 alfabeto que no se confunde al dictarlo— y pasa el enlace. Quien lo abre entra en
 la misma. Es `idFromName(código)`: no hay lista de partidas ni matchmaking.
 
-**Y se entra por el menú** (vuelta 66): la pantalla de inicio tiene **Duelo 1v1**
+**Y se entra por el menú** (vuelta 66; desde la 101 el botón se llama
+**Multijugador** y lleva al lobby): la pantalla de inicio tiene **Duelo 1v1**
 junto a los otros modos, y lleva a `/duelo/` —la misma ruta en desarrollo, en
 `npm run host` y en el despliegue—, donde ya está el flujo de siempre: el código
 creado, el enlace para copiar y los selectores de mapa y fase
@@ -6172,15 +6231,25 @@ compra: las rondas se encadenan. Ojo con no confundirlo con «sin fase» (vuelta
 página del duelo antes de pasar el enlace, y viaja en la dirección del socket
 como la fase de compra.
 
-**Y desde la vuelta 100 hay un todos contra todos**, en la misma página:
-**Modo → Todos contra todos** en el menú de crear la sala (o `/duelo/?modo=todos`),
-y el enlace lleva el modo. Entran tantos como salidas tiene el mapa —el de fábrica
-es **La Rotonda**, 64 × 64 con ocho—; cada uno sale con lo que elija en la armería
-(que ahí sí equipa), vuelve a los 2 s por la salida más lejos de los vivos y con 2 s
-de gracia, y gana el primero que llegue a **20 bajas** o el que más lleve a los **8
-minutos**; diez segundos con el resultado y empieza otra. **TAB** abre el marcador
-de la sala, y arriba se ve el reloj, tus bajas y las del líder. No hay pausa, ni
-tienda, ni rondas. Tuning en `TODOS`. Y **la foto del duelo también es la nueva**
+**Y desde la vuelta 100 hay un todos contra todos**, en la misma página. Caben
+**diez** desde la 101 —el mapa de fábrica es **La Rotonda**, 64 × 64 con doce
+salidas—; cada uno sale con lo que elija en la armería (que ahí sí equipa) y **con
+su color**, vuelve a los 2 s por la salida más lejos de los vivos y con 2 s de
+gracia, y gana el primero que llegue a **20 bajas** o el que más lleve a los **8
+minutos**. **TAB** abre el marcador de la sala, que dice arriba qué hace falta para
+ganar; arriba de la pantalla sólo va el reloj. No hay pausa, ni tienda, ni rondas.
+
+**Y desde la vuelta 101 se entra por el Multijugador, y hay un lobby.** El menú
+principal tiene **Entrenamiento** y **Multijugador**, y Multijugador lleva a
+`/duelo/`, que abre **el lobby de una sala nueva**: se elige el modo —**Duelo 1v1,
+2v2, 3v3, 4v4, 5v5 o Todos contra todos**—, el mapa en un carrusel, la fase de
+compra y el hueco, cada uno pulsa **LISTO** y el anfitrión **lanza**. En equipos
+cada uno elige su hueco (quien llega va al equipo con menos, y el anfitrión puede
+mezclarlos) y se puede empezar desequilibrado con un listo en cada equipo; el
+todos contra todos pide tres listos. Al acabar, **Volver a jugar** devuelve a la
+misma sala, listo para la siguiente. Los equipos juegan a rondas con la economía
+del duelo, sin fuego amigo, en los mapas de duelo, con los compañeros apareciendo
+al lado de su salida. Tuning en `TODOS`. Y **la foto del duelo también es la nueva**
 (§3): cada uno recibe la suya, el rival llega ligero y detrás de una pared a media
 distancia no llega — la mitad de bytes a los mismos 60 Hz.
 
@@ -6985,6 +7054,12 @@ circuitos sin puentes, túneles cortos y anchos o con huecos laterales, bocas qu
 se vean de lejos, y las métricas con las que Alchemist los avisará cuando existan
 las salas (en rojo, una sala con una sola entrada).
 
+**Y la 101 construyó la fase 2 de la propuesta 11** —equipos de 2v2 a 5v5— **y el
+lobby** que lanza todos los modos (§3 y §5). En cola, sin construir: **la foto en
+binario**, para cuando el tráfico lo pida (`docs/roadmap.md`, *El protocolo*), y
+**en Alchemist, conos de salida por jugador y caja de compra por equipo** para el
+primer mapa pensado para 5v5 (hoy un mapa de equipos es uno de duelo).
+
 **Y cuatro propuestas están escritas y sin construir, con su orden decidido por el
 encargo de la vuelta 97**: primero la **11** (salas de varios, espectador y lobby
 de evento), detrás la **fase 2 de la 10** (agrupar y bloquear), y detrás las dos de
@@ -6992,7 +7067,8 @@ la 95 (**08** y **09**). Están en `docs/propuestas/`; lo que hay que saber sin
 abrirlas:
 
 - **11 — salas de varios, espectador y lobby de evento** (vuelta 97; **su fase 1
-  está hecha** en la vuelta 100 —§3 y §5—, y lo que sigue es la fase 2, equipos).
+  está hecha** en la vuelta 100 y **la 2, equipos, en la 101** —§3 y §5—; lo que
+  sigue es la fase 3, espectador).
   Las tres
   cosas dependen de lo mismo: que una sala pueda tener más de dos dentro. Se
   escribió **con una medida delante** (`salas97`), y la medida cambia el plan: una

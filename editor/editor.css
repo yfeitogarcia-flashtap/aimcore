@@ -535,7 +535,11 @@ h3 {
 /** Los candados van justo bajo su dimensión, alineados con ella. */
 .candados label { font-size: 10px; color: var(--apagado); }
 .candados input { width: auto; margin-right: 3px; }
-label.ancho2 { grid-column: span 2; }
+label.ancho2, .ancho2 { grid-column: span 2; }
+/* Una fila de botones **no** va dentro de un `<label>` (vuelta 101): el navegador
+   le pasa el `:hover` de la etiqueta a su primer control, así que con el ratón
+   sobre «Medir» se iluminaba también «+ Salida». Una etiqueta es de un control. */
+.botones { display: block; margin-bottom: 6px; }
 
 .checkline { display: flex; align-items: center; gap: 6px; }
 .checkline input { width: auto; }

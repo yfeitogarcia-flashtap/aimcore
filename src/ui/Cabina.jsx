@@ -11,8 +11,10 @@ import { VektorMark } from './Logo.jsx'
  * de Alchemist (vuelta 78): un raíl de pictogramas es un examen.
  *
  * No sabe qué hace cada sección: recibe cuál está puesta y a quién avisar. El
- * duelo sale de aquí como un enlace, igual que el botón de la vuelta 66: esta
- * página sigue sin saber que existe la red.
+ * multijugador sale de aquí como un enlace, igual que el botón de la vuelta 66:
+ * esta página sigue sin saber que existe la red. Y **la misma carcasa la monta
+ * el lobby** en la página del multijugador (vuelta 101), para que pasar de un
+ * menú a otro no sea cambiar de juego.
  */
 
 /** Los iconos del raíl, a trazo, en una caja de 24. Sin imágenes: son SVG. */
@@ -20,6 +22,9 @@ const ICONOS = {
   inicio: 'M3 11l9-7 9 7v9h-6v-6H9v6H3z',
   entrenamiento: 'M12 4a8 8 0 1 0 0 16a8 8 0 1 0 0-16M12 9a3 3 0 1 0 0 6a3 3 0 1 0 0-6M12 1v4M12 19v4M1 12h4M19 12h4',
   duelo: 'M4 20L14 10M14 10l3-7 4 4-7 3M20 20L10 10M10 10L7 3 3 7l7 3',
+  // **Multijugador** (vuelta 101): el mismo cruce de espadas que tenía el duelo,
+  // porque es la misma puerta; lo que ha cambiado es lo que hay detrás.
+  multijugador: 'M4 20L14 10M14 10l3-7 4 4-7 3M20 20L10 10M10 10L7 3 3 7l7 3',
   armeria: 'M2 9h16l4 3v3H2zM6 15v4h4v-4',
   opciones: 'M12 8.5a3.5 3.5 0 1 0 0 7a3.5 3.5 0 1 0 0-7M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M4.9 19.1L7 17M17 7l2.1-2.1',
   salir: 'M14 4h5v16h-5M10 8l-4 4 4 4M6 12h11',
@@ -37,7 +42,7 @@ export function Icono({ nombre, className = 'cab-rail__icono' }) {
 export const SECCIONES = [
   { clave: 'inicio', nombre: 'Inicio' },
   { clave: 'entrenamiento', nombre: 'Entrenar' },
-  { clave: 'duelo', nombre: 'Duelo' },
+  { clave: 'multijugador', nombre: 'Multijugador' },
   { clave: 'armeria', nombre: 'Armería' },
   { clave: 'opciones', nombre: 'Opciones' },
 ]

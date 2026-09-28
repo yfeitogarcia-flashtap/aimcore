@@ -26,10 +26,10 @@
  * Es la misma decisión que ya se tomó en la vuelta 44 y el mismo número.
  */
 import * as THREE from 'three'
-import { NET, SIM, SIM_STEP_MS, definicionDeDuelo, definicionDeSala, escenarioDeSala, modoDeSala } from '../src/config.js'
+import { NET, SIM, SIM_STEP_MS, definicionDeSala, escenarioDeSala, modoDeSala } from '../src/config.js'
 import { Scenario } from '../src/game/scenario.js'
 import { MSG } from '../net/protocolo.js'
-import { Partida } from '../net/partida.js'
+import { Lobby } from '../net/lobby.js'
 
 /**
  * **El mapa del duelo, y lo dice `config.js`** (vuelta 66). Lo miran los dos
@@ -46,23 +46,11 @@ export class Sala {
     this.state = state
     this.env = env
     /**
-     * El escenario se monta **una vez por sala**, no por conexión: son 20
-     * piezas de geometría y sus oclusores, y montarlo dos veces sería dos
-     * mundos distintos con los mismos datos.
+     * **La sala es un lobby** (vuelta 101), como en el huésped de Node: se
+     * monta con lo que diga el primer socket —modo, mapa y fase de compra— y la
+     * partida vive dentro. `MSG.COLOCAR` sólo se atiende con `VEKTOR_DEBUG`.
      */
-    this.escenario = new Scenario(new THREE.Scene(), definicionDeDuelo(ESCENARIO))
-    /**
-     * `MSG.COLOCAR` sólo se atiende si la variable está puesta, igual que
-     * `VEKTOR_DEBUG` en el huésped de sobremesa. Sin ella —o sea, en el
-     * despliegue— el mensaje se tira sin mirarlo, así que no es una vía para
-     * colocarse donde a uno le convenga. Está para poder pasar los mismos
-     * bancos de medida contra este huésped que contra el de Node.
-     */
-    this.partida = new Partida({ escenario: this.escenario, depurar: !!env.VEKTOR_DEBUG })
-    /** Si ya se configuró la fase de compra: sólo la pone quien crea la sala. */
-    this._compraPuesta = false
-    /** Y si ya se eligió mapa (vuelta 72), que va por el mismo camino. */
-    this._mapaPuesto = false
+    this.lobby = null
     this.reloj = null
     this.arranque = 0
   }
@@ -72,39 +60,21 @@ export class Sala {
       return new Response('Esto es una sala de Vektor: se entra por WebSocket.', { status: 426 })
     }
 
-    // **La duración de la fase de compra viaja en la dirección** (vuelta 64) y
-    // sólo la pone quien crea la sala: el segundo en entrar no le reescribe la
-    // partida al primero. El acotado es de `Partida`, que es quien lo sabe.
+    // **La sala se configura al nacer**, con lo que diga quien la crea; a quien
+    // llega detrás se le ignora (vueltas 64, 72 y 100). Una sala vacía se
+    // rehace: no hay mundo que perder.
     const consulta = new URL(peticion.url).searchParams
-    if (!this._compraPuesta && this.partida.vacia) {
-      const compra = Number(consulta.get('compra'))
-      if (Number.isFinite(compra)) {
-        this.partida.configurarCompra(compra)
-        this._compraPuesta = true
-      }
-    }
-
-    /**
-     * **Y el mapa** (vuelta 72), con el mismo reparto. Aquí cuesta un poco más
-     * que en el huésped de Node: el objeto se construye antes de que exista una
-     * petición, así que el escenario ya está montado cuando llega el mapa. Se
-     * rehace —la sala está vacía, no hay mundo que perder— y con él la partida,
-     * que es quien lo lleva dentro.
-     *
-     * Este huésped es **respaldo desde la vuelta 58** y no donde se juega, pero
-     * una regla del juego que sólo valga en uno de los dos es peor que no
-     * tenerla: el día que haya que volver aquí, se vuelve entero.
-     */
-    if (!this._mapaPuesto && this.partida.vacia) {
-      this._mapaPuesto = true
-      // Y el modo (vuelta 100), que decide de qué lista sale el mapa.
+    if (!this.lobby || this.lobby.vacia) {
       const modo = modoDeSala(consulta.get('modo'))
-      const mapa = escenarioDeSala(modo, consulta.get('mapa') ?? (modo === 'duelo' ? ESCENARIO : null))
-      if (mapa !== this.escenario.key || modo !== this.partida.modo) {
-        this.escenario = new Scenario(new THREE.Scene(), definicionDeSala(modo, mapa))
-        this.partida = new Partida({ escenario: this.escenario, depurar: !!this.env.VEKTOR_DEBUG, modo })
-        if (this._compraPuesta) this.partida.configurarCompra(Number(consulta.get('compra')))
-      }
+      const compra = consulta.get('compra')
+      this.lobby = new Lobby({
+        crearEscenario: (m, clave) => new Scenario(new THREE.Scene(), definicionDeSala(m, clave)),
+        modo,
+        mapa: escenarioDeSala(modo, consulta.get('mapa') ?? (modo === 'duelo' ? ESCENARIO : null)),
+        compra: compra === null ? null : Number(compra),
+        depurar: !!this.env.VEKTOR_DEBUG,
+        auto: this.env.VEKTOR_LOBBY === '0',
+      })
     }
 
     const par = new WebSocketPair()
@@ -115,25 +85,41 @@ export class Sala {
     // `enviar` es lo único que la partida sabe de un socket. Aquí, además,
     // escribir en uno que ya se cerró tira una excepción y se llevaría por
     // delante el paso entero —o sea, al otro jugador—, así que se traga.
-    const id = this.partida.entra((texto) => {
+    const id = this.lobby.entra((texto) => {
       try {
         servidor.send(texto)
       } catch {
         /* el socket se está cerrando; la desconexión llega enseguida */
       }
-    })
+    }, consulta.get('pase'))
     if (!id) {
-      servidor.send(JSON.stringify({ t: MSG.ADIOS, razon: 'la partida está llena (1v1)' }))
+      servidor.send(JSON.stringify({ t: MSG.ADIOS, razon: 'la sala está llena' }))
       servidor.close(1000, 'llena')
       return new Response(null, { status: 101, webSocket: cliente })
     }
 
+    let fuera = false
     servidor.addEventListener('message', (evento) => {
-      this.partida.recibe(id, evento.data)
+      const datos = String(evento.data)
+      // Irse se dice (vuelta 62): con el adiós delante es un abandono, sin él
+      // el cierre es una caída y el sitio se guarda.
+      if (datos.startsWith(`{"t":"${MSG.ADIOS}"`)) {
+        fuera = true
+        this.lobby.abandona(id)
+        if (this.lobby.vacia) this._pararReloj()
+        return
+      }
+      if (datos.startsWith(`{"t":"${MSG.RECLAMAR}"`)) {
+        this.lobby.reclama(id)
+        return
+      }
+      this.lobby.recibe(id, datos)
     })
     const salir = () => {
-      this.partida.sale(id)
-      if (this.partida.vacia) this._pararReloj()
+      if (fuera) return
+      fuera = true
+      this.lobby.sedesconecta(id)
+      if (this.lobby.vacia) this._pararReloj()
     }
     servidor.addEventListener('close', salir)
     servidor.addEventListener('error', salir)
@@ -150,7 +136,7 @@ export class Sala {
    */
   _arrancarReloj() {
     if (this.reloj !== null) return
-    this.arranque = Date.now() - this.partida.paso * SIM_STEP_MS
+    this.arranque = Date.now() - this.lobby.paso * SIM_STEP_MS
     this._programar()
   }
 
@@ -160,11 +146,11 @@ export class Sala {
   }
 
   _programar() {
-    const objetivo = this.arranque + (this.partida.paso + 1) * SIM_STEP_MS
+    const objetivo = this.arranque + (this.lobby.paso + 1) * SIM_STEP_MS
     const espera = Math.max(0, objetivo - Date.now())
     this.reloj = setTimeout(() => {
       this.reloj = null
-      if (this.partida.vacia) return
+      if (this.lobby.vacia) return
       this._latir()
       this._programar()
     }, espera)
@@ -181,17 +167,17 @@ export class Sala {
     // que re-anclar en cada latido o al reanudar se debería medio minuto de
     // pasos de golpe. La partida sigue mandando su foto —es cómo se enteran los
     // dos de que hay pausa— pero no avanza nada.
-    if (this.partida.pausada) {
-      this.partida.tick()
-      this.arranque = Date.now() - this.partida.paso * SIM_STEP_MS
+    if (this.lobby.pausada) {
+      this.lobby.tick()
+      this.arranque = Date.now() - this.lobby.paso * SIM_STEP_MS
       return
     }
-    const debidos = Math.floor((Date.now() - this.arranque) / SIM_STEP_MS) - this.partida.paso
+    const debidos = Math.floor((Date.now() - this.arranque) / SIM_STEP_MS) - this.lobby.paso
     if (debidos > MAX_ATRASO) {
-      this.partida.tick()
-      this.arranque = Date.now() - this.partida.paso * SIM_STEP_MS
+      this.lobby.tick()
+      this.arranque = Date.now() - this.lobby.paso * SIM_STEP_MS
       return
     }
-    for (let i = 0; i < Math.max(1, debidos); i++) this.partida.tick()
+    for (let i = 0; i < Math.max(1, debidos); i++) this.lobby.tick()
   }
 }

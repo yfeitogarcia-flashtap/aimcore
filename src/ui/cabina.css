@@ -162,8 +162,11 @@
   color: var(--cab-texto-apagado);
   font-family: var(--cab-letra-rotulo);
   font-stretch: condensed;
-  font-size: 12px;
-  letter-spacing: var(--cab-espaciado-boton);
+  font-size: 11px;
+  /* Más apretado que un botón (vuelta 101): «Multijugador» son doce letras y
+     la palabra tiene que caber entera en el raíl — la regla de la vuelta 81. */
+  letter-spacing: 0.03em;
+  white-space: nowrap;
   text-transform: uppercase;
   cursor: pointer;
 }

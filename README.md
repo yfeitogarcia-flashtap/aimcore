@@ -206,8 +206,9 @@ npm install          # una vez
 npm run host         # construye y levanta el juego y las partidas en el 5199
 ```
 
-Luego, en el navegador: **http://localhost:5199/**, y el botón **Duelo 1v1** del
-menú lleva al 1v1 —crea un código y te da el enlace para pasárselo al otro—. Si
+Luego, en el navegador: **http://localhost:5199/**, y el botón **Multijugador**
+del menú lleva al lobby de una sala nueva —con su código y el enlace para pasárselo
+a los demás—. Si
 prefieres ir directo, `/duelo/` hace lo mismo.
 
 **Para jugar con alguien de tu casa, `localhost` no vale.** Apunta siempre al
@@ -398,12 +399,39 @@ bienvenida, y abajo «Vektor Installer» con su versión en vez de «Nullsoft In
 System». Los seis sitios donde hay que probarla y el paso a paso, en
 `escritorio/README.md`.
 
+## Multijugador: el lobby
+
+Se entra por **Multijugador** en el menú. Abre **el lobby de una sala nueva**, con
+la misma cara que la pantalla de Entrenamiento:
+
+- **Modo**: Duelo 1v1, 2v2, 3v3, 4v4, 5v5 o Todos contra todos.
+- **Mapa**: un carrusel con el plano de cada mapa que sirve para ese modo.
+- **Fase de compra**: en botones (en el todos contra todos no hay).
+- **Los huecos**: dos columnas por equipo, o diez colores en el todos contra
+  todos. **Cada uno elige su hueco pinchándolo**; quien llega se sienta en el
+  equipo que tenga menos, y el anfitrión puede **mezclar los equipos**.
+- A la derecha, la sala: **copiar el enlace** o **el código**, lo que se va a
+  jugar, cuántos faltan, **LISTO** —uno por jugador— y, para el anfitrión,
+  **Lanzar partida**.
+
+Sólo el anfitrión cambia la configuración y lanza; los demás la ven apagada. Se
+puede lanzar con **un listo en cada equipo** (también desequilibrado, 2 contra 3)
+o con **tres listos** en el todos contra todos. Quien no estaba listo sigue en el
+lobby, y en el todos contra todos puede **entrar con la partida en marcha**.
+
+**Al acabar**, todos ven el resultado con dos botones: **Volver a jugar** —vuelves
+al lobby de la misma sala, listo, con el mismo modo y mapa— y **Salir al menú**.
+
+**Los equipos** juegan a rondas, con la economía y la tienda del duelo, en los
+mapas de duelo. La ronda se gana dejando al otro equipo sin nadie en pie, o al
+tiempo con más vivos (y si empatan, más vida sumada). **No hay fuego amigo** —tu
+propio cohete sí te alcanza—; en la fase de compra ves a tus compañeros y no a los
+rivales; las tres pausas libres son del equipo. **TAB** abre el marcador, que dice
+arriba qué hace falta para ganar.
+
 ## El duelo 1v1: rondas y reconexión
 
-Se entra por el botón **Duelo 1v1** del segundo paso del menú de inicio. Lleva a
-la página del duelo, que crea una partida sola y enseña su código, **el enlace
-para copiar y compartir** y los selectores de **mapa** y de **fase de compra**,
-cada uno en su fila.
+El duelo es el modo de equipos de uno, y se lanza desde el lobby como los demás.
 
 **Invitar es pasar el enlace, y eso es todo.** Lo dice la propia página encima
 del campo: «Copia y comparte este link para retar a tus amigos a un duelo».
@@ -412,16 +440,9 @@ se quitó porque sólo podía acabar igual o peor: lo que se comparte es el enla
 entero, así que teclear seis caracteres no lleva a ningún sitio al que el enlace
 no lleve ya — y sí puede llevar a una sala equivocada si se teclean mal.
 
-**Las opciones de la partida son de quien la crea**, y sólo hasta que entra el
-rival: al que se une por el enlace le salen apagadas, porque cambiarlas no
-reconfigura la sala —empieza otra, con otro código— y eso dejaría al otro solo en
-la de antes.
-
-**Los botones del menú dependen de si hay partida** (vuelta 98). Mientras esperas
-al rival es la pantalla de **crear la sala**: *Volver* al menú del juego,
-*Opciones* y *Controles*. Con el rival dentro es la **pausa de una partida**:
-*Pausar la partida*, *Opciones*, *Controles* y *Salir de la partida* — abandonar
-sólo tiene sentido cuando hay algo que abandonar. Las opciones son las mismas del
+**El menú de ESC es el de dentro de una partida** (desde la vuelta 101, que crear
+la sala es cosa del lobby): el código y el enlace para invitar, *Pausar la
+partida*, *Opciones*, *Controles* y *Salir de la partida*. Las opciones son las mismas del
 juego y se abren **sin salir de la partida**; el mundo sigue corriendo mientras
 las miras, así que ahí eres un blanco. Pausar es lo único que para el mundo, y lo
 para para los dos.
@@ -798,7 +819,7 @@ Va en **tres pasos**, y cada uno hace una pregunta:
 1. El **logotipo** y un solo botón, **Jugar ahora**. En la app de escritorio,
    abajo a la izquierda, **Salir** (con su pictograma) cierra la aplicación; en
    un navegador no sale, porque una página no puede cerrar su pestaña.
-2. La **portada**: **Entrenamiento** y **Duelo 1v1** como dos puertas del mismo
+2. La **portada**: **Entrenamiento** y **Multijugador** como dos puertas del mismo
    tamaño, cada una con su acción en verde, y abajo los controles como **pares de
    tecla y verbo** —`WASD` moverte, `ESPACIO` saltar—.
 3. Pulsando Entrenamiento, la pantalla donde **se configura la partida**, en
@@ -1235,9 +1256,15 @@ otra pieza. El plan por fases está en `docs/propuestas/10-panel-de-capas.md`.
 ### Salidas del todos contra todos
 
 Un mapa se publica en el todos contra todos marcando la casilla en **Mapa →
-Publicado en**, y eso le pone **ocho salidas**. Se colocan en la hoja **Duelo**:
+Publicado en**, y eso le pone **diez salidas**. Se colocan en la hoja **Duelo**:
 
-- **Jugadores** pone y quita salidas: caben tantos jugadores como salidas haya.
+- **Salidas** pone y quita salidas. Caben tantos jugadores como salidas haya, hasta
+  diez; puede haber más salidas que jugadores (La Rotonda lleva doce), y las de
+  sobra son sitios más donde reaparecer lejos de todos.
+- **Si faltan salidas, Alchemist lo dice** en la barra de arriba: un mapa publicado
+  en el todos contra todos con menos de diez, o un mapa de duelo en el que a algún
+  compañero del 5v5 no le cabe su sitio al lado de la salida (los compañeros salen
+  junto a la salida de su equipo; si hay una pared o un desnivel, aparta la salida).
 - Cada salida es un **cono blanco**: se arrastra por la rejilla y se gira por la
   **punta de su flecha**, igual que las del duelo. Salen en **Capas** y **Supr** las
   borra.

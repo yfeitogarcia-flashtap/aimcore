@@ -130,3 +130,48 @@ export function conRedSimulada(base, enlace) {
     },
   }
 }
+
+/**
+ * **Dos conversaciones por un cable** (vuelta 101): la de la sala y la de la
+ * partida. La sala existe antes que la partida —el lobby—, y sus mensajes
+ * empiezan todos por `l` (ver `MSG.LOBBY`); los aparta esto y se los da a
+ * `alLobby`, y el resto sigue al que escuche el transporte, que es el cliente
+ * de red de siempre. Así el netcode no se entera de que hay un lobby, que es la
+ * regla de la vuelta 46: el cliente sólo ve `send`, `onMessage`, `close` y
+ * `onClose`.
+ *
+ * Lo que llegue antes de que alguien escuche se guarda y se entrega al
+ * enchufarse: la bienvenida de una partida puede llegar pegada al estado de la
+ * sala que la anuncia.
+ */
+export function conLobby(base, alLobby) {
+  let escucha = null
+  const pendientes = []
+  base.onMessage((datos) => {
+    if (typeof datos === 'string' && datos.startsWith('{"t":"l')) {
+      try {
+        alLobby(JSON.parse(datos))
+      } catch (error) {
+        console.error(error)
+      }
+      return
+    }
+    if (escucha) escucha(datos)
+    else pendientes.push(datos)
+  })
+  return {
+    send(texto) {
+      base.send(texto)
+    },
+    onMessage(fn) {
+      escucha = fn
+      while (pendientes.length > 0 && escucha) escucha(pendientes.shift())
+    },
+    onClose(fn) {
+      base.onClose(fn)
+    },
+    close() {
+      base.close()
+    },
+  }
+}

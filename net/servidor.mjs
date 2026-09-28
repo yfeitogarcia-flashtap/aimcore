@@ -37,10 +37,10 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 import * as THREE from 'three'
 import { WebSocketServer } from 'ws'
-import { ESCRITORIO, NET, SIM, SIM_STEP_MS, definicionDeSala, escenarioDeSala, modoDeSala } from '../src/config.js'
+import { ESCRITORIO, NET, SIM, SIM_STEP_MS, TODOS, definicionDeSala, escenarioDeSala, modoDeSala } from '../src/config.js'
 import { Scenario } from '../src/game/scenario.js'
 import { MSG } from './protocolo.js'
-import { Partida } from './partida.js'
+import { Lobby } from './lobby.js'
 import { normalizarCodigo, rutaDeSala } from './codigo.js'
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
@@ -119,8 +119,15 @@ const COLCHON = Number(process.env.VEKTOR_BUFFER) || NET.jitterBufferTicks
  * dispara. Es la hermana de `VEKTOR_DEBUG`: existe para poder medir.
  */
 const RONDAS = process.env.VEKTOR_RONDAS !== '0'
+// **Sin lobby** (vuelta 101): quien llega entra a jugar, como hasta la 100. Es
+// para los bancos de netcode, que miden la red y no la sala.
+const SIN_LOBBY = process.env.VEKTOR_LOBBY === '0'
 /** Sólo con esto encendido se atiende la colocación de pruebas (ver `MSG.COLOCAR`). */
 const DEPURAR = !!process.env.VEKTOR_DEBUG
+// **Bajas para ganar, sólo depurando** (vuelta 101): un banco que quiere ver
+// el final de un todos contra todos no puede esperar veinte bajas. Viaja en la
+// foto (`obj`), así que la página dice el número de verdad.
+if (DEPURAR && Number(process.env.VEKTOR_BAJAS) > 0) TODOS.bajasParaGanar = Number(process.env.VEKTOR_BAJAS)
 /** El puerto lo pone el entorno en un despliegue; en local, el de siempre. */
 const PUERTO = Number(process.env.PORT) || NET.port
 
@@ -172,22 +179,31 @@ class Sala {
      */
     // La definición de la lista del duelo y no la clave (vuelta 98): una clave
     // resuelve contra `SCENARIOS`, que deja ganar al fichero en todos los modos.
-    this.escenario = new Scenario(new THREE.Scene(), definicionDeSala(this.modo, this.mapa))
-    this.partida = new Partida({
-      escenario: this.escenario,
+    /**
+     * **La sala es un lobby, y la partida vive dentro** (vuelta 101). El modo,
+     * el mapa y la fase de compra de la dirección son **la configuración de
+     * partida** del lobby, que el anfitrión puede cambiar entre partidas; cada
+     * lanzamiento monta su escenario con `crearEscenario`.
+     */
+    this.lobby = new Lobby({
+      crearEscenario: (modo, clave) => new Scenario(new THREE.Scene(), definicionDeSala(modo, clave)),
+      modo: this.modo,
+      mapa: this.mapa,
+      compra: compraSegundos,
       colchon: COLCHON,
       depurar: DEPURAR,
       rondas: RONDAS,
-      modo: this.modo,
-      ...(compraSegundos === null ? null : { compraSegundos }),
+      auto: SIN_LOBBY,
     })
+    /** El cable vigente de cada uno: al volver con su pase, el viejo se cierra. */
+    this.cables = new Map()
     this.reloj = null
     this.arranque = 0
     this.vaciaDesde = Date.now()
   }
 
   get vacia() {
-    return this.partida.vacia
+    return this.lobby.vacia
   }
 
   /**
@@ -198,7 +214,7 @@ class Sala {
     // `enviar` es lo único que la partida sabe de un socket, y el estado del
     // socket es cosa del huésped: escribir en uno que se está cerrando tira y se
     // llevaría por delante el paso entero, o sea al otro jugador.
-    const id = this.partida.entra((texto) => {
+    const id = this.lobby.entra((texto) => {
       if (socket.readyState !== 1) return
       try {
         socket.send(texto)
@@ -207,12 +223,37 @@ class Sala {
       }
     }, pase)
     if (!id) {
-      socket.send(JSON.stringify({ t: MSG.ADIOS, razon: 'la partida está llena (1v1)' }))
+      socket.send(JSON.stringify({ t: MSG.ADIOS, razon: 'la sala está llena' }))
       socket.close()
       return null
     }
+    /**
+     * **Un sitio, un cable** (vuelta 101). Volver con tu pase te devuelve tu
+     * sitio, y el cable de antes —si seguía abierto— se cierra: se dice por qué
+     * y deja de contar. Sin esto, dos pestañas del mismo navegador con el mismo
+     * pase **eran el mismo jugador con dos mandos**: las dos movían la misma
+     * butaca y la sala contaba uno menos de los que había delante de las
+     * pantallas. Se reportó así: «éramos cuatro y el recuento decía tres».
+     */
+    const viejo = this.cables.get(id)
+    if (viejo && viejo !== socket) {
+      viejo.vektorFuera = true
+      try {
+        viejo.send(JSON.stringify({ t: MSG.ADIOS, razon: 'este sitio se ha abierto en otra ventana' }))
+        viejo.close()
+      } catch {
+        /* ya se estaba cerrando */
+      }
+    }
+    this.cables.set(id, socket)
+    const vigente = () => this.cables.get(id) === socket
 
-    socket.on('message', (datos) => this.partida.recibe(id, datos))
+    // **Texto una vez**: `ws` entrega un `Buffer`, y el lobby mira la primera
+    // letra antes de parsear (ver `Lobby.recibe`).
+    socket.on('message', (datos) => {
+      if (!vigente()) return
+      this.lobby.recibe(id, datos.toString())
+    })
     // **Irse se dice, y el huésped es quien lo oye** (vuelta 62). El mensaje es
     // del protocolo pero lo que hace es cerrar el cable, que es de aquí: marca
     // el socket como despedido **antes** de cerrarlo, para que el `close` que
@@ -224,9 +265,11 @@ class Sala {
       } catch {
         return
       }
+      if (!vigente()) return
       if (mensaje.t === MSG.ADIOS) {
         socket.vektorFuera = true
-        this.partida.abandona(id)
+        this.cables.delete(id)
+        this.lobby.abandona(id)
         this._trasSalida(id)
         try {
           socket.close()
@@ -234,7 +277,7 @@ class Sala {
           /* ya se estaba cerrando */
         }
       } else if (mensaje.t === MSG.RECLAMAR) {
-        this.partida.reclama(id)
+        this.lobby.reclama(id)
       }
     })
     // **Un cable mudo no se cierra solo.** Un portátil que se duerme o un cable
@@ -262,16 +305,18 @@ class Sala {
       clearInterval(latido)
       if (socket.vektorFuera) return
       socket.vektorFuera = true
+      if (!vigente()) return
+      this.cables.delete(id)
       // **Sin adiós delante, es una caída**: la butaca se guarda y el mundo se
       // para para el que queda, hasta que vuelva o se le dé por abandonado.
-      this.partida.sedesconecta(id)
+      this.lobby.sedesconecta(id)
       this._trasSalida(id)
     }
     socket.on('close', salir)
     socket.on('error', salir)
 
     this._arrancarReloj()
-    console.log(`+ ${this.codigo}/${id} (${this.partida.conectados.length}/2)`)
+    console.log(`+ ${this.codigo}/${id} (${this.lobby.conectados.length} dentro)`)
     return id
   }
 
@@ -281,7 +326,7 @@ class Sala {
       this._pararReloj()
       this.vaciaDesde = Date.now()
     }
-    console.log(`- ${this.codigo}/${id} (${this.partida.conectados.length}/2)`)
+    console.log(`- ${this.codigo}/${id} (${this.lobby.conectados.length} dentro)`)
   }
 
   /**
@@ -292,7 +337,7 @@ class Sala {
    */
   _arrancarReloj() {
     if (this.reloj !== null) return
-    this.arranque = Date.now() - this.partida.paso * SIM_STEP_MS
+    this.arranque = Date.now() - this.lobby.paso * SIM_STEP_MS
     this._programar()
   }
 
@@ -302,7 +347,7 @@ class Sala {
   }
 
   _programar() {
-    const objetivo = this.arranque + (this.partida.paso + 1) * SIM_STEP_MS
+    const objetivo = this.arranque + (this.lobby.paso + 1) * SIM_STEP_MS
     const espera = Math.max(0, objetivo - Date.now())
     this.reloj = setTimeout(() => {
       this.reloj = null
@@ -329,18 +374,18 @@ class Sala {
     // re-anclar en cada latido o al reanudar se debería medio minuto de pasos.
     // La partida sigue mandando su foto —es cómo se enteran los dos de que hay
     // pausa— pero no avanza nada.
-    if (this.partida.pausada) {
-      this.partida.tick()
-      this.arranque = Date.now() - this.partida.paso * SIM_STEP_MS
+    if (this.lobby.pausada) {
+      this.lobby.tick()
+      this.arranque = Date.now() - this.lobby.paso * SIM_STEP_MS
       return
     }
-    const debidos = Math.floor((Date.now() - this.arranque) / SIM_STEP_MS) - this.partida.paso
+    const debidos = Math.floor((Date.now() - this.arranque) / SIM_STEP_MS) - this.lobby.paso
     if (debidos > MAX_ATRASO) {
-      this.partida.tick()
-      this.arranque = Date.now() - this.partida.paso * SIM_STEP_MS
+      this.lobby.tick()
+      this.arranque = Date.now() - this.lobby.paso * SIM_STEP_MS
       return
     }
-    for (let i = 0; i < Math.max(1, debidos); i++) this.partida.tick()
+    for (let i = 0; i < Math.max(1, debidos); i++) this.lobby.tick()
   }
 }
 
@@ -595,10 +640,11 @@ const servidor = http.createServer(async (peticion, respuesta) => {
       region: process.env.FLY_REGION || 'local',
       escenario: ESCENARIO,
       rondas: RONDAS,
+      lobby: !SIN_LOBBY,
       hz: SIM.hz,
       salas: salas.size,
       ocupadas: ocupadas.length,
-      jugadores: ocupadas.reduce((n, s) => n + s.partida.jugadores.size, 0),
+      jugadores: ocupadas.reduce((n, s) => n + s.lobby.jugadores.size, 0),
       arribaSegundos: Math.round(process.uptime()),
     }))
   }
@@ -701,6 +747,6 @@ servidor.listen(PUERTO, () => {
 setInterval(() => {
   for (const sala of salas.values()) {
     if (sala.vacia) continue
-    console.log(`[${sala.codigo}] paso ${sala.partida.paso} · ${sala.partida.informe().join(' | ')}`)
+    console.log(`[${sala.codigo}] paso ${sala.lobby.paso} · ${sala.lobby.informe().join(' | ')}`)
   }
 }, 5000)

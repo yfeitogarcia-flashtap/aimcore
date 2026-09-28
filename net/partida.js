@@ -17,7 +17,7 @@
  * Y sigue sin tener código de juego: importa `movement.js`, `scenario.js`,
  * `hitPlayer` y `hasLineOfSight` tal cual.
  */
-import { ECONOMY, NET, PAUSE, PLAYER, PROJECTILES, ROUNDS, SIM, SIM_STEP_MS, TODOS, WEAPONS, WEAPON_ORDER, catalogoDeTienda } from '../src/config.js'
+import { ECONOMY, NET, PAUSE, PLAYER, PROJECTILES, ROUNDS, SIM, SIM_STEP_MS, TODOS, WEAPONS, WEAPON_ORDER, bandoDeRanura, catalogoDeTienda, modoDeSala, modoMultijugador } from '../src/config.js'
 import { MovementController } from '../src/game/movement.js'
 import { encajarImpacto, hitPlayer, zoneDamage } from '../src/game/player.js'
 import { Clavadas } from '../src/game/clavadas.js'
@@ -105,8 +105,25 @@ export class Partida {
     rondas = true,
     compraSegundos = ROUNDS.compraSegundos,
     modo = 'duelo',
+    pasoInicial = 0,
+    numero = 1,
+    arranqueManual = false,
   }) {
     this.escenario = escenario
+    /**
+     * **Qué partida de la sala es ésta** (vuelta 101). Una sala juega varias
+     * —la revancha es otra partida en la misma sala—, y el cliente lo necesita
+     * para saber que una bienvenida nueva no es una reconexión sino otra
+     * partida, con otro mundo.
+     */
+    this.numero = numero
+    /**
+     * **Quién la arranca** (vuelta 101). Sola, al entrar el segundo, como hasta
+     * la 100; o a mano, desde el lobby, que mete a todos los listos de golpe y
+     * sólo entonces la pone en marcha. Arrancarla con el segundo de diez sería
+     * empezar la ronda 1 mientras los otros ocho todavía están entrando.
+     */
+    this.arranqueManual = arranqueManual
     /**
      * **El modo de la sala** (vuelta 100): `duelo` o `todos`. Se decide al nacer
      * —viaja en la dirección del socket, como el mapa y la fase de compra— y lo
@@ -115,8 +132,16 @@ export class Partida {
      * pausa**: es un marcador y un cronómetro encima de la reaparición por
      * reloj de entradas de la vuelta 52 (propuesta 11 §5).
      */
-    this.modo = modo === 'todos' ? 'todos' : 'duelo'
-    const todos = this.modo === 'todos'
+    this.modo = modoDeSala(modo)
+    /**
+     * **Cuántos por bando** (vuelta 101): uno en un duelo, de dos a cinco en los
+     * de equipos y cero en el todos contra todos. El duelo **es** un modo por
+     * equipos de uno —mismas rondas, misma economía, misma compra— y por eso no
+     * hay aquí una rama «duelo» y otra «equipos»: hay un número.
+     */
+    this.porEquipo = modoMultijugador(this.modo).porEquipo
+    this.enEquipos = this.porEquipo > 0
+    const todos = !this.enEquipos
     if (todos) rondas = false
     /**
      * **Cada cuántos pasos sale una foto** en esta sala. Ver `NET.fotoCada`: el
@@ -171,7 +196,21 @@ export class Partida {
     this.colchon = colchon
     this.depurar = depurar
     this.conRondas = rondas
-    this.paso = 0
+    /**
+     * **El paso no vuelve a cero entre partidas de la misma sala** (vuelta
+     * 101): el reloj de la red es el número de paso (vuelta 45), y un cliente
+     * que venía por el 9 000 no puede encontrarse de golpe en el 0 — su enganche
+     * al reloj lo leería como un parón de dos minutos al revés.
+     */
+    this.paso = pasoInicial
+    /**
+     * **Las pausas libres de cada bando** (vuelta 101). En un duelo son del
+     * jugador, tres cada uno, como desde la vuelta 53; en un 5v5 serían treinta
+     * pausas por partida, que es una partida que no se juega. Con más de uno
+     * por bando son **del bando**, tres para los cinco — que es lo que hace el
+     * CS con sus tiempos muertos tácticos.
+     */
+    this.libresDeBando = [PAUSE.free, PAUSE.free]
     /**
      * **La pausa, que es del mundo y no de quien la pide** (vuelta 53). Null, o
      * `{ por, expiraEn }`. Mientras está puesta, `tick` no avanza el
@@ -240,13 +279,35 @@ export class Partida {
      * que dos jugadores no aparecieran uno dentro del otro, y puesto a servir de
      * 1v1 empezaba la ronda con los dos a cinco unidades.
      */
-    this.salidas = todos ? escenario.salidasDeTodos : escenario.salidasDeDuelo
+    this.salidas = todos ? escenario.salidasDeTodos : escenario.salidasDeEquipos(this.porEquipo)
     /**
      * **Cuántos caben**: dos en un duelo y, en el todos contra todos, **tantos
      * como salidas declara el mapa** —la propuesta 11 §4: el tope se deriva de
      * la lista, no es un número aparte que la pueda contradecir—.
      */
-    this.plazas = todos ? Math.min(this.salidas.length, TODOS.maxJugadores) : 2
+    this.plazas = todos ? Math.min(this.salidas.length, TODOS.maxJugadores) : this.porEquipo * 2
+  }
+
+  /**
+   * **¿Se ha acabado la partida?** (vuelta 101). Lo pregunta el lobby para
+   * ofrecer «Volver a jugar»: con rondas es que hay ganador; en el todos contra
+   * todos, que la fase es la del final. Ya no vuelve a empezar sola (la 100
+   * esperaba diez segundos y arrancaba otra): la siguiente la decide la sala.
+   */
+  get terminada() {
+    return this.enEquipos ? this.rondas.fase === 'fin' : this.todos.fase === 'fin'
+  }
+
+  /** ¿Hay una partida en juego (ni esperando ni acabada)? */
+  get enJuego() {
+    return this.enEquipos
+      ? this.rondas.fase === 'compra' || this.rondas.fase === 'ronda'
+      : this.todos.fase === 'juego'
+  }
+
+  /** Las pausas libres que le quedan a un jugador: las suyas, o las de su bando. */
+  _libresDe(jugador) {
+    return this.porEquipo > 1 ? this.libresDeBando[jugador.bando] : jugador.pausasLibres
   }
 
   /**
@@ -331,7 +392,7 @@ export class Partida {
    * @param {(texto: string) => void} enviar
    * @param {string|null} [pase] pase de reconexión, si dice volver
    */
-  entra(enviar, pase = null) {
+  entra(enviar, pase = null, { ranura: pedida = null, nick = null } = {}) {
     this._caducarButacas()
     const vuelve = pase ? this._butacaDe(pase) : null
     if (vuelve) return this._reconectar(vuelve, enviar)
@@ -342,10 +403,14 @@ export class Partida {
     // suya— y los dos aparecían **en el mismo sitio y del mismo color**. La
     // ranura es la única fuente de las dos cosas, así que un error ahí sale por
     // partida doble.
-    const ocupadas = new Set([...this.jugadores.values()].map((j) => j.equipo))
-    let equipo = 0
-    while (equipo < this.salidas.length && ocupadas.has(equipo)) equipo += 1
-    const salida = this.salidas[equipo]
+    const ocupadas = new Set([...this.jugadores.values()].map((j) => j.ranura))
+    // **La ranura la puede pedir el lobby** (vuelta 101): es el hueco que eligió
+    // el jugador, y de ella salen su bando, su salida y su color. Si está
+    // cogida o no existe, la primera libre, como siempre.
+    let ranura = 0
+    if (Number.isInteger(pedida) && pedida >= 0 && pedida < this.plazas && !ocupadas.has(pedida)) ranura = pedida
+    else while (ranura < this.salidas.length && ocupadas.has(ranura)) ranura += 1
+    const salida = this.salidas[ranura]
     const pose = crearPose()
     const movimiento = new MovementController(pose)
     movimiento.setScenario(this.escenario)
@@ -357,12 +422,22 @@ export class Partida {
     const jugador = {
       id: `p${++this._siguienteId}`,
       /**
+       * **Su butaca y su bando son dos cosas** (vuelta 101). Hasta la 100 las
+       * dos se llamaban `equipo` y eran el mismo número, que en un 1v1 es
+       * verdad: la butaca 0 es el bando azul. En un 3v3 no: la butaca dice su
+       * salida y su sitio en el marcador, y el bando, con quién juega. La
+       * ranura par es el bando 0 y la impar el 1, así que un duelo no cambia.
+       */
+      ranura,
+      bando: this.enEquipos ? bandoDeRanura(ranura) : null,
+      /** Su nombre en la sala, si se lo ha dado el lobby; si no, el de su ranura. */
+      nick: typeof nick === 'string' && nick ? nick.slice(0, 16) : null,
+      /**
        * **Su ranura, que es su sitio de salida y su color.** El id no sirve para
        * esto: es un contador que no para de subir, así que dos jugadores pueden
        * ser perfectamente `p3` y `p5` —los dos impares— y un color deducido de
        * ahí los pintaría iguales.
        */
-      equipo,
       enviar,
       pose,
       movimiento,
@@ -456,8 +531,26 @@ export class Partida {
 
     this._bienvenida(jugador)
     this._enviarEconomia(jugador)
-    this._quizaArrancar()
+    /**
+     * **Quien llega con la partida en marcha** (vuelta 101). En el todos contra
+     * todos entra y juega, con la gracia de reaparecer; con rondas, en la
+     * compra sale en su caja y en plena ronda **espera muerto a la siguiente**,
+     * que es lo que hace el CS: entrar vivo a mitad de una ronda que se decide
+     * por quién queda en pie sería regalarle un jugador a un bando.
+     */
+    if (this.enEquipos && this.conRondas) {
+      if (this.rondas.fase === 'compra') jugador.movimiento.setCorralito(this._cajaDe(ranura))
+      else if (this.rondas.fase === 'ronda') { jugador.vida = 0; jugador.vivoEn = Number.MAX_SAFE_INTEGER }
+    } else if (!this.enEquipos && this.todos.fase === 'juego') {
+      jugador.invulnerableHasta = this.paso + Math.round(PLAYER.respawn.invulnerableMs / SIM_STEP_MS)
+    }
+    if (!this.arranqueManual) this._quizaArrancar()
     return jugador.id
+  }
+
+  /** **Arrancar a mano** (vuelta 101): lo llama el lobby con todos ya dentro. */
+  arrancar() {
+    this._quizaArrancar()
   }
 
   /** Un pase: lo bastante largo para que no se adivine, y nada más. */
@@ -475,7 +568,14 @@ export class Partida {
       JSON.stringify({
         t: MSG.BIENVENIDA,
         id: jugador.id,
-        equipo: jugador.equipo,
+        // `equipo` es la ranura, con el nombre de siempre: lo leen la página y
+        // los bancos desde la vuelta 49. Lo nuevo va con su nombre.
+        equipo: jugador.ranura,
+        ranura: jugador.ranura,
+        bando: jugador.bando,
+        por: this.porEquipo,
+        partida: this.numero,
+        nick: jugador.nick,
         pase: jugador.pase,
         escenario: this.escenario.key,
         hz: SIM.hz,
@@ -493,14 +593,14 @@ export class Partida {
          * con ella el mando—, que es lo correcto: sin él no queda nadie a quien
          * preguntar.
          */
-        anfitrion: jugador.equipo === 0,
+        anfitrion: jugador.ranura === 0,
         salida: {
           x: jugador.pose.position.x,
           z: jugador.pose.position.z,
           // **Hacia dónde se mira al aparecer.** Lo decide el mapa y lo dice el
           // servidor: el cliente no puede deducirlo de su ranura sin llevar una
           // segunda copia de las salidas.
-          yaw: this.salidas[jugador.equipo]?.yaw ?? 0,
+          yaw: this.salidas[jugador.ranura]?.yaw ?? 0,
         },
         /**
          * **Si esta partida tiene economía** (vuelta 64). Va en la bienvenida
@@ -534,7 +634,7 @@ export class Partida {
          * número, así que el cliente tiene que tener la lista para predecirlo.
          * En el duelo no hace falta: se vuelve siempre a la propia.
          */
-        ...(this.modo === 'todos' ? { salidas: this.salidas } : null),
+        salidas: this.salidas.map((p) => ({ x: p.x, z: p.z, yaw: p.yaw ?? 0 })),
         /**
          * **Si las armas son libres** (vuelta 100): ni se compran ni las
          * reparte el mapa, así que las elige cada uno en su armería. El
@@ -542,7 +642,7 @@ export class Partida {
          * arma que cada entrada declara (vuelta 56)—, y es lo que hace un todos
          * contra todos sin rondas.
          */
-        libres: this.modo === 'todos' && !this.dotacion ? 1 : 0,
+        libres: !this.enEquipos && !this.dotacion ? 1 : 0,
       }),
     )
   }
@@ -593,9 +693,7 @@ export class Partida {
     // suelta entera: reservarla sería dejar la sala llena para nadie.
     // En el todos contra todos, la partida en marcha es `todos.fase` y no las
     // rondas, que ahí no existen.
-    const enMarcha = this.modo === 'todos'
-      ? this.todos.fase === 'juego'
-      : this.rondas.fase !== 'fin' && this.rondas.fase !== 'espera'
+    const enMarcha = this.enJuego
     if (!enMarcha) {
       this.sale(id)
       return
@@ -611,11 +709,16 @@ export class Partida {
     // **El mundo se para para el que sigue**, y esta pausa no es de nadie: no
     // gasta libres, no la levanta un botón y tiene su propio tope, que es la
     // ventana de reconexión.
-    if (this.rondas.fase === 'compra' || this.rondas.fase === 'ronda') {
+    // **Sólo en un duelo** (vuelta 101): con diez en la sala, que se caiga uno no
+    // puede parar el mundo de los otros nueve noventa segundos. En los de
+    // equipos su butaca se guarda igual, pero la ronda sigue: no está en la
+    // foto de nadie ni encaja daño, y para decidir quién queda en pie cuenta
+    // como caído.
+    if (this.porEquipo === 1 && (this.rondas.fase === 'compra' || this.rondas.fase === 'ronda')) {
       this.pausa = {
         por: null,
         motivo: 'caida',
-        quien: jugador.equipo,
+        quien: jugador.ranura,
         expiraEn: Date.now() + ROUNDS.reconexionSegundos * 1000,
       }
     }
@@ -629,12 +732,21 @@ export class Partida {
   abandona(id) {
     const jugador = this.jugadores.get(id)
     if (!jugador) return
-    const rival = this.modo === 'duelo' ? [...this.jugadores.values()].find((j) => j !== jugador) : null
+    const enJuego = this.enJuego
     this.sale(id)
-    if (rival && this.rondas.fase !== 'espera' && !this.rondas.ganador) {
-      this._terminarRonda(rival.equipo, 'abandono')
-      if (!this.rondas.ganador) this._terminarPartida(rival.equipo, 'abandono')
-    }
+    /**
+     * **Irse deja al bando en uno menos, y un bando vacío pierde** (vuelta
+     * 101). En un 1v1 es lo de la vuelta 62 —el rival gana la ronda y con ella
+     * la partida, porque un duelo no se juega solo—; en un 3v3 que se vaya uno
+     * no acaba nada, y lo que acaba la partida es que no quede nadie de un
+     * lado.
+     */
+    if (!this.enEquipos || !enJuego || this.rondas.ganador !== null) return
+    const quedan = [...this.jugadores.values()].filter((j) => j.bando === jugador.bando).length
+    if (quedan > 0) return
+    const otro = 1 - jugador.bando
+    this._terminarRonda(otro, 'abandono')
+    if (this.rondas.ganador === null) this._terminarPartida(otro, 'abandono')
   }
 
   sale(id) {
@@ -645,7 +757,7 @@ export class Partida {
     this._marcadorSucio = true
     // Un todos contra todos con uno solo dentro no es una partida: vuelve a la
     // espera, y el que quede sigue andando por el mapa hasta que llegue otro.
-    if (this.modo === 'todos' && this.conectados.length < 2) this._esperarTodos()
+    if (!this.enEquipos && this.todos.fase === 'juego' && this.conectados.length < 2) this._esperarTodos()
     // **Sin butacas, la partida vuelve a empezar.** El número de paso se
     // conserva —eso es del mundo, y volver con el mismo código no es empezar
     // otra partida (vueltas 47 y 58)— pero el marcador no: si no, dos amigos que
@@ -730,7 +842,7 @@ export class Partida {
     // **En el todos contra todos no se pausa** (vuelta 100). Pausar es parar el
     // mundo de todos (vuelta 53), y que uno de diez congele a los otros nueve
     // no es una conversación que se pueda tener en la misma habitación.
-    if (this.modo === 'todos') return
+    if (!this.enEquipos) return
     if (que === 'reanudar') {
       // **Sólo levanta la pausa quien la puso.** Si la levantase el otro, pedir
       // una pausa no serviría de nada.
@@ -747,8 +859,10 @@ export class Partida {
     if (que === 'pedir') {
       // **`pedir` es sólo para las libres.** Sin ninguna no hace nada: lo que
       // toca entonces es `votar`, y eso lo pide el jugador, no lo deduce esto.
-      if (jugador.pausasLibres === 0) return
-      jugador.pausasLibres -= 1
+      if (this._libresDe(jugador) <= 0) return
+      if (this.porEquipo > 1) this.libresDeBando[jugador.bando] -= 1
+      else jugador.pausasLibres -= 1
+      this._marcadorSucio = true
       this.pausa = this._conCuenta(jugador.id, PAUSE.freeMaxSeconds)
       return
     }
@@ -923,7 +1037,7 @@ export class Partida {
     // los veredictos de este paso anotados. Cerrar una ronda a mitad de un
     // disparo sería dejar el tiro que la cierra sin contestar.
     this._rondasTick()
-    if (this.modo === 'todos') this._todosTick()
+    if (!this.enEquipos) this._todosTick()
 
     if (this.paso % this.fotoCada !== 0) return
     this._enviarFoto()
@@ -1015,7 +1129,7 @@ export class Partida {
       ...(r.prorroga ? { pr: 1 } : null),
     })}`
     // **Y la partida del todos contra todos**, con la misma forma.
-    if (this.modo === 'todos') {
+    if (!this.enEquipos) {
       const t = this.todos
       texto += `,"td":${JSON.stringify({
         n: t.n,
@@ -1039,7 +1153,11 @@ export class Partida {
    */
   _marcador() {
     return [...this.jugadores.values()].map((j) => ({
-      id: j.id, r: j.equipo, b: j.bajas, m: j.muertes, l: j.pausasLibres,
+      id: j.id, r: j.ranura, b: j.bajas, m: j.muertes, l: this._libresDe(j),
+      // Su bando y su nombre, si los tiene (vuelta 101): con más de uno por
+      // lado, el marcador se lee por bandos, y el nombre lo pone el lobby.
+      ...(j.bando !== null ? { bd: j.bando } : null),
+      ...(j.nick ? { n: j.nick } : null),
       ...(j.desconectado ? { c: 1 } : null),
     }))
   }
@@ -1063,7 +1181,7 @@ export class Partida {
       ...(jugador.invulnerableHasta > this.paso
         ? { inv: (jugador.invulnerableHasta - this.paso) * SIM_STEP_MS }
         : null),
-      libres: jugador.pausasLibres,
+      libres: this._libresDe(jugador),
       // Quién ha votado ya, para que su cartel se retire.
       ...(this.votacion?.votos.has(jugador.id) ? { vv: 1 } : null),
       ...(jugador.arma ? { arma: jugador.arma } : null),
@@ -1102,7 +1220,8 @@ export class Partida {
     const s = jugador.movimiento.snapshot(jugador.estado)
     const mm = (v) => Math.round(v * 1000) / 1000
     return {
-      r: jugador.equipo,
+      r: jugador.ranura,
+      ...(jugador.bando !== null ? { b: jugador.bando } : null),
       vida: jugador.vida,
       ...(jugador.arma ? { arma: jugador.arma } : null),
       ...(jugador.mirilla ? { mir: 1 } : null),
@@ -1605,7 +1724,7 @@ export class Partida {
     }
     // **Y con el resultado en pantalla tampoco** (vuelta 100): la partida del
     // todos contra todos se ha acabado, y lo que se dispare entonces no cuenta.
-    if (this.modo === 'todos' && this.todos.fase === 'fin') {
+    if (!this.enEquipos && this.todos.fase === 'fin') {
       salida.rechazado = true
       this._anotarVeredicto(tirador, salida)
       return
@@ -1614,6 +1733,8 @@ export class Partida {
       this._anotarVeredicto(tirador, salida)
       return
     }
+    // Ya es un disparo de verdad: los demás lo oyen y lo ven salir.
+    this._contarTiro(tirador, entrada)
     /**
      * **Un arma de proyectil se desvía aquí** (vuelta 85), después de la
      * cadencia y de la fase y antes del rebobinado. Lo que lanza **no necesita
@@ -1687,6 +1808,10 @@ export class Partida {
     let ahora = null
     for (const otro of this.jugadores.values()) {
       if (otro === tirador || otro.desconectado) continue
+      // **Un compañero no para la bala** (vuelta 101): sin fuego amigo, un
+      // cuerpo de tu bando delante de un rival sería un escudo que nadie ha
+      // pedido. La bala pasa, y el cliente hace la misma cuenta.
+      if (this.enEquipos && otro.bando === tirador.bando) continue
       const suAhora = this._cuerpoRebobinado(otro, this.paso - 1)
       const suCuerpo = this._cuerpoRebobinado(otro, objetivo) ?? suAhora
       if (!suCuerpo) continue
@@ -1782,6 +1907,42 @@ export class Partida {
   /** Un veredicto vive unas cuantas fotos, para que perder una no lo pierda. */
   _anotarVeredicto(jugador, dato) {
     jugador.disparos.push({ dato, ttl: NET.verdictRepeats })
+    // **Y sale ya** (vuelta 101), sin esperar a la foto: ver `MSG.VEREDICTO`.
+    // La foto lo sigue repitiendo por si éste se pierde.
+    jugador.enviar(JSON.stringify({ t: MSG.VEREDICTO, d: dato }))
+  }
+
+  /**
+   * **El disparo, contado a los demás** (vuelta 101). Hasta aquí un disparo en
+   * red sólo lo sabían quien lo hacía y el servidor, así que un rival que te
+   * vaciaba un cargador **no sonaba ni se veía disparar**: ni fogonazo, ni la
+   * voz de su arma, ni el silbido de la bala que te pasaba cerca. Contra los
+   * muñecos del entrenamiento las tres cosas existen desde la vuelta 40, y un
+   * modo que no las tiene es un juego distinto (convención de la vuelta 63).
+   *
+   * Va a todos menos a él y no por la foto, que llega tarde y cada tres pasos:
+   * un disparo es un instante, y el sonido tiene que caer en él. Lleva lo que
+   * hace falta para dibujarlo y oírlo, que es lo mismo que el tirador ya dijo
+   * al disparar: dónde, hacia dónde, con qué y con qué voz. **No lleva si ha
+   * dado** —eso es del veredicto y de la vida—, así que no enseña nada que el
+   * sonido no fuera a decir igual.
+   */
+  _contarTiro(tirador, entrada) {
+    const d = entrada.d
+    const p = tirador.pose.position
+    const texto = JSON.stringify({
+      t: MSG.TIRO,
+      de: tirador.id,
+      w: entrada.w,
+      ...(d.s ? { s: 1 } : null),
+      ...(d.m ? { m: d.m } : null),
+      x: +p.x.toFixed(2), y: +p.y.toFixed(2), z: +p.z.toFixed(2),
+      yaw: +d.yaw.toFixed(4), pitch: +d.pitch.toFixed(4),
+    })
+    for (const otro of this.jugadores.values()) {
+      if (otro === tirador || otro.desconectado) continue
+      otro.enviar(texto)
+    }
   }
 
   /**
@@ -1802,7 +1963,16 @@ export class Partida {
     // algo que nadie ve. Y con el resultado de un todos contra todos en
     // pantalla, tampoco: la partida se ha acabado.
     if (victima.desconectado) return false
-    if (this.modo === 'todos' && this.todos.fase === 'fin') return false
+    if (!this.enEquipos && this.todos.fase === 'fin') return false
+    /**
+     * **Sin fuego amigo** (vuelta 101). Un compañero no encaja daño tuyo: ni
+     * bala, ni cuchillo, ni onda. Es lo que hace el modo casual del CS, y la
+     * razón es la misma — con diez en un mapa, el fuego amigo castiga sobre todo
+     * al que tiene la mala suerte de estar en la línea. Lo que sí se conserva es
+     * que **tu propia onda te alcanza** (el U2 de la vuelta 86): eso no es fuego
+     * amigo, es tu cohete.
+     */
+    if (this.enEquipos && tirador && tirador !== victima && tirador.bando === victima.bando) return false
     // **La gracia de salida se mira aquí y no en quien dispara** (vuelta 78):
     // es el único sitio por el que pasan las cuatro formas de hacer daño —bala,
     // cuchillada, cuchillada por la espalda y lo que venga—, así que una
@@ -1818,14 +1988,22 @@ export class Partida {
     victima.casco = tras.helmet
     victima.vida = tras.health
     if (tirador && tirador !== victima) victima.golpeadoPor = tirador.id
+    // **A quien le dan, ya** (vuelta 101): ver `MSG.GOLPE`.
+    victima.enviar(JSON.stringify({
+      t: MSG.GOLPE, vida: victima.vida, esc: victima.escudo, cas: victima.casco ? 1 : 0,
+      ...(victima.golpeadoPor ? { gp: victima.golpeadoPor } : null),
+    }))
     if (victima.vida > 0) return false
+    // **Y la baja, a todos y en el acto** (vuelta 101): ver `MSG.BAJA`.
+    const baja = JSON.stringify({ t: MSG.BAJA, v: victima.id, ...(tirador ? { de: tirador.id } : null) })
+    for (const j of this.jugadores.values()) if (!j.desconectado) j.enviar(baja)
     victima.muertes += 1
     // Un suicidio —la onda de tu propio cohete— no es una baja de nadie.
     if (tirador && tirador !== victima) tirador.bajas += 1
     this._marcadorSucio = true
     // **Y por dónde vuelve**, en el todos contra todos: la salida más lejos de
     // quien siga vivo (ver `_salidaMasLibre`).
-    if (this.modo === 'todos') victima.salidaSiguiente = this._salidaMasLibre(victima)
+    if (!this.enEquipos) victima.salidaSiguiente = this._salidaMasLibre(victima)
     // **Matar paga**, y se paga al instante: en un 1v1 la baja cierra la ronda,
     // así que sumarlo aquí o al repartir sería lo mismo — salvo el día que haya
     // más de dos, que es la razón de que vaya donde ocurre.
@@ -1846,7 +2024,7 @@ export class Partida {
     // Su ranura de siempre: reaparecer no te cambia de sitio ni de color. Antes
     // salía de `indexOf` sobre el mapa, que cambia cuando alguien se va.
     // En el todos contra todos, la que le haya elegido el servidor al caer.
-    const salida = this.salidas[jugador.salidaSiguiente ?? jugador.equipo] ?? this.salidas[jugador.equipo]
+    const salida = this.salidas[jugador.salidaSiguiente ?? jugador.ranura] ?? this.salidas[jugador.ranura]
     jugador.salidaSiguiente = null
     jugador.movimiento.reset()
     jugador.pose.position.x = salida.x
@@ -1866,7 +2044,7 @@ export class Partida {
      * La misma gracia que el entrenamiento (`PLAYER.respawn.invulnerableMs`),
      * que es de donde el HUD ya sabe pintarla.
      */
-    if (this.modo === 'todos') {
+    if (!this.enEquipos) {
       jugador.invulnerableHasta = this.paso + Math.round(PLAYER.respawn.invulnerableMs / SIM_STEP_MS)
     }
     jugador.hambre = 0
@@ -2083,7 +2261,7 @@ export class Partida {
     const ultima = this.rondas.ultima
     if (!ultima || ultima.ganador === null) return
     for (const jugador of this.jugadores.values()) {
-      if (jugador.equipo === ultima.ganador) {
+      if (jugador.bando === ultima.ganador) {
         jugador.rachaDerrotas = 0
         this._pagar(jugador, ECONOMY.premios.victoria)
         continue
@@ -2165,13 +2343,17 @@ export class Partida {
    * con una silla vacía no es la ronda 1 corriendo sola: es la sala de espera.
    */
   _quizaArrancar() {
-    if (this.modo === 'todos') {
+    if (!this.enEquipos) {
       if (this.todos.fase === 'espera' && this.conectados.length >= 2) this._empezarTodos()
       return
     }
     if (!this.conRondas) return
     if (this.rondas.fase !== 'espera') return
-    if (this.conectados.length < 2) return
+    // **Uno en cada bando, conectado** (vuelta 101). En un duelo es «hay dos»,
+    // que es lo que miraba esto; en un 3v3 se puede empezar dos contra tres si
+    // los jugadores quieren, pero no tres contra nadie.
+    const conectados = this.conectados
+    if (!conectados.some((j) => j.bando === 0) || !conectados.some((j) => j.bando === 1)) return
     this._reiniciarRondas()
     this._empezarCompra()
   }
@@ -2230,7 +2412,7 @@ export class Partida {
     this.rondas.fase = 'compra'
     this.rondas.hastaPaso = this.paso + this._pasosDe(this.compraSegundos)
     for (const jugador of this.jugadores.values()) {
-      jugador.movimiento.setCorralito(this._cajaDe(jugador.equipo))
+      jugador.movimiento.setCorralito(this._cajaDe(jugador.ranura))
     }
   }
 
@@ -2239,8 +2421,8 @@ export class Partida {
    * a 5 u una de otra y la caja mide 4, así que **no se solapan**: dentro de la
    * fase de compra no hay forma de acabar encima del otro.
    */
-  _cajaDe(equipo) {
-    const salida = this.salidas[equipo] ?? this.salidas[0]
+  _cajaDe(ranura) {
+    const salida = this.salidas[ranura] ?? this.salidas[0]
     // **Y la mide el mapa** (vuelta 78). Hasta aquí esto cogía `ROUNDS`
     // siempre, así que `duelo.cajaCompra` —que el formato sanea desde la 77—
     // no lo leía nadie: el editor escribía un número que el servidor ignoraba.
@@ -2334,10 +2516,20 @@ export class Partida {
    * es distinto de un empate a medias: nadie ha hecho más que el otro.
    */
   _rondaPorTiempo() {
-    const vivos = [...this.jugadores.values()]
-    const a = vivos.find((j) => j.equipo === 0)
-    const b = vivos.find((j) => j.equipo === 1)
-    if (!a || !b) return { ganador: a?.equipo ?? b?.equipo ?? null, motivo: 'vida' }
+    /**
+     * **Con bandos, primero cuántos quedan en pie y después cuánta vida**
+     * (vuelta 101). En un duelo es la regla de la 62 tal cual —queda uno de
+     * cada lado, gana el de más vida—; en un 3v3, dos vivos contra uno ganan
+     * aunque ese uno esté entero, que es lo que dice el marcador de pie.
+     */
+    const cuenta = [{ vivos: 0, vida: 0 }, { vivos: 0, vida: 0 }]
+    for (const j of this.jugadores.values()) {
+      if (j.bando === null || j.desconectado || j.vida <= 0) continue
+      cuenta[j.bando].vivos += 1
+      cuenta[j.bando].vida += j.vida
+    }
+    const [a, b] = cuenta
+    if (a.vivos !== b.vivos) return { ganador: a.vivos > b.vivos ? 0 : 1, motivo: 'vida' }
     if (a.vida === b.vida) return { ganador: null, motivo: 'empate' }
     return { ganador: a.vida > b.vida ? 0 : 1, motivo: 'vida' }
   }
@@ -2353,7 +2545,9 @@ export class Partida {
     this._comprobarFinDePartida()
     // Y no se abre una compra para uno solo: si el otro se ha ido, lo que viene
     // detrás es el final de la partida, no la ronda siguiente.
-    if (this.rondas.ganador === null && this.jugadores.size >= 2) this._empezarCompra()
+    if (this.rondas.ganador !== null) return
+    const bandos = new Set([...this.jugadores.values()].map((j) => j.bando))
+    if (bandos.has(0) && bandos.has(1)) this._empezarCompra()
   }
 
   /**
@@ -2401,10 +2595,20 @@ export class Partida {
     const r = this.rondas
     if (r.fase === 'espera' || r.fase === 'fin') return
     if (r.fase === 'ronda') {
-      const muerto = [...this.jugadores.values()].find((j) => j.vida <= 0)
-      if (muerto) {
-        const rival = [...this.jugadores.values()].find((j) => j !== muerto)
-        this._terminarRonda(rival ? rival.equipo : null, 'muerte')
+      /**
+       * **La ronda se acaba cuando un bando se queda sin nadie en pie**
+       * (vuelta 101). En un duelo es la primera muerte, como desde la 62; en un
+       * 3v3, la tercera de un lado. Quien está sin cable cuenta como caído: no
+       * está en la foto de nadie ni encaja daño, así que esperar a que alguien
+       * le mate sería esperar a que acabe el reloj.
+       */
+      const enPie = [0, 0]
+      for (const j of this.jugadores.values()) {
+        if (j.bando !== null && !j.desconectado && j.vida > 0) enPie[j.bando] += 1
+      }
+      if (enPie[0] === 0 || enPie[1] === 0) {
+        const ganador = enPie[0] === enPie[1] ? null : enPie[0] > 0 ? 0 : 1
+        this._terminarRonda(ganador, ganador === null ? 'empate' : 'muerte')
         return
       }
     }
@@ -2426,7 +2630,7 @@ export class Partida {
    * de salidas. Con los que tienen gracia no se cuenta, que están saliendo.
    */
   _salidaMasLibre(quien) {
-    let mejor = quien.equipo
+    let mejor = quien.ranura
     let lejos = -1
     for (let i = 0; i < this.salidas.length; i++) {
       const s = this.salidas[i]
@@ -2489,8 +2693,11 @@ export class Partida {
       else if (j.bajas === mejor.bajas) empate = true
     }
     t.fase = 'fin'
-    t.ganador = mejor && !empate ? mejor.equipo : -1
-    t.hastaPaso = this.paso + this._pasosDe(TODOS.finSegundos)
+    t.ganador = mejor && !empate ? mejor.ranura : -1
+    // **Y se queda acabada** (vuelta 101): el resultado en pantalla con sus dos
+    // botones, «Volver a jugar» y «Salir al menú». La siguiente la arranca la
+    // sala, que es donde se decide quién sigue.
+    t.hastaPaso = 0
   }
 
   /** El reloj de la partida, al final de cada paso, como el de las rondas. */
@@ -2504,10 +2711,5 @@ export class Partida {
       if (this.paso >= t.hastaPaso) this._terminarTodos()
       return
     }
-    // Con el resultado puesto, se espera y se vuelve a empezar — o a esperar,
-    // si en ese rato se ha ido todo el mundo menos uno.
-    if (this.paso < t.hastaPaso) return
-    if (this.conectados.length >= 2) this._empezarTodos()
-    else this._esperarTodos()
   }
 }

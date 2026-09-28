@@ -16,7 +16,9 @@
  * 1. **Uno mismo, siempre.** Es lo que reconcilia la predicción.
  * 2. **Nadie durante la fase de compra** (vuelta 62). Era una rama aparte en
  *    `_enviarFoto` —«no verse no es no dibujar, es no recibir»— y ahora es un
- *    caso más de la misma pregunta.
+ *    caso más de la misma pregunta. **Salvo tu propio bando** (vuelta 101):
+ *    lo que la compra esconde es al rival; a un compañero se le ve igual que
+ *    en el CS, y es con quien se decide por dónde se sale.
  * 3. **Quien no tiene cable no está en la foto de nadie.** Una butaca reservada
  *    sigue ocupada (vuelta 62), pero en un mundo que no se para —el todos
  *    contra todos no tiene pausa por caída— un cuerpo congelado en medio del
@@ -89,8 +91,8 @@ export function seVen(escenario, a, b) {
  */
 export function entraEnLaFoto(a, b, sala) {
   if (a === b) return true
-  if (sala.fase === 'compra') return false
   if (b.desconectado) return false
+  if (sala.fase === 'compra') return a.bando !== null && a.bando !== undefined && a.bando === b.bando
   const pa = a.pose.position
   const pb = b.pose.position
   const d = Math.hypot(pb.x - pa.x, pb.z - pa.z)

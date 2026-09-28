@@ -179,6 +179,10 @@ dejó escrito que ése es el día en que esto se puede hacer.
 - **Rompe:** el fogonazo y el silbido son mundo, no interfaz, y los dos llevan
   presupuesto por frame. Medir antes de encenderlos con más de dos jugadores.
 
+**Hecho en la vuelta 101**, sin el estado: el disparo viaja **como aviso**
+(`MSG.TIRO`, a todos menos al que dispara) y de ahí salen el fogonazo, la voz del
+arma, el silbido y el `!`. El `?` sigue fuera: «te ha visto» no viaja.
+
 ### 1.6 Deslizamiento (*slide*) — **hecho en la vuelta 69**
 
 Pedido en la vuelta 68 y **ya diseñado**:
@@ -540,6 +544,18 @@ Tres cosas de arriba lo convierten en bloqueante: **más jugadores** (3.1), porq
 es cuadrático; **más estado** (1.4, 1.5), porque la foto crece; y **el wallhack por
 protocolo** (3.2), porque hoy el cliente recibe dónde está todo el mundo y ninguna
 cantidad de antitrampas arregla eso.
+
+**Pagado a medias en la vuelta 100**: la foto es por destinatario, la de los demás
+va ligera y sólo con quien está cerca o se ve (`net/interes.js`), y el ritmo es de
+la sala. Una sala de diez son **309 KiB/s**. Lo que queda es **el binario**.
+
+- **En cola desde la vuelta 101, para cuando el tráfico lo pida — no antes.** La
+  foto en binario (`Float32` y enteros en lugar de JSON) es la palanca siguiente,
+  ~8× menos según la propuesta 11 §2.3, y es la que hace falta para salas de
+  cincuenta. Hoy no la pide nada: diez caben de sobra en una máquina.
+- **Bloqueante:** nada técnico. **Medible:** `salas100` y `red45` con el mismo
+  error de reconciliación y la mitad o menos de bytes. **Rompe:** que el cable se
+  pueda leer a ojo en F3 y en los bancos, que hoy es JSON.
 
 ### Antitrampas
 

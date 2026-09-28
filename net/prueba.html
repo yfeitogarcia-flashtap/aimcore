@@ -1,5 +1,5 @@
 <meta charset="utf-8" />
-<title>Vektor · Duelo 1v1</title>
+<title>Vektor · Multijugador</title>
 <link rel="icon" href="/favicon.svg" />
 <style>
   :root { color-scheme: dark; }
@@ -169,6 +169,32 @@
   #fin b { font-family: var(--cab-letra-rotulo); font-stretch: condensed; font-size: 56px; letter-spacing: .12em;
     text-transform: uppercase; }
   #fin p { margin-top: 8px; letter-spacing: .1em; }
+  /* **Dos botones y un único sistema** (vuelta 101): «Volver a jugar» —la misma
+     sala, el mismo modo y el mismo mapa— destacado y latiendo, para que casi
+     todos lo pulsen, y «Salir al menú» al lado y sin invitar. Es lo que se
+     pidió para la revancha del duelo, y sirve igual para los equipos y para el
+     todos contra todos. */
+  #fin .fin-botones { display: flex; gap: 12px; justify-content: center; margin-top: 26px; }
+  #fin .fin-otra { animation: fin-late 1.1s ease-in-out infinite; }
+  @keyframes fin-late { 0%, 100% { filter: brightness(1); box-shadow: 0 0 0 0 rgba(47,203,130,.0); }
+    50% { filter: brightness(1.35); box-shadow: 0 0 0 6px rgba(47,203,130,.28); } }
+  @media (prefers-reduced-motion: reduce) { #fin .fin-otra { animation: none; } }
+  /* **El lobby tapa la pantalla entera** (vuelta 101): no se ve el mapa detrás
+     —se pidió así: movía la cámara con el ratón y mareaba— y lo que es de jugar
+     no se enseña. El motor, además, deja de dibujar (`motor.dibujar`). */
+  #lobby { position: fixed; inset: 0; z-index: 6; background: var(--cab-fondo); }
+  #lobby[hidden] { display: none; }
+  body.en-lobby #lienzo, body.en-lobby .app__css3d, body.en-lobby #ronda, body.en-lobby #marca,
+  body.en-lobby #aviso, body.en-lobby #fin, body.en-lobby #tablaTodos, body.en-lobby #pausa,
+  body.en-lobby #tienda { display: none !important; }
+  /* Con el final puesto, el menú de ESC no asoma por detrás: la tarjeta del
+     final ya trae las dos salidas (vuelta 101). */
+  body.con-fin #aviso { display: none !important; }
+  #tablaObjetivo { margin: 0 0 var(--cab-e3); font-family: var(--cab-letra-rotulo); font-stretch: condensed;
+    font-size: var(--cab-t-pequeno); letter-spacing: .08em; text-transform: uppercase; color: var(--cab-accion); }
+  #tablaTodos .swatch { display: inline-block; width: 9px; height: 9px; margin-right: 8px; vertical-align: 1px; }
+  #tablaTodos tr.bando td { padding-top: var(--cab-e3); font-family: var(--cab-letra-rotulo); font-stretch: condensed;
+    letter-spacing: .1em; text-transform: uppercase; border-top: 0; }
 
   /* ---------------------------------------------- la pantalla de menú */
   /* El menú se centra **por debajo** del cartel de pausa, no detrás: los dos
@@ -195,7 +221,7 @@
   #sala h1 { margin: 0 0 10px; font-family: var(--cab-letra-rotulo); font-stretch: condensed;
     font-size: var(--cab-t-pequeno); font-weight: 600; letter-spacing: var(--cab-espaciado-rotulo);
     text-transform: uppercase; color: var(--cab-texto-rotulo); }
-  #codigo { font-family: var(--cab-letra-rotulo); font-stretch: condensed; font-size: 40px; font-weight: 700;
+  .codigo-menu { font-family: var(--cab-letra-rotulo); font-stretch: condensed; font-size: 40px; font-weight: 700;
     line-height: 1; letter-spacing: .18em; color: var(--cab-texto); }
   .linea { display: flex; gap: 6px; align-items: center; margin: 7px 0; width: 340px; }
   /* **El rótulo del enlace** (vuelta 92): dice para qué sirve el campo de
@@ -205,12 +231,6 @@
   .invita { margin: 12px 0 0; color: var(--cab-accion); font-size: var(--cab-t-pequeno); line-height: 1.4; width: 340px; }
   .linea input { flex: 1; min-width: 0; background: var(--cab-fondo); color: var(--cab-texto-suave); border: 0;
     padding: 8px 10px; font: inherit; }
-  .linea select, #modoSel, #mapaSel, #compraSel { background: var(--cab-hueco); color: var(--cab-texto); border: 0;
-    padding: 6px 8px; font-family: var(--cab-letra-rotulo); font-stretch: condensed; font-size: var(--cab-t-texto); }
-  /* **Un control que no es tuyo se ve apagado** (vuelta 67): el desplegable de
-     la fase de compra sólo lo maneja quien creó la partida, y al que se une por
-     el enlace tiene que decírselo la forma, no un intento fallido. */
-  #compraSel:disabled, #mapaSel:disabled, #modoSel:disabled { opacity: .45; cursor: not-allowed; border-style: dashed; }
   .linea .button { margin: 0; }
   #otro { text-transform: uppercase; letter-spacing: .12em; }
 
@@ -307,7 +327,7 @@
      ti». Reconectar sí lo es, mientras exista. */
   .botones-menu { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
   .botones-menu .button { margin-top: 0; }
-  .botones-menu button[hidden], #reconectar[hidden], #pausar[hidden], #pedirVoto[hidden] { display: none !important; }
+  .botones-menu button[hidden], #pausar[hidden], #pedirVoto[hidden] { display: none !important; }
   #salir:hover { color: var(--cab-peligro); }
   #teclado { display: inline-flex; align-items: center; gap: 8px; }
   #teclado[aria-expanded="true"] { background: var(--cab-elegido); color: var(--cab-fondo); }
@@ -325,9 +345,6 @@
   /* Salir no es la acción de esta pantalla: se ve, no se invita. En rojo, que es
      el color que en esta paleta significa «esto te lo están haciendo a ti». */
   #salir:hover { border-color: #E4462B; color: #FFF; }
-  /* Reconectar sí lo es, mientras exista: verde de acción, como el de copiar. */
-  #reconectar { background: #2FCB82; color: #08130D; border: 0; font-weight: 700; }
-  #reconectar[hidden] { display: none !important; }
   #pausar[hidden], #pedirVoto[hidden] { display: none !important; }
 </style>
 <canvas id="lienzo"></canvas>
@@ -348,70 +365,34 @@
 <!-- **El marcador del todos contra todos** (vuelta 100), con TAB y sólo en ese
      modo: una fila por butaca, ordenadas por bajas. Lo rellena `pintarTabla`
      cuando cambia, no por frame. -->
-<div id="tablaTodos" hidden><table><thead><tr><th>Jugador</th><th>Bajas</th><th>Muertes</th><th>KD</th></tr></thead>
+<div id="tablaTodos" hidden><p id="tablaObjetivo">&nbsp;</p><table><thead><tr><th>Jugador</th><th>Bajas</th><th>Muertes</th><th>KD</th></tr></thead>
   <tbody id="tablaFilas"></tbody></table></div>
-<div id="fin"><div><b id="finQuien">—</b><p id="finDetalle" class="apagado">&nbsp;</p>
-  <!-- **Y una salida.** El cartel tapa la pantalla entera, así que sin un botón
-       el jugador se queda mirándolo sin nada que pulsar: el menú está debajo. -->
-  <p><button id="finSalir" class="button button--primary">Salir al menú</button></p></div></div>
+<div id="fin" class="control"><div><b id="finQuien">—</b><p id="finDetalle" class="apagado">&nbsp;</p>
+  <!-- **Volver a jugar o salir** (vuelta 101). Un único sistema para los tres
+       modos: el primero vuelve a la sala listo para la siguiente —mismo modo y
+       mismo mapa—, y el segundo se va. Sin botones, el cartel era una pantalla
+       sin nada que pulsar; con el de la 100, volvía a salir la configuración
+       de la sala, que no es lo que se quiere al acabar. -->
+  <p class="fin-botones"><button id="finOtra" class="control button button--primary button--grande fin-otra">Volver a jugar</button><button
+     id="finSalir" class="control button button--quiet">Salir al menú</button></p>
+  <p id="finNota" class="apagado">vuelves a la sala, listo para la siguiente partida</p></div></div>
+
+<!-- **El lobby** (vuelta 101): la sala antes que la partida. Lo monta
+     `src/ui/Lobby.jsx` con las piezas de la pantalla de Entrenamiento. -->
+<div id="lobby" class="control"></div>
 
 <div id="aviso"><div>
   <div id="sala" class="control">
-    <h1 id="titulo">Vektor · Duelo 1v1</h1>
-    <!-- **Reconectar** (vuelta 62): sale sólo si en este navegador hay una
-         partida a medias, y lleva su código escrito para que no haya que
-         creerse nada. Vive aquí y no en la pantalla de inicio del juego: la red
-         no entra en `App.jsx` (vuelta 45). -->
-    <p style="margin:0 0 10px"><button id="reconectar" class="button button--primary button--pequeno" hidden>Reconectar</button></p>
-    <div class="fila"><span class="apagado">código de partida</span><span id="codigo">—</span></div>
-    <!-- **El enlace dice para qué es** (vuelta 92). Era un campo de texto y un
-         botón «copiar» sin una palabra alrededor, y lo que hay detrás —«así es
-         como se invita a alguien»— es justo lo que un jugador nuevo no puede
-         adivinar mirando una URL. -->
-    <p class="invita" id="invita">Copia y comparte este link para retar a tus amigos a un duelo</p>
-    <div class="linea"><input id="enlace" readonly /><button id="copiar" class="button button--primary button--pequeno">Copiar</button></div>
-    <!-- **Y el campo de código a mano se retira** (vuelta 92). Existía desde la
-         47 como la otra puerta de entrada a una sala, y lo que se comparte es
-         el enlace entero: tecleando seis caracteres no se llega a ningún sitio
-         al que el enlace no lleve ya, y en cambio sí se llega a una sala
-         equivocada si se teclean mal. Un control que sólo puede producir el
-         mismo resultado o uno peor no es una opción, es una forma de
-         equivocarse. Entrar en otra sala sigue siendo abrir su enlace. -->
-    <!-- **La fase de compra es de la partida, y la elige quien la crea**
-         (vuelta 64). Viaja en la dirección —como el pase de reconexión— porque
-         la sala se configura al nacer; cambiarla aquí recarga con una partida
-         nueva, que es lo único honesto: una sala ya creada no se reconfigura.
-         Lo que se enseña debajo es lo que dice el servidor, no lo que pide el
-         selector. -->
-    <!-- **Y desde la 92 cada uno en su fila.** La 72 los puso juntos para no
-         crecer un renglón —el menú se había salido de una ventana pequeña en la
-         62— y el sitio lo ha devuelto el campo de código que se acaba de
-         quitar. Dos desplegables en la misma fila con un rótulo común («mapa y
-         compra») obligan a saber cuál es cuál por el orden; con su rótulo cada
-         uno, se lee. -->
-    <!-- **El modo, el primero** (vuelta 100): cada modo tiene su lista de mapas,
-         así que va encima del mapa. -->
-    <div class="fila"><span class="apagado">modo</span>
-      <span><select id="modoSel" class="control"></select></span></div>
-    <div class="fila"><span class="apagado">selección de mapa</span>
-      <span><select id="mapaSel" class="control"></select></span></div>
-    <!-- **Y el rótulo dice lo que el desplegable hace** (vuelta 92). El encargo
-         lo llamaba «tiempo de ronda» y no lo es: sus opciones son «15 s» y «sin
-         fase (rápida)», o sea **cuánto dura la fase de compra** entre rondas.
-         Llamarlo tiempo de ronda sería un control que promete lo que el juego
-         ignora, que es el fallo de la vuelta 67 y el que esta vuelta viene a
-         quitar en el resto de la interfaz. La fila propia sí es lo pedido. -->
-    <div class="fila"><span class="apagado">fase de compra</span>
-      <span><select id="compraSel" class="control"></select></span></div>
-
-    <!-- **De quién son las opciones** (vuelta 67) va aquí y no en una fila
-         nueva: el menú ya se salió de una ventana pequeña una vez por crecer un
-         renglón (vuelta 62), y esto es una aclaración de este mismo número. -->
-    <div class="fila"><span class="apagado">en esta partida</span>
-      <span><span id="compraReal">—</span> <span id="compraQuien" class="apagado"></span></span></div>
+    <h1 id="titulo">Vektor · Multijugador</h1>
+    <!-- **Lo de configurar la sala se fue al lobby** (vuelta 101): el modo, el
+         mapa y la fase de compra se eligen allí, con botones y antes de jugar.
+         Aquí se queda lo que sirve con la partida en marcha: el código y el
+         enlace, para invitar a alguien más al todos contra todos. -->
+    <div class="fila"><span class="apagado">código de la sala</span><span id="codigoMenu" class="codigo-menu">—</span></div>
+    <p class="invita" id="invita">Copia y comparte este link para que entren más jugadores</p>
+    <div class="linea"><input id="enlaceMenu" readonly /><button id="copiarMenu" class="button button--primary button--pequeno">Copiar</button></div>
     <hr />
     <div class="fila"><span class="apagado">tú</span><span id="quien">conectando…</span></div>
-    <div class="fila"><span class="apagado">rival</span><span id="hayRival">—</span></div>
   </div>
   <!-- **Y este renglón se fue con la línea nueva** (vuelta 92). Decía «Pásale
        el enlace a la otra persona y haz clic para jugar», que es exactamente lo
@@ -444,7 +425,7 @@
        **pausa de una partida**, y ahí van pausar y abandonar. Lo decide
        `pintarBotonesDelMenu`, con el mismo `ocupadas` que ya cierra las opciones
        de la sala (vuelta 67). Todo en una fila: `menu92` mide que quepa. -->
-  <p class="botones-menu"><button id="volver" class="control button button--quiet button--pequeno">Volver</button><button
+  <p class="botones-menu"><button
      id="pausar" class="control button button--pequeno" hidden>Pausar la partida</button><button
      id="opciones" class="control button button--pequeno">Opciones</button><button
      id="teclado" class="control button button--pequeno" aria-expanded="false" aria-controls="tablaControles"
@@ -452,7 +433,7 @@
      x="0.75" y="0.75" width="22.5" height="14.5" rx="2" fill="none" stroke="currentColor"
      stroke-width="1.5"/><path d="M4 4.5h2M8 4.5h2M12 4.5h2M16 4.5h2M4 8h2M8 8h2M12 8h2M16 8h4M6 11.5h12"
      stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/></svg>Controles</button><button
-     id="salir" class="control button button--quiet button--pequeno" hidden>Salir de la partida</button></p>
+     id="salir" class="control button button--quiet button--pequeno">Salir de la partida</button></p>
   <!-- **Los controles, en una tabla que se abre** (vuelta 98). Eran un renglón
        corrido bajo la ventana —«WASD mover · SPACE saltar · …»— que no casaba
        con nada del resto del juego y crecía con cada tecla. Ahora es un botón con

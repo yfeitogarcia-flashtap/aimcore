@@ -61,6 +61,21 @@ import Summary from './ui/Summary.jsx'
  * y su motivo al lado.
  */
 /** El rótulo de la barra de la cabina para cada sección. */
+/**
+ * **Por qué sección se entra** (vuelta 101): el raíl de la cabina también está
+ * en el lobby del multijugador, que es otra página, y desde allí «Entrenar» es
+ * volver aquí **a esa sección** y no a la portada. Lo dice el ancla de la
+ * dirección (`/#entrenamiento`), que se lee una vez al cargar y se borra: es
+ * una forma de llegar, no un estado que haya que mantener.
+ */
+const SECCION_DE_ENTRADA = (() => {
+  if (typeof window === 'undefined') return null
+  const ancla = window.location.hash.replace('#', '')
+  if (!['entrenamiento', 'armeria', 'opciones', 'inicio'].includes(ancla)) return null
+  history.replaceState(null, '', window.location.pathname + window.location.search)
+  return ancla
+})()
+
 const SECCION_TITULO = {
   entrenamiento: 'Entrenamiento',
   armeria: 'Armería',
@@ -101,12 +116,12 @@ export default function App() {
   const [phase, setPhase] = useState(PHASE.IDLE)
   const [summary, setSummary] = useState(null)
   const [engineError, setEngineError] = useState(null)
-  const [optionsOpen, setOptionsOpen] = useState(false)
+  const [optionsOpen, setOptionsOpen] = useState(() => SECCION_DE_ENTRADA === 'opciones')
   /**
    * **La armería.** Se abre con su tecla o con su botón, y jugando pausa: el
    * motor suelta el ratón antes de avisar, así que aquí sólo hay que enseñarla.
    */
-  const [armouryOpen, setArmouryOpen] = useState(false)
+  const [armouryOpen, setArmouryOpen] = useState(() => SECCION_DE_ENTRADA === 'armeria')
   /**
    * **Por dónde va el menú de inicio** (vuelta 92): `marca`, `modos` o
    * `entrenamiento`.
@@ -126,7 +141,7 @@ export default function App() {
    * Y es estado y no ruta a propósito: `App.jsx` no tiene router, y meterlo
    * para tres pantallas de menú sería una dependencia para un `useState`.
    */
-  const [menu, setMenu] = useState('marca')
+  const [menu, setMenu] = useState(() => (SECCION_DE_ENTRADA === 'entrenamiento' ? 'entrenamiento' : SECCION_DE_ENTRADA ? 'modos' : 'marca'))
   /** Vista del avatar: mientras está abierta, los paneles se apartan. */
   const [avatarDebug, setAvatarDebug] = useState(false)
   /**
@@ -376,7 +391,7 @@ export default function App() {
         ? 'entrenamiento'
         : 'inicio'
   const irA = useCallback((destino) => {
-    if (destino === 'duelo') {
+    if (destino === 'multijugador') {
       window.location.assign(NET.rutaDuelo)
       return
     }
@@ -540,17 +555,19 @@ export default function App() {
                 <span className="portada__sub">Dianas, muñecos que disparan y ronda con explosivo.</span>
                 <span className="portada__cta">Configurar ▸</span>
               </button>
-              {/* **El duelo va con los modos, no con los paneles**: es a lo que
-                  se juega, aunque lo que haga sea salir de esta página. */}
+              {/* **Multijugador, la segunda puerta** (vuelta 101; era «Duelo
+                  1v1» desde la 66). El todos contra todos de la 100 vivía dentro
+                  del duelo, y no va a ser el único modo: detrás de esta puerta
+                  está el lobby, donde se elige a qué se juega. */}
               <button
                 type="button"
                 className="portada__modo portada__modo--alguien"
                 onClick={() => window.location.assign(NET.rutaDuelo)}
               >
                 <span className="portada__cuando">02 · Con alguien</span>
-                <Icono nombre="duelo" className="portada__dibujo" />
-                <span className="portada__nombre">Duelo 1v1</span>
-                <span className="portada__sub">Crea una sala y manda el enlace: un duelo a catorce rondas, o todos contra todos.</span>
+                <Icono nombre="multijugador" className="portada__dibujo" />
+                <span className="portada__nombre">Multijugador</span>
+                <span className="portada__sub">Duelo, equipos de 2 a 5 o todos contra todos. Crea una sala y manda el enlace.</span>
                 <span className="portada__cta">Crear sala ▸</span>
               </button>
 

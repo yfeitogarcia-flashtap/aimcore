@@ -21,19 +21,20 @@
  * avisos de conexión, las pausas y los números de F3.
  */
 import { masterGain, playEquip, playRoundTick } from '../src/audio/sfx.js'
-import { COLORS, CROSSHAIR, ECONOMY, NET, RESUME_KEY_DELAY_MS, ROUNDS, TARGET, TEAMS, TODOS, WEAPONS, articuloDeCombinacion, catalogoDeTienda, definicionDeSala, escenariosDeSala } from '../src/config.js'
+import { BANDOS, COLORS, CROSSHAIR, ECONOMY, NET, RESUME_KEY_DELAY_MS, ROUNDS, TARGET, TODOS, WEAPONS, articuloDeCombinacion, catalogoDeTienda, colorDeJugador, definicionDeSala, esModoDeEquipos, modoMultijugador } from '../src/config.js'
 import { Engine } from '../src/game/engine.js'
 import { Avatar } from '../src/game/avatar.js'
 import { hasLineOfSight } from '../src/game/sight.js'
 import { cuerpoDeJugador } from './pose.js'
 import { resolverDisparo } from './disparo.js'
 import { ClienteRed } from './cliente.js'
-import { conRedSimulada, transporteWebSocket } from './transporte.js'
+import { conLobby, conRedSimulada, transporteWebSocket } from './transporte.js'
 import { montarCapaDeDuelo } from '../src/ui/duelo.jsx'
+import { montarLobby } from '../src/ui/Lobby.jsx'
 import { vigilarActualizaciones } from '../src/ui/actualizacion.js'
 import { montarPantallaCompleta } from '../src/escritorio.js'
 import { getKeybinds, keyLabel, keysOf, subscribeKeybinds } from '../src/keybinds.js'
-import { compraAbierta } from './protocolo.js'
+import { MSG, compraAbierta } from './protocolo.js'
 import { codigoDeLaDireccion, direccionDeLaBarra, enlaceDeSala, mapaDeLaDireccion, modoDeLaDireccion, urlDeSala } from './sala-cliente.js'
 import { nickDeRanura } from './cliente.js'
 
@@ -86,8 +87,14 @@ for (const [nombre, valor] of [
  * quien crea la sala—, y va antes que él porque cada modo tiene su lista.
  */
 const MODO = modoDeLaDireccion()
-const TODOS_CONTRA_TODOS = MODO === 'todos'
 const ESCENARIO = mapaDeLaDireccion()
+/**
+ * **El modo de la partida que se juega, no el de la dirección** (vuelta 101).
+ * Desde que hay lobby la sala cambia de modo sin recargar la página, así que
+ * «¿es un todos contra todos?» se pregunta a la bienvenida de la partida en
+ * curso, que es quien lo sabe.
+ */
+const esTodos = () => cliente.todosContraTodos
 
 /**
  * **El motor completo, con la red enchufada** (vuelta 56). Hasta aquí esta
@@ -104,11 +111,12 @@ const ESCENARIO = mapaDeLaDireccion()
  * motor porque sus callbacks la usan desde el primer frame.
  */
 const capa = montarCapaDeDuelo(document.getElementById('capa'), {
-  // En el todos contra todos la armería equipa: ahí las armas son libres.
-  equipa: TODOS_CONTRA_TODOS,
+  // En el todos contra todos la armería equipa: ahí las armas son libres. Lo
+  // dice cada bienvenida (`capa.equipa`), que es donde se sabe.
+  equipa: false,
   // Al cerrar un panel vuelve lo que había debajo: con el ratón suelto, el menú.
   alCerrarPanel: () => {
-    aviso.hidden = document.pointerLockElement === lienzo || !tienda.hidden
+    aviso.hidden = vista !== 'juego' || document.pointerLockElement === lienzo || !tienda.hidden
   },
 })
 
@@ -157,8 +165,7 @@ const motor = new Engine(lienzo, {
  * Lo pone la página y no el motor porque es un **instrumento de medida**, no
  * una pieza del juego: vive detrás de F3 con los demás y apagado de fábrica.
  */
-const equipos = Object.keys(TEAMS)
-const fantasma = new Avatar(TARGET.radius, TEAMS[equipos[0]].color)
+const fantasma = new Avatar(TARGET.radius, BANDOS[0].color)
 for (const zona of Object.keys(fantasma.zones)) {
   for (const malla of fantasma.zones[zona]) {
     malla.material.transparent = true
@@ -185,14 +192,16 @@ const enlace = { latenciaMs: 0, jitterMs: 0, perdida: 0 }
  */
 const codigo = codigoDeLaDireccion()
 history.replaceState(null, '', direccionDeLaBarra(codigo))
-$('codigo').textContent = codigo
-// **La página dice a qué se juega** (vuelta 100): es la misma página para los
-// dos modos, y el título y la invitación tienen que decir cuál.
-if (TODOS_CONTRA_TODOS) {
-  $('titulo').textContent = 'Vektor · Todos contra todos'
-  $('invita').textContent = 'Copia y comparte este link: entra todo el que lo abra, hasta llenar el mapa'
-}
-$('enlace').value = enlaceDeSala(codigo, window.location, ESCENARIO, MODO)
+$('codigoMenu').textContent = codigo
+/**
+ * **El enlace lleva lo que la sala tiene puesto** (vuelta 101): modo y mapa, que
+ * desde el lobby cambian sin recargar. Sirve para lo de siempre —quien lo abre
+ * monta ya el mapa bueno— y si la sala se hubiera olvidado, la vuelve a crear
+ * con la misma configuración.
+ */
+let configDeSala = { modo: MODO, mapa: ESCENARIO }
+const enlaceActual = () => enlaceDeSala(codigo, window.location, configDeSala.mapa, configDeSala.modo)
+$('enlaceMenu').value = enlaceActual()
 
 /**
  * **La página ensambla la red; el motor sólo la usa.** El cliente se construye
@@ -211,22 +220,78 @@ $('enlace').value = enlaceDeSala(codigo, window.location, ESCENARIO, MODO)
  * despliegue de dominio deja atrás la partida a medias, una vez.
  */
 const CLAVE_PARTIDA = 'vektor.duelo.v1'
-function partidaGuardada() {
+/**
+ * **Un sitio por pestaña, no por navegador** (vuelta 101). El pase se guardaba
+ * en `localStorage`, que es del navegador entero: dos pestañas abiertas con el
+ * mismo enlace —o la app y el navegador en la misma sesión de Windows cuando
+ * comparten perfil— enseñaban **el mismo pase** y se sentaban en la misma
+ * butaca. Eran dos personas moviendo un solo jugador, y la sala contaba uno
+ * menos de los que había delante: se reportó como «éramos cuatro y el recuento
+ * decía tres».
+ *
+ * Ahora cada pestaña tiene su nombre (`sessionStorage`, que sobrevive a recargar
+ * pero no se comparte con otra pestaña) y cada sitio guardado dice de qué
+ * pestaña es y cuándo dio señales de vida por última vez. Se usa el sitio **de
+ * esta pestaña**, o uno que lleve un rato sin latir —el de una pestaña cerrada,
+ * que es volver a una partida a medias, lo de la vuelta 62—, y nunca el de una
+ * pestaña que sigue abierta.
+ */
+const CLAVE_PESTANA = 'vektor.pestana'
+const pestana = (() => {
   try {
-    const crudo = localStorage.getItem(CLAVE_PARTIDA)
-    return crudo ? JSON.parse(crudo) : null
+    let id = sessionStorage.getItem(CLAVE_PESTANA)
+    if (!id) {
+      id = Math.random().toString(36).slice(2, 10)
+      sessionStorage.setItem(CLAVE_PESTANA, id)
+    }
+    return id
   } catch {
-    return null
+    return Math.random().toString(36).slice(2, 10)
+  }
+})()
+/** Cuánto sin latir para dar un sitio por abandonado por su pestaña. */
+const SIN_LATIR_MS = 6000
+function sitiosGuardados() {
+  try {
+    const crudo = JSON.parse(localStorage.getItem(CLAVE_PARTIDA) ?? 'null')
+    // El formato de antes de la 101 era un solo sitio sin pestaña: se lee como
+    // uno que no late, que es lo que era.
+    if (crudo && !Array.isArray(crudo)) return [{ ...crudo, pestana: null, latido: 0 }]
+    return Array.isArray(crudo) ? crudo : []
+  } catch {
+    return []
   }
 }
-function guardarPartida(dato) {
+function escribirSitios(lista) {
   try {
-    if (dato) localStorage.setItem(CLAVE_PARTIDA, JSON.stringify(dato))
+    if (lista.length) localStorage.setItem(CLAVE_PARTIDA, JSON.stringify(lista.slice(-8)))
     else localStorage.removeItem(CLAVE_PARTIDA)
   } catch {
     /* sin persistencia se juega igual; lo que se pierde es poder reconectar */
   }
 }
+function partidaGuardada() {
+  const ahora = Date.now()
+  const lista = sitiosGuardados()
+  return lista.find((s) => s.codigo === codigo && s.pestana === pestana)
+    ?? lista.find((s) => s.codigo === codigo && ahora - (s.latido ?? 0) > SIN_LATIR_MS)
+    ?? lista.find((s) => s.pestana === pestana)
+    ?? lista.find((s) => ahora - (s.latido ?? 0) > SIN_LATIR_MS)
+    ?? null
+}
+function guardarPartida(dato) {
+  const lista = sitiosGuardados().filter((s) => s.pestana !== pestana && !(dato && s.pase === dato.pase))
+  if (dato) lista.push({ ...dato, pestana, latido: Date.now() })
+  escribirSitios(lista)
+}
+// **Y el latido**: mientras esta pestaña esté abierta, su sitio es suyo.
+setInterval(() => {
+  const lista = sitiosGuardados()
+  const mio = lista.find((s) => s.pestana === pestana)
+  if (!mio) return
+  mio.latido = Date.now()
+  escribirSitios(lista)
+}, 2000)
 
 /**
  * **Cuánto dura la fase de compra en la partida que se cree aquí** (vuelta 64).
@@ -272,15 +337,26 @@ const guardada = partidaGuardada()
 // **El pase sólo vale para su código.** Enseñar el de otra partida no es volver
 // a ésta: sería pedir una butaca que en esta sala no existe.
 const paseDeVuelta = guardada?.codigo === codigo ? guardada.pase : null
+// Y lo cogemos para esta pestaña ya: si otra pestaña lo mira ahora, late.
+if (paseDeVuelta) guardarPartida({ codigo, pase: paseDeVuelta, cuando: Date.now() })
 
 const cliente = new ClienteRed({
   camara: motor.camera,
   movimiento: motor.movement,
   controles: motor.controls,
   oclusores: motor.scenario.occluders,
-  transporte: conRedSimulada(
-    transporteWebSocket(urlDeSala(codigo, window.location, paseDeVuelta, compraElegida, ESCENARIO, MODO)),
-    enlace,
+  /**
+   * **El cable lleva dos conversaciones** (vuelta 101): la de la sala y la de
+   * la partida. `conLobby` aparta la de la sala —sus mensajes empiezan por
+   * `l`— y el cliente de red sigue viendo un transporte que sólo le habla de
+   * la partida, como siempre.
+   */
+  transporte: conLobby(
+    conRedSimulada(
+      transporteWebSocket(urlDeSala(codigo, window.location, paseDeVuelta, compraElegida, ESCENARIO, MODO)),
+      enlace,
+    ),
+    (m) => alEstadoDeSala(m),
   ),
 })
 cliente.onBienvenida = (m) => {
@@ -295,22 +371,20 @@ cliente.onBienvenida = (m) => {
    * geometría que el servidor no tiene sería una corrección por paso contra
    * paredes que sólo existen en una pantalla.
    */
-  if ((m.escenario && m.escenario !== ESCENARIO) || (m.modo && m.modo !== MODO)) {
-    window.location.href = enlaceDeSala(codigo, window.location, m.escenario, m.modo)
-    return
-  }
-  const mio = equipos[m.equipo % equipos.length]
-  const suyo = equipos[(m.equipo + 1) % equipos.length]
-  fantasma.setColor(TEAMS[mio].color)
-  // El cuerpo del rival lo tiñe el motor al montar la sesión: sale de la misma
-  // ranura, y ahí es donde vive desde la vuelta 56.
-  $('quien').innerHTML = `${m.id} · <span style="color:${TEAMS[mio].color}">${TEAMS[mio].label}</span>`
-  $('quienDbg').textContent = `${m.id} · ${mio} · ${m.escenario}`
-  document.title = `Vektor · ${codigo} · ${m.id}`
-  // La butaca, para poder volver a ella si se cae el cable.
-  if (m.pase) guardarPartida({ codigo, pase: m.pase, cuando: Date.now() })
-  // Y con la bienvenida se sabe por fin si las opciones de la partida son tuyas.
-  pintarConfigurable()
+  /**
+   * **El mapa ya está montado**: lo puso el lobby al ver la partida lanzada
+   * (`alEstadoDeSala`), antes de que llegase esta bienvenida. Hasta la 100 la
+   * página se recargaba si no coincidía; desde que hay lobby el mapa cambia
+   * entre partidas y el motor lo cambia en caliente (`fijarEscenario`).
+   */
+  // **Tu color**: el de tu bando o, en el todos contra todos, el de tu butaca.
+  const tuyo = m.bando !== null && m.bando !== undefined ? BANDOS[m.bando] : colorDeJugador(m.ranura ?? m.equipo)
+  fantasma.setColor(tuyo.color)
+  $('quien').innerHTML = `${m.nick ?? m.id} · <span style="color:${tuyo.color}">${tuyo.label}</span>`
+  $('quienDbg').textContent = `${m.id} · ranura ${m.ranura} · ${m.escenario}`
+  document.title = `Vektor · ${codigo} · ${m.nick ?? m.id}`
+  $('titulo').textContent = `Vektor · ${modoMultijugador(m.modo).label}`
+  capa.equipa(Boolean(m.libres))
 }
 // **Después de poner lo suyo**: `usarRed` encadena sobre la bienvenida para
 // arrancar la sesión en el mismo turno, y encadenar sobre algo que todavía no
@@ -366,7 +440,6 @@ cliente.onDesconectado = (d) => {
   // Y el panel deja de decir «conectando…» debajo de un cartel que dice que no
   // hay partida: dos mensajes que se contradicen es medio arreglo.
   $('quien').textContent = 'fuera de la partida'
-  $('hayRival').textContent = '—'
   // Se suelta el ratón: seguir capturado en una partida que ya no existe es
   // dejar al jugador encerrado en una pantalla que no responde.
   if (document.pointerLockElement === lienzo) document.exitPointerLock()
@@ -444,7 +517,7 @@ function pintarPausa() {
   // **Y en el todos contra todos no se pausa** (vuelta 100): uno de diez no
   // puede parar el mundo a los otros nueve, y el servidor lo ignora. Un botón
   // que promete lo que el servidor no va a hacer es el fallo de la vuelta 67.
-  const sinPartida = cliente.ocupadas < 2 || TODOS_CONTRA_TODOS
+  const sinPartida = cliente.ocupadas < 2 || esTodos()
   $('pausar').hidden = sinPartida || p.libres <= 0 || p.pausada || cliente.votacion.activa
   $('pedirVoto').hidden = sinPartida || p.libres > 0 || p.pausada || cliente.votacion.activa
   if (p.pausada && p.motivo === 'caida') {
@@ -697,15 +770,10 @@ $('teclado').addEventListener('click', () => {
  * hacen lo mismo con dos nombres es uno que miente.
  */
 function pintarBotonesDelMenu() {
-  const enPartida = cliente.ocupadas >= 2
-  $('volver').hidden = enPartida
-  $('salir').hidden = !enPartida
+  // **El menú de ESC es ya sólo de la partida** (vuelta 101): crear la sala es
+  // el lobby, así que aquí no hay un «Volver» de antes de jugar.
   pintarPausa()
 }
-
-$('volver').addEventListener('click', () => {
-  salirAlMenu()
-})
 
 pintarControles(getKeybinds())
 subscribeKeybinds(pintarControles)
@@ -741,9 +809,7 @@ cliente.conectar()
  * qué ha pasado en los tres casos: copiado, o «selecciónalo» si no se ha podido
  * —porque entonces hay algo que hacer a mano y el jugador tiene que saberlo—.
  */
-async function copiarEnlace() {
-  const campo = $('enlace')
-  const texto = campo.value
+async function copiarTexto(texto, campo = $('enlaceMenu')) {
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(texto)
@@ -762,10 +828,11 @@ async function copiarEnlace() {
   }
 }
 
-$('copiar').addEventListener('click', async () => {
-  const boton = $('copiar')
-  const bien = await copiarEnlace()
-  if (!bien) $('enlace').select()
+$('copiarMenu').addEventListener('click', async () => {
+  const boton = $('copiarMenu')
+  $('enlaceMenu').value = enlaceActual()
+  const bien = await copiarTexto(enlaceActual())
+  if (!bien) $('enlaceMenu').select()
   boton.textContent = bien ? 'copiado' : 'selecciónalo'
   setTimeout(() => { boton.textContent = 'copiar' }, 1600)
 })
@@ -824,6 +891,7 @@ addEventListener('blur', () => {
 let soltadoEn = 0
 
 addEventListener('click', (e) => {
+  if (vista !== 'juego') return
   if (document.pointerLockElement === lienzo) return
   if (e.target.closest('.control')) return
   soltadoEn = 0
@@ -856,6 +924,7 @@ addEventListener('click', (e) => {
  */
 addEventListener('keydown', (e) => {
   if (e.key !== 'Escape') return
+  if (vista !== 'juego' || $('fin').classList.contains('puesto')) return
   if (document.pointerLockElement === lienzo) return
   if (!tienda.hidden || capa.hayPanel()) return
   if (performance.now() - soltadoEn < RESUME_KEY_DELAY_MS) return
@@ -914,7 +983,7 @@ document.addEventListener('pointerlockchange', () => {
   if (!capturado) pintarPausa()
   // Y si lo que hay abierto es la tienda, el menú no vuelve: son dos pantallas
   // de la misma situación —el ratón suelto— y sólo cabe una.
-  aviso.hidden = capturado || !tienda.hidden || capa.hayPanel()
+  aviso.hidden = vista !== 'juego' || capturado || !tienda.hidden || capa.hayPanel()
   // **La mira es de jugar**: con el ratón suelto no se apunta a nada y tapa el
   // menú. El resto del HUD se queda puesto, que es lo que hace el juego.
   document.body.classList.toggle('jugando', capturado)
@@ -947,64 +1016,102 @@ $('gho').addEventListener('change', (e) => { fantasma.group.visible = e.target.c
  * engancha por `onFrame`, que el motor publica una vez por fotograma.
  */
 /**
- * **El todos contra todos, arriba y centrado** (vuelta 100), en el mismo sitio
- * que el marcador de ronda y con su misma regla: lo que cambia de fase se
- * escribe al cambiar y la cuenta sólo cuando cambia el segundo. Lo que enseña es
- * lo que un todos contra todos pregunta de reojo: cuánto queda, cuántas llevas
- * y cuántas lleva el que va primero.
+ * **El todos contra todos, arriba y centrado** (vuelta 100): el reloj y nada
+ * más. Hasta la 101 llevaba debajo «1 · líder 1 / 20» —tus bajas, las del que
+ * va primero y el objetivo— y jugándolo **no se entendía**. Lo que un jugador
+ * pregunta de reojo es cuánto queda; cuántas llevan todos y cuántas hacen falta
+ * lo dice el marcador de TAB, con todas las letras (`pintarTabla`).
  */
 let todosPintado = ''
 function pintarTodos() {
   const t = cliente.todos
   const seg = Math.ceil(Math.max(0, t.resta) / 1000)
   const reloj = t.fase === 'juego' ? `${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, '0')}` : ' '
-  const mias = cliente.bajas ?? 0
-  let lider = 0
-  for (const f of cliente.marcador) if (f.b > lider) lider = f.b
-  const linea = `${mias} · líder ${lider} / ${t.objetivo || TODOS.bajasParaGanar}`
-  const clave = `${reloj}|${linea}|${t.fase}`
+  const clave = `${reloj}|${t.fase}`
   if (clave === todosPintado) return
   todosPintado = clave
   $('rondaTiempo').textContent = reloj
-  $('rondaMarcador').textContent = linea
+  $('rondaMarcador').textContent = ''
 }
 
 function pintarFaseTodos(t) {
   $('rondaN').textContent = 'TODOS CONTRA TODOS'
-  $('rondaFase').textContent = t.fase === 'espera' ? 'ESPERANDO RIVALES' : t.fase === 'fin' ? 'NUEVA PARTIDA EN UNOS SEGUNDOS' : ' '
+  $('rondaFase').textContent = t.fase === 'espera' ? 'ESPERANDO RIVALES' : ' '
   todosPintado = ''
-  // **El cartel del final, sin salida obligada**: aquí la partida no se acaba,
-  // vuelve a empezar sola (`TODOS.finSegundos`). El botón de salir sigue ahí
-  // para quien quiera irse.
   const acabo = t.fase === 'fin'
-  $('fin').classList.toggle('puesto', acabo)
-  if (!acabo) return
-  const gane = t.ganador === cliente.equipo
-  $('finQuien').textContent = t.ganador === -1 ? 'EMPATE ARRIBA' : gane ? 'HAS GANADO' : `GANA ${nickDeRanura(t.ganador)}`
-  $('finQuien').style.color = gane ? '#2FCB82' : '#EDEDED'
-  $('finDetalle').textContent = `${cliente.bajas ?? 0} bajas tuyas · la siguiente empieza sola`
-  if (document.pointerLockElement === lienzo) document.exitPointerLock()
+  if (!acabo) {
+    ponerFin(null)
+    return
+  }
+  const gane = t.ganador === cliente.ranura
+  const puesto = 1 + cliente.marcador.filter((f) => f.b > (cliente.bajas ?? 0)).length
+  ponerFin({
+    titulo: t.ganador === -1 ? 'EMPATE ARRIBA' : gane ? 'HAS GANADO' : `GANA ${cliente.nickDe(t.ganador)}`,
+    color: gane ? '#2FCB82' : '#EDEDED',
+    detalle: `${cliente.bajas ?? 0} bajas tuyas · ${puesto}º de ${cliente.marcador.length}`,
+  })
 }
-cliente.onTodos = (t) => pintarFaseTodos(t)
-if (TODOS_CONTRA_TODOS) pintarFaseTodos(cliente.todos)
 
 /**
- * **El marcador de la sala, con TAB** (vuelta 100). Es la misma tecla y la
- * misma forma que el del entrenamiento —abierto mientras se mantiene, y sólo
- * jugando—, y aquí por fin tiene más de una fila. Se rehace cuando cambia
- * (`marcadorVersion`), no por frame.
+ * **El cartel del final, uno para todos los modos** (vuelta 101). Hasta aquí el
+ * duelo y el todos contra todos pintaban cada uno el suyo —con un botón, con
+ * ninguno, o con «la siguiente empieza sola»— y lo que se pidió es uno: el
+ * resultado, **Volver a jugar** destacado y latiendo, y **Salir al menú**.
+ * Volver a jugar te devuelve a la sala listo para la siguiente, con el mismo
+ * modo y el mismo mapa; la lanza el anfitrión cuando estéis.
+ *
+ * @param {null|{titulo: string, color: string, detalle: string}} fin
  */
-let tablaVersion = -1
+function ponerFin(fin) {
+  $('fin').classList.toggle('puesto', Boolean(fin))
+  document.body.classList.toggle('con-fin', Boolean(fin))
+  if (!fin) return
+  $('finQuien').textContent = fin.titulo
+  $('finQuien').style.color = fin.color
+  $('finDetalle').textContent = fin.detalle
+  if (document.pointerLockElement === lienzo) document.exitPointerLock()
+}
+
+/**
+ * **El marcador de la sala, con TAB** (vuelta 100; en todos los modos y con el
+ * objetivo escrito desde la 101). Es la misma tecla y la misma forma que el del
+ * entrenamiento —abierto mientras se mantiene, y sólo jugando—. Arriba dice
+ * **qué hace falta para ganar**, que es la línea que el reloj llevaba debajo y
+ * nadie entendía; con eso cada uno saca sus cuentas mirando las filas. En un
+ * modo por equipos va por bandos, con las rondas de cada uno. Se rehace cuando
+ * cambia (`marcadorVersion`, las rondas), no por frame.
+ */
+let tablaVersion = ''
 function pintarTabla(abierta) {
   const tabla = $('tablaTodos')
   tabla.hidden = !abierta
-  if (!abierta || tablaVersion === cliente.marcadorVersion) return
-  tablaVersion = cliente.marcadorVersion
-  const filas = [...cliente.marcador].sort((a, b) => b.b - a.b || a.m - b.m)
-  $('tablaFilas').innerHTML = filas.map((f) => {
+  if (!abierta) return
+  const r = cliente.rondas
+  const version = `${cliente.marcadorVersion}|${r.marcador}|${cliente.todos.objetivo}`
+  if (tablaVersion === version) return
+  tablaVersion = version
+  const fila = (f) => {
     const yo = f.id === cliente.id
-    return `<tr class="${yo ? 'yo' : ''}${f.c ? ' caido' : ''}"><td>${nickDeRanura(f.r)}${yo ? ' · tú' : ''}${f.c ? ' · sin conexión' : ''}</td>` +
+    const color = esTodos() ? colorDeJugador(f.r).color : BANDOS[f.bd ?? f.r % 2].color
+    return `<tr class="${yo ? 'yo' : ''}${f.c ? ' caido' : ''}"><td><span class="swatch" style="background:${color}"></span>` +
+      `${f.n ?? cliente.nickDe(f.r)}${yo ? ' · tú' : ''}${f.c ? ' · sin conexión' : ''}</td>` +
       `<td>${f.b}</td><td>${f.m}</td><td>${f.m ? (f.b / f.m).toFixed(2) : f.b.toFixed(2)}</td></tr>`
+  }
+  const orden = (a, b) => b.b - a.b || a.m - b.m
+  if (esTodos()) {
+    const obj = cliente.todos.objetivo || TODOS.bajasParaGanar
+    $('tablaObjetivo').textContent = `Gana el primero en llegar a ${obj} bajas · o el que más lleve a los ${TODOS.minutos} min`
+    $('tablaFilas').innerHTML = [...cliente.marcador].sort(orden).map(fila).join('')
+    return
+  }
+  const mayoria = Math.floor(ROUNDS.maxRondas / 2) + 1
+  $('tablaObjetivo').textContent = r.prorroga
+    ? `Prórroga: gana el equipo que vaya por delante al acabar una tanda de ${ROUNDS.prorrogaTanda}`
+    : `Gana el primer equipo en llegar a ${mayoria} rondas (de ${ROUNDS.maxRondas})`
+  $('tablaFilas').innerHTML = [0, 1].map((bando) => {
+    const suyos = cliente.marcador.filter((f) => (f.bd ?? f.r % 2) === bando).sort(orden)
+    return `<tr class="bando"><td colspan="4" style="color:${BANDOS[bando].color}">Equipo ${BANDOS[bando].label.toLowerCase()} · ` +
+      `${r.marcador[bando] ?? 0} ronda${(r.marcador[bando] ?? 0) === 1 ? '' : 's'}</td></tr>` + suyos.map(fila).join('')
   }).join('')
 }
 
@@ -1017,6 +1124,7 @@ cliente.onRonda = (r) => {
   // rótulo y los botones de la fase anterior.
   if (!tienda.hidden) pintarTienda()
 }
+cliente.onTodos = (t) => pintarFaseTodos(t)
 
 // **Irse se dice.** Es lo único que distingue un abandono de una caída: sin este
 // mensaje, cerrar la pestaña y que se caiga el wifi llegan por la misma puerta.
@@ -1050,10 +1158,10 @@ $('salir').addEventListener('click', () => {
  * único mensaje que distingue un abandono de una caída (vuelta 62), y descargar
  * la página cierra el socket sin decir nada.
  */
-function salirAlMenu() {
+function salirAlMenu(seccion = '') {
   guardarPartida(null)
   cliente.abandonar()
-  window.location.href = NET.rutaJuego
+  window.location.href = `${NET.rutaJuego}${seccion}`
 }
 // Y la salida del cartel de fin: suelta la butaca —la partida ya está decidida,
 // no hay nada que reservar— y deja a la vista el menú, que es donde se teclea
@@ -1061,6 +1169,122 @@ function salirAlMenu() {
 $('finSalir').addEventListener('click', () => {
   salirAlMenu()
 })
+/**
+ * **Volver a jugar** (vuelta 101): a la sala, y listo. El servidor lo apunta
+ * (`MSG.VOLVER`) y el estado de la sala que vuelve ya dice que estás en el
+ * lobby; la siguiente la lanza el anfitrión con los que estéis listos.
+ */
+$('finOtra').addEventListener('click', () => {
+  mandarALaSala({ t: MSG.VOLVER })
+})
+
+// ------------------------------------------------------------------ el lobby
+/**
+ * **La sala, antes que la partida** (vuelta 101). La página abre **sólo el
+ * lobby**: sin mapa detrás, sin motor en marcha y sin nada que capture el
+ * ratón. Lo que se ve lo decide el estado de la sala que manda el servidor:
+ * con una partida en juego en la que estás, el juego; con todo lo demás —antes
+ * de la primera, entre partidas o esperando a la siguiente—, el lobby.
+ */
+let vista = null
+let estadoDeSala = null
+let motorArrancado = false
+/** El modo del escenario montado en el motor, para saber si hay que cambiarlo. */
+let modoMontado = MODO
+
+const lobbyUI = montarLobby(document.getElementById('lobby'), {
+  codigo,
+  enlace: enlaceActual(),
+  api: {
+    config: (cambios) => mandarALaSala({ t: MSG.CONFIG, ...cambios }),
+    listo: (v) => mandarALaSala({ t: MSG.LISTO, v: Boolean(v) }),
+    hueco: (h) => mandarALaSala({ t: MSG.HUECO, h }),
+    mezclar: () => mandarALaSala({ t: MSG.MEZCLAR }),
+    lanzar: () => mandarALaSala({ t: MSG.LANZAR }),
+    entrar: () => mandarALaSala({ t: MSG.ENTRAR }),
+    salir: () => salirAlMenu(),
+    copiar: (texto) => copiarTexto(texto),
+    /**
+     * **El raíl de la cabina, desde aquí** (vuelta 101): Armería y Opciones se
+     * abren encima, que son los mismos paneles del juego (vuelta 73); Inicio y
+     * Entrenar son otra página, y salir hacia allí es salir de la sala.
+     */
+    ir: (seccion) => {
+      if (seccion === 'armeria') capa.panel('ficha')
+      else if (seccion === 'opciones') capa.panel('opciones')
+      else if (seccion === 'entrenamiento') salirAlMenu('#entrenamiento')
+      else if (seccion === 'inicio') salirAlMenu()
+    },
+  },
+})
+
+/** Un mensaje a la sala. Va por el mismo cable que la partida. */
+function mandarALaSala(mensaje) {
+  cliente.transporte.send(JSON.stringify(mensaje))
+}
+
+/**
+ * **Llega el estado de la sala** (`MSG.LOBBY`): se repinta el lobby y se
+ * decide qué se ve. Si hay una partida lanzada en la que estás, se monta su
+ * mapa —si no es el que hay— **antes** de que llegue su bienvenida, que viene
+ * detrás por el mismo cable.
+ */
+function alEstadoDeSala(sala) {
+  estadoDeSala = sala
+  configDeSala = { modo: sala.modo, mapa: sala.mapa }
+  const yo = sala.m.find((m) => m.id === sala.tu) ?? null
+  const pt = sala.pt
+  const enPartida = Boolean(yo?.p) && pt.e !== 'ninguna'
+  const quiereJuego = enPartida && !(pt.e === 'fin' && yo?.v)
+  if (quiereJuego && pt.mapa && (pt.mapa !== motor.scenario.key || pt.modo !== modoMontado)) {
+    motor.fijarEscenario(definicionDeSala(pt.modo, pt.mapa))
+    modoMontado = pt.modo
+  }
+  // La barra y el enlace llevan la configuración de la sala, sin recargar.
+  const barra = new URL(window.location.href)
+  barra.searchParams.set('mapa', sala.mapa)
+  if (sala.modo === 'duelo') barra.searchParams.delete('modo')
+  else barra.searchParams.set('modo', sala.modo)
+  history.replaceState(null, '', barra.toString())
+  $('enlaceMenu').value = enlaceActual()
+  // El sitio, para volver a él si se cae el cable o se recarga la página.
+  if (yo) guardarPartida({ codigo, pase: sala.pase ?? guardada?.pase ?? null, cuando: Date.now() })
+  const otra = partidaGuardada()
+  lobbyUI.pintar({
+    estado: sala,
+    enlace: enlaceActual(),
+    reconectar: otra && otra.codigo !== codigo
+      ? { codigo: otra.codigo, ir: () => { window.location.href = `/duelo/${otra.codigo}` } }
+      : null,
+  })
+  ponerVista(quiereJuego ? 'juego' : 'lobby')
+}
+
+/**
+ * **Lobby o juego.** En el lobby el motor no dibuja, el ratón no se captura y
+ * lo que es de jugar no se enseña; en el juego, al revés, y la primera vez
+ * arranca el motor.
+ */
+function ponerVista(cual) {
+  if (vista === cual) return
+  vista = cual
+  const enLobby = cual === 'lobby'
+  document.body.classList.toggle('en-lobby', enLobby)
+  $('lobby').hidden = !enLobby
+  capa.conHud(!enLobby)
+  motor.dibujar(!enLobby)
+  if (enLobby) {
+    if (document.pointerLockElement === lienzo) document.exitPointerLock()
+    alternarTienda(false)
+    return
+  }
+  capa.panel(null)
+  if (!motorArrancado) {
+    motorArrancado = true
+    motor.start()
+  }
+  aviso.hidden = document.pointerLockElement === lienzo
+}
 // **Y cerrar la pestaña no manda nada, a propósito.** La primera versión mandaba
 // el adiós en `pagehide`, y estaba mal por una razón que sólo se ve al probarlo:
 // el navegador dispara ese evento **igual al recargar**, y recargar es justo
@@ -1069,18 +1293,9 @@ $('finSalir').addEventListener('click', () => {
 // para volver y, si no se vuelve, acaba en abandono igual. Es el lado seguro del
 // error, que es la regla de esta vuelta entera.
 
-// **Reconectar**: sólo si este navegador tiene una partida a medias que no es
-// ésta. Si es ésta, ya se ha entrado con el pase y no hay nada que pulsar.
-if (guardada && guardada.codigo !== codigo) {
-  const boton = $('reconectar')
-  boton.hidden = false
-  boton.textContent = `Reconectar a ${guardada.codigo}`
-  boton.addEventListener('click', () => {
-    window.location.href = `/duelo/${guardada.codigo}${window.location.search}`
-  })
-}
-
-motor.start()
+// **El motor no arranca al cargar** (vuelta 101): arranca con la primera
+// partida (`ponerVista('juego')`). En el lobby no hay mundo que mover ni que
+// dibujar.
 
 const costes = []
 function pintarHud(stats) {
@@ -1101,7 +1316,7 @@ function pintarHud(stats) {
   }
   pintarRestas(ahora)
   pintarRonda()
-  if (TODOS_CONTRA_TODOS) pintarTabla(Boolean(stats.scoreboard))
+  pintarTabla(Boolean(stats.scoreboard))
   pintarRed(ahora)
   pintarPanel()
 }
@@ -1116,7 +1331,7 @@ let restaPintada = ''
 /** El último segundo que ya ha pitado, para que cada uno suene una vez. */
 let segPitado = -1
 function pintarRonda() {
-  if (TODOS_CONTRA_TODOS) {
+  if (esTodos()) {
     pintarTodos()
     return
   }
@@ -1167,17 +1382,18 @@ function pintarRonda() {
  */
 function pintarFaseDeRonda(r) {
   $('rondaN').textContent = r.prorroga ? `PRÓRROGA · RONDA ${r.n}` : `RONDA ${r.n} de ${ROUNDS.maxRondas}`
-  $('rondaMarcador').textContent = `${r.marcador[cliente.equipo ?? 0]} – ${r.marcador[1 - (cliente.equipo ?? 0)]}`
+  const mio = cliente.bando ?? cliente.equipo ?? 0
+  $('rondaMarcador').textContent = `${r.marcador[mio]} – ${r.marcador[1 - mio]}`
   $('ronda').classList.toggle('compra', r.fase === 'compra')
   const anterior = r.ultima
   const dice = {
     compra: anterior
       ? anterior.motivo === 'empate'
         ? 'RONDA EMPATADA · SE REPITE'
-        : anterior.ganador === cliente.equipo ? 'RONDA GANADA · COMPRA' : 'RONDA PERDIDA · COMPRA'
+        : anterior.ganador === (cliente.bando ?? cliente.equipo) ? 'RONDA GANADA · COMPRA' : 'RONDA PERDIDA · COMPRA'
       : 'FASE DE COMPRA',
     ronda: ' ',
-    espera: 'ESPERANDO AL RIVAL',
+    espera: cliente.porEquipo > 1 ? 'ESPERANDO A LOS EQUIPOS' : 'ESPERANDO AL RIVAL',
     fin: ' ',
   }
   $('rondaFase').textContent = dice[r.fase] ?? ' '
@@ -1188,21 +1404,22 @@ function pintarFaseDeRonda(r) {
   if (r.fase !== 'compra') alternarTienda(false)
   pintarTienda()
   const acabo = r.ganador !== null
-  $('fin').classList.toggle('puesto', acabo)
-  if (!acabo) return
-  const gane = r.ganador === cliente.equipo
-  $('finQuien').textContent = gane ? 'PARTIDA GANADA' : 'PARTIDA PERDIDA'
-  $('finQuien').style.color = gane ? '#2FCB82' : '#E4462B'
+  if (!acabo) {
+    ponerFin(null)
+    return
+  }
+  const gane = r.ganador === mio
+  const duelo = cliente.porEquipo <= 1
   const porque = {
     mayoria: 'por mayoría de rondas',
     prorroga: 'en la prórroga',
-    abandono: gane ? 'el rival ha abandonado' : 'has abandonado la partida',
+    abandono: gane ? (duelo ? 'el rival ha abandonado' : 'el otro equipo se ha quedado sin nadie') : 'tu equipo se ha quedado sin nadie',
   }
-  $('finDetalle').textContent =
-    `${r.marcador[cliente.equipo ?? 0]} – ${r.marcador[1 - (cliente.equipo ?? 0)]} · ${porque[r.motivo] ?? ''}`
-  // Se acabó: ya no hay butaca a la que volver.
-  guardarPartida(null)
-  if (document.pointerLockElement === lienzo) document.exitPointerLock()
+  ponerFin({
+    titulo: duelo ? (gane ? 'PARTIDA GANADA' : 'PARTIDA PERDIDA') : (gane ? 'GANA TU EQUIPO' : 'GANA EL OTRO EQUIPO'),
+    color: gane ? '#2FCB82' : '#E4462B',
+    detalle: `${r.marcador[mio]} – ${r.marcador[1 - mio]} · ${porque[r.motivo] ?? ''}`,
+  })
 }
 
 /**
@@ -1237,16 +1454,8 @@ function pintarPanel() {
   const dentro = cliente.ocupadas >= 2
   if (dentro !== huboRival) {
     huboRival = dentro
-    // **Y con el rival dentro, las opciones de la partida se cierran** (vuelta
-    // 67): cambiarlas empieza otra sala y le deja fuera. Se repinta al cambiar y
-    // no cada vez, que es la regla del HUD. Y con ellas, los botones del menú
-    // (vuelta 98): pasa de crear la sala a ser la pausa de una partida.
-    pintarConfigurable()
     pintarBotonesDelMenu()
   }
-  $('hayRival').textContent = TODOS_CONTRA_TODOS
-    ? `${Math.max(0, cliente.ocupadas - 1)} dentro · caben ${cliente.plazas}`
-    : dentro ? 'dentro' : 'esperando'
   // El caudal se mide sobre la ventana, así que hay que vaciarlo aunque el panel
   // esté cerrado: si no, al abrirlo la primera lectura sería la suma de todo lo
   // que ha pasado desde que se cerró.
@@ -1395,7 +1604,6 @@ function porQueNo(item, eco, fase) {
 function pintarTienda() {
   const eco = cliente.economia
   const fase = cliente.rondas.fase
-  $('compraReal').textContent = eco.compra > 0 ? `${eco.compra} s` : 'sin fase'
   if (tienda.hidden) return
   $('tiendaDinero').textContent = `$${eco.dinero}`
   $('tiendaFase').textContent = !compraAbierta(fase, eco.compra)
@@ -1447,7 +1655,7 @@ function alternarTienda(abrir = tienda.hidden) {
    * se comía los clics de la tienda **y el clic con el que se vuelve a jugar**.
    * Al cerrar vuelve el menú, salvo que el ratón ya esté capturado.
    */
-  aviso.hidden = abrir || document.pointerLockElement === lienzo
+  aviso.hidden = vista !== 'juego' || abrir || document.pointerLockElement === lienzo
   if (abrir) pintarTienda()
 }
 
@@ -1557,162 +1765,6 @@ cliente.onEconomia = (eco) => {
   capa.dinero(cliente.conEconomia ? eco.dinero : null)
 }
 
-/**
- * **El selector de modo** (vuelta 100), el primero de todos y con las reglas de
- * los otros dos: es del anfitrión, sólo mientras no haya entrado nadie, y
- * cambiarlo **empieza otra partida**. Al cambiar de modo se suelta el mapa:
- * cada modo tiene su lista, y el de uno no tiene por qué existir en el otro.
- */
-const modoSel = $('modoSel')
-for (const [valor, texto] of [['duelo', 'Duelo 1v1'], ['todos', 'Todos contra todos']]) {
-  const opcion = document.createElement('option')
-  opcion.value = valor
-  opcion.textContent = texto
-  modoSel.appendChild(opcion)
-}
-modoSel.value = MODO
-modoSel.addEventListener('change', () => {
-  if (!puedeConfigurar()) {
-    pintarConfigurable()
-    return
-  }
-  const destino = new URL(window.location.href)
-  if (modoSel.value === 'duelo') destino.searchParams.delete('modo')
-  else destino.searchParams.set('modo', modoSel.value)
-  destino.searchParams.delete('mapa')
-  destino.hash = ''
-  destino.pathname = destino.pathname.replace(/\/duelo\/[^/]+$/, '/duelo')
-  window.location.href = destino.toString()
-})
-
-/**
- * **El selector de mapa** (vuelta 72), al lado del de la fase de compra y con
- * exactamente las mismas reglas: es del anfitrión, sólo mientras no haya
- * entrado nadie, y cambiarlo **empieza otra partida** —una sala ya creada no se
- * reconfigura—. La lista sale de `DUEL_SCENARIOS`, derivada del propio dato:
- * añadir un mapa de duelo es marcarlo `soloDuelo`, no tocar este desplegable.
- */
-const mapaSel = $('mapaSel')
-for (const [clave, def] of Object.entries(escenariosDeSala(MODO))) {
-  const opcion = document.createElement('option')
-  opcion.value = clave
-  opcion.textContent = def.label
-  mapaSel.appendChild(opcion)
-}
-mapaSel.value = ESCENARIO
-mapaSel.addEventListener('change', () => {
-  if (!puedeConfigurar()) {
-    pintarConfigurable()
-    return
-  }
-  const destino = new URL(window.location.href)
-  destino.searchParams.set('mapa', mapaSel.value)
-  destino.hash = ''
-  destino.pathname = destino.pathname.replace(/\/duelo\/[^/]+$/, '/duelo')
-  window.location.href = destino.toString()
-})
-
-// **El selector de la fase de compra**, en la pantalla donde se crea la partida.
-const selector = $('compraSel')
-for (const segundos of ROUNDS.compraOpciones) {
-  const opcion = document.createElement('option')
-  opcion.value = String(segundos)
-  opcion.textContent = segundos === 0 ? 'sin fase (rápida)' : `${segundos} s`
-  selector.appendChild(opcion)
-}
-selector.value = String(compraElegida)
-selector.addEventListener('change', () => {
-  // **Y si esto no es tuyo, no hace nada** (vuelta 67). El `disabled` ya lo
-  // impide en el navegador; la comprobación está aquí porque lo que hay detrás
-  // —empezar otra partida— es irreversible, y una puerta que se cierra sola no
-  // se deja apoyada en el CSS.
-  if (!puedeConfigurar()) {
-    pintarConfigurable()
-    return
-  }
-  const segundos = Number(selector.value)
-  try {
-    localStorage.setItem(CLAVE_COMPRA, String(segundos))
-  } catch {
-    /* sin persistencia vale para esta partida y ya */
-  }
-  // **Partida nueva**: una sala ya creada no se reconfigura, así que cambiar
-  // esto empieza otra, con su código y su enlace. Fingir lo contrario sería
-  // enseñar un número que el servidor no está usando.
-  const destino = new URL(window.location.href)
-  destino.searchParams.set('compra', String(segundos))
-  destino.hash = ''
-  destino.pathname = destino.pathname.replace(/\/duelo\/[^/]+$/, '/duelo')
-  window.location.href = destino.toString()
-})
-
-/**
- * **Las opciones de la partida son de quien la crea, y sólo hasta que llega
- * alguien** (vuelta 67).
- *
- * Jugando por primera vez entre dos PCs salió el fallo entero: el que se unió
- * por el enlace tocó el desplegable de la fase de compra y **se fue a una
- * partida nueva** —código nuevo, ranura 0, color azul— dejando a su rival solo
- * en la de antes. No es que el cambio fallara: es que ese control **no era
- * suyo**, y lo que hay detrás de él es empezar otra partida.
- *
- * Dos condiciones, y las dos son la misma idea por sus dos extremos:
- *
- * - **Anfitrión.** Lo dice el servidor en la bienvenida, no se deduce del color
- *   ni del id. Una sala se configura al nacer y sólo cuenta lo que diga quien la
- *   creó, así que enseñarle el control al otro es prometerle algo que el
- *   servidor va a ignorar.
- * - **Y sólo mientras no haya nadie dentro.** Cambiarlo abandona la sala, y con
- *   ella a quien ya haya entrado por tu enlace. Que el anfitrión pueda hacerlo
- *   es correcto; que pueda hacerlo **sin enterarse de que su amigo ya estaba**,
- *   no.
- */
-function puedeConfigurar() {
-  return cliente.anfitrion && cliente.ocupadas < 2
-}
-
-/**
- * **Un mapa que reparte no tiene fase de compra** (vuelta 72), así que su
- * selector se apaga y dice por qué. No es la misma puerta que la de arriba —eso
- * es de quién manda; esto es de qué mapa se juega— y por eso se pregunta al
- * dato del escenario y no al servidor: la respuesta no depende de la sala.
- */
-function reparteElMapa(clave) {
-  return Boolean(escenariosDeSala(MODO)[clave]?.duelo?.dotacion)
-}
-
-function pintarConfigurable() {
-  const puede = puedeConfigurar()
-  const reparte = reparteElMapa(mapaSel.value)
-  // **En el todos contra todos no hay fase de compra, ni rondas** (vuelta 100):
-  // el selector se apaga y lo dice, que es la regla de la vuelta 94 — un control
-  // que el juego va a ignorar se atenúa, no se esconde, porque vuelve a valer
-  // en cuanto se elige el duelo encima.
-  selector.disabled = !puede || reparte || TODOS_CONTRA_TODOS
-  mapaSel.disabled = !puede
-  modoSel.disabled = !puede
-  selector.title = TODOS_CONTRA_TODOS
-    ? 'el todos contra todos no tiene rondas ni tienda'
-    : reparte
-    ? 'este mapa reparte el equipo: no hay tienda ni fase de compra'
-    : puede
-      ? 'cambiarla empieza una partida nueva, con otro código'
-      : cliente.anfitrion
-        ? 'ya hay alguien dentro: cambiarla le dejaría fuera'
-        : 'la elige quien crea la partida'
-  // Corto a propósito: va en la fila del número, y el menú no puede crecer.
-  $('compraQuien').textContent = TODOS_CONTRA_TODOS
-    ? '· sin rondas'
-    : reparte
-    ? '· el mapa reparte'
-    : puede
-      ? '· cambiarla empieza otra'
-      : cliente.anfitrion
-        ? '· con rival, ya no'
-        : '· la elige el anfitrión'
-}
-pintarConfigurable()
-
 // Para las sondas de medida: todo lo que hace falta, en un solo sitio.
 /**
  * **El asa de depuración de la página.** Esto no es una pantalla del juego: es
@@ -1728,6 +1780,10 @@ pintarConfigurable()
  */
 window.vektorNet = {
   cliente, motor, enlace, fantasma, costes,
+  /** El último estado de la sala y qué se está viendo (vuelta 101). */
+  get sala() { return estadoDeSala },
+  get vista() { return vista },
+  mandarALaSala,
   // Los bancos llevan desde la vuelta 45 hablando de `camara`, `movimiento` y
   // `escenario`: siguen siendo los mismos objetos, sólo que ahora los construye
   // el motor. Renombrarlos habría sido reescribir nueve suites para no ganar nada.
@@ -1747,3 +1803,7 @@ window.vektorNet = {
   resolver: resolverDisparo,
   NET,
 }
+
+// **Se empieza en el lobby**, y al final del módulo: la vista toca la tienda y
+// el menú, que se definen más arriba.
+ponerVista('lobby')

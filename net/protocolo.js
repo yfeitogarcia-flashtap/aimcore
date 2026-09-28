@@ -188,6 +188,62 @@ export const MSG = {
    * pantalla.
    */
   CLAVADA: 'kc',
+  /**
+   * **Los avisos que no esperan a la foto** (vuelta 101). Con la foto a 20 Hz
+   * en el todos contra todos, el veredicto de un disparo que mataba esperaba
+   * hasta 50 ms a la foto siguiente, y la muerte del rival se veía dos fotos
+   * más tarde, que es lo que se dibuja por detrás (`NET.interpolarFotos`).
+   * Jugándolo se notaba como que «la baja llega tarde», y era exactamente eso.
+   *
+   * Los cuatro salen **en el paso en que ocurren**, y ninguno sustituye a la
+   * foto: la foto sigue llevando el veredicto repetido (vuelta 46, por si se
+   * pierde) y la vida; esto sólo llega antes. Por eso el cliente los trata como
+   * lo que son, avisos: el veredicto se descarta si ya había llegado por su
+   * `seq`, y lo que se dibuja de una baja se corrige solo con la foto.
+   *
+   * - `VEREDICTO`: el de tu disparo, a ti, en cuanto se resuelve.
+   * - `GOLPE`: a quien encaja daño, con su vida y quién se lo hizo — la cuña
+   *   de dirección y el anillo no esperan a la foto.
+   * - `BAJA`: a todos, quién ha caído y quién le ha matado. El cuerpo se quita
+   *   en el acto con su destello de muerte en vez de dos fotos después.
+   * - `TIRO`: a los demás, que alguien ha disparado — de dónde, hacia dónde,
+   *   con qué y si con supresor. Es lo que faltaba para que un rival sonara y
+   *   se viera disparar como un muñeco del entrenamiento: fogonazo, voz de su
+   *   arma y silbido si la bala te pasa cerca.
+   */
+  VEREDICTO: 'v',
+  GOLPE: 'g',
+  BAJA: 'k',
+  TIRO: 'tr',
+  /**
+   * **El lobby** (vuelta 101). La sala existe antes que la partida: se entra,
+   * se elige hueco, se pulsa LISTO y el anfitrión lanza. Los mensajes del lobby
+   * empiezan todos por `l` y los mira `net/lobby.js`; el resto sigue siendo de
+   * la partida, que no sabe que hay un lobby delante.
+   *
+   * - `LOBBY` (del servidor): el estado entero de la sala, a cada uno el suyo
+   *   —dice quién eres—, cada vez que cambia.
+   * - `CONFIG` (del anfitrión): modo, mapa o fase de compra.
+   * - `LISTO`: tu botón, con `v` a verdadero o falso.
+   * - `HUECO`: el hueco que quieres, con `h`.
+   * - `MEZCLAR` (del anfitrión): reparte los equipos al azar y equilibrados.
+   * - `LANZAR` (del anfitrión): empieza la partida con los listos.
+   * - `VOLVER`: «Volver a jugar» al acabar — vuelves al lobby, y listo.
+   * - `ENTRAR`: con una partida del todos contra todos en marcha, meterse.
+   */
+  LOBBY: 'lb',
+  CONFIG: 'lc',
+  LISTO: 'll',
+  HUECO: 'lh',
+  MEZCLAR: 'lx',
+  LANZAR: 'lg',
+  VOLVER: 'lv',
+  ENTRAR: 'le',
+}
+
+/** ¿Es un mensaje del lobby? Todos empiezan por `l` (ver `MSG.LOBBY`). */
+export function esDelLobby(t) {
+  return typeof t === 'string' && t.length === 2 && t[0] === 'l'
 }
 
 /**

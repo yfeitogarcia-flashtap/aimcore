@@ -17,7 +17,7 @@
 
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { COLORS, COVER, FANS, ROUNDS, SURFACES, TELEPORTS, TODOS, ZIPLINES, claveDeEscenario, coverColor, coverEdgeColor, coverHeight, coverTintedColor, definicionDeEscenario, fisicaDeEscenario, fondoDeEscenario, scenarioRoom } from '../config.js'
+import { COLORS, COVER, EQUIPOS, FANS, ROUNDS, SURFACES, TELEPORTS, TODOS, ZIPLINES, claveDeEscenario, coverColor, coverEdgeColor, coverHeight, coverTintedColor, definicionDeEscenario, fisicaDeEscenario, fondoDeEscenario, scenarioRoom } from '../config.js'
 import { bandaDePrisma, carasDePrisma, dentroDePrisma, envolventeDePrisma, puntosDePrisma } from '../maps/prisma.js'
 import { cajasDeTubos } from '../maps/tubo.js'
 import { cajasDeEscaleras } from '../maps/escalera.js'
@@ -351,15 +351,90 @@ export class Scenario {
   }
 
   /**
-   * **Las salidas del todos contra todos** (vuelta 100): tantas como jugadores
-   * caben, y cuántos caben **es** cuántas hay. Una lista vacía es «este mapa no
+   * **Las salidas de un modo por equipos, una por butaca** (vuelta 101).
+   *
+   * Un mapa de duelo declara **una salida por bando** y aquí se sacan las de
+   * los compañeros, sin que el mapa tenga que saber para cuántos se juega. La
+   * lista va por **ranura** —la par es el bando 0 y la impar el 1, como en el
+   * duelo de siempre—, así que en un 1v1 devuelve exactamente las dos de
+   * `salidasDeDuelo` y todo lo que ya indexaba por ranura sigue igual.
+   *
+   * Cada compañero se pone **al lado** de la salida de su bando, en la
+   * perpendicular a su rumbo y a `EQUIPOS.separacionU`, alternando derecha e
+   * izquierda; si ahí hay una pieza —o el suelo no está a la misma altura, que
+   * es lo mismo que estar dentro de una—, se prueba la fila de detrás. Y un
+   * sitio sólo vale si se llega **en recta** desde la salida: un compañero al
+   * otro lado de una pared no está a su lado, está en otra habitación.
+   *
+   * `libre: false` marca los que no han encontrado sitio y se han quedado
+   * encima de la salida: se juega igual —nadie choca con nadie—, pero es un
+   * mapa al que no le caben, y es lo que Alchemist dice.
+   *
+   * @param {number} porEquipo cuántos por bando
+   */
+  salidasDeEquipos(porEquipo) {
+    const base = this.salidasDeDuelo
+    const n = Math.max(1, Math.min(porEquipo | 0 || 1, 10))
+    const clave = `e${n}`
+    if (this._salidasDeEquipos?.clave === clave) return this._salidasDeEquipos.lista
+    const porBando = [0, 1].map((bando) => this._puestosDeBando(base[bando], n))
+    const lista = []
+    for (let k = 0; k < n; k++) for (let bando = 0; bando < 2; bando++) lista.push(porBando[bando][k])
+    this._salidasDeEquipos = { clave, lista }
+    return lista
+  }
+
+  /** Los `n` puestos de un bando alrededor de su salida. Ver `salidasDeEquipos`. */
+  _puestosDeBando(salida, n) {
+    const yaw = salida.yaw ?? 0
+    // Una cámara mira a −Z con rumbo 0: delante es (−sin, −cos) y la derecha,
+    // (cos, −sin). Escritos como dos vectores y no a mano en cada componente
+    // (vuelta 77: ahí es donde se cuela un signo).
+    const dx = -Math.sin(yaw); const dz = -Math.cos(yaw)
+    const rx = Math.cos(yaw); const rz = -Math.sin(yaw)
+    const suelo = this.groundHeightAt(salida.x, salida.z)
+    const ojos = suelo + 1.4
+    const sep = EQUIPOS.separacionU
+    const room = this.room
+    const margen = COVER.playerRadius + 0.1
+    const usados = [{ x: salida.x, z: salida.z }]
+    const puestos = [{ x: salida.x, z: salida.z, yaw, libre: true }]
+    const candidatos = []
+    for (let fila = 0; fila <= EQUIPOS.filas; fila++) {
+      for (let i = fila === 0 ? 1 : 0; i <= EQUIPOS.porFila; i++) {
+        for (const lado of i === 0 ? [0] : [1, -1]) {
+          candidatos.push({
+            x: salida.x + (rx * i * lado - dx * fila) * sep,
+            z: salida.z + (rz * i * lado - dz * fila) * sep,
+          })
+        }
+      }
+    }
+    for (const c of candidatos) {
+      if (puestos.length >= n) break
+      if (Math.abs(c.x) > room.width / 2 - margen || Math.abs(c.z) > room.depth / 2 - margen) continue
+      if (Math.abs(this.groundHeightAt(c.x, c.z) - suelo) > 0.05) continue
+      if (this.cortarSegmento(salida.x, ojos, salida.z, c.x, ojos, c.z)) continue
+      if (usados.some((u) => Math.hypot(u.x - c.x, u.z - c.z) < sep * 0.9)) continue
+      usados.push(c)
+      puestos.push({ x: +c.x.toFixed(3), z: +c.z.toFixed(3), yaw, libre: true })
+    }
+    while (puestos.length < n) puestos.push({ x: salida.x, z: salida.z, yaw, libre: false })
+    return puestos
+  }
+
+  /**
+   * **Las salidas del todos contra todos** (vuelta 100). Cuántos caben sale de
+   * cuántas hay, con el tope de `TODOS.maxJugadores`; desde la 101 puede haber
+   * más salidas que butacas (`TODOS.maxSalidas`), y las de sobra son sitios más
+   * donde reaparecer lejos de todos. Una lista vacía es «este mapa no
    * se juega en ese modo», que es lo que el saneado ya garantiza para uno
    * publicado; no se inventa un reparto como en `salidasDeDuelo`, porque ocho
    * salidas a ojo son ocho sitios que no ha decidido nadie.
    */
   get salidasDeTodos() {
     const suyas = this.definition.todos?.salidas
-    return Array.isArray(suyas) ? suyas.slice(0, TODOS.maxJugadores) : []
+    return Array.isArray(suyas) ? suyas.slice(0, TODOS.maxSalidas) : []
   }
 
   /**

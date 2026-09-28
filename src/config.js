@@ -4911,22 +4911,32 @@ const ESCENARIOS_INTEGRADOS = {
   },
 
   /**
-   * **La Rotonda — el mapa del todos contra todos** (vuelta 100).
+   * **La Rotonda — el mapa del todos contra todos** (vuelta 100; doce salidas
+   * desde la 101).
    *
    * El primero para más de dos, y con las cuatro reglas de El Espejo llevadas a
-   * ocho: **simetría por construcción** (giro de 90°, cuatro veces: ninguna
+   * más: **simetría por construcción** (giro de 90°, cuatro veces: ninguna
    * salida es mejor que otra), **salidas declaradas con su rumbo** —mirando al
    * centro—, **fuera de los selectores de los otros modos** (`modos`) y plano,
    * que la altura se mide jugando.
    *
    * El tamaño sale de la propuesta 11 §2.2 —300 a 500 u² transitables por
-   * jugador— y no del gusto: 64 × 64 son ~4 000 u² de suelo, o sea ocho
-   * jugadores cómodos y diez apretados. Cruzarlo en diagonal son ~14 s.
+   * jugador— y no del gusto: 64 × 64 son ~4 000 u² de suelo, o sea diez
+   * jugadores. Cruzarlo en diagonal son ~14 s.
    *
-   * **Cada salida tiene su bolsillo**: dos muros altos a los lados y una
-   * pantalla delante, con dos huecos para salir. Lo que tiene que garantizar un
-   * mapa de todos contra todos no es simetría entre dos, es que **ninguna salida
-   * vea a otra** — que es una medida (`todos100`), no una promesa.
+   * **Doce salidas para diez jugadores, y no diez** (vuelta 101). Se pidió
+   * pasarla a diez, y con el giro de 90° eso es imposible: cuatro cuartos
+   * iguales dan múltiplos de cuatro, y romper el giro sería dar a dos
+   * salidas un sitio que no tienen las demás — la regla de El Espejo al revés.
+   * Con tres por cuarto caben las diez butacas del modo (`TODOS.maxJugadores`)
+   * y **sobran dos**, que no se desperdician: la reaparición va a la salida más
+   * lejos del vivo más cercano, y con dos de más siempre hay una libre.
+   *
+   * **Cada salida tiene su bolsillo**: muros altos a los lados y una pantalla
+   * delante, con huecos para salir. Lo que tiene que garantizar un mapa de todos
+   * contra todos no es simetría entre dos, es que **ninguna salida vea a otra**
+   * — que es una medida (`todos100`, «Medir» en Alchemist), no una promesa: 0
+   * de 66 pares, con rayos a medio hombro de cada lado.
    */
   rotonda: {
     label: 'La Rotonda',
@@ -4934,10 +4944,11 @@ const ESCENARIOS_INTEGRADOS = {
     room: { width: 64, depth: 64, height: 10 },
     spawn: { x: 0, z: 28.5 },
     todos: {
-      // Dos por cuarto: una en el centro del borde y otra en la esquina.
+      // Tres por cuarto: el centro del borde, la esquina y la de en medio.
       salidas: salidasGiro90([
         { x: 0, z: 28.5 },
         { x: 24, z: 24 },
+        { x: 13, z: 28.5 },
       ]),
     },
     boxes: [
@@ -4950,12 +4961,22 @@ const ESCENARIOS_INTEGRADOS = {
         // El de la esquina, en L: se sale pegado a una de las dos paredes.
         { x: 20, z: 19.5, w: 6, d: 1, kind: 'alta' },
         { x: 19.5, z: 20.5, w: 1, d: 6, kind: 'alta' },
+        // **El de en medio** (vuelta 101): costados altos más largos y una
+        // pantalla con hueco de 1.5 u a cada lado. Más estrechos que los del
+        // borde a propósito: con los de 2.5 la salida del centro de un lado
+        // veía a esta del lado de al lado, cruzando los dos huecos en diagonal.
+        { x: 8.5, z: 24.5, w: 1, d: 7.5, kind: 'alta' },
+        { x: 16.5, z: 24.5, w: 1, d: 7.5, kind: 'alta' },
+        { x: 11, z: 22.5, w: 4, d: 1, kind: 'media' },
         // Y el medio: cobertura a tres alturas, que es el vocabulario de siempre.
         { x: -1.5, z: 13, w: 3, d: 3, kind: 'media' },
         // El pilar de la diagonal: corta la recta entre dos salidas de borde
         // vecinas, que sin él se veían por los huecos de sus bolsillos
         // (lo cazó `todos100`: 4 de 28 pares).
         { x: 13, z: 13, w: 2.5, d: 2.5, kind: 'alta' },
+        // Y otro para la tercera salida: sin él, la de en medio veía a la del
+        // centro del lado siguiente (4 de 66 pares).
+        { x: 20, z: 13, w: 2.5, d: 2.5, kind: 'alta' },
         { x: 8, z: 17, w: 5, d: 1.2, kind: 'bordillo' },
         { x: 13, z: 4, w: 3, d: 1.5, kind: 'baja' },
       ]),
@@ -5536,22 +5557,84 @@ export function definicionDeTodos(key) {
 }
 
 /**
- * **Los modos de una sala en red** (vuelta 100) y lo único que cambia entre
- * ellos a la hora de montarla: qué lista de mapas se ofrece y qué definición se
- * monta. Lo miran los dos huéspedes y la página, así que va aquí una vez.
+ * **Los modos de una sala en red** (vuelta 100; los de equipos, de la 101).
+ *
+ * Una sola lista y todo lo demás se deriva de ella: el lobby pinta un botón por
+ * entrada, el huésped monta la partida con sus butacas y la página sabe qué
+ * mapas ofrecer. Tres campos son el modo entero:
+ *
+ * - `porEquipo`: cuántos por bando. **El duelo es un modo por equipos de uno**
+ *   —la misma partida, las mismas rondas, la misma economía— y por eso un 1v1
+ *   sale idéntico a como salía hasta la 100: no hay una rama «duelo» y otra
+ *   «equipos», hay un número. A cero no hay bandos: cada uno va a lo suyo.
+ * - `mapas`: de qué lista salen los mapas. **Los de equipos son los de duelo**:
+ *   un mapa de duelo declara dos salidas, una por bando, y los compañeros se
+ *   colocan a su lado (`Scenario.salidasDeEquipos`). Un mapa no tiene que saber
+ *   para cuántos se juega, igual que no lo sabe un mapa de CS.
+ * - `plazas`, sólo en el todos contra todos: el tope de butacas del modo. En
+ *   los de equipos son dos veces `porEquipo`.
  */
-export const MODOS_DE_SALA = ['duelo', 'todos']
+export const MODOS_MULTIJUGADOR = [
+  { clave: 'duelo', label: 'Duelo', corto: '1v1', porEquipo: 1, mapas: 'duelo' },
+  { clave: '2v2', label: '2 contra 2', corto: '2v2', porEquipo: 2, mapas: 'duelo' },
+  { clave: '3v3', label: '3 contra 3', corto: '3v3', porEquipo: 3, mapas: 'duelo' },
+  { clave: '4v4', label: '4 contra 4', corto: '4v4', porEquipo: 4, mapas: 'duelo' },
+  { clave: '5v5', label: '5 contra 5', corto: '5v5', porEquipo: 5, mapas: 'duelo' },
+  { clave: 'todos', label: 'Todos contra todos', corto: 'Todos', porEquipo: 0, mapas: 'todos' },
+]
+export const MODOS_DE_SALA = MODOS_MULTIJUGADOR.map((m) => m.clave)
 export function modoDeSala(modo) {
   return MODOS_DE_SALA.includes(modo) ? modo : 'duelo'
 }
+/** La ficha entera de un modo, saneado: lo que pide cualquiera que pregunte por uno. */
+export function modoMultijugador(modo) {
+  return MODOS_MULTIJUGADOR.find((m) => m.clave === modoDeSala(modo))
+}
+/** ¿Es un modo por equipos? El duelo lo es: son equipos de uno. */
+export function esModoDeEquipos(modo) {
+  return modoMultijugador(modo).porEquipo > 0
+}
+/** Cuántas butacas tiene una sala de ese modo: el tope, no cuántas hay. */
+export function plazasDeModo(modo) {
+  const m = modoMultijugador(modo)
+  return m.porEquipo > 0 ? m.porEquipo * 2 : TODOS.maxJugadores
+}
+/**
+ * **Cuántos listos hacen falta para lanzar** (vuelta 101). En el todos contra
+ * todos, tres —con dos es un duelo sin rondas—; en los de equipos, **uno en
+ * cada bando**, y se admite desequilibrado si los jugadores quieren (dos
+ * contra tres): lo que no se admite es un bando vacío, que no es una partida.
+ */
+export function minimoParaLanzar(modo) {
+  return esModoDeEquipos(modo) ? 2 : TODOS.minJugadores
+}
 export function definicionDeSala(modo, key) {
-  return modoDeSala(modo) === 'todos' ? definicionDeTodos(key) : definicionDeDuelo(key)
+  return modoMultijugador(modo).mapas === 'todos' ? definicionDeTodos(key) : definicionDeDuelo(key)
 }
 export function escenarioDeSala(modo, key) {
-  return modoDeSala(modo) === 'todos' ? escenarioDeTodos(key) : escenarioDeDuelo(key)
+  return modoMultijugador(modo).mapas === 'todos' ? escenarioDeTodos(key) : escenarioDeDuelo(key)
 }
 export function escenariosDeSala(modo) {
-  return modoDeSala(modo) === 'todos' ? TODOS_SCENARIOS : DUEL_SCENARIOS
+  return modoMultijugador(modo).mapas === 'todos' ? TODOS_SCENARIOS : DUEL_SCENARIOS
+}
+
+/**
+ * **Dónde se colocan los compañeros** (vuelta 101). Un mapa de duelo declara
+ * una salida por bando; en un 3v3 hacen falta tres, y se ponen **al lado** de
+ * la del bando —en la perpendicular a su rumbo, a esta distancia— y, si ahí
+ * hay una pieza, una fila detrás. Lo resuelve `Scenario.salidasDeEquipos`, que
+ * es lo que ve también Alchemist cuando avisa de que a un mapa no le caben.
+ *
+ * 1.6 u es el cuerpo (0.8) dos veces: lo justo para que dos compañeros no
+ * salgan uno dentro del otro y lo bastante cerca para que la caja de compra de
+ * cada uno siga siendo el mismo rincón.
+ */
+export const EQUIPOS = {
+  separacionU: 1.6,
+  /** Cuántas posiciones se prueban a cada lado antes de pasar a la fila de atrás. */
+  porFila: 3,
+  /** Filas hacia atrás que se prueban si en la de delante no caben. */
+  filas: 2,
 }
 
 export function scenarioHasCover(escenario) {
@@ -5861,6 +5944,14 @@ export const ENEMY = {
    * del pecho —que es donde está la boca de un arma— se ve entera.
    */
   muzzleForwardFactor: 0.24,
+  /**
+   * **Cuánto dura el `!` sobre un rival de carne y hueso** (vuelta 101). Un
+   * muñeco lo lleva mientras está en su fase de fuego, que es un estado suyo;
+   * de una persona no se sabe eso, y lo que se pinta es **que sus balas te han
+   * pasado cerca o te han dado**. Lo que dura una ráfaga y un poco más: si
+   * sigue disparándote, se renueva con cada tiro.
+   */
+  amenazaMs: 1500,
   /**
    * A qué parte del jugador apuntan, como fracción de su altura: 0 los pies, 1
    * la coronilla. **Al centro del cuerpo, y no más arriba**: la cabeza empieza
@@ -6672,6 +6763,58 @@ export const MUSIC = {
 export const TEAMS = {
   blue: { label: 'Azul', color: '#2F6BF0' },
   magenta: { label: 'Magenta', color: '#D94BD9' },
+}
+
+/**
+ * **Un color por jugador en el todos contra todos** (vuelta 101).
+ *
+ * En la 100 salían todos los rivales en magenta con este argumento: «para ti
+ * todos son un rival, y la paleta no tiene dieciséis colores libres». Jugándolo
+ * con cuatro personas se vio lo que cuesta: **nadie sabía a quién estaba
+ * viendo**, y dos azules y dos magentas se leían como dos equipos que no
+ * existen. En un todos contra todos **cada jugador es su propio equipo**, y un
+ * equipo se reconoce por el color (vuelta 38).
+ *
+ * Y la regla que lo hace posible la puso el encargo: **aquí no hace falta
+ * esquivar los colores que ya significan algo** (el naranja de las dianas, el
+ * blanco de la Blind, el rojo del Core): no coinciden en la misma pantalla con
+ * lo que se confundirían, y lo que importa es que **los diez se distingan entre
+ * sí**. Se eligieron midiendo, no a ojo: un barrido sobre treinta candidatos con
+ * nombre, maximizando la **menor ΔE2000** entre cualquier par (que es la
+ * distancia de color que se parece a lo que ve un ojo) y con los dos de equipo
+ * fijos delante, para que la ranura 0 y la 1 sigan siendo azul y magenta.
+ * Resultado: **22.6 de mínimo entre cualquier par** (azul contra magenta, la
+ * pareja de toda la vida, da 28). Y todos tienen nombre, porque «el verde» se
+ * dice en voz alta y «VK-07» no.
+ */
+export const COLORES_DE_JUGADOR = [
+  { label: 'Azul', color: '#2F6BF0' },
+  { label: 'Magenta', color: '#D94BD9' },
+  { label: 'Lima', color: '#BFEF45' },
+  { label: 'Naranja', color: '#F58231' },
+  { label: 'Cian', color: '#42D4F4' },
+  { label: 'Rosa', color: '#FABED4' },
+  { label: 'Rojo', color: '#E6194B' },
+  { label: 'Verde', color: '#00E5A0' },
+  { label: 'Amarillo', color: '#F2C12E' },
+  { label: 'Blanco', color: '#FFFFFF' },
+]
+
+/** El color de una butaca del todos contra todos. La ranura es la silla, así que no cambia al morir. */
+export function colorDeJugador(ranura) {
+  const n = COLORES_DE_JUGADOR.length
+  return COLORES_DE_JUGADOR[((ranura % n) + n) % n]
+}
+
+/**
+ * **Los dos bandos de un modo por equipos** (vuelta 101), en el orden de la
+ * ranura: la par es el bando 0 (azul) y la impar el 1 (magenta). Es el reparto
+ * del duelo de siempre —ranura 0 azul, ranura 1 magenta— llevado a diez
+ * butacas, y por eso un 1v1 sale idéntico a como salía.
+ */
+export const BANDOS = [TEAMS.blue, TEAMS.magenta]
+export function bandoDeRanura(ranura) {
+  return ranura % 2
 }
 
 /**
@@ -7503,7 +7646,7 @@ export const NET = {
    * la sala al nacer y lo dice la bienvenida (`fc`), así que el cliente no
    * tiene que adivinarlo.
    */
-  fotoCada: { duelo: 1, todos: 3 },
+  fotoCada: { duelo: 1, '2v2': 1, '3v3': 2, '4v4': 2, '5v5': 2, todos: 3 },
   /**
    * **Con cuánta holgura se dibuja al rival, en fotos** (vuelta 100). El
    * retraso de dibujado es `max(interpDelayTicks, fotoCada · esto)` pasos: con
@@ -7549,24 +7692,29 @@ export const NET = {
  */
 export const TODOS = {
   /**
-   * Tope de butacas, sea cual sea el mapa. Un mapa declara cuántas salidas
-   * tiene (`todos.salidas`) y de ahí sale cuántos caben — como `TRAINER_SCENARIOS`
-   * se deriva de `soloDuelo`, sin un número aparte que lo contradiga—, pero no
-   * por encima de esto. 16 es la cuenta de `salas100`: ver
-   * `docs/propuestas/11-salas-de-varios.md` §2.3.
+   * **Tope de butacas: diez** (vuelta 101; eran dieciséis en la 100). Un mapa
+   * declara cuántas salidas tiene (`todos.salidas`) y de ahí sale cuántos
+   * caben, pero no por encima de esto; y **Alchemist avisa** de un mapa
+   * publicado en este modo con menos salidas que esto, porque en él no caben
+   * los diez que el lobby ofrece. Diez es lo que se pidió, y lo que da la
+   * cuenta de la propuesta 11 §2.2 para La Rotonda.
    */
-  maxJugadores: 16,
+  maxJugadores: 10,
+  /**
+   * **Y salidas puede haber más que butacas** (vuelta 101): La Rotonda lleva
+   * doce para diez, porque reaparecer es ir a la salida más lejos del vivo más
+   * cercano y con alguna de sobra siempre hay una lejos. Tope del formato, como
+   * los de `SALA`: que un fichero no meta cien.
+   */
+  maxSalidas: 16,
   /** Por debajo no hay todos contra todos: con dos es un duelo sin rondas. */
   minSalidas: 3,
+  /** Listos que hacen falta para lanzar una partida desde el lobby (vuelta 101). */
+  minJugadores: 3,
   /** Bajas para ganar. Punto de partida, a calibrar jugando. */
   bajasParaGanar: 20,
   /** Y si nadie llega, lo que dura una partida. */
   minutos: 8,
-  /**
-   * Lo que se queda el resultado en pantalla antes de empezar otra. Durante
-   * este rato no se dispara, y al acabar todos reaparecen a la vez.
-   */
-  finSegundos: 10,
 }
 
 /**

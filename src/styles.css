@@ -1148,6 +1148,217 @@ body {
   }
 }
 
+/* **El lobby del multijugador** (vuelta 101): la pantalla de Entrenamiento
+   para jugar con gente, con sus mismas piezas —`.training`, las tarjetas, los
+   segmentos— y lo que sólo tiene una sala: el carrusel de mapas, los huecos y
+   el botón LISTO. Sin un color ni un tamaño nuevos: todo sale de los tokens de
+   la cabina (vuelta 99). */
+.lobby-cargando {
+  padding: var(--cab-e6);
+  color: var(--cab-texto-apagado);
+}
+
+.lobby-modos {
+  flex-wrap: wrap;
+}
+
+.lobby-carrusel {
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: var(--cab-e2);
+}
+
+.lobby-carrusel__pista {
+  display: flex;
+  gap: var(--cab-e3);
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding-bottom: var(--cab-e2);
+  scrollbar-width: thin;
+}
+
+.lobby-carrusel__mapa {
+  flex: 0 0 180px;
+  scroll-snap-align: start;
+}
+
+.lobby-carrusel__mapa:disabled {
+  cursor: default;
+}
+
+.lobby-carrusel__flecha {
+  height: 100%;
+  border: 0;
+  background: var(--cab-hueco);
+  color: var(--cab-texto);
+  font-size: var(--cab-t-subtitulo);
+  cursor: pointer;
+}
+
+.lobby-carrusel__flecha:hover {
+  color: var(--cab-accion);
+}
+
+.lobby-columnas {
+  display: grid;
+  gap: var(--cab-e4);
+}
+
+.lobby-columnas--equipos {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.lobby-lista {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cab-e2);
+}
+
+.lobby-rejilla {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: var(--cab-e2);
+}
+
+.lobby-hueco {
+  display: grid;
+  grid-template-columns: 10px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--cab-e3);
+  padding: var(--cab-e2) var(--cab-e3);
+  border: 0;
+  background: var(--cab-hueco);
+  color: var(--cab-texto);
+  font-family: var(--cab-letra-texto);
+  font-size: var(--cab-t-pequeno);
+  text-align: left;
+}
+
+.lobby-hueco__color {
+  width: 10px;
+  height: 22px;
+}
+
+.lobby-hueco__nick {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.lobby-hueco__estado {
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-micro);
+  letter-spacing: var(--cab-espaciado-rotulo);
+  text-transform: uppercase;
+  color: var(--cab-texto-rotulo);
+}
+
+.lobby-hueco--libre {
+  color: var(--cab-texto-apagado);
+  cursor: pointer;
+  opacity: 0.7;
+}
+
+.lobby-hueco--libre:hover {
+  opacity: 1;
+  box-shadow: inset 0 0 0 1px var(--cab-linea-fuerte);
+}
+
+/* Listo es la acción de esta pantalla: se ve en verde, como Jugar. */
+.lobby-hueco--listo .lobby-hueco__estado {
+  color: var(--cab-accion);
+}
+
+.lobby-hueco--yo {
+  box-shadow: inset 3px 0 0 var(--cab-elegido);
+}
+
+.lobby-hueco--caido {
+  opacity: 0.55;
+}
+
+.lobby-cabecera {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--cab-e2) var(--cab-e3);
+  margin-bottom: var(--cab-e3);
+}
+
+.lobby-cabecera .training__grupo-titulo {
+  margin: 0;
+}
+
+.lobby-mezclar {
+  margin-left: auto;
+}
+
+.lobby-codigo {
+  letter-spacing: 0.18em;
+  font-size: 40px;
+}
+
+.lobby-copiar {
+  display: flex;
+  gap: var(--cab-e2);
+}
+
+.lobby-copiar .button {
+  flex: 1;
+  margin: 0;
+}
+
+.lobby-enlace {
+  width: 100%;
+  border: 0;
+  padding: var(--cab-e2);
+  background: var(--cab-fondo);
+  color: var(--cab-texto-suave);
+  font-family: var(--cab-letra-texto);
+  font-size: var(--cab-t-micro);
+}
+
+/* «Faltan X jugadores»: el aviso que responde a por qué no se puede lanzar. */
+.lobby-faltan {
+  margin: 0;
+  padding: var(--cab-e3);
+  background: var(--cab-hueco);
+  color: var(--cab-texto-suave);
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-texto);
+  letter-spacing: 0.06em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.lobby-faltan--listo {
+  color: var(--cab-accion);
+}
+
+/* **LISTO, bien visible** (vuelta 101): verde lleno mientras falta pulsarlo y,
+   pulsado, en su sitio con la marca — un interruptor que se ve puesto. */
+.lobby-listo {
+  margin: 0;
+}
+
+.lobby-listo--puesto {
+  background: var(--cab-hueco);
+  color: var(--cab-accion);
+  box-shadow: inset 0 0 0 2px var(--cab-accion);
+}
+
+.lobby-quien-lanza {
+  margin: 0;
+  text-align: center;
+}
+
+.lobby-encurso .button {
+  align-self: flex-start;
+}
+
 /* **La portada de la cabina** (vuelta 99): los dos modos como dos puertas del
    mismo tamaño y los controles en la franja de abajo. */
 .portada {

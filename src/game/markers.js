@@ -602,9 +602,32 @@ export class DummyMarkers {
     // acaba de decidir si se le ve: por ángulo daría igual, pero asomado por
     // encima de una caja lo que se ve de un muñeco es la cabeza, y un rayo al
     // pecho choca contra la caja y dejaría sin ficha justo al que estás mirando.
-    _toTarget.copy(_head).sub(camera.position)
+    /**
+     * **Apuntar a la silueta, no a la cabeza** (vuelta 101). Hasta aquí el
+     * ángulo se medía contra la cabeza con un cono de 2.6°, y eso casi nunca se
+     * cumple jugando: se apunta al pecho, y a diez unidades el pecho está a 3°
+     * de la cabeza. Contra un muñeco quieto se notaba poco; contra una persona
+     * que se mueve, la ficha no salía — se reportó así, «no sale la ficha al
+     * apuntar a un jugador». Ahora se mide contra **el punto del eje del cuerpo
+     * más cercano a la mira**, con el cono ensanchado por lo que abulta el
+     * cuerpo a esa distancia: la ficha sale si la mira está sobre la silueta.
+     */
+    const pos = instance.group.position
+    const dx = pos.x - camera.position.x
+    const dz = pos.z - camera.position.z
+    const plano = Math.hypot(dx, dz)
+    const adelante = Math.hypot(_forward.x, _forward.z)
+    let altura = _head.y
+    if (plano > 1e-3 && adelante > 1e-3) {
+      // La altura de la mira al llegar a la distancia del cuerpo, acotada a él.
+      altura = camera.position.y + (_forward.y / adelante) * plano
+      altura = Math.min(_head.y, Math.max(pos.y + this.bodyTop * 0.1, altura))
+    }
+    _toTarget.set(dx, altura - camera.position.y, dz)
     const length = _toTarget.length()
-    const aiming = length > 1e-3 && _toTarget.dot(_forward) / length >= this._cosCone
+    // El medio ancho de la silueta, ~0.29 u en 1.8 de alto (`body.js`).
+    const holgura = length > 1e-3 ? Math.atan((this.bodyTop * 0.16) / length) : 0
+    const aiming = length > 1e-3 && _toTarget.dot(_forward) / length >= Math.cos(Math.acos(this._cosCone) + holgura)
 
     if (aiming && deltaMs > 0) slot.dwellMs += deltaMs
     else if (!aiming) slot.dwellMs = 0

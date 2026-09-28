@@ -13,7 +13,7 @@
 
 import * as THREE from 'three'
 import { CSS3DRenderer } from 'three/examples/jsm/renderers/CSS3DRenderer.js'
-import { ACCURACY, ACTION_PANEL, AVATAR, CAMERA, CLAVADAS, COVER, EDITOR, FOOTSTEPS, FRAME_LIMITS, GRENADES, HELP, IMPACTS, LOOK, MELEE_WEAPON, MOVEMENT, NET, OBJECTIVE, PLAYER, PROJECTILES, RECOIL_RESET_MS, RENDER, SCOPE, SECONDARY_WEAPON, SESSION_DURATION_S, SESSION_DURATIONS, SESSION_MODES, SIM, SIM_STEP_MS, SURFACES, TARGET, TEAMS, THROWABLE_WEAPONS, TRAJECTORY, WEAPONS, claveDeEscenario, definicionDeEntrenamiento, weaponSpeedFactor } from '../config.js'
+import { ACCURACY, ACTION_PANEL, AUDIO, AVATAR, BANDOS, CAMERA, CLAVADAS, COLORS, COVER, EDITOR, ENEMY, FEEDBACK, FOOTSTEPS, FRAME_LIMITS, GRENADES, HELP, IMPACTS, LOOK, MELEE_WEAPON, MOVEMENT, NET, OBJECTIVE, PLAYER, PROJECTILES, RECOIL_RESET_MS, RENDER, SCOPE, SECONDARY_WEAPON, SESSION_DURATION_S, SESSION_DURATIONS, SESSION_MODES, SIM, SIM_STEP_MS, SURFACES, TARGET, TEAMS, THROWABLE_WEAPONS, TRAJECTORY, WEAPONS, WEAPON_ORDER, claveDeEscenario, colorDeJugador, definicionDeEntrenamiento, weaponSpeedFactor } from '../config.js'
 import { createScene } from './scene.js'
 import { Scenario } from './scenario.js'
 import { Scope } from './scope.js'
@@ -26,7 +26,7 @@ import { createSceneTransition } from './transition.js'
 import { LookControls } from './lookControls.js'
 import { MovementController } from './movement.js'
 import { TargetManager } from './targets.js'
-import { initAudio, playBow, playDamage, playEquip, playGrenade, playRocket, playThrow, playDevice, playFootstep, playHeal, playHelmetCrack, playHit, playKill, playLanding, playMelee, playObjectiveDefused, playObjectiveExplosion, playShieldCharge, playUiConfirm } from '../audio/sfx.js'
+import { initAudio, playBow, playBulletWhizz, playDamage, playEquip, playGrenade, playRocket, playThrow, playDevice, playFootstep, playHeal, playHelmetCrack, playHit, playKill, playLanding, playMelee, playObjectiveDefused, playObjectiveExplosion, playShieldCharge, playUiConfirm } from '../audio/sfx.js'
 import { loadWeaponSamples, playDrySound, playWeaponReload, playWeaponShot } from '../audio/samples.js'
 import { attachListener, createEmitter, detachListener, setSpatialEnabled } from '../audio/spatial.js'
 import { ActionPanel } from './actionPanel.js'
@@ -98,6 +98,17 @@ const _lanzamiento = { x: 0, y: 0, z: 0, vx: 0, vy: 0, vz: 0, g: 0, tipo: null, 
  * la foto. La brújula y la ficha no dependen de esto.
  */
 const _sinFase = () => 'idle'
+/**
+ * **La fase de un rival de carne y hueso** (vuelta 101): «te está disparando»
+ * mientras dure el aviso que dejó su último tiro cerca de ti. Es lo único de la
+ * máquina de estados de un muñeco que se puede saber de una persona sin
+ * inventarlo: sus balas te han pasado cerca, o te han dado. «Te ha visto» (`?`)
+ * no se puede saber y no se pinta.
+ */
+const _faseDeRed = (instancia, now) => (instancia.disparandoHasta > now ? 'firing' : 'idle')
+const _flashDeZona = new THREE.Color(COLORS.targetHit)
+const _dirTiro = new THREE.Vector3()
+const _cercaTiro = new THREE.Vector3()
 
 /**
  * Desvía una dirección un ángulo aleatorio dentro de un cono de `spreadDeg`.
@@ -758,9 +769,32 @@ export class Engine {
       if (i && adelantoS > 0) this.proyectiles.adelantar(i, adelantoS)
     }
 
+    /**
+     * **Los avisos inmediatos de la vuelta 101**: el disparo de otro y una
+     * baja. Encadenados, como todo lo del cliente que puede querer oír también
+     * la página.
+     */
+    const suyoTiro = cliente.onTiro
+    cliente.onTiro = (m, rival) => {
+      suyoTiro?.(m, rival)
+      this._tiroDeRival(m)
+    }
+    const suyaBaja = cliente.onBaja
+    cliente.onBaja = (m, rival) => {
+      suyaBaja?.(m, rival)
+      this._bajaDeRival(m)
+    }
+
     const suyo = cliente.onBienvenida
     cliente.onBienvenida = (m) => {
       suyo?.(m)
+      /**
+       * **Otra partida en la misma sala** (vuelta 101): la sesión ya corre, así
+       * que no se vuelve a empezar — se rehace lo que es de la partida. El
+       * montón de cuerpos puede crecer (de un duelo a un 5v5), el mundo se
+       * limpia y el jugador va a su salida nueva.
+       */
+      if (this.phase === PHASE.RUNNING) this._otraPartidaDeRed()
       /**
        * **Con economía se sale con la pistola** (vuelta 64): la ranura principal
        * empieza vacía y la llena lo que compres. Sin economía —el huésped de los
@@ -804,6 +838,8 @@ export class Engine {
        * después. Un cuchillazo no deja marca en la pared: lo que dice dónde ha
        * ido es el arco.
        */
+      // **Y la zona alcanzada destella**, como en un muñeco (vuelta 101).
+      if (veredicto.impacto && veredicto.rival) this._destellarRival(veredicto.rival, veredicto.zona)
       if (d.m) {
         const tipo = d.m === 2 ? 'fuerte' : 'luz'
         playMelee(tipo, Boolean(veredicto.impacto), Boolean(veredicto.espalda))
@@ -996,6 +1032,30 @@ export class Engine {
       playKill()
     }
     this.callbacks.onVerdict?.(v)
+  }
+
+  /**
+   * **Dibujar o no** (vuelta 101). Lo apaga la página del multijugador
+   * mientras enseña el lobby, que tapa la pantalla entera: se pidió que el
+   * juego no se viera detrás del menú —movía la cámara al mover el ratón y
+   * mareaba—, y no dibujarlo es además no pagarlo.
+   */
+  dibujar(si) {
+    this._dibujar = Boolean(si)
+  }
+
+  /**
+   * **Cambiar de mapa sin recargar la página** (vuelta 101). En el lobby el
+   * anfitrión puede elegir otro mapa entre partidas, y la partida nueva llega
+   * con su bienvenida sobre el mapa que diga la sala: se monta aquí antes,
+   * con el mismo `_buildScenario` que usa el entrenamiento al cambiar de
+   * escenario. Los oclusores del cliente de red son los de este escenario, así
+   * que se le dan los nuevos.
+   */
+  fijarEscenario(definicion) {
+    this._escenarioFijo = definicion
+    this._buildScenario(definicion)
+    if (this.net) this.net.oclusores = this.scenario.occluders
   }
 
   /** ¿Hay una partida en red al otro lado? Lo preguntan los seis adaptados. */
@@ -2332,13 +2392,19 @@ export class Engine {
    *   del rival viaje en la foto, la fase sale de ahí y no de una suposición.
    */
   _syncRival(now, deltaMs) {
+    this._ahoraDeRed = now
     this._leerEstadoDeRed()
     this._asignarRivales()
     for (const v of this._rivales) {
       const instancia = v.instancia
       const rival = v.id ? this.net.rivales.get(v.id) : null
       const pose = rival ? this.net.poseDe(rival) : null
+      this._destelloDeRival(v, now)
       if (!pose || !pose.vivo) {
+        // **La muerte se ve, como la de un muñeco** (vuelta 101): el mismo
+        // estallido —crece y se desvanece en blanco— donde cayó. Hasta aquí el
+        // cuerpo de un rival abatido desaparecía sin más.
+        if (this._popDeRival(v, now)) continue
         v.avatar.group.visible = false
         instancia.state = 'down'
         // Un abatido no pisa, y al reaparecer lo hace en otro sitio: sin esto, el
@@ -2376,9 +2442,134 @@ export class Engine {
        * marcador sale apagado solo.
        */
       instancia.mirilla = rival.mirilla === true
+      // El nombre puede llegar después que el cuerpo: viaja en el marcador.
+      const nick = this.net.nickDe(rival.ranura)
+      if (instancia.nick !== nick) instancia.nick = nick
       this._pisadasDelRival(v, pose)
     }
-    this.markers.update(now, deltaMs, this._rivalInstancias, this.camera, _sinFase)
+    this.markers.update(now, deltaMs, this._rivalInstancias, this.camera, _faseDeRed)
+    this.muzzleFlash.update(now, this.camera)
+  }
+
+  /**
+   * **El destello de la zona alcanzada** (vuelta 101), el mismo que un muñeco
+   * (`FEEDBACK.zoneFlashMs`, en blanco): se enciende con tu veredicto **local**
+   * —el rayo que salió de tu arma, como la marca de bala de la vuelta 64— y se
+   * apaga solo. Sin él, darle a un rival no se veía en su cuerpo.
+   */
+  _destelloDeRival(v, now) {
+    if (!v.destello || v.pop) return
+    if (now < v.destello.hasta) return
+    v.destello = null
+    v.avatar.setColor(v.color)
+  }
+
+  /** Enciende el destello de una zona del cuerpo de un rival. */
+  _destellarRival(id, zona) {
+    const v = this._rivales?.find((r) => r.id === id)
+    if (!v || v.pop) return
+    const mallas = v.avatar.zones[zona] ?? []
+    for (const malla of mallas) malla.material.color.copy(_flashDeZona)
+    v.destello = { hasta: (this._ahoraDeRed ?? 0) + FEEDBACK.zoneFlashMs }
+  }
+
+  /**
+   * **El estallido de una baja**, con los números de las dianas
+   * (`FEEDBACK.targetPop*`). Devuelve si lo está dibujando: mientras dura, el
+   * cuerpo sigue a la vista en su sitio, creciendo y apagándose.
+   */
+  _popDeRival(v, now) {
+    const pop = v.pop
+    if (!pop) return false
+    const t = (now - pop.desde) / FEEDBACK.targetPopMs
+    const grupo = v.avatar.group
+    if (t >= 1 || !(t >= 0)) {
+      v.pop = null
+      grupo.scale.set(1, 1, 1)
+      for (const m of v.avatar._materials) { m.transparent = false; m.opacity = 1 }
+      v.avatar.setColor(v.color)
+      grupo.visible = false
+      return false
+    }
+    const eased = 1 - (1 - t) * (1 - t)
+    const escala = 1 + (FEEDBACK.targetPopScale - 1) * eased
+    grupo.visible = true
+    grupo.position.set(pop.x, pop.y - (escala - 1) * v.avatar.height * 0.5, pop.z)
+    grupo.scale.setScalar(escala)
+    for (const m of v.avatar._materials) {
+      m.transparent = true
+      m.opacity = FEEDBACK.targetPopOpacity * (1 - eased)
+      m.color.copy(_flashDeZona)
+    }
+    v.instancia.state = 'down'
+    return true
+  }
+
+  /**
+   * **Ha caído alguien** (vuelta 101, `MSG.BAJA`). Si es uno de los que se
+   * están dibujando, su cuerpo estalla donde está **ahora en pantalla**, y
+   * desde ya: la foto que lo trae caído llega dos fotos más tarde.
+   */
+  _bajaDeRival(m) {
+    const v = this._rivales?.find((r) => r.id === m.v)
+    if (!v || !v.avatar.group.visible) return
+    const p = v.avatar.group.position
+    v.destello = null
+    v.pop = { desde: this._ahoraDeRed ?? 0, x: p.x, y: p.y, z: p.z }
+  }
+
+  /**
+   * **Un rival ha disparado** (vuelta 101, `MSG.TIRO`), y pasa lo mismo que
+   * cuando dispara un muñeco (`enemyFire.js`, vueltas 40 y 64): **fogonazo**
+   * en la boca de su arma, **la voz de su arma** —con supresor si lo lleva—
+   * sonando desde donde está, y **el silbido** si la bala te pasa cerca sin
+   * darte. Con las mismas reglas y los mismos números, porque un rival que
+   * dispara en silencio es otro juego.
+   */
+  _tiroDeRival(m) {
+    const now = this._ahoraDeRed ?? 0
+    const arma = WEAPON_ORDER[m.w]
+    const ficha = WEAPONS[arma]
+    if (!ficha || m.m) return
+    const v = this._rivales?.find((r) => r.id === m.de)
+    const dir = direccionDeMira(m.yaw, m.pitch)
+    _dirTiro.set(dir.x, dir.y, dir.z)
+    // **Dónde se ve**: en el cuerpo que se está dibujando, que va dos fotos por
+    // detrás; poner el destello donde dice el mensaje lo encendería por
+    // delante del cuerpo. Si no se le dibuja, no hay destello — sí sonido.
+    if (v && v.avatar.group.visible && !v.pop) {
+      const g = v.avatar.group.position
+      const alto = v.avatar.height * v.avatar.group.scale.y
+      const frente = alto * ENEMY.muzzleForwardFactor
+      if (!ficha.tiro) {
+        this.muzzleFlash.flash(g.x + _dirTiro.x * frente, g.y + alto * 0.78 + _dirTiro.y * frente, g.z + _dirTiro.z * frente, now)
+      }
+    }
+    const emisor = v?.emisorTiro ?? this._emisorTiroSuelto
+    if (!v) this._emisorTiroSuelto.setPosition(m.x, m.y, m.z)
+    if (ficha.tiro?.proyectil === 'cohete') playRocket('salida', emisor)
+    else if (!ficha.tiro) playWeaponShot(arma, Boolean(m.s), emisor, AUDIO.enemyShotVolume)
+    if (ficha.tiro) return
+    // **El silbido de la que pasa cerca**, con la regla de los muñecos: al oído,
+    // por delante de la boca, no a bocajarro y no a través de una pared.
+    const yo = this.camera.position
+    const ox = yo.x - m.x
+    const oy = yo.y - 0.12 - m.y
+    const oz = yo.z - m.z
+    const t = ox * _dirTiro.x + oy * _dirTiro.y + oz * _dirTiro.z
+    if (t <= 0) return
+    const px = ox - _dirTiro.x * t
+    const py = oy - _dirTiro.y * t
+    const pz = oz - _dirTiro.z * t
+    const cerca = px * px + py * py + pz * pz <= ENEMY.whizz.radius * ENEMY.whizz.radius
+    if (!cerca) return
+    // Te está disparando a ti: el `!` sobre su cabeza, como un muñeco que abre fuego.
+    if (v) v.instancia.disparandoHasta = now + ENEMY.amenazaMs
+    if (Math.hypot(ox, oy, oz) < ENEMY.whizz.minShooterDistance) return
+    if (this.scenario.cortarSegmento(m.x, m.y, m.z, m.x + _dirTiro.x * t, m.y + _dirTiro.y * t, m.z + _dirTiro.z * t)) return
+    _cercaTiro.copy(_dirTiro).multiplyScalar(t).add({ x: m.x, y: m.y, z: m.z })
+    this._emisorSilbido.setPosition(_cercaTiro.x, _cercaTiro.y, _cercaTiro.z)
+    playBulletWhizz(this._emisorSilbido, AUDIO.whizzVolume)
   }
 
   /**
@@ -2409,8 +2600,19 @@ export class Engine {
       libre.pasoZ = null
       libre.pasoT = 0
       libre.pisadaT = 0
-      libre.avatar.setColor(this._colorDeRival(rival.ranura))
+      libre.color = this._colorDeRival(rival)
+      libre.avatar.setColor(libre.color)
       libre.instancia.nick = this.net.nickDe(rival.ranura)
+      /**
+       * **Un compañero lleva su ficha siempre** (vuelta 101): estaba escrito en
+       * `markers.js` desde la vuelta 39 —«el día que haya equipos, a un
+       * compañero se le ve siempre»— y el día ha llegado. Saber quién juega
+       * contigo no se gana apuntando.
+       */
+      libre.instancia.friendly = this.net.esCompanero(rival)
+      libre.instancia.disparandoHasta = 0
+      libre.pop = null
+      libre.destello = null
     }
   }
 
@@ -2421,10 +2623,13 @@ export class Engine {
    * para dieciséis colores que no signifiquen ya algo (propuesta 11 §1). A
    * quién tienes delante lo dice su ficha flotante, con su nick.
    */
-  _colorDeRival(ranura) {
-    const equipos = Object.keys(TEAMS)
-    if (this.net?.modo === 'todos') return TEAMS.magenta.color
-    return TEAMS[equipos[ranura % equipos.length]].color
+  _colorDeRival(rival) {
+    // **En el todos contra todos, el suyo** (vuelta 101): cada jugador es su
+    // propio equipo, y un equipo se reconoce por el color (vuelta 38). En un
+    // modo por equipos, el de su bando — azul o magenta, como en el duelo.
+    if (this.net?.todosContraTodos) return colorDeJugador(rival?.ranura ?? 0).color
+    const bando = rival?.bando ?? ((rival?.ranura ?? 0) % 2)
+    return BANDOS[bando].color
   }
 
   /**
@@ -2607,7 +2812,7 @@ export class Engine {
     const cuantos = Math.max(1, (this.net.plazas ?? 2) - 1)
     if (!this._rivales) this._rivales = []
     while (this._rivales.length < cuantos) {
-      const avatar = new Avatar(TARGET.radius, this._colorDeRival(this._rivales.length + 1))
+      const avatar = new Avatar(TARGET.radius, this._colorDeRival({ ranura: this._rivales.length + 1 }))
       avatar.group.visible = false
       this.scene.add(avatar.group)
       const instancia = {
@@ -2617,6 +2822,7 @@ export class Engine {
         friendly: false,
         nick: '',
         weaponKey: null,
+        disparandoHasta: 0,
       }
       this._rivales.push({
         id: null,
@@ -2639,6 +2845,16 @@ export class Engine {
           maxDistance: FOOTSTEPS.maxDistanceU,
           rolloffFactor: 1,
         }),
+        /**
+         * **Y el de sus disparos, con la curva de la sala** (vuelta 101): un
+         * tiro se oye a través del mapa como el de un muñeco, no con el radio
+         * de 16 u de las pisadas — que es el aviso de la vuelta 63 cumplido.
+         */
+        emisorTiro: createEmitter(avatar.group),
+        color: avatar.color,
+        /** El destello de la zona alcanzada y el estallido de la baja. */
+        destello: null,
+        pop: null,
         arma: null,
         /**
          * Dónde y cuándo se dio la última pisada. Una zancada es **distancia**,
@@ -2665,7 +2881,16 @@ export class Engine {
     this._rivalInstancia = this._rivales[0].instancia
     this._rivalEmisor = this._rivales[0].emisor
     if (this._rivalPisadas === undefined) this._rivalPisadas = 0
-    for (const v of this._rivales) v.id = null
+    for (const v of this._rivales) {
+      v.id = null
+      v.pop = null
+      v.destello = null
+    }
+    // **El fogonazo del rival** (vuelta 101): el pool de los muñecos, con una
+    // ranura por cuerpo y sus mismos números.
+    if (this.muzzleFlash.slots.length !== this._rivales.length) this.muzzleFlash.build(this._rivales.length, TARGET.radius)
+    if (!this._emisorTiroSuelto) this._emisorTiroSuelto = createEmitter(this.scene)
+    if (!this._emisorSilbido) this._emisorSilbido = createEmitter(this.scene)
     this._syncMarkers(getSettings())
   }
 
@@ -2737,6 +2962,9 @@ export class Engine {
       // servidor en tu foto: con un solo rival era «el otro», con nueve no.
       const quien = this.net.golpeadoPor ? this.net.rivales.get(this.net.golpeadoPor) : null
       const pose = quien ? this.net.poseDe(quien) : this.net.poseDelRival()
+      // Y quien te ha dado lleva su `!`, como un muñeco que te está disparando.
+      const suyo = quien ? this._rivales?.find((r) => r.id === quien.id) : null
+      if (suyo) suyo.instancia.disparandoHasta = (this._ahoraDeRed ?? 0) + ENEMY.amenazaMs
       const rumbo = pose ? this._bearingTo(pose.x, pose.z) : 0
       const cuanto = (this._vidaPrevia - vida) / PLAYER.maxHealth
       playDamage(Math.min(1, cuanto))
@@ -2752,6 +2980,28 @@ export class Engine {
       this._abatidoEnRed = false
       this._respawnPlayer()
     }
+  }
+
+  /**
+   * **Lo que se rehace al empezar otra partida en la misma sala** (vuelta
+   * 101). La sesión de red sigue —el mando, el bucle, el audio—; lo que cambia
+   * es el mundo de la partida: otros rivales, otro número de ellos, otra
+   * salida y nada de lo que quedaba por el suelo o volando.
+   */
+  _otraPartidaDeRed() {
+    this._prepararRival()
+    this.proyectiles.apagarTodos?.()
+    this.clavadas.limpiar()
+    this.impacts.clear()
+    this.granadas?.limpiar()
+    this._vidaPrevia = PLAYER.maxHealth
+    this._abatidoEnRed = false
+    this._stowed = {}
+    this._reiniciarReservas()
+    this._refillMagazine()
+    this.net.colocarEnSalida()
+    this.camera.updateMatrixWorld()
+    this._simPoseEpoch = -1
   }
 
   /** Abatido: se congela al jugador y arranca la cuenta de reaparición. */
@@ -3631,7 +3881,7 @@ export class Engine {
       const mira = this._miraConDesvio(_mira)
       // **Y con escopeta viaja además la semilla del patrón** (vuelta 91): los
       // ocho perdigones los derivan los dos extremos de ese número.
-      this.net.disparar(instanteReal, mira.yaw, mira.pitch, 0, 0, null, this._semillaDePerdigones())
+      this.net.disparar(instanteReal, mira.yaw, mira.pitch, 0, 0, null, this._semillaDePerdigones(), this.suppressorEnabled)
       playWeaponShot(this.weaponKey, this.suppressorEnabled)
       this.callbacks.onShot?.(false)
       // La marca en la pared no se pone aquí: se pone cuando el cliente resuelve
@@ -4599,8 +4849,14 @@ export class Engine {
     if (this.granadas?.activo) this.granadas.update(this.gameTime)
     this._actualizarCono()
     this._publishStats()
-    this.renderer.render(this.scene, this.camera)
-    this.cssRenderer.render(this.cssScene, this.camera)
+    // **Sin dibujar mientras se mira el lobby** (vuelta 101): el mundo de la
+    // partida sigue su paso —el servidor espera entradas—, pero detrás de una
+    // pantalla de menú opaca no hay nada que ver y sí una tarjeta gráfica que
+    // gastar. Ver `dibujar`.
+    if (this._dibujar !== false) {
+      this.renderer.render(this.scene, this.camera)
+      this.cssRenderer.render(this.cssScene, this.camera)
+    }
 
     // **Y se devuelve.** La pose interpolada vive sólo lo que dura el dibujado:
     // fuera de estas tres líneas `camera.position` es siempre la autoritativa,

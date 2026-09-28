@@ -24,7 +24,7 @@
  */
 
 import * as THREE from 'three'
-import { CLAVES_INTEGRADAS, COLORS, MODOS_DE_MAPA, modosDeMapa, COVER, FANS, FONDOS, GIZMO, MOVEMENT, ESCALERAS, ESTAMPADOS, PRIMARY_WEAPONS, PRISMAS, ROUNDS, SCENARIOS, SURFACES, TARGET, TEAMS, TELEPORTS, TODOS, TUBES, ZIPLINES, coverHeight, coverTintedColor, esFotoDeFondo, esImagenDeEstampado, fisicaDeEscenario, giro180, scenarioRoom } from '../src/config.js'
+import { CLAVES_INTEGRADAS, COLORS, MODOS_DE_MAPA, MODOS_MULTIJUGADOR, modosDeMapa, COVER, FANS, FONDOS, GIZMO, MOVEMENT, ESCALERAS, ESTAMPADOS, PRIMARY_WEAPONS, PRISMAS, ROUNDS, SCENARIOS, SURFACES, TARGET, TEAMS, TELEPORTS, TODOS, TUBES, ZIPLINES, coverHeight, coverTintedColor, esFotoDeFondo, esImagenDeEstampado, fisicaDeEscenario, giro180, scenarioRoom } from '../src/config.js'
 import { Avatar } from '../src/game/avatar.js'
 import { Engine } from '../src/game/engine.js'
 import { MovementController } from '../src/game/movement.js'
@@ -1786,12 +1786,58 @@ scene.add(marcaSpawn)
 /** Una escena que no dibuja: lo que `Scenario` necesita y nada más. */
 const escenaDeMentira = { add() {}, remove() {} }
 
+/**
+ * **Lo que le falta a un mapa para los modos en que se publica** (vuelta 101).
+ * Un mapa publicado en el todos contra todos con ocho salidas **se ofrece** en
+ * un lobby de diez, y el noveno que pulsa LISTO no tiene dónde salir; un mapa
+ * de duelo se ofrece también de 2v2 a 5v5, y ahí los compañeros aparecen al
+ * lado de su salida (`salidasDeEquipos`) — si una pared o un desnivel no les
+ * deja sitio, salen apilados encima del primero. Las dos cosas son de las que
+ * sólo se descubren jugando, que es tarde (vuelta 67): se dicen en la barra de
+ * arriba, que es la que dice el estado (vuelta 77), y en las dos hojas.
+ *
+ * Se mide contra `escenarioMedido`, el mapa entero, y con las mismas funciones
+ * que reparten las salidas en el servidor: un segundo cálculo sería un aviso
+ * que dice una cosa y una sala que hace otra.
+ */
+let faltasDeSalidas = []
+const MAYOR_EQUIPO = Math.max(...MODOS_MULTIJUGADOR.map((m) => m.porEquipo))
+function medirFaltasDeSalidas(medido) {
+  const modos = modosDeMapa(mapa)
+  const faltas = []
+  if (modos.includes('todos')) {
+    const n = medido.salidasDeTodos.length
+    if (n < TODOS.maxJugadores) faltas.push(`todos contra todos: ${n} salidas para ${TODOS.maxJugadores} jugadores`)
+  }
+  if (modos.includes('duelo')) {
+    const sinSitio = medido.salidasDeEquipos(MAYOR_EQUIPO).filter((p) => !p.libre).length
+    if (sinSitio) {
+      faltas.push(`${MAYOR_EQUIPO}v${MAYOR_EQUIPO}: ${sinSitio} compañero${sinSitio === 1 ? '' : 's'} sin sitio junto a su salida`)
+    }
+  }
+  faltasDeSalidas = faltas
+  pintarFaltasDeSalidas()
+}
+function pintarFaltasDeSalidas() {
+  const aviso = $('barra-salidas')
+  aviso.hidden = !faltasDeSalidas.length
+  aviso.textContent = faltasDeSalidas.length ? `faltan salidas · ${faltasDeSalidas.join(' · ')}` : ''
+  for (const id of ['salidas-aviso', 'salidas-aviso-duelo']) {
+    $(id).hidden = !faltasDeSalidas.length
+    $(id).textContent = faltasDeSalidas.length
+      ? `Faltan salidas para lo que se ofrece: ${faltasDeSalidas.join('; ')}. `
+        + 'En el todos contra todos se añaden en la hoja Duelo; en equipos, aparta la salida de las paredes o de los desniveles.'
+      : ''
+  }
+}
+
 function remontar() {
   if (escenarioMedido && escenarioMedido !== escenario) escenarioMedido.dispose()
   escenario?.dispose()
   escenario = new Scenario(scene, mapaParaDibujar())
   escenarioMedido = ocultos.size === 0 ? escenario : new Scenario(escenaDeMentira, mapa)
   setRoom(escenario.room)
+  medirFaltasDeSalidas(escenarioMedido)
 
   proxies.clear()
   // Y estos se sueltan de verdad: `remontar` corre en cada arrastre, así que una
@@ -4081,10 +4127,11 @@ function escribirModos() {
   }
   // **Y marcar el todos contra todos le pone sus salidas** (vuelta 100), por lo
   // mismo que el duelo: sin ellas el saneado quitaría el modo al guardar. Se
-  // proponen ocho, que es lo que cabe cómodo en un mapa de unos 64 × 64
-  // (propuesta 11 §2.2), y se colocan arrastrándolas en la hoja Duelo.
+  // proponen **diez** desde la 101, las butacas del modo, y se colocan
+  // arrastrándolas en la hoja Duelo. Con menos, el mapa se ofrece igual y la
+  // barra lo dice (`medirFaltasDeSalidas`).
   if (modos.includes('todos') && salidasDeTodosLeer().length < TODOS.minSalidas) {
-    while (salidasDeTodosLeer().length < 8) anadirSalidaDeTodos()
+    while (salidasDeTodosLeer().length < TODOS.maxJugadores) anadirSalidaDeTodos()
   }
   anotarEnLaBarra(mapa.clave)
 }
@@ -6075,12 +6122,15 @@ $('salida-anadir').addEventListener('click', () => {
 function pintarTodos() {
   const salidas = salidasDeTodosLeer()
   $('todos-jugadores').value = salidas.length
-  $('todos-jugadores').max = TODOS.maxJugadores
-  const cabe = salidas.length >= TODOS.minSalidas
-  $('cuenta-todos').textContent = salidas.length
-    ? `${salidas.length} salidas · caben ${salidas.length}${cabe ? '' : ` · hacen falta ${TODOS.minSalidas}`}`
-    : ''
-  $('cuenta-todos').className = `nota ${cabe ? 'cabe' : 'aprieta'}`
+  $('todos-jugadores').max = TODOS.maxSalidas
+  const caben = Math.min(salidas.length, TODOS.maxJugadores)
+  const llena = salidas.length >= TODOS.maxJugadores
+  $('cuenta-todos').textContent = !salidas.length
+    ? ''
+    : salidas.length < TODOS.minSalidas
+      ? `${salidas.length} salidas · hacen falta ${TODOS.minSalidas}`
+      : `${salidas.length} salidas · caben ${caben} de ${TODOS.maxJugadores}`
+  $('cuenta-todos').className = `nota ${llena ? 'cabe' : 'aprieta'}`
   $('todos-fichas').innerHTML = salidas.map((s, i) => {
     const puesta = marcaElegida?.que === 'todos' && marcaElegida.i === i
     return `<div class="ficha-salida ${puesta ? 'puesta' : ''}" style="--filo:#e8e8e8">
@@ -6103,8 +6153,8 @@ function pintarTodos() {
  */
 function anadirSalidaDeTodos() {
   const salidas = salidasDeTodosParaEscribir()
-  if (salidas.length >= TODOS.maxJugadores) {
-    contar([], `caben ${TODOS.maxJugadores} jugadores como mucho`)
+  if (salidas.length >= TODOS.maxSalidas) {
+    contar([], `el tope es ${TODOS.maxSalidas} salidas`)
     return null
   }
   const sala = scenarioRoom(mapa)
@@ -6127,12 +6177,13 @@ $('todos-anadir').addEventListener('click', () => {
 })
 
 /**
- * **El número de jugadores pone y quita salidas** (vuelta 100): tantos
- * jugadores, tantas salidas. Subirlo añade las que falten en sitios libres;
- * bajarlo quita las **últimas**, que son las que se pusieron después.
+ * **El número de salidas pone y quita salidas** (vuelta 100; se llamaba
+ * «Jugadores» hasta la 101, cuando pudo haber más salidas que butacas).
+ * Subirlo añade las que falten en sitios libres; bajarlo quita las
+ * **últimas**, que son las que se pusieron después.
  */
 campo('todos-jugadores', (v) => {
-  const quiere = Math.max(0, Math.min(TODOS.maxJugadores, Math.round(Number(v) || 0)))
+  const quiere = Math.max(0, Math.min(TODOS.maxSalidas, Math.round(Number(v) || 0)))
   const salidas = salidasDeTodosParaEscribir()
   while (salidas.length < quiere) anadirSalidaDeTodos()
   if (salidas.length > quiere) salidas.splice(quiere)

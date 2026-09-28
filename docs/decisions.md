@@ -14940,3 +14940,243 @@ detrás de lo que siga de la propuesta 11.
   nada—, y `controles97` y `escritorio98` con dos cada uno. Ninguno era de esta
   vuelta: reiniciado el servidor de desarrollo, los tres en verde. Es el store de
   ajustes duplicado por HMR, que es exactamente lo que dice §4.
+
+---
+
+## §101 — Multijugador: el lobby, los equipos, y el todos contra todos entero
+
+Se probó la 100 con cuatro jugadores reales en tres máquinas, y funcionaba. Lo que
+salió de probarlo son once cosas, y todas tienen la misma raíz que la vuelta 63
+ya nombró: **un modo que no tiene lo que tiene otro es un juego distinto**. Antes
+de nada, lo que se preguntó: el despliegue de `211b5df` **terminó bien** (la
+ejecución de GitHub Actions en verde; estaba en cola cuando se miró).
+
+### 101.1 — Un lobby delante de cada partida
+
+La página del multijugador (`/duelo/`, la misma ruta de siempre) ya no mete al que
+llega a jugar: le sienta en **un lobby**, y desde ahí se lanzan todas las partidas
+de la sala. Es `net/lobby.js`, que **envuelve** a `Partida` con la misma forma que
+un huésped ya usaba (`entra`, `recibe`, `tick`, `sedesconecta`…), así que los dos
+huéspedes cambiaron una línea y `partida.js` no sabe que existe.
+
+- **Cada partida es una `Partida` nueva**, con `pasoInicial` —el reloj de la sala
+  sigue, que es lo que la reconexión y el enganche del cliente necesitan— y un
+  `numero` que viaja en la bienvenida. Volver a jugar no es reiniciar un objeto:
+  es otro, y lo que quedaba de la anterior no se puede colar.
+- **Los mensajes del lobby empiezan por `l`** (`esDelLobby`) y el transporte del
+  cliente los aparta antes de que lleguen al netcode (`conLobby`): el cliente de
+  red sigue sin saber que hay un lobby, igual que la partida.
+- **LISTO es un interruptor por jugador**, y lanzar es sólo del anfitrión. El
+  requisito lo calcula **una** función (`requisitos()`) y el lobby lo publica:
+  el botón se enciende y el «faltan X» se escribe con el mismo dato.
+- **Quien no estaba listo se queda en el lobby**; en el todos contra todos puede
+  **entrar con la partida en marcha** (hay un botón), en equipos no: una ronda de
+  equipos a medias no tiene hueco limpio.
+- `VEKTOR_LOBBY=0` deja el huésped como hasta la 100 —quien llega entra a
+  jugar— para los bancos de red, que miden el cable y no la sala.
+
+### 101.2 — El lobby tiene la cara del Entrenamiento, y el mapa no se ve detrás
+
+`src/ui/Lobby.jsx` monta la carcasa de Cabina (`Cabina.jsx`) con las mismas
+tarjetas, segmentos y columna de la derecha que `Training.jsx`: **Modo** en seis
+botones, **Mapa** en un carrusel con la miniatura de cada uno (la misma
+`ScenarioThumbnail` del Entrenamiento), **Fase de compra** en botones, los
+**huecos** de la sala y a la derecha la sala: código, copiar enlace y código, lo
+que se va a jugar, el «faltan», **LISTO** y **Lanzar**. Lo que el invitado no
+puede tocar sale **apagado**, no escondido (vuelta 94).
+
+**El mundo no se dibuja en el lobby**: `motor.dibujar(false)` y el lienzo fuera.
+Mover el ratón movía la cámara dentro del mapa detrás del menú, y mareaba. El
+motor ni arranca hasta la primera partida; cambiar de mapa en el lobby es
+`motor.fijarEscenario(def)`, sin recargar.
+
+**Y «Duelo» pasa a llamarse «Multijugador»** en el menú principal y en el raíl:
+el todos contra todos no puede vivir dentro de un sitio que se llama Duelo, y no
+va a ser el último modo. En el raíl la palabra tiene que caber entera (vuelta 81),
+así que la letra del raíl baja de 12 a 11 px con menos espaciado, **para todos los
+iconos a la vez**.
+
+### 101.3 — Cómo se eligen los equipos
+
+**Cada jugador elige su hueco**, pinchándolo, y quien llega se sienta en el equipo
+que tenga menos. El anfitrión tiene además **Mezclar equipos** (un reparto al azar
+equilibrado). Es lo del CS casual y lo de cualquier lobby con amigos: elegir con
+quién juegas es parte de jugar con amigos, y el reparto automático al llegar hace
+que no haga falta tocar nada si da igual. Cambiar de modo o de mapa **quita el
+LISTO a todos**: lo que se había aceptado ya no es lo que hay.
+
+Se puede empezar **desequilibrado** —2 contra 3— con que haya **un listo en cada
+equipo**; el todos contra todos pide **3 listos** y admite 10.
+
+### 101.4 — Ranura y bando son dos cosas
+
+La 100 dejó escrito que separar `ranura` de `equipo` esperaba a la fase 2, y ésta
+es. **La ranura es el sitio**: la butaca, la salida y el color en el todos contra
+todos. **El bando es con quién**: `ranura % 2` en equipos, `null` en el todos
+contra todos. El campo `equipo` se fue de `partida.js` entero. El duelo **es** un
+modo de equipos con uno por equipo, y por eso sale dígito a dígito igual.
+
+### 101.5 — Las reglas de los equipos
+
+Lo que se decidió, con su porqué:
+
+- **La ronda acaba cuando un bando no tiene a nadie en pie**; un caído sin cable
+  cuenta como abatido. Al tiempo gana **quien tenga más vivos**, y si empatan,
+  **más vida sumada**; si eso también empata, la ronda se repite, como en el duelo.
+- **Sin fuego amigo**: ni bala, ni cuchillo, ni onda de un compañero. En el
+  servidor y en el cliente, la bala **atraviesa** al compañero (no lo tapa), y
+  eso es lo mismo en los dos extremos. **Tu propio cohete sí te alcanza**: no es
+  fuego amigo, es tu cohete (vuelta 86).
+- **La economía es de cada jugador**, y el premio de ronda es del bando: ganar da
+  a los del bando ganador lo de ganar, perder lo de perder, y la baja al que la
+  hizo. Morir cuesta tu equipo, no el del compañero.
+- **Fase de compra**: cada uno en su corralito, en su salida, y **a los
+  compañeros sí se les ve** (`entraEnLaFoto`): lo que la compra esconde es al
+  rival, y con un compañero es con quien se decide por dónde se sale.
+- **Pausas**: la pausa por caída sólo en el duelo —con diez, un cable que se va
+  pararía a nueve—. Las tres libres son **del bando**, no de cada uno.
+- **Quien entra a media ronda espera muerto** a la siguiente; **quien abandona**
+  deja a su equipo con uno menos, y un equipo sin nadie pierde la partida.
+
+### 101.6 — Las salidas de los compañeros salen del mapa de duelo
+
+Un mapa de equipos **es un mapa de duelo**: dos salidas, una por bando. Los
+compañeros aparecen **al lado de su salida**, en perpendicular a su rumbo a
+`EQUIPOS.separacionU` (1.6 u) y en filas detrás, y un puesto sólo vale si está a
+la misma altura de suelo y **en línea recta** con la salida (`cortarSegmento`):
+nadie aparece al otro lado de una pared ni encima de una caja. Lo hace
+`Scenario.salidasDeEquipos(porEquipo)` y lo leen el servidor y el editor. En los
+cuatro mapas de duelo de hoy caben los cinco de cada equipo, simétricos.
+
+**Lo que necesitaría un mapa de equipos de verdad en Alchemist**, y no se ha
+construido: conos de salida **por jugador** (hoy son derivados) y una caja de
+compra **por equipo** en vez de una por jugador. Cuando exista un mapa pensado
+para 5v5 —que no es un mapa de duelo más grande (propuesta 11 §10)—, esas dos
+cosas son la puerta.
+
+### 101.7 — Un color por jugador en el todos contra todos
+
+Salían azul y magenta, dos y dos: en el todos contra todos cada uno es su propio
+equipo. `COLORES_DE_JUGADOR` son **diez**, elegidos **maximizando la menor
+distancia ΔE2000 entre ellos** (22.6), con el azul y el magenta fijos delante para
+que el duelo no cambie. Como se pidió, no esquivan los colores del juego: puede
+haber un jugador naranja o blanco. Van en el cuerpo, en la ficha, en el lobby y
+en el marcador.
+
+### 101.8 — El recuento que decía tres siendo cuatro
+
+Dos causas, las dos arregladas:
+
+- **El texto contaba a los demás** (`ocupadas − 1`) y se leía como el total. Se
+  quitó: el lobby lista a los que hay.
+- **Dos pestañas del mismo navegador compartían el pase de reconexión**, que vivía
+  en `localStorage` —que es por origen—. La segunda entraba **con el pase de la
+  primera** y el servidor, que ve un pase válido, le daba **la misma butaca**: dos
+  mandos, un jugador. Ahora el pase es **de la pestaña** (un identificador en
+  `sessionStorage` y una lista con latido en `localStorage`), y si el mismo pase
+  vuelve a entrar el huésped **cierra el cable viejo** con un aviso, en vez de
+  dejar dos cables en una butaca.
+
+### 101.9 — Diez butacas, y más salidas que butacas
+
+`TODOS.maxJugadores` baja de 16 a **10**, y La Rotonda pasa de 8 a **12 salidas**,
+tres por cuarto: reaparecer es ir a la salida más lejos del vivo más cercano, y con
+alguna de sobra siempre hay una lejos. Para eso el formato admite más salidas que
+butacas (`TODOS.maxSalidas`, 16). Medido con los rayos laterales de la 100:
+**0 de 66 parejas de salidas se ven** (la primera variante, 8; la segunda, 4; un
+pilar y dos bolsillos más estrechos lo cerraron).
+
+**Y Alchemist avisa** de lo que falta para lo que se ofrece: un mapa publicado en
+el todos contra todos con menos de diez salidas, o un mapa de duelo en el que un
+compañero del 5v5 no tiene sitio junto a su salida. Va en la barra de arriba —la
+barra dice el estado (vuelta 77)— y en las hojas Mapa y Duelo, y se mide con las
+**mismas funciones que reparten las salidas en el servidor** (`salidasDeTodos`,
+`salidasDeEquipos`). El campo «Jugadores» de la hoja Duelo pasa a llamarse
+**«Salidas»**, que es lo que cuenta desde que puede haber más que jugadores.
+
+### 101.10 — Lo que le faltaba al multijugador del entrenamiento
+
+La regla de la 63, aplicada modo por modo. Lo que faltaba, y por qué no se veía:
+
+- **Los disparos del rival no llegaban a nadie más.** Un disparo lo sabían quien
+  lo hacía y el servidor, así que un rival que te vaciaba un cargador **no sonaba
+  ni se veía disparar**. Ahora el servidor lo cuenta a los demás (`MSG.TIRO`): lo
+  que el tirador ya dijo al disparar —dónde, hacia dónde, con qué y con qué voz—,
+  **sin decir si ha dado**. De ahí salen, con el código del entrenamiento: el
+  **fogonazo** en el cuerpo que se dibuja, **la voz de su arma** (con supresor si
+  lo lleva) desde su emisor, el **silbido** de la bala que te pasa cerca y el
+  **«!»** sobre quien te está disparando.
+- **La ficha al apuntar** se medía contra la cabeza con un cono de 2.6°: apuntar
+  al pecho no la sacaba nunca. Ahora se mide contra el eje del cuerpo, con el
+  cono ensanchado por su anchura.
+- **El destello del impacto en la zona** y **el golpe de la baja** (el mismo
+  «pop» de los muñecos) no existían sobre un rival.
+- **A un compañero se le ve la ficha siempre** (`friendly`, que estaba preparado
+  desde la vuelta 39 para esto).
+
+Lo que **no** se añadió, a propósito: el cuchillazo del rival sigue sin sonar a
+los demás —no hay voz de «ha fallado un tajo»—, y el `?` de «te ha visto» no se
+puede deducir de nada que viaje.
+
+### 101.11 — La baja no espera a la foto
+
+Se sospechaba del paso de 60 a 20 fotos por segundo, y la sospecha era buena.
+Medido en pasos contra `Partida` (`retraso101`; el navegador de este contenedor
+dibuja a pocos fps y junta los mensajes, así que no distingue 16 ms de 50):
+
+| | duelo (60 Hz) | todos (20 Hz) |
+|---|---|---|
+| veredicto por la foto | 0 ms | media 11, peor 33 |
+| el cuerpo cae por las fotos | 50 ms | media 111, peor 133 |
+| aviso inmediato (veredicto y baja) | 0 | 0 |
+
+O sea: el sonido y la marca de la baja esperaban hasta un tercio de la foto, y el
+cuerpo del rival **seguía de pie más del doble** que en el duelo, porque se dibuja
+dos fotos por detrás. Ahora el veredicto (`MSG.VEREDICTO`), el golpe que recibes
+(`MSG.GOLPE`) y la baja (`MSG.BAJA`) **salen en el paso en que ocurren**, y la baja
+tumba el cuerpo en cuanto llega. La foto los sigue repitiendo por si uno se
+pierde. El ritmo de 20 Hz se queda: lo que tardaba no era moverse, era enterarse.
+
+### 101.12 — Un final para todos los modos, y el marcador dice cuánto falta
+
+**El texto bajo el reloj se fue** («1 · líder 1 / 20», que no se entendía). El
+marcador de **TAB** sale ahora en todos los modos y **arriba dice qué hace falta
+para ganar**: «Gana el primero en llegar a 20 bajas · o el que más lleve a los 8
+min», o las rondas en equipos. Con eso cada uno saca sus cuentas.
+
+**El final es uno**: el resultado, **Volver a jugar** en verde, grande y latiendo,
+y **Salir al menú**. Volver a jugar te devuelve al lobby de la misma sala, **listo**,
+con el mismo modo y mapa; el anfitrión lanza la siguiente en cuanto estéis. Es la
+revancha que se pidió para el duelo, y es el mismo botón en todos los modos. El
+todos contra todos ya no empieza otra solo a los diez segundos: la siguiente es
+del lobby. Y con el final puesto, el menú de ESC no asoma por detrás.
+
+### 101.13 — Lo pequeño
+
+- **Alchemist**: en la hoja Duelo «+ Salida» se iluminaba con el ratón sobre
+  «Medir». Los tres botones iban dentro de **una `<label>`**, y una etiqueta pasa
+  su `:hover` a su primer control. Ahora es un `<div>`.
+- **`laser87`** se rehízo para el arco en la tecla 5 (vuelta 92), y vuelve a dar
+  **cero píxeles de láser** en la pantalla del rival.
+- **El envío en binario** queda anotado en `docs/roadmap.md`, para cuando el
+  tráfico lo pida. No ahora: la sala de diez son 309 KiB/s.
+- `duelomenu98`, `todos100nav` y `menu92` quedan retirados: medían el menú de
+  crear la sala, que ya es el lobby. Los sustituyen `lobby101nav`, `todos101nav` y
+  `lobby101tam` (LISTO, Lanzar y Copiar se ven y se pinchan a 1920×1080,
+  1366×768, 1280×860 y 700×460, sin scroll horizontal). `cabina99b` [5] mide ahora
+  la letra del botón LISTO.
+
+### 101.14 — Lo que costó ver
+
+**Una línea que desaparece en un refactor no da error.** Al unificar el final se
+borró `cliente.onTodos = …` y el todos contra todos siguió jugándose perfecto:
+**no salía el final**. Lo cazó `todos101nav` porque llega hasta el final de una
+partida (con `VEKTOR_BAJAS=2`, sólo depurando); ningún banco anterior lo hacía.
+
+**Y tres bancos en rojo no eran del código**: `armeria98`, `mapas98` y
+`controles97` se pusieron rojos después de tocar `config.js` con Vite levantado —el
+store duplicado del §4 de CLAUDE.md, otra vez—. Reiniciado Vite, los tres verdes. Y `red45` da dos rojos de **margen** —muestras en
+el aire contadas por frame, y la cola del servidor a 18 fps— con el error de
+reconciliación en cero; con `git stash` y el código de la 100, **los mismos rojos y
+uno más** (a 20 fps). Son del contenedor, que es lo que el §4 manda comprobar antes
+de creérselo.

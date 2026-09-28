@@ -520,7 +520,19 @@ cola de diez minutos.
     todos es uno para todos (§1). Se separan en la fase 2, que es la primera que
     tiene dos jugadores en el mismo bando.
 
-**Fase 2 — Equipos** *(depende de 1)*
+**Fase 2 — Equipos** *(construida en la vuelta 101, junto con el lobby)*
+
+  De 2v2 a 5v5 sobre la misma sala de N, lanzados desde **un lobby** que es el
+  mismo para todos los modos (`net/lobby.js`, `src/ui/Lobby.jsx`). Las reglas que
+  se decidieron —ronda por bando caído, sin fuego amigo, economía por jugador con
+  premio por bando, compañeros visibles en la compra, pausas del bando— están en
+  `docs/decisions.md` §101.5. **Un mapa de equipos es un mapa de duelo**: los
+  compañeros salen junto a la salida de su bando (`salidasDeEquipos`) y Alchemist
+  avisa si alguno no cabe. Lo que no está: conos de salida por jugador y caja de
+  compra por equipo en el editor, que esperan al primer mapa pensado para 5v5.
+  **Ranura y bando ya son dos campos** (lo que la fase 1 dejó pendiente).
+
+  Lo que la propuesta pedía de partida, para el registro:
 - 3v3 primero. Fin de ronda por equipo caído, desempate, economía por bando, y la
   decisión de fuego amigo tomada a propósito.
 - 5v5 es la misma fase con otro número **si el mapa existe**: un mapa de diez no

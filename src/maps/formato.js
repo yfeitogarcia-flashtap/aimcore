@@ -751,9 +751,9 @@ function sanearTodos(bruto, problemas) {
     return null
   }
   let salidas = bruto.salidas.map((s, i) => sanearSalida(s, i, problemas, 'salida de todos')).filter(Boolean)
-  if (salidas.length > TODOS.maxJugadores) {
-    problemas.push(`todos: ${salidas.length} salidas y caben ${TODOS.maxJugadores}; sobran las últimas`)
-    salidas = salidas.slice(0, TODOS.maxJugadores)
+  if (salidas.length > TODOS.maxSalidas) {
+    problemas.push(`todos: ${salidas.length} salidas y el tope es ${TODOS.maxSalidas}; sobran las últimas`)
+    salidas = salidas.slice(0, TODOS.maxSalidas)
   }
   if (salidas.length && salidas.length < TODOS.minSalidas) {
     problemas.push(`todos: hay ${salidas.length} salida(s) y hacen falta ${TODOS.minSalidas} para que no sea un duelo`)

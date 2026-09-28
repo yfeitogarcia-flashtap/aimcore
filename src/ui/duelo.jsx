@@ -61,7 +61,7 @@ import '../styles.css'
  * compran ni las reparte el mapa—, así que ahí la armería **sí equipa**, como
  * en el entrenamiento. En el duelo sigue enseñando y nada más.
  */
-function CapaDuelo({ api, alCerrarPanel, equipa = false }) {
+function CapaDuelo({ api, alCerrarPanel, equipa: equipaInicial = false }) {
   const [arma, setArma] = useState({ weaponKey: 'pulse', suppressed: false })
   /**
    * **El dinero, que se enseña siempre** (vuelta 88). Vive aquí y no en `stats`
@@ -81,6 +81,15 @@ function CapaDuelo({ api, alCerrarPanel, equipa = false }) {
   const [panel, setPanel] = useState(null)
   const [settings, setSettings] = useState(getSettings)
   const [binds, setBinds] = useState(getKeybinds)
+  /**
+   * **Si la armería equipa, y si se ve el HUD** (vuelta 101). Los dos dependían
+   * de la sala al montar la página, y desde que hay lobby la sala cambia de
+   * modo sin recargar: en un todos contra todos las armas son libres y la
+   * armería equipa; en uno por equipos se compran y sólo enseña. Y en el lobby
+   * no hay HUD: no hay partida que medir.
+   */
+  const [equipa, setEquipa] = useState(equipaInicial)
+  const [conHud, setConHud] = useState(true)
 
   const hudRef = useRef(null)
   const miraRef = useRef(null)
@@ -106,6 +115,8 @@ function CapaDuelo({ api, alCerrarPanel, equipa = false }) {
     api.setApuntando = setApuntando
     api.setACuchillo = setACuchillo
     api.setPanel = setPanel
+    api.setEquipa = setEquipa
+    api.setConHud = setConHud
     api.leerPanel = () => panel
   })
 
@@ -117,13 +128,13 @@ function CapaDuelo({ api, alCerrarPanel, equipa = false }) {
         * porque el 1v1 no tiene puntuación (vuelta 45) y lleva su propio
         * marcador de ronda. Todo lo demás es exactamente el del entrenamiento.
         */}
-      <Hud
+      {conHud && <Hud
         ref={hudRef}
         weaponKey={arma.weaponKey}
         suppressed={arma.suppressed}
         dinero={dinero}
         duelo
-      />
+      />}
       {jugando && <Crosshair ref={miraRef} hidden={apuntando} melee={aCuchillo.dentro} backstab={aCuchillo.espalda} />}
 
       {panel && (
@@ -194,5 +205,7 @@ export function montarCapaDeDuelo(contenedor, { alCerrarPanel, equipa = false } 
     /** `null`, `'opciones'` o `'ficha'`. */
     panel: (cual) => api.setPanel?.(cual),
     hayPanel: () => Boolean(api.leerPanel?.()),
+    equipa: (valor) => api.setEquipa?.(Boolean(valor)),
+    conHud: (valor) => api.setConHud?.(Boolean(valor)),
   }
 }
