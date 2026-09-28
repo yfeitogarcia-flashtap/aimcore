@@ -418,7 +418,30 @@ export const GRENADES = {
    * lo dibujan igual sin haberlo hablado. Parada no gira, que es la mitad de que
    * «se ha parado» se lea de un vistazo.
    */
-  dibujo: { radioU: 0.17, giroPorSegundo: 2.2 },
+  dibujo: {
+    radioU: 0.15,
+    giroPorSegundo: 2.2,
+    /**
+     * **Esfera de neón, no octaedro** (vuelta 103, lo pidió quien lo juega:
+     * «ahora las granadas son cuadradas»). El núcleo es una esfera del color de
+     * su clase con **una franja oscura en el ecuador**, que es lo que deja ver
+     * que gira —una esfera lisa girando se lee quieta—; alrededor, un **halo**
+     * aditivo del mismo color, que es lo que la hace neón sin luces en la
+     * escena (vuelta 38: sin luces, lo que brilla es lo que se suma).
+     *
+     * - `franja`: grosor del aro, en fracción del radio, y su tono (0 negro, 1
+     *   el color de la granada).
+     * - `halo`: radio del halo en radios del núcleo y su opacidad.
+     * - `latido`: **el halo late, y más deprisa según se acaba la mecha**. La
+     *   fase es `−vueltas · ln(queda + colchon)`, cuya derivada es
+     *   `vueltas / (queda + colchon)`: a 4 s de mecha late una vez por segundo
+     *   y en el último cuarto de segundo, cinco. Es forma cerrada del tiempo
+     *   que queda, así que no guarda nada y los dos extremos la dibujan igual.
+     */
+    franja: { grosor: 0.15, tono: 0.06 },
+    halo: { radios: 2.6, opacidad: 0.9 },
+    latido: { amplitud: 0.28, vueltas: 4, colchonS: 0.6 },
+  },
   /**
    * **El tiro corto, con el clic derecho** (lo pidió quien lo juega).
    *
@@ -3453,6 +3476,16 @@ export const SETTINGS = {
   helpMessages: {
     label: 'Mensajes de ayuda',
     default: true,
+  },
+  /**
+   * **El arma en pantalla, en maqueta** (vuelta 103). Apagado de fábrica: desde
+   * la vuelta 38 Vektor no dibuja el arma en la mano, y esto es una maqueta
+   * para decidir con ella delante si eso cambia. Es del jugador y de su
+   * pantalla, no de la partida, así que vive en opciones. Ver `VIEWMODEL`.
+   */
+  armaEnPantalla: {
+    label: 'Arma en pantalla (maqueta)',
+    default: false,
   },
   /**
    * **Arrancar en pantalla completa** (vuelta 97), y sólo existe en la app de
@@ -6776,6 +6809,50 @@ export const MUSIC = {
  *
  * Medido contra el fondo real del Plano A: ver `docs/decisions.md` §38.
  */
+/**
+ * **El arma en la mano, vista desde tus ojos** (vuelta 103, maqueta). Se
+ * construye con **la silueta del arma** —el mismo trazado de potrace que el
+ * HUD— extruida a un recorte con grosor y su contorno encendido, y un antebrazo
+ * del color de tu equipo que la sujeta: la misma estética de líneas del resto
+ * de Vektor, sin un modelo ni una textura nuevos. Se dibuja en una segunda
+ * pasada con su propia cámara, encima de todo y sin chocar con el mundo, que es
+ * como lo hacen todos los shooters para que el arma no se meta en una pared.
+ *
+ * Todo lo que se mueve es presentación: no toca la mira, ni la bala, ni el
+ * retroceso de verdad (que es de la cámara, vuelta 61).
+ *
+ * - `fov`: el encuadre de su cámara, aparte del del mundo, para que el arma no
+ *   se deforme al cambiar el del jugador.
+ * - `largoU`: lo que mide de ancho el `viewBox` de las siluetas en el mundo.
+ *   Todas comparten `viewBox`, así que una pistola sale más pequeña que un
+ *   rifle sin decir nada.
+ * - `grosorU`: lo que se extruye el recorte.
+ * - `sitio`: dónde va respecto a los ojos (derecha, abajo, delante) y cuánto
+ *   se gira hacia el centro, en grados, para que se le vea el costado.
+ * - `retroceso`, `balanceo`, `inercia`, `recarga`, `subir`: los cinco gestos.
+ */
+export const VIEWMODEL = {
+  fov: 58,
+  largoU: 0.6,
+  grosorU: 0.035,
+  sitio: { x: 0.2, y: -0.17, z: -0.62, giroDeg: 6, cabeceoDeg: 1, alabeoDeg: -3 },
+  relleno: '#101317',
+  contorno: '#dfe4ea',
+  contornoOpacidad: 0.85,
+  brazo: { radioU: 0.028, tonoTubo: 0.45, desde: { x: 0.42, y: -0.6, z: -0.2 } },
+  retroceso: { atrasU: 0.055, arribaGrados: 7, vidaMs: 75 },
+  balanceo: { amplitudU: 0.009, pasosPorU: 0.55 },
+  inercia: { porRadian: 0.18, maxU: 0.05, vidaMs: 90 },
+  recarga: { bajaU: 0.09, giroGrados: 22 },
+  subirMs: 180,
+  /**
+   * **Las fotos que miran al revés.** En las referencias el cañón apunta a la
+   * izquierda; en la del cuchillo, la hoja apunta a la derecha. Es un dato de
+   * la foto, no del arma, y por eso va aquí y no en `WEAPONS`.
+   */
+  miranALaDerecha: ['vanta'],
+}
+
 export const TEAMS = {
   blue: { label: 'Azul', color: '#2F6BF0' },
   magenta: { label: 'Magenta', color: '#D94BD9' },
@@ -7688,6 +7765,47 @@ export const NET = {
    * de colchón.
    */
   interpolarFotos: 2,
+  /**
+   * **El colchón del rival se adapta a la red** (vuelta 103). Lo de arriba es
+   * el suelo; encima se suma lo tarde que están llegando las fotos, medido. En
+   * wifi un paquete perdido retiene a todos los de detrás (TCP) y llegan de
+   * golpe, y con 50 ms fijos una foto con 60 de retraso dejaba al rival
+   * congelado y luego lo hacía saltar: medido con ±80 ms, 46 frames congelados
+   * y 36 saltos de 173. Sólo se nota con el rival delante, que es cuando se le
+   * dibuja — «me da lag cuando estoy cerca de alguien».
+   *
+   * - `tardeVidaS`: cuánto tarda en olvidarse un tirón. Un pico sube el
+   *   colchón al instante y baja a la mitad en unos dos segundos.
+   * - `subeTicksPorS` / `bajaTicksPorS`: a qué ritmo se mueve el colchón hacia
+   *   su objetivo. Subir rápido —un rival que va un 10 % más lento un instante
+   *   no se ve; uno congelado, sí— y bajar despacio, que acelerarle se nota.
+   * - `maxTicks`: el tope, por debajo del rebobinado de 200 ms
+   *   (`maxRewindMs`), o un disparo a lo que ves dejaría de poder juzgarse.
+   * - `reanclarTicks`: un desfase mayor que esto no es un tirón, es otro reloj
+   *   —una pausa, que para el paso del servidor—, y se vuelve a anclar.
+   */
+  colchonAdaptable: {
+    tardeVidaS: 3,
+    subeTicksPorS: 4,
+    bajaTicksPorS: 0.6,
+    maxTicks: 10,
+    reanclarTicks: 30,
+  },
+  /**
+   * **El ping con el que se adelanta el reloj propio es el menor del último
+   * segundo** (vuelta 103), no el último que llegó. Un pico de 150 ms en un
+   * ping de 40 —cualquier tirón del wifi— subía de golpe el paso objetivo y el
+   * cliente metía hasta `maxCatchUpTicks` pasos en un frame: el jugador daba un
+   * salto hacia delante sin tocar nada. Quedarse corto no cuesta nada, porque
+   * el servidor espera a la entrada y se pone al día (vuelta 45); pasarse cuesta
+   * latencia y tirones. `rttVentana` son las muestras que se miran.
+   */
+  rttVentana: 60,
+  /**
+   * **Y ponerse al día, de paso en paso** (vuelta 103): como mucho uno de más
+   * por frame. Con cuatro, un desfase se cobraba en un solo frame y se veía.
+   */
+  clockCatchUpPerFrame: 1,
   /**
    * **Quién entra en la foto de cada uno** (vuelta 100). La regla está escrita
    * en `net/interes.js` y en ningún otro sitio; aquí están sus tres números.

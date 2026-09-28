@@ -15303,3 +15303,146 @@ Visto en la captura de la tienda: la combinación («1 1») iba en absoluto en l
 esquina de arriba, justo encima del precio. Ahora va en el flujo, debajo del
 precio, y no puede pisar nada.
 
+
+## §103 — El tirón cerca de un rival, el disparo que sonaba dos veces, y la mano
+
+Tercera prueba con dos PCs. Se reportaron seis cosas: tirones fuertes al estar
+cerca de otro jugador, el disparo que seguía sonando doble, la escopeta dejando
+una sola marca, la armería cerrándose al pinchar dentro, granadas «cuadradas» y
+una pregunta: ¿se puede ver el arma en la mano, como en otros shooters?
+
+### 103.1 — El tirón no era el dibujo ni el servidor: era el cable
+
+Antes de tocar nada se midió dónde se va el tiempo (`lag103`, dos navegadores,
+con el rival lejos y tapado y con el rival delante corriendo y disparando). El
+coste de tener a alguien cerca —dibujarlo, sus marcadores, sus pisadas, su
+fogonazo— sale **en décimas de milisegundo por frame**, lejos de lo que se nota.
+Y el huésped, con dos jugadores, gasta un **2.5 % de un núcleo** (`cpu103`). Ni
+el dibujo ni el servidor explican un tirón que se ve.
+
+Lo que sí lo explica es cómo llega la foto. La red es **WebSocket sobre TCP**, y
+TCP entrega en orden: un paquete que se retrasa en el wifi retiene a todos los de
+detrás, que llegan luego de golpe. Y cerca de un rival es justo cuando más
+importa, porque es cuando te está llegando su foto entera (§100: más lejos no
+llega). Dos cosas del cliente convertían esas ráfagas en tirones:
+
+- **El colchón de interpolación era fijo** —dos fotos por detrás—, así que una
+  ráfaga que llega tarde deja al rival sin foto nueva entre la que interpolar: se
+  congela y luego salta.
+- **El reloj propio se re-anclaba con cada pico de RTT.** El adelanto del cliente
+  (§45: el RTT entero) salía del RTT de la última foto, y un pico de wifi lo
+  movía de golpe: pasos de más o de menos, y el propio movimiento a tirones.
+
+Y el banco no lo veía porque **la red simulada no era TCP**: con jitter, cada
+mensaje llevaba su propio retraso y podían llegar desordenados. Eso produce
+correcciones falsas —medidas, múltiplos exactos de un paso— y no produce ráfagas,
+que es lo que pasa de verdad.
+
+### 103.2 — Lo arreglado
+
+- **La red simulada entrega en orden** (`enlace.enOrden`): una cola por sentido y
+  un solo temporizador, como TCP. El modo viejo se queda de fábrica para los
+  bancos que ya lo usan. Y el cliente **tira una foto más vieja que la última**
+  (`_reconciliar`), que no puede pasar por TCP pero sí por cualquier transporte
+  futuro.
+- **El colchón se adapta** (`NET.colchonAdaptable`). Se lleva una envolvente de
+  cuándo llega cada foto respecto al reloj del servidor, y cuánto se ha retrasado
+  últimamente (con vida media de 3 s). El colchón es lo de siempre **más** ese
+  retraso, con tope de 10 pasos —por debajo de `maxRewindMs`, o el rebobinado no
+  llegaría a lo que dibujas—. **Sube deprisa y baja despacio** (4 y 0.6 pasos por
+  segundo): subir tarde es un tirón, y bajar deprisa es el siguiente.
+- **El reloj propio mira el mínimo del RTT, no el último** (`NET.rttVentana`, 60
+  muestras). El mínimo es el viaje de verdad; lo que pasa de ahí es cola del wifi,
+  y re-anclarse a eso es moverse con ella. El paso del servidor sale de la misma
+  envolvente, y ponerse al día cuesta **como mucho un paso extra por frame**
+  (`NET.clockCatchUpPerFrame`).
+
+Medido (`suave103`, el rival corriendo en recta y A mirándolo, con A a 20 ± 80 ms
+en orden): el rival pasa de **46 frames congelado y 36 saltos a 0 y 0**, y el
+movimiento propio de **37 y 11 a 0 y 0**. Con la red limpia, de 9 y 16 a 0-2.
+Y lo que no se podía romper sigue en pie: `red45` y `tiro46` verdes, con el 100 %
+de acuerdo del disparo hasta 50 ms de ida.
+
+**F3 lo enseña**: `rtt` lleva al lado el del reloj (el mínimo) y hay una fila
+`colchón` con cuántos ms va el rival por detrás. Un colchón que sube en una
+partida es un wifi que está encolando.
+
+### 103.3 — Y el servidor dice si se atasca
+
+`/salud` publica ahora lo que haría falta para descartar al huésped en una prueba
+real: **`cpuPct`** (CPU del proceso el último minuto), **`bucleMs`** (retraso del
+bucle de eventos, p50/p99/máx, con la resolución del medidor ya restada: sin
+restarla, el suelo eran los 10 ms del propio medidor) y **`atascos`**: cuántas
+veces un latido del reloj se debía tres pasos o más, y los últimos veinte. Sin
+eso, «el servidor va lento» y «el wifi encola» se ven igual desde el jugador.
+
+Lo que no se ha tocado: la máquina de Fly (`shared-cpu-1x`, en París; Madrid ya no
+existe en Fly). Con un 2.5 % de núcleo por sala no hace falta más, y una máquina
+de CPU dedicada es otro orden de coste. La regla es mirar `/salud` después de una
+partida mala: si `atascos` o `bucleMs.max` suben, es la máquina; si no, es el
+cable.
+
+### 103.4 — El disparo doble era el sonido en dos tiempos
+
+§102.2 encontró la mitad: el otro PC. La otra mitad es de uno mismo. El acierto
+sonaba y se marcaba **cuando llegaba el veredicto del servidor** —un viaje
+después—, y el disparo sonaba al hacer clic, así que con 80 ms de ping un disparo
+eran dos cosas separadas en el tiempo, y se leía como dos disparos.
+
+Ahora el acierto se decide **con el veredicto local**, el mismo rayo contra el
+mismo cuerpo que ya se usaba para la marca de bala (§64): suena y se marca al
+instante (`onTiroLocal`, `_aciertosPredichos` por `seq`). El del servidor ya no
+repite nada salvo que **discrepe** —un acierto que no se predijo— o que sea **una
+baja**. La baja no se predice nunca: decir «muerto» y que no lo esté es peor que
+decirlo 150 ms tarde, y lo que el rival tiene de vida lo sabe el servidor.
+
+Medido (`doble103`): un impacto, todo en menos de 8 ms desde el clic; una baja,
+el impacto al clic y la confirmación a los 176-240 ms, que es el viaje.
+
+### 103.5 — La escopeta dejaba una marca
+
+El servidor resolvía los ocho perdigones desde §91, y el cliente dibujaba la
+marca de un rayo. `_impactosDePerdigones` deriva los ocho rumbos con la misma
+semilla y la misma `perdigonDeSemilla` que usa el servidor, y deja la marca de
+los que no dan en un rival (`cliente.rayoDaEnRival`). Medido (`pump102red`): 8
+marcas la Pump, 1 la Rift.
+
+### 103.6 — Un clic dentro de un panel es del panel
+
+En el multijugador, pinchar una pestaña o una ficha de la armería **cerraba la
+armería**. El manejador del documento que recaptura el ratón miraba si el clic
+caía en un `.control` con `closest`, y React ya había vuelto a pintar la pestaña
+pinchada: el nodo del evento estaba fuera del documento y `closest` no llegaba a
+ningún `.control`. Dos arreglos, los dos necesarios: **con un panel abierto el
+clic nunca captura** (`capa.hayPanel()`), y la pregunta se hace sobre
+`composedPath()`, que es la ruta del evento cuando ocurrió y no la del DOM de
+ahora. Medido (`armeria102`), en el entrenamiento y en el todos contra todos.
+
+### 103.7 — Las granadas son esferas de neón
+
+Eran octaedros —§87 los eligió por la forma, para separarlos de lo que volaba— y
+se leían como cubos. Ahora son **una esfera con una franja** del color de la
+granada y un **halo aditivo** encarado a la cámara, que **late más deprisa según
+se acaba la mecha**: la fase es `−vueltas · ln(queda + colchón)`, así que el
+último segundo se lee sin mirar ningún número. La esfera y la franja son una sola
+geometría con color por vértice, y el halo una textura dibujada en un canvas (un
+degradado radial): **ningún asset**, y sigue siendo un `InstancedMesh`. Tuning en
+`GRENADES.dibujo`.
+
+### 103.8 — El arma en la mano, como maqueta
+
+Se preguntó si se puede tener la referencia de la mano y el arma empuñada. Se
+puede, y está hecha **como maqueta y apagada de fábrica** (*Opciones → Arma en
+pantalla*), porque contradice a propósito una decisión de §38 —«sin arma
+visible»— y eso se decide mirándola, no leyéndola.
+
+Se construye con lo que ya hay: **el arma es su silueta de potrace** extruida con
+grosor y el contorno encendido (`SVGLoader` + `ExtrudeGeometry` + aristas), y
+**el brazo es un tubo del color de tu equipo** con una mano en la empuñadura, que
+se estima como el punto más bajo del tercio trasero de la silueta. Va en su propia
+escena y con su propia cámara, en una segunda pasada tras limpiar la profundidad:
+nunca se mete en una pared y su encuadre no cambia con el del jugador. Cinco
+gestos, ninguno de juego: retroceso, balanceo al andar, inercia al girar, bajarla
+al recargar y subirla al sacarla. La bala sigue saliendo de los ojos y el
+retroceso de verdad sigue siendo de la cámara (§61). Se esconde con la mirilla
+puesta, abatido y con F3. Tuning en `VIEWMODEL`.

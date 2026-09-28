@@ -18,6 +18,7 @@
  */
 
 import * as THREE from 'three'
+import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 import { CLAVADAS, COLORS, GRENADES, PROJECTILES, WEAPONS } from '../config.js'
 
 const _dummy = new THREE.Object3D()
@@ -106,8 +107,36 @@ export class VueloDeProyectiles {
      * Son dos llamadas de dibujo en total aunque vuelen ocho, que es
      * exactamente una más que antes.
      */
-    this.geomG = new THREE.OctahedronGeometry(GRENADES.dibujo.radioU, 0)
-    this.meshG = this._malla(this.geomG, pool)
+    /**
+     * **Desde la vuelta 103, una esfera de neón con su franja y su halo** (ver
+     * `GRENADES.dibujo`). El núcleo y la franja son una sola geometría con
+     * color por vértice —el del núcleo lo pone la instancia, la franja lo
+     * oscurece— y el halo es una tercera malla aditiva. Dos llamadas de dibujo
+     * por todas las granadas del mundo, vuelen las que vuelen.
+     */
+    const dib = GRENADES.dibujo
+    this.geomG = esferaConFranja(dib.radioU, dib.franja)
+    this.matG = new THREE.MeshBasicMaterial({ color: 0xffffff, vertexColors: true })
+    this.meshG = this._malla(this.geomG, pool, this.matG)
+    /**
+     * **El halo es un resplandor, no una cáscara.** Una esfera translúcida de
+     * opacidad uniforme se lee como un disco plano pegado detrás; lo que se lee
+     * como luz es **un degradado que se apaga hacia fuera**. Es una textura
+     * dibujada en un canvas al arrancar —procedural, como el fondo (vuelta
+     * 77)—, en un plano que se encara a la cámara en cada frame.
+     */
+    const lado = dib.radioU * dib.halo.radios * 2
+    this.geomH = new THREE.PlaneGeometry(lado, lado)
+    this.texH = texturaDeResplandor()
+    this.matH = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      map: this.texH,
+      transparent: true,
+      opacity: dib.halo.opacidad,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    })
+    this.meshH = this._malla(this.geomH, pool, this.matH)
     /**
      * **Y una tercera para lo que ya no vuela** (vuelta 90): los cuchillos
      * clavados. Comparte **la misma geometría** que el huso, porque es la misma
@@ -122,8 +151,8 @@ export class VueloDeProyectiles {
   }
 
   /** Una malla instanciada con su color por instancia y todo apagado. */
-  _malla(geom, pool) {
-    const mesh = new THREE.InstancedMesh(geom, this.mat, pool)
+  _malla(geom, pool, mat = this.mat) {
+    const mesh = new THREE.InstancedMesh(geom, mat, pool)
     mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage)
     mesh.count = pool
     mesh.frustumCulled = false
@@ -153,15 +182,16 @@ export class VueloDeProyectiles {
    * @param {import('./proyectiles.js').Proyectiles} pr
    * @param {number} alpha interpolación del frame, como la pose de la cámara
    */
-  update(pr, alpha = 1) {
+  update(pr, alpha = 1, camara = null) {
     for (let i = 0; i < pr.pool; i++) {
       const granada = GRANADAS.has(pr.tipo[i])
       // Cada proyectil va en **una** de las dos mallas, así que la otra tiene
       // que quedarse apagada en esa ranura o se dibujaría un huso dentro de una
       // granada.
       this._apagarEn(granada ? this.mesh : this.meshG, i)
+      if (!granada) this._apagarEn(this.meshH, i)
       const mesh = granada ? this.meshG : this.mesh
-      if (pr.estado[i] === 0) { this._apagarEn(mesh, i); continue }
+      if (pr.estado[i] === 0) { this._apagarEn(mesh, i); if (granada) this._apagarEn(this.meshH, i); continue }
       // La velocidad de ahora: la de salida más lo que le han hecho la gravedad
       // y el roce. Sale de derivar la misma parábola, no de restar posiciones.
       const t = pr.t[i]
@@ -208,8 +238,23 @@ export class VueloDeProyectiles {
       mesh.setMatrixAt(i, _dummy.matrix)
       this._color.set(TINTES[pr.tipo[i]] ?? 0xffffff)
       mesh.setColorAt(i, this._color)
+      if (granada) {
+        // **El halo, latiendo con lo que le queda de mecha** (vuelta 103). Lo
+        // que queda es `mecha − t`: la mecha se cuenta desde el último anclaje
+        // de la parábola, igual que `t`.
+        const lat = GRENADES.dibujo.latido
+        const queda = Math.max(0, pr.mecha[i] - pr.t[i])
+        const fase = Number.isFinite(queda) ? -lat.vueltas * Math.log(queda + lat.colchonS) : pr.vida[i] * lat.vueltas / 4
+        const k = 1 + lat.amplitud * 0.5 * (1 + Math.sin(fase * Math.PI * 2))
+        if (camara) _dummy.quaternion.copy(camara.quaternion)
+        else _dummy.quaternion.identity()
+        _dummy.scale.set(k, k, k)
+        _dummy.updateMatrix()
+        this.meshH.setMatrixAt(i, _dummy.matrix)
+        this.meshH.setColorAt(i, this._color)
+      }
     }
-    for (const mesh of [this.mesh, this.meshG]) {
+    for (const mesh of [this.mesh, this.meshG, this.meshH]) {
       mesh.instanceMatrix.needsUpdate = true
       if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true
     }
@@ -251,9 +296,61 @@ export class VueloDeProyectiles {
   dispose() {
     this.scene.remove(this.mesh)
     this.scene.remove(this.meshG)
+    this.scene.remove(this.meshH)
     this.scene.remove(this.meshC)
     this.geom.dispose()
     this.geomG.dispose()
+    this.geomH.dispose()
+    this.texH?.dispose()
     this.mat.dispose()
+    this.matG.dispose()
+    this.matH.dispose()
   }
+}
+
+/**
+ * **Una esfera con un aro en el ecuador**, en una sola geometría con color por
+ * vértice: blanco en la esfera —el color lo pone la instancia— y oscuro en el
+ * aro. El aro sobresale un pelo para que no pelee en profundidad con la esfera.
+ */
+function esferaConFranja(radio, franja) {
+  const esfera = new THREE.SphereGeometry(radio, 20, 14)
+  const aro = new THREE.TorusGeometry(radio * 1.01, radio * franja.grosor, 6, 28)
+  aro.rotateX(Math.PI / 2)
+  const pintar = (geom, tono) => {
+    const n = geom.attributes.position.count
+    const c = new Float32Array(n * 3).fill(tono)
+    geom.setAttribute('color', new THREE.BufferAttribute(c, 3))
+  }
+  pintar(esfera, 1)
+  pintar(aro, franja.tono)
+  const unida = mergeGeometries([esfera, aro])
+  esfera.dispose()
+  aro.dispose()
+  return unida
+}
+
+/**
+ * **El resplandor, dibujado**: blanco en el centro y transparente en el borde,
+ * con la caída de una luz (más rápida al principio). El color lo pone la
+ * instancia. Sin documento —un banco en Node— no hay textura y el halo sale
+ * liso, que es lo único que se pierde.
+ */
+function texturaDeResplandor() {
+  if (typeof document === 'undefined') return null
+  const n = 64
+  const lienzo = document.createElement('canvas')
+  lienzo.width = n
+  lienzo.height = n
+  const ctx = lienzo.getContext('2d')
+  const g = ctx.createRadialGradient(n / 2, n / 2, 0, n / 2, n / 2, n / 2)
+  g.addColorStop(0, 'rgba(255,255,255,1)')
+  g.addColorStop(0.25, 'rgba(255,255,255,0.55)')
+  g.addColorStop(0.6, 'rgba(255,255,255,0.14)')
+  g.addColorStop(1, 'rgba(255,255,255,0)')
+  ctx.fillStyle = g
+  ctx.fillRect(0, 0, n, n)
+  const tex = new THREE.CanvasTexture(lienzo)
+  tex.colorSpace = THREE.SRGBColorSpace
+  return tex
 }

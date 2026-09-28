@@ -553,6 +553,21 @@ dar la partida por abandonada cuando quiera.
 
 Recargar la página **no** es irse: es como se vuelve.
 
+### Si la partida va a tirones
+
+En wifi, un paquete que se pierde retiene a todos los que vienen detrás y luego
+llegan de golpe. Desde la vuelta 103 el juego lo absorbe: al rival se le dibuja
+un poco más en el pasado **sólo mientras la red va a tirones** —y vuelve solo
+cuando se calma—, y tu propio movimiento no da saltos por un ping suelto. **F3**
+enseña cuánto: *colchón del rival* (unos 50 ms con buena red; si pasa de 100, el
+wifi está dando saltos) y el *RTT*. Y la dirección `/salud` del servidor dice si
+el que se atascó fue él (`atascos`, `cpuPct`, `bucleMs`): con atascos ahí, fue el
+servidor; sin ellos, el cable. Un cable de red en uno de los dos PCs suele
+bastar.
+
+Al disparar, el acierto suena y se marca **en el mismo instante del clic**, como
+en el entrenamiento; la baja sí espera a que la confirme el servidor.
+
 ## Todos contra todos
 
 En la misma página del duelo, **Modo → Todos contra todos** crea una sala para
@@ -2054,6 +2069,7 @@ vieja.
 | Límite de fotogramas | 60 · 144 · 240 · Sin límite |
 | Audio espacial | los sonidos del mundo suenan con dirección |
 | Mensajes de ayuda | avisos breves en el HUD, activados por defecto |
+| Arma en pantalla (maqueta) | el arma en la mano con el brazo de tu equipo, como en otros shooters. **Apagado de fábrica**: es una maqueta para decidir con ella delante |
 
 El panel sólo se abre con la partida parada, así que reconstruir las mallas al
 cambiar de tipo o de tamaño nunca cae dentro del bucle de render.

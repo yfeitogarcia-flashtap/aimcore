@@ -95,7 +95,8 @@ geometría. Está entero en §3 y en `docs/decisions.md` §93.8. Para todo lo de
 | Destello de dispositivo | `src/game/dispositivos.js` | El anillo de usar un rebote, una plataforma de velocidad o una puerta. **Del motor**, así que sale en los dos modos; pool de anillos aditivos, sólo dibuja. |
 | Proyectiles | `src/game/proyectiles.js` | **Lo que vuela y tarda en llegar**: parábolas en forma cerrada y contra qué chocan. No sabe dibujar ni a quién hiere — eso cambia según quién lo llame. **Sin three**, así que lo montan el motor, el duelo y `net/partida.js` en Node. |
 | Curva de tiro | `src/game/trayectoria.js` | El láser que dibuja lo que va a pasar, de la **misma fórmula** que el vuelo. Del motor, así que sale en los dos modos. |
-| Proyectil (dibujo) | `src/game/vuelo.js` | Sólo dibuja: dos `InstancedMesh` como `impacts.js` —el huso de lo que vuela y **el octaedro de una granada**—, con la estela orientada a la velocidad y **más larga cuanto más cargado salió**. |
+| Proyectil (dibujo) | `src/game/vuelo.js` | Sólo dibuja: `InstancedMesh` como `impacts.js` —el huso de lo que vuela y **la esfera de neón de una granada**, con su franja y su resplandor (vuelta 103)—, con la estela orientada a la velocidad y **más larga cuanto más cargado salió**. |
+| Arma en mano | `src/game/armaEnMano.js` | **Maqueta** (vuelta 103, apagada de fábrica): la silueta del arma extruida y un antebrazo del color del equipo, en una segunda pasada con su propia cámara. Sólo dibuja. |
 | Clavados | `src/game/clavadas.js` | **Lo que un jugador deja en el mundo y se puede volver a coger**: hoy los cuchillos del Fang. Sin `three`, como `proyectiles.js`, porque lo montan el motor **y el servidor**; lo dibuja `vuelo.js`. |
 | Ceguera y aturdimiento | `src/game/granadas.js` | Lo que una Blind y una KO le hacen a **la pantalla**. **Del motor, con su propia hoja de estilos**, para que salga igual en los dos modos. |
 | Recogibles | `src/game/pickups.js` | Cruces de vida, cargas de escudo y casco por el suelo. |
@@ -1926,6 +1927,59 @@ Medido (`esc101`): tres ESC seguidos dentro de la espera vuelven en 0.6 s; un ES
 recaptura en 17 ms; y **el menú del código no asoma ni un frame** en toda la
 secuencia. `esc89b` y `esc91` medían la regla vieja.
 
+**Lo que tú ves no tiembla porque tiemble el cable** (vuelta 103). **Ésta es la
+convención permanente para cualquier cosa que se dibuje con el reloj de la
+red.** Jugando entre dos PCs en wifi se reportó «me da lag cuando estoy cerca de
+alguien», y medido no era ni el dibujo (mismos FPS con el rival delante y sin
+él, con la cámara quieta) ni el servidor (2.5 % de un núcleo con dos jugadores,
+igual peleando que lejos): era **cómo se lee la hora del servidor**. Un
+WebSocket va por TCP, así que en wifi un paquete perdido retiene a todos los de
+detrás y llegan en ráfaga; y al rival sólo se le ve cuando está cerca. Cuatro
+reglas:
+
+- **El rival se dibuja con un reloj que avanza solo**, no re-anclado a la
+  llegada de cada foto. `instanteDeDibujo` es el reloj de aquí más un desfase,
+  y el desfase sale de la **envolvente** de las llegadas —las que llegan antes
+  dicen dónde está el servidor— menos un **colchón que se adapta**: el suelo de
+  siempre más lo tarde que están llegando las demás, con un pico que se olvida
+  a la mitad en dos segundos (`NET.colchonAdaptable`). El colchón crece deprisa
+  y baja despacio, que un rival un 10 % más lento un instante no se ve y uno
+  congelado sí. Con tope por debajo del rebobinado (200 ms), o un disparo a lo
+  que ves dejaría de poder juzgarse. F3 lo enseña: *colchón del rival*.
+- **Tu reloj se adelanta con el menor ping del último segundo** (`rttVentana`),
+  no con el último, y **con el paso del servidor de la envolvente**, no de la
+  última foto. Quedarse corto no cuesta nada —el servidor espera la entrada y se
+  pone al día (vuelta 45)—; pasarse cuesta un tirón: un ping suelto de 150 ms
+  metía cuatro pasos en un frame. Y ponerse al día es **de paso en paso**
+  (`clockCatchUpPerFrame`).
+- **Lo que se ve al disparar lo decide lo que tú veías**, también el acierto: el
+  «tic» y la X de la mira salen del veredicto local en el clic, y el del
+  servidor sólo suena si es una sorpresa o una baja. En dos tiempos —disparo al
+  apretar, acierto un viaje después— **un clic se oía como dos disparos**. La
+  baja no se adelanta nunca: anunciar una muerte que no ha ocurrido es peor.
+- **Y la red simulada va en orden** (`enlace.enOrden`), porque la de verdad
+  también: un jitter que desordena es UDP, y midiendo con él salían
+  correcciones que el juego no tiene. El cliente, además, **no aplica una foto
+  más vieja que la última**.
+
+Medido (`suave103`, dos navegadores con B corriendo en recta y la red de A en
+orden con ±80 ms): el rival pasa de **46 frames congelados y 36 saltos a 0 y 0**
+de ~170; tu propio movimiento, de **37 y 11 a 0 y 0**; `red45` y `tiro46` siguen
+verdes (100 % de acuerdo hasta 50 ms de ida); y `doble103` pone disparo, acierto
+y marca **en los primeros 8 ms del clic**. Y para la próxima partida mala,
+**`/salud` dice si el servidor se atascó**: CPU del último minuto, retraso del
+bucle y los pasos que salieron tarde. Con atascos ahí, fue la máquina; sin
+ellos, el cable.
+
+**Con un panel abierto, un clic es del panel** (vuelta 103). La armería y las
+opciones son de React y no llevan `.control`, así que en el multijugador pinchar
+una pestaña o una ficha **capturaba el ratón**, y capturar cierra el panel. Y se
+mira el camino del evento (`composedPath`) y no `closest`: React puede haber
+quitado del documento el botón pinchado antes de que el clic llegue arriba.
+Medido (`armeria102`): cinco pestañas, «Equipar» y una ficha, sin cerrarse, en
+el entrenamiento y en el todos contra todos; sin el arreglo, el banco se queda
+en la primera línea.
+
 **Y bajo el logo no va ningún rótulo destacado** (vuelta 89). Había uno —«RONDA
 CON EXPLOSIVO»— que decía qué se juega al pulsar el primer botón, y **mentía
 desde la 88**: con la duración en «sin límite» el explosivo ya no se arma, así
@@ -2146,7 +2200,10 @@ reglas:
   de `lanzamientoDeArma` en vez de repetir su cuenta: con dos modos de
   lanzamiento, una copia de la fórmula es **un láser que enseña la parábola larga
   mientras el botón derecho tira la corta**.
-- **El color las separa entre sí; la forma, de todo lo demás.** Son octaedros que
+- **El color las separa entre sí; la forma, de todo lo demás.** Desde la vuelta
+  103 son **esferas de neón** con una franja oscura en el ecuador —que es lo que
+  deja ver que giran— y un resplandor aditivo que **late más deprisa según se
+  acaba la mecha**; lo de abajo vale igual. Eran octaedros que
   giran —lo que volaba hasta ahora eran husos orientados a la velocidad—, así que
   el tinte sólo tiene que contestar *qué va a estallar ahí*: **rojo** la que hace
   daño, **blanco** la de luz, **azul eléctrico** la de aire. Ninguno es nuevo, y
@@ -4399,9 +4456,13 @@ Y no se anima:
   que te han dado a ti, dibujado alrededor de ella, y es uno de los tres canales
   de la vuelta 40. Quitarlo sería quitar información, no animación.
 
-**Sin arma visible, en ninguna parte.** Ni en tercera persona ni en primera. Lo
-que se dibuja de un arma es su silueta —en el HUD y en la ficha flotante—, no un
-modelo en la mano.
+**Sin arma visible, en ninguna parte** — salvo la maqueta de la vuelta 103, que
+va **apagada de fábrica** (*Opciones → Arma en pantalla*). Ni en tercera persona
+ni en primera. Lo que se dibuja de un arma es su silueta —en el HUD y en la
+ficha flotante—, no un modelo en la mano. La maqueta existe para decidir con
+ella delante si esto cambia, y se hizo sin romper la regla por dentro: **el arma
+es la misma silueta**, extruida, y el brazo es el color del equipo (§3, «Lo que
+tú ves no tiembla porque tiemble el cable»).
 
 **Los colores de equipo se eligieron midiendo, y la paleta libre es estrecha.**
 Están cogidos el naranja (dianas), el rojo (te disparan), el verde (botones y
@@ -6277,6 +6338,15 @@ del duelo, sin fuego amigo, en los mapas de duelo, con los compañeros aparecien
 al lado de su salida. Tuning en `TODOS`. Y **la foto del duelo también es la nueva**
 (§3): cada uno recibe la suya, el rival llega ligero y detrás de una pared a media
 distancia no llega — la mitad de bytes a los mismos 60 Hz.
+
+**Y desde la vuelta 103 aguanta un wifi a tirones** (§3, «Lo que tú ves no tiembla
+porque tiemble el cable»): el rival se dibuja con un colchón que se adapta a la
+red —F3 lo enseña—, tu reloj no da tirones por un ping suelto, el acierto suena y
+se marca en el clic, y la escopeta deja la marca de cada perdigón como en el
+entrenamiento. `/salud` publica los atascos del servidor. Y hay **una maqueta del
+arma en pantalla**, apagada de fábrica en *Opciones*: la silueta del arma extruida,
+con un antebrazo del color de tu equipo, que recula al disparar y se esconde con
+la mirilla.
 
 **Y desde la vuelta 56 el duelo lo lleva el motor completo** (la «Opción B»).
 La página del duelo ya no monta una escena mínima: instancia `engine.js` y le

@@ -21,6 +21,7 @@
 import { NET, PAUSE, ROUNDS, SIM_STEP_MS, WEAPONS, WEAPON_ORDER } from '../src/config.js'
 import { resolverCuchillada, resolverDisparo, resolverEscopeta } from './disparo.js'
 import { cuerpoDeJugador } from './pose.js'
+import { hitPlayer } from '../src/game/player.js'
 import { MSG, desempaquetarTeclas, empaquetarTeclas, instanteDePaso, instanteEnPaso } from './protocolo.js'
 
 /** El rival de cuando no hay ninguno: sin id y sin fotos. Nadie lo escribe. */
@@ -218,6 +219,19 @@ export class ClienteRed {
      * **uno** (`tv`).
      */
     this._relojFotos = { n: 0, en: 0 }
+    /**
+     * **El reloj con el que se dibuja a los demás, suavizado** (vuelta 103).
+     * `env` es la envolvente de cuándo llegan las fotos —el desfase entre su
+     * paso y el reloj de aquí, quedándose con las que llegan antes—, `tarde`
+     * cuánto se están retrasando las demás, y `off` el desfase con que se
+     * dibuja de verdad, que persigue a su objetivo sin saltos. Ver
+     * `NET.colchonAdaptable` y `instanteDeDibujo`.
+     */
+    this._colchon = { env: null, tarde: 0, off: null, llegada: 0, movido: 0 }
+    /** Las últimas muestras de ping, para quedarse con la menor (vuelta 103). */
+    this._rtts = new Float64Array(NET.rttVentana)
+    this._rttN = 0
+    this._rttReloj = 0
     /** El modo de la sala, cada cuántos pasos llega una foto y cuántos caben. */
     this.modo = 'duelo'
     this.fotoCada = 1
@@ -710,6 +724,22 @@ export class ClienteRed {
     return { veredicto: mejor, enPaso }
   }
 
+  /**
+   * **¿Este rayo entra en alguien antes de `hasta`?** (vuelta 103). Lo pide el
+   * motor para no pintar la marca de un perdigón **detrás** de un rival al que
+   * ha dado: el veredicto de una escopeta es uno por disparo, y aquí hace falta
+   * uno por perdigón. Contra los mismos cuerpos que `_resolverLocal`.
+   */
+  rayoDaEnRival(origen, dir, hasta) {
+    for (const rival of this.rivales.values()) {
+      if (this.esCompanero(rival)) continue
+      const pose = this.poseDe(rival)
+      if (!pose || !pose.vivo) continue
+      if (hitPlayer(origen, dir, cuerpoDeJugador(pose.x, pose.z, pose.feetY, pose.eyeHeight), hasta)) return true
+    }
+    return false
+  }
+
   /** Apunta el veredicto del servidor contra el que se había sacado aquí. */
   _compararDisparo(resultado) {
     const mio = this.disparosEnVuelo.get(resultado.seq)
@@ -1147,6 +1177,15 @@ export class ClienteRed {
   }
 
   _reconciliar(foto) {
+    /**
+     * **Una foto más vieja que la última no se aplica** (vuelta 103). Un
+     * WebSocket no desordena, así que en la partida de verdad esto no pasa;
+     * pero aplicarla sería restaurar un estado de antes y reejecutar encima una
+     * cola a la que ya le faltan las entradas que confirmó la foto nueva — un
+     * tirón de tantos pasos como falten. Lo cazó la red simulada, que sí
+     * desordenaba. Con `<` y no `<=`: en pausa las fotos repiten número.
+     */
+    if (this._relojFotos.n > 0 && foto.n < this._relojFotos.n) return
     this.medidas.fotos += 1
     this._ultimaFotoEn = performance.now()
     this.medidas.sinFotosMs = 0
@@ -1164,6 +1203,7 @@ export class ClienteRed {
     }
     this._relojFotos.n = foto.n
     this._relojFotos.en = performance.now()
+    this._anotarLlegada(foto.n, this._relojFotos.en)
 
     // Los demás, cada uno a su cola de interpolación.
     for (const id of Object.keys(foto.p)) {
@@ -1225,6 +1265,13 @@ export class ClienteRed {
     const salida = this._historialEnvio.get(mio.ack)
     if (salida !== undefined) {
       this.medidas.rtt = performance.now() - salida
+      // **El reloj propio se adelanta con el menor del último segundo**
+      // (vuelta 103): ver `NET.rttVentana`. Sin asignar memoria.
+      this._rtts[this._rttN % this._rtts.length] = this.medidas.rtt
+      this._rttN += 1
+      let menor = Infinity
+      for (let i = Math.min(this._rttN, this._rtts.length) - 1; i >= 0; i--) if (this._rtts[i] < menor) menor = this._rtts[i]
+      this._rttReloj = menor
       for (const n of this._historialEnvio.keys()) if (n <= mio.ack) this._historialEnvio.delete(n)
     }
 
@@ -1352,7 +1399,7 @@ export class ClienteRed {
         this._acumulador = 0
         reanclado = true
       } else if (desfase > NET.clockDeadbandTicks) {
-        pasos += Math.min(NET.maxCatchUpTicks, desfase)
+        pasos += Math.min(NET.clockCatchUpPerFrame, desfase)
         this._frenados = 0
       } else if (desfase < -NET.clockDeadbandTicks && pasos > 0 && this._frenados < NET.clockDeadbandTicks) {
         pasos -= 1
@@ -1382,7 +1429,7 @@ export class ClienteRed {
     // tardará otro medio en llegar. Con la mitad —que fue la primera versión— el
     // servidor se quedaba sin entrada en un tercio de los pasos y el retraso
     // efectivo salía en 1.5 veces el RTT inyectado.
-    const viaje = Math.ceil(this.medidas.rtt / SIM_STEP_MS)
+    const viaje = Math.ceil(this._rttReloj / SIM_STEP_MS)
     /**
      * **Y lo que ha avanzado el servidor desde la última foto** (vuelta 100). A
      * 60 Hz no es nada —llega una por paso—, pero con una de cada tres el
@@ -1393,7 +1440,17 @@ export class ClienteRed {
     const desde = this.fotoCada > 1 && this._ultimaFotoEn !== null
       ? Math.min(this.fotoCada - 1, Math.floor((performance.now() - this._ultimaFotoEn) / SIM_STEP_MS))
       : 0
-    return this.medidas.pasoServidor + desde + NET.leadTicks + viaje
+    /**
+     * **Y dónde va el servidor, del reloj suavizado** (vuelta 103), no de la
+     * última foto: ésa llega tarde en cada tirón y el objetivo bajaba y subía
+     * con ella — el cliente frenaba y luego recuperaba de golpe. La envolvente
+     * dice dónde está el reloj del servidor sin el temblor del cable.
+     */
+    const c = this._colchon
+    const servidor = c.env !== null && !this.pausa.pausada
+      ? Math.max(this.medidas.pasoServidor, Math.floor(performance.now() / SIM_STEP_MS + c.env))
+      : this.medidas.pasoServidor + desde
+    return servidor + NET.leadTicks + viaje
   }
 
   /**
@@ -1462,9 +1519,73 @@ export class ClienteRed {
    * es lo que viaja con un disparo para que el servidor rebobine ahí.
    */
   instanteDeDibujo() {
-    const desde = (performance.now() - this._relojFotos.en) / SIM_STEP_MS
-    // Nunca por delante de lo que se ha recibido: extrapolar es inventar.
-    return Math.min(this._relojFotos.n, this._relojFotos.n - this.retrasoDeDibujo + desde)
+    const ahora = performance.now()
+    const c = this._colchon
+    if (c.env === null) {
+      const desde = (ahora - this._relojFotos.en) / SIM_STEP_MS
+      // Nunca por delante de lo que se ha recibido: extrapolar es inventar.
+      return Math.min(this._relojFotos.n, this._relojFotos.n - this.retrasoDeDibujo + desde)
+    }
+    this._moverColchon(ahora)
+    /**
+     * **Avanza con el reloj de aquí, no con la llegada de la última foto**
+     * (vuelta 103). Hasta aquí se re-anclaba en cada foto, así que el instante
+     * de dibujo temblaba exactamente lo que temblaba la red: una foto 5 ms
+     * tarde echaba al rival 5 ms hacia atrás, y una ráfaga lo congelaba y
+     * luego lo hacía saltar. Ahora corre a un paso por paso y lo único que se
+     * mueve es el colchón, despacio. Sigue sin ir nunca por delante de lo
+     * recibido.
+     */
+    return Math.min(this._relojFotos.n, ahora / SIM_STEP_MS + c.off)
+  }
+
+  /**
+   * **Cuándo ha llegado una foto, contra cuándo debería** (vuelta 103). La
+   * envolvente se queda con las que llegan antes —ésas dicen dónde está el
+   * reloj del servidor— y baja muy despacio por si la ruta se alarga; lo que
+   * una foto llega por detrás de ella es su retraso, y el mayor de los recientes
+   * es el colchón que hace falta.
+   */
+  _anotarLlegada(n, ahora) {
+    const c = this._colchon
+    const cfg = NET.colchonAdaptable
+    const o = n - ahora / SIM_STEP_MS
+    // Una pausa para el paso del servidor y el de aquí no: eso no es un tirón,
+    // es otro reloj. Se ancla de nuevo y no se cuenta como retraso.
+    if (c.env === null || this.pausa.pausada || c.env - o > cfg.reanclarTicks) {
+      c.env = o
+      c.tarde = 0
+      c.off = null
+      c.llegada = ahora
+      return
+    }
+    c.tarde *= Math.pow(0.5, (ahora - c.llegada) / 1000 / cfg.tardeVidaS)
+    c.llegada = ahora
+    if (o > c.env) c.env = o
+    else {
+      const tarde = c.env - o
+      if (tarde > c.tarde) c.tarde = tarde
+      c.env += (o - c.env) * 0.002
+    }
+  }
+
+  /** Lleva el desfase de dibujo hacia su objetivo, sin saltos. */
+  _moverColchon(ahora) {
+    const c = this._colchon
+    const cfg = NET.colchonAdaptable
+    const objetivo = c.env - Math.min(cfg.maxTicks, this.retrasoDeDibujo + c.tarde)
+    if (c.off === null) {
+      c.off = objetivo
+      c.movido = ahora
+      return
+    }
+    const s = Math.max(0, ahora - c.movido) / 1000
+    c.movido = ahora
+    if (s === 0) return
+    const d = objetivo - c.off
+    // Ir más atrás (colchón que crece) rápido; volver hacia delante despacio.
+    c.off += d < 0 ? Math.max(d, -cfg.subeTicksPorS * s) : Math.min(d, cfg.bajaTicksPorS * s)
+    this.medidas.colchonMs = (c.env - c.off) * SIM_STEP_MS
   }
 
   /** Dónde se dibuja a un rival concreto ahora mismo. Ver `poseDelRival`. */

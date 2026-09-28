@@ -936,7 +936,17 @@ function volviendo() {
 addEventListener('click', (e) => {
   if (vista !== 'juego') return
   if (document.pointerLockElement === lienzo) return
-  if (e.target.closest('.control')) return
+  /**
+   * **Con un panel abierto, un clic es del panel** (vuelta 103). La armería y
+   * las opciones son de React y no llevan `.control`, así que pinchar una
+   * pestaña de categoría o una ficha **capturaba el ratón**, y capturarlo cierra
+   * el panel: se reportó como «pinchar en la armería te saca de la armería».
+   * Y se mira el camino del evento y no `closest`, porque React puede haber
+   * quitado del documento el botón pinchado —la pestaña que deja de estar
+   * elegida se vuelve a pintar— antes de que el clic llegue aquí.
+   */
+  if (capa.hayPanel()) return
+  if (e.composedPath().some((n) => n instanceof Element && n.classList.contains('control'))) return
   vuelta.cancelar()
   // **Capturar es cosa del motor** desde la vuelta 56: además del `pointerLock`
   // arranca el contexto de audio —que no existe sin un gesto y éste es el único
@@ -1525,7 +1535,10 @@ function pintarPanel() {
   if (panel.hidden) return
   $('caudal').textContent = `${subida.toFixed(2)} / ${bajada.toFixed(2)} KB/s`
   $('pasos').textContent = `${cliente.paso} · ${m.pasoServidor} · ${m.ack}`
-  $('rtt').textContent = `${m.rtt.toFixed(1)} ms`
+  $('rtt').textContent = `${m.rtt.toFixed(1)} ms (reloj ${cliente._rttReloj.toFixed(0)})`
+  // **Con cuánto pasado se dibuja al rival** (vuelta 103): sube solo cuando la
+  // red llega a tirones. Si esto pasa de 100 ms, el wifi está dando saltos.
+  $('colchon').textContent = m.colchonMs ? `${m.colchonMs.toFixed(0)} ms` : '—'
   $('pendientes').textContent = `${m.pendientes}`
   const err = m.errorUltimo
   $('error').innerHTML = `<span class="${err > NET.visibleCorrection ? 'mal' : 'bien'}">${err.toExponential(2)} u</span>`

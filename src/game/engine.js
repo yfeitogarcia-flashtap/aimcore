@@ -41,6 +41,7 @@ import { Trayectoria } from './trayectoria.js'
 import { direccionDeMira, perdigonDeSemilla } from '../../net/disparo.js'
 import { Clavadas } from './clavadas.js'
 import { VueloDeProyectiles } from './vuelo.js'
+import { ArmaEnMano } from './armaEnMano.js'
 import { SpawnCone } from './spawnCone.js'
 import { PickupField } from './pickups.js'
 import { PlayerStatus, esPorLaEspalda, hitPlayer, playerBody } from './player.js'
@@ -829,6 +830,11 @@ export class Engine {
      * le diste—. Si le diste, no hay marca: el rival no la necesita, que para
      * eso está el anillo de la mira.
      */
+    /**
+     * **Los aciertos que ya se han celebrado** (vuelta 103): ver
+     * `_onVerdict`. Por `seq`, que es como el servidor nombra su veredicto.
+     */
+    this._aciertosPredichos = new Set()
     cliente.onTiroLocal = (veredicto, d) => {
       /**
        * **Y con el cuchillo, el destello y el sonido** (vuelta 71). Van aquí y
@@ -840,6 +846,22 @@ export class Engine {
        */
       // **Y la zona alcanzada destella**, como en un muñeco (vuelta 101).
       if (veredicto.impacto && veredicto.rival) this._destellarRival(veredicto.rival, veredicto.zona)
+      /**
+       * **Y el acierto suena y se marca aquí, en el clic** (vuelta 103), no un
+       * viaje después con el veredicto del servidor. En el entrenamiento
+       * disparo, acierto y marca caen en el mismo instante; en red iban en dos
+       * tiempos —el disparo al apretar y el «tic» del acierto y la X de la
+       * mira 50 o 100 ms más tarde— y eso se oye y se ve **como dos disparos
+       * por clic**. Es la misma regla de la marca de bala (vuelta 64) y del
+       * cuchillo (vuelta 71): lo que se ve al disparar lo decide lo que tú
+       * veías. El del servidor sigue mandando en la baja, que no se predice.
+       */
+      if (veredicto.impacto && !veredicto.proyectil) {
+        this._aciertosPredichos.add(d.seq)
+        if (this._aciertosPredichos.size > 64) this._aciertosPredichos.delete(this._aciertosPredichos.values().next().value)
+        if (!d.m) playHit()
+        this.callbacks.onVerdict?.({ impacto: true, baja: false, predicho: true })
+      }
       if (d.m) {
         const tipo = d.m === 2 ? 'fuerte' : 'luz'
         playMelee(tipo, Boolean(veredicto.impacto), Boolean(veredicto.espalda))
@@ -856,6 +878,14 @@ export class Engine {
        * rayo — deducirlo aquí sería una segunda idea de qué arma lanza.
        */
       if (veredicto.proyectil) return
+      /**
+       * **Y una escopeta deja la marca de cada perdigón** (vuelta 103), como en
+       * el entrenamiento (`_perdigonazoLocal`). Hasta aquí se pintaba una por
+       * disparo —la del rayo central— y en el multijugador el patrón no se veía:
+       * se leía como que la Pump disparaba una bala. Los ocho rumbos salen de la
+       * semilla que viaja (`d.p`), con la misma función que los resuelve.
+       */
+      if (d.p) { this._impactosDePerdigones(d); return }
       if (!veredicto.impacto) this._impactoDeRed(d.yaw, d.pitch)
     }
 
@@ -1023,15 +1053,22 @@ export class Engine {
    * no que a ti te lo pareció (vuelta 46).
    */
   _onVerdict(v) {
+    /**
+     * **Un acierto que ya se celebró al disparar no se vuelve a celebrar**
+     * (vuelta 103): cuenta, pero no suena ni se marca otra vez. Lo que sí suena
+     * aquí es la **sorpresa** —el servidor ve un impacto que tu pantalla no—
+     * y la **baja**, que es del servidor y nunca se adelanta.
+     */
+    const predicho = this._aciertosPredichos?.delete(v.seq) ?? false
     if (v.impacto) {
       this.hits += 1
-      playHit()
+      if (!predicho && !v.baja) playHit()
     }
     if (v.baja) {
       this.kills += 1
       playKill()
     }
-    this.callbacks.onVerdict?.(v)
+    if (v.baja || (v.impacto && !predicho)) this.callbacks.onVerdict?.(v)
   }
 
   /**
@@ -1130,6 +1167,7 @@ export class Engine {
     this.impacts.dispose()
     this.dispositivos.dispose()
     this.vuelo.dispose()
+    this.armaEnMano?.dispose()
     this.clavadas.limpiar()
     this.trayectoria.dispose()
     this.spawnCone.dispose()
@@ -1277,6 +1315,16 @@ export class Engine {
     this._frameIntervalMs = limit > 0 ? 1000 / limit : 0
     this._frameAccumulator = 0
     this.helpMessagesEnabled = settings.helpMessages
+    /**
+     * **El arma en pantalla, en maqueta** (vuelta 103). Se construye la primera
+     * vez que hace falta y no antes: con el ajuste apagado —el de fábrica— no
+     * cuesta ni una geometría.
+     */
+    this._conArmaEnMano = Boolean(settings.armaEnPantalla)
+    if (this._conArmaEnMano && !this.armaEnMano) {
+      this.armaEnMano = new ArmaEnMano()
+      this.armaEnMano.poner(this.weaponKey, this.suppressorEnabled)
+    }
     // Cambiar de arma principal cambia la ranura, no el arma vigente: si en ese
     // momento llevabas la pistola, la principal nueva te espera en la tecla 1.
     // Y espera **llena**: el cargador guardado era el de la que ya no llevas.
@@ -1594,6 +1642,7 @@ export class Engine {
     // aquí porque éste es el único sitio por el que pasan los tres caminos que
     // cambian el arma vigente.
     if (this.enRed) this.net.arma = this.weaponKey
+    this.armaEnMano?.poner(this.weaponKey, this.suppressorEnabled)
     this.callbacks.onWeapon?.({
       weaponKey: this.weaponKey,
       suppressed: this.suppressorEnabled,
@@ -3797,6 +3846,7 @@ export class Engine {
     if (!pattern.length) return
     const step = pattern[this._pasoDelPatron(weapon)]
     this.controls.applyRecoil(step[0], step[1])
+    this.armaEnMano?.disparo(1)
   }
 
   /**
@@ -4714,6 +4764,42 @@ export class Engine {
     if (superficie) this.impacts.spawn(superficie.punto, superficie.normal, this.gameTime)
   }
 
+  /**
+   * **La segunda pasada del arma en la mano** (vuelta 103, maqueta). Sólo
+   * jugando, vivo y sin la mirilla puesta —con la lente delante el arma no se
+   * ve, como en cualquier shooter—, y con el ajuste encendido.
+   */
+  _dibujarArmaEnMano(deltaMs) {
+    const vm = this.armaEnMano
+    if (!this._conArmaEnMano || !vm || this.phase !== PHASE.RUNNING) return
+    const vivo = this.enRed ? this.net.vida > 0 : this.status.alive
+    if (!vivo || this._scopeT > 0.02 || this._avatarDebug) return
+    // El brazo es del color con que te ven los demás: el de tu bando, o el tuyo
+    // en el todos contra todos. Entrenando, el primero del catálogo.
+    vm.colorDeEquipo(this.enRed ? this._colorDeRival({ ranura: this.net.ranura, bando: this.net.bando }) : BANDOS[0].color)
+    vm.actualizar(deltaMs / 1000, this.camera, this.movement.horizontalSpeed, !this.movement.airborne, this.reloading)
+    vm.dibujar(this.renderer)
+  }
+
+  /**
+   * **Las marcas de un perdigonazo de red** (vuelta 103): una por perdigón que
+   * acaba en el mapa, y ninguna por el que acaba en un rival — la regla de la
+   * vuelta 64 perdigón a perdigón.
+   */
+  _impactosDePerdigones(d) {
+    const perd = WEAPONS[this.net?.arma]?.perdigones
+    if (!perd || !this.impacts.mesh) return
+    for (let i = 0; i < perd.n; i++) {
+      const dir = perdigonDeSemilla(d.p >>> 0, i, perd.conoGrados, d.yaw, d.pitch)
+      this.raycaster.ray.origin.copy(this.camera.position)
+      this.raycaster.ray.direction.set(dir.x, dir.y, dir.z)
+      const superficie = this._superficieBajoElRayo()
+      if (!superficie) continue
+      if (this.net.rayoDaEnRival(this.camera.position, this.raycaster.ray.direction, superficie.distancia)) continue
+      this.impacts.spawn(superficie.punto, superficie.normal, this.gameTime)
+    }
+  }
+
   _onPointerLockChange() {
     if (this.isLocked) {
       if (this.enRed) {
@@ -4841,7 +4927,7 @@ export class Engine {
      * se quedaría a tirones de 60 Hz colgando de una cámara que va a 240.
      */
     this._dibujarTrayectoria()
-    this.vuelo.update(this.proyectiles)
+    this.vuelo.update(this.proyectiles, 1, this.camera)
     this.vuelo.updateClavadas(this.clavadas, this.gameTime)
     this._moverSilbidos()
     // Con el reloj del mundo, como las marcas de bala (vuelta 64): en pausa una
@@ -4855,6 +4941,7 @@ export class Engine {
     // gastar. Ver `dibujar`.
     if (this._dibujar !== false) {
       this.renderer.render(this.scene, this.camera)
+      this._dibujarArmaEnMano(delta)
       this.cssRenderer.render(this.cssScene, this.camera)
     }
 

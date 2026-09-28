@@ -232,6 +232,17 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
       />
 
       <ToggleRow
+        setting="armaEnPantalla"
+        value={settings.armaEnPantalla}
+        onChange={onChange}
+        hint={
+          settings.armaEnPantalla
+            ? 'Maqueta: el arma que llevas, en tu mano, abajo a la derecha. Se esconde con la mirilla.'
+            : 'Sin arma en pantalla, como siempre: lo que se ve de ella es su silueta en el HUD.'
+        }
+      />
+
+      <ToggleRow
         setting="helpMessages"
         value={settings.helpMessages}
         onChange={onChange}

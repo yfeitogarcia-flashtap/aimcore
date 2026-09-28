@@ -93,8 +93,32 @@ export function transporteWebSocket(url) {
  *   quien mueva el mando escribe aquí y el cambio entra en el paquete siguiente
  */
 export function conRedSimulada(base, enlace) {
-  const tras = (fn) => {
+  /**
+   * **En orden, como el cable de verdad** (vuelta 103). Un WebSocket va por
+   * TCP, así que un mensaje que se retrasa **retiene a todos los de detrás** y
+   * luego llegan de golpe: es el tirón del wifi. El jitter de siempre sortea la
+   * espera de cada mensaje por separado y los desordena, que es otra red —la de
+   * UDP—. Con `enOrden` cada uno sale no antes que el anterior, y el sorteo
+   * pasa a ser de cuánto se atasca la cola.
+   */
+  const colas = { entrada: [], salida: [] }
+  const vaciar = (cola) => {
+    const ahora = performance.now()
+    while (cola.length > 0 && cola[0].cuando <= ahora + 0.5) cola.shift().fn()
+    if (cola.length > 0) setTimeout(() => vaciar(cola), Math.max(0, cola[0].cuando - ahora))
+  }
+  const tras = (fn, sentido) => {
     const espera = enlace.latenciaMs + (enlace.jitterMs > 0 ? (Math.random() - 0.5) * 2 * enlace.jitterMs : 0)
+    if (enlace.enOrden) {
+      // Una cola y un solo temporizador por sentido: dos `setTimeout` con el
+      // mismo instante de salida se redondean al milisegundo y pueden salir
+      // cambiados, que es justo lo que un TCP no hace nunca.
+      const cola = colas[sentido]
+      const ultimo = cola.length > 0 ? cola[cola.length - 1].cuando : 0
+      cola.push({ fn, cuando: Math.max(performance.now() + Math.max(0, espera), ultimo) })
+      if (cola.length === 1) setTimeout(() => vaciar(cola), Math.max(0, cola[0].cuando - performance.now()))
+      return
+    }
     if (espera <= 0) fn()
     else setTimeout(fn, Math.max(0, espera))
   }
@@ -106,7 +130,7 @@ export function conRedSimulada(base, enlace) {
         enlace.tirados = (enlace.tirados ?? 0) + 1
         return
       }
-      tras(() => base.send(texto))
+      tras(() => base.send(texto), 'salida')
     },
     onMessage(fn) {
       base.onMessage((datos) => {
@@ -114,7 +138,7 @@ export function conRedSimulada(base, enlace) {
           enlace.tiradosEntrada = (enlace.tiradosEntrada ?? 0) + 1
           return
         }
-        tras(() => fn(datos))
+        tras(() => fn(datos), 'entrada')
       })
     },
     /**

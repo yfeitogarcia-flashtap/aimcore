@@ -34,6 +34,7 @@ import { gzipSync } from 'node:zlib'
 import { createHash } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
+import { monitorEventLoopDelay } from 'node:perf_hooks'
 import { fileURLToPath } from 'node:url'
 import * as THREE from 'three'
 import { WebSocketServer } from 'ws'
@@ -380,6 +381,8 @@ class Sala {
       return
     }
     const debidos = Math.floor((Date.now() - this.arranque) / SIM_STEP_MS) - this.lobby.paso
+    // Dos pasos tarde son 33 ms sin foto: eso ya se nota en una pantalla.
+    if (debidos >= 3) anotarAtasco(this, debidos - 1)
     if (debidos > MAX_ATRASO) {
       this.lobby.tick()
       this.arranque = Date.now() - this.lobby.paso * SIM_STEP_MS
@@ -397,6 +400,33 @@ class Sala {
  * código es la dirección y punto.
  */
 const salas = new Map()
+
+/**
+ * **Lo que el huésped sabe de sus propios atascos** (vuelta 103). Una partida
+ * que va a tirones puede ser el wifi de un jugador o esta máquina sin CPU —la
+ * de Fly es compartida y se la frena si pasa de su cuota—, y desde una pantalla
+ * los dos se ven igual. Aquí se cuentan los pasos que salieron tarde, el
+ * retraso del bucle de eventos y la CPU del último minuto, y `/salud` los
+ * publica: después de una partida mala, pedirla dice de quién fue.
+ */
+// El histograma cuenta la resolución dentro de cada muestra: se resta al leer.
+const BUCLE_RESOLUCION_MS = 5
+const bucle = monitorEventLoopDelay({ resolution: BUCLE_RESOLUCION_MS })
+bucle.enable()
+const atascos = { pasos: 0, peorMs: 0, ultimos: [] }
+let cpuVentana = { en: Date.now(), uso: process.cpuUsage(), pct: 0 }
+setInterval(() => {
+  const ahora = Date.now()
+  const uso = process.cpuUsage(cpuVentana.uso)
+  cpuVentana = { en: ahora, uso: process.cpuUsage(), pct: (uso.user + uso.system) / 1000 / (ahora - cpuVentana.en) * 100 }
+}, 60_000).unref()
+function anotarAtasco(sala, pasosTarde) {
+  atascos.pasos += 1
+  const ms = pasosTarde * SIM_STEP_MS
+  if (ms > atascos.peorMs) atascos.peorMs = ms
+  atascos.ultimos.push({ en: new Date().toISOString(), ms: Math.round(ms), sala: sala.codigo, jugadores: sala.lobby.jugadores.size })
+  if (atascos.ultimos.length > 20) atascos.ultimos.shift()
+}
 
 function salaDe(codigo, compraSegundos = null, mapa = null, modo = null) {
   let sala = salas.get(codigo)
@@ -646,6 +676,16 @@ const servidor = http.createServer(async (peticion, respuesta) => {
       ocupadas: ocupadas.length,
       jugadores: ocupadas.reduce((n, s) => n + s.lobby.jugadores.size, 0),
       arribaSegundos: Math.round(process.uptime()),
+      /**
+       * **Y si esta máquina va sobrada** (vuelta 103): CPU del último minuto
+       * (en % de un núcleo), retraso del bucle de eventos desde que arrancó, y
+       * los pasos que salieron tarde con los veinte últimos. Si hay atascos
+       * aquí, el tirón fue del servidor; si no los hay, fue del cable.
+       */
+      cpuPct: +cpuVentana.pct.toFixed(1),
+      bucleMs: Object.fromEntries([['p50', bucle.percentile(50)], ['p99', bucle.percentile(99)], ['max', bucle.max]]
+        .map(([k, ns]) => [k, +Math.max(0, ns / 1e6 - BUCLE_RESOLUCION_MS).toFixed(1)])),
+      atascos,
     }))
   }
 
