@@ -15447,7 +15447,7 @@ al recargar y subirla al sacarla. La bala sigue saliendo de los ojos y el
 retroceso de verdad sigue siendo de la cámara (§61). Se esconde con la mirilla
 puesta, abatido y con F3. Tuning en `VIEWMODEL`.
 
-## §104 — Opciones cabe en la partida, y la propuesta de música
+## §104 — Opciones cabe en la partida, el arma en pantalla v2 y la propuesta de música
 
 Feedback de Yago sobre el resumen de las vueltas 97–103, con una partida de
 prueba al día siguiente: lo primero, el fallo de Opciones; lo demás, sin romper
@@ -15510,3 +15510,56 @@ licencia, y que cubra la emisión de los jugadores; revisión legal antes del pr
 contrato) y un balance juego/música con atenuación automática para que **los
 pasos se oigan siempre**. Orden recomendado: la playlist, los controles de medios,
 y la música propia con su balance cuando haya catálogo.
+
+### 104.3 — El arma en pantalla, v2
+
+Lo que se decidió sobre la maqueta de la 103: **se queda, pero cambia, y apagada de
+fábrica hasta que se apruebe.** Lo que se notaba mal: el brazo grueso y el arma
+«bruta y gorda». Tres peticiones, con boceto: una esfera limpia como mano —la del
+muñeco, del color del jugador— asomando por abajo con el arma encima; el cañón
+apuntando **exactamente** al centro de la mira en cualquier resolución, relación
+de aspecto y campo de visión; y armas un 30–40 % más finas con aristas redondeadas,
+respetando las siluetas.
+
+- **La mano es una esfera** (`VIEWMODEL.mano`) anclada al borde de abajo —asoma el
+  60 % de su diámetro— y la empuñadura se apoya en ella. Sin antebrazo.
+- **El cañón al centro, por construcción.** La cámara del arma tiene un campo de
+  visión **vertical y fijo** (54°): el borde de abajo está siempre a la misma altura
+  a una profundidad dada y el centro de la pantalla es siempre su eje −Z, sea cual
+  sea el aspecto y aunque el juego cambie su propio campo de visión (la mirilla). La
+  geometría se centra para que **la línea del cañón pase por el origen del arma** —su
+  altura se estima como el centro de lo que hay en el 7 % delantero de la silueta— y
+  el arma se orienta con `lookAt` a un punto del eje (`convergenciaU`, 0.9). Apoyar
+  la empuñadura en la mano y apuntar al centro dependen la una de la otra, así que
+  se resuelven por aproximaciones: cuatro, una vez por arma. Los gestos (retroceso,
+  balanceo, inercia) pivotan en la mano y lo mueven un instante.
+- **Más fina y redondeada**: grosor total de 0.035 a **0.022** (−37 %), largo de 0.6
+  a 0.34, un bisel de dos pasos en las aristas y el doble de segmentos por curva. **El
+  perfil no se toca**: las dos tapas son exactamente la silueta de
+  `Reference/Weapons/`, y el contorno encendido se dibuja **sólo en la tapa que mira
+  a la cámara** (con las dos, la de detrás asomaba por el canto y cada arista salía
+  doble).
+- **Dos luces, sólo en su escena**: sin luz, una esfera de color plano es un círculo
+  y un bisel no se ve. El mundo sigue sin ninguna (vuelta 38).
+
+**Y la primera pose se descartó mirándola**: con la mano cerca del eje de la vista y
+el cañón apuntando al centro, el arma queda casi paralela a la mirada y se ve **desde
+atrás**, sin costado. Lo que da el costado es el giro, y el giro sale de dónde está la
+mano y de lo cerca que converge: la mano pasa a la derecha y la convergencia se
+acerca, y el arma gira unos 25° hacia el centro. Es el mismo precio que paga
+cualquier shooter para que se le vea el perfil al arma.
+
+Medido (`vista104`, Pulse, Volt, Scout y Titan a 16:9, 21:9 y 4:3): la recta del
+cañón, proyectada con la cámara del arma, pasa a **0.00 px** del centro de la mira en
+los doce casos, y cruza el eje en el punto de convergencia también a 0.00 px. Coste,
+con WebGL por software (el contenedor dibuja por CPU, así que es una cota por arriba):
+**0.78 ms de media por frame con el arma contra 0.61 sin ella**, 5 456 triángulos (de
+11 132 en la primera versión de esta vuelta, antes de bajar segmentos). En una GPU
+eso es despreciable, y con el ajuste apagado —como sale de fábrica— no se construye
+ni se dibuja nada.
+
+Lo que se ve y hay que saber: en **4:3** el arma pasa por debajo del bloque de arma y
+munición del HUD, abajo a la derecha. El HUD va encima y se sigue leyendo. Anclar el
+arma a una fracción del ancho la alejaría de ahí, pero entonces su tamaño y su giro
+cambiarían con el aspecto, que es justo lo que se pidió que no cambiara.
+

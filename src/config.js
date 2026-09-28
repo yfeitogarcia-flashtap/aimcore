@@ -6810,40 +6810,60 @@ export const MUSIC = {
  * Medido contra el fondo real del Plano A: ver `docs/decisions.md` §38.
  */
 /**
- * **El arma en la mano, vista desde tus ojos** (vuelta 103, maqueta). Se
- * construye con **la silueta del arma** —el mismo trazado de potrace que el
- * HUD— extruida a un recorte con grosor y su contorno encendido, y un antebrazo
- * del color de tu equipo que la sujeta: la misma estética de líneas del resto
- * de Vektor, sin un modelo ni una textura nuevos. Se dibuja en una segunda
- * pasada con su propia cámara, encima de todo y sin chocar con el mundo, que es
- * como lo hacen todos los shooters para que el arma no se meta en una pared.
+ * **El arma en la mano, vista desde tus ojos** (vuelta 103, maqueta; rehecha
+ * en la 104). Se construye con **la silueta del arma** —el mismo trazado de
+ * potrace que el HUD— extruida fina y con las aristas redondeadas, y **una
+ * esfera del color de tu equipo** como mano: la del muñeco, asomando por el
+ * borde de abajo, con el arma encima. Se dibuja en una segunda pasada con su
+ * propia cámara y sus dos luces, encima de todo y sin chocar con el mundo, que
+ * es como lo hacen todos los shooters para que el arma no se meta en una pared.
+ *
+ * **El cañón apunta al centro de la mira por construcción**: ver `armaEnMano.js`.
  *
  * Todo lo que se mueve es presentación: no toca la mira, ni la bala, ni el
  * retroceso de verdad (que es de la cámara, vuelta 61).
- *
- * - `fov`: el encuadre de su cámara, aparte del del mundo, para que el arma no
- *   se deforme al cambiar el del jugador.
- * - `largoU`: lo que mide de ancho el `viewBox` de las siluetas en el mundo.
- *   Todas comparten `viewBox`, así que una pistola sale más pequeña que un
- *   rifle sin decir nada.
- * - `grosorU`: lo que se extruye el recorte.
- * - `sitio`: dónde va respecto a los ojos (derecha, abajo, delante) y cuánto
- *   se gira hacia el centro, en grados, para que se le vea el costado.
- * - `retroceso`, `balanceo`, `inercia`, `recarga`, `subir`: los cinco gestos.
  */
 export const VIEWMODEL = {
-  fov: 58,
-  largoU: 0.6,
-  grosorU: 0.035,
-  sitio: { x: 0.2, y: -0.17, z: -0.62, giroDeg: 6, cabeceoDeg: 1, alabeoDeg: -3 },
-  relleno: '#101317',
-  contorno: '#dfe4ea',
-  contornoOpacidad: 0.85,
-  brazo: { radioU: 0.028, tonoTubo: 0.45, desde: { x: 0.42, y: -0.6, z: -0.2 } },
-  retroceso: { atrasU: 0.055, arribaGrados: 7, vidaMs: 75 },
-  balanceo: { amplitudU: 0.009, pasosPorU: 0.55 },
-  inercia: { porRadian: 0.18, maxU: 0.05, vidaMs: 90 },
-  recarga: { bajaU: 0.09, giroGrados: 22 },
+  /**
+   * **Campo de visión vertical y fijo** de la cámara del arma (vuelta 104). Es
+   * lo que ancla el arma al borde de abajo y el centro de la pantalla al eje
+   * −Z en cualquier relación de aspecto, y lo que la deja quieta cuando el
+   * juego cambia el suyo (la mirilla).
+   */
+  fov: 54,
+  /** Largo del arma, en unidades de su escena. */
+  largoU: 0.34,
+  /** Grosor total, biseles incluidos: un 37 % menos que en la 103 (0.035). */
+  grosorU: 0.022,
+  /** Las aristas redondeadas: un bisel de tres pasos sobre el perfil exacto. */
+  bisel: { grosorU: 0.0045, anchoU: 0.0025, segmentos: 2 },
+  /** Segmentos por curva del trazado: 3 en la 103 dejaba las curvas en facetas. */
+  curvas: 5,
+  /** Qué fracción del largo, desde la boca, se mira para saber a qué altura va el cañón. */
+  punta: 0.07,
+  /**
+   * **A qué distancia, por el eje de la mira, corta la línea del cañón.** Más
+   * cerca gira más el arma hacia el centro (se le ve más el costado); más lejos
+   * la deja más recta.
+   */
+  convergenciaU: 0.9,
+  /** Giro del arma alrededor de su cañón (no mueve la línea del cañón). */
+  alabeoDeg: -4,
+  /**
+   * **La mano es una esfera** del color del jugador, que asoma por el borde de
+   * abajo (`asoma`: la fracción del diámetro que queda dentro de la pantalla) con
+   * el arma apoyada encima (`apoyo`: a qué altura de su radio cae la empuñadura).
+   */
+  mano: { radioU: 0.046, x: 0.22, z: -0.5, asoma: 0.6, apoyo: 0.75 },
+  /** Dos luces sólo para esta escena: el mundo sigue sin ninguna (vuelta 38). */
+  luz: { cielo: '#dfe6ef', suelo: '#1b1f25', ambiente: 2.2, directa: 3.2, desde: { x: 0.5, y: 1, z: 0.7 } },
+  relleno: '#3a4049',
+  contorno: '#e6ebf1',
+  contornoOpacidad: 0.7,
+  retroceso: { atrasU: 0.045, arribaGrados: 6, vidaMs: 75 },
+  balanceo: { amplitudU: 0.008, pasosPorU: 0.55 },
+  inercia: { porRadian: 0.16, maxU: 0.045, vidaMs: 90 },
+  recarga: { bajaU: 0.08, giroGrados: 20 },
   subirMs: 180,
   /**
    * **Las fotos que miran al revés.** En las referencias el cañón apunta a la

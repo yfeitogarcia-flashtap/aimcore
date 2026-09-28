@@ -2069,7 +2069,7 @@ vieja.
 | Límite de fotogramas | 60 · 144 · 240 · Sin límite |
 | Audio espacial | los sonidos del mundo suenan con dirección |
 | Mensajes de ayuda | avisos breves en el HUD, activados por defecto |
-| Arma en pantalla (maqueta) | el arma en la mano con el brazo de tu equipo, como en otros shooters. **Apagado de fábrica**: es una maqueta para decidir con ella delante |
+| Arma en pantalla (maqueta) | el arma en la mano, sobre una esfera del color de tu equipo, con el cañón apuntando al centro de la mira en cualquier pantalla. **Apagado de fábrica**: es una maqueta para decidir con ella delante |
 
 El panel sólo se abre con la partida parada, así que reconstruir las mallas al
 cambiar de tipo o de tamaño nunca cae dentro del bucle de render.
