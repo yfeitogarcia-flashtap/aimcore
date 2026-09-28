@@ -1980,6 +1980,24 @@ Medido (`armeria102`): cinco pestañas, «Equipar» y una ficha, sin cerrarse, e
 el entrenamiento y en el todos contra todos; sin el arreglo, el banco se queda
 en la primera línea.
 
+**Un panel que vive en dos sitios necesita su regla de tamaño en los dos**
+(vuelta 104). Opciones es **un** componente y se monta en la cabina (menú
+principal) y en un `.overlay` (pausa del entrenamiento y menú de ESC del
+multijugador). La reescritura de Cabina (vuelta 99) le dio a la cabina su regla
+—`.cab-main > .panel` deja crecer, porque ahí se desplaza la carcasa— y en el
+camino **se llevó el tope de alto y el scroll que el panel tenía flotando desde
+la 92**. Con 1 789 px de contenido, el `.overlay` lo centraba y recortaba las dos
+puntas: por arriba se iban **las dos sensibilidades** —se reportó como «no hay
+sensibilidad en ESC»— y por abajo, Volver, sin forma de llegar a ninguna. Nadie
+lo vio en siete vueltas porque todos los bancos de opciones lo abrían desde la
+cabina. La regla que se queda: **un panel flotante lleva `max-height` por la
+ventana y scroll propio** (`.overlay > .panel--options`), y sus botones de abajo
+se quedan pegados (la regla de la 94). Medido (`opc104`, a 1280×720, 1366×768,
+1920×1080 y 2560×1080, en la pausa y en el menú de ESC): cabe entero, las dos
+sensibilidades y Volver a la vista al abrir, la rueda llega al final con Volver
+a la vista, y mover la sensibilidad la guarda y **el motor la aplica al momento**
+(la de la mirilla también). Con el CSS de antes, 24 fallos.
+
 **Y bajo el logo no va ningún rótulo destacado** (vuelta 89). Había uno —«RONDA
 CON EXPLOSIVO»— que decía qué se juega al pulsar el primer botón, y **mentía
 desde la 88**: con la duración en «sin límite» el explosivo ya no se arma, así
@@ -7238,6 +7256,13 @@ sobrevive a que se apague la sala. Dos cosas de ahí que ya son decisiones: **se
 sigue pudiendo jugar sin cuenta, en igualdad** —es lo que protege la promesa del
 enlace por código— y **la presencia no puede convertirse en un registro de
 salas**, que es lo que la vuelta 47 decidió que no hubiera.
+
+**La música está valorada y sin construir** (vuelta 104):
+`docs/propuestas/12-musica.md`. **Spotify no se integra**: su política prohíbe
+usar su plataforma para un juego y mezclar su audio, y es un contrato, no un
+esfuerzo. Quedan cuatro vías: controles de medios del sistema en la app, un enlace
+a una playlist oficial, música propia o licenciada (con contrato y revisión legal)
+y un balance juego/música en el que **los pasos se oyen siempre**.
 
 **Lo que está fuera pero se ha dicho que vendría después vive en
 `docs/roadmap.md`**, ordenado por dependencia y sin fechas: reconexión, condición

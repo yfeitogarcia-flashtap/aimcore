@@ -15446,3 +15446,67 @@ gestos, ninguno de juego: retroceso, balanceo al andar, inercia al girar, bajarl
 al recargar y subirla al sacarla. La bala sigue saliendo de los ojos y el
 retroceso de verdad sigue siendo de la cámara (§61). Se esconde con la mirilla
 puesta, abatido y con F3. Tuning en `VIEWMODEL`.
+
+## §104 — Opciones cabe en la partida, y la propuesta de música
+
+Feedback de Yago sobre el resumen de las vueltas 97–103, con una partida de
+prueba al día siguiente: lo primero, el fallo de Opciones; lo demás, sin romper
+nada.
+
+### 104.1 — Opciones sobre la partida: el tope de alto que se fue con Cabina
+
+Reportado: en el menú de ESC (entrenamiento y multijugador) el panel de Opciones
+«está sobredimensionado, no tiene scroll, no se ven todas las filas, y no hay
+sensibilidad del ratón». Se pidió el mismo panel del menú principal, con altura
+máxima según la ventana y scroll interno.
+
+**Ya era el mismo panel** —un solo `Options.jsx`, montado en la cabina, en la
+pausa y en la capa del duelo— y la sensibilidad **sí estaba**: era su primera
+fila. Lo que pasaba es de tamaño. Hasta la vuelta 98 `.panel--options` llevaba
+`max-height: calc(100vh - 48px)` y `overflow-y: auto`; la reescritura de Cabina
+(vuelta 99) le dio a la cabina su propia regla (`.cab-main > .panel`, que deja
+crecer porque ahí se desplaza la carcasa) y **reescribió la del panel sin esas
+dos líneas**. Flotando en un `.overlay` —que lo centra con flex—, un panel de
+1 789 px en una ventana de 720 **pierde las dos puntas**: por arriba se iban el
+título y las dos sensibilidades, por abajo Volver y Restablecer, y sin scroll no
+había forma de llegar a ninguna. Medido antes de tocar nada (`opc104`): de −535
+a 1 255 px a 1280×720, igual en la pausa y en el ESC del multijugador; 24 fallos.
+
+El arreglo es la regla que faltaba, escrita para el sitio donde hace falta:
+`.overlay > .panel--options` con `max-height` por la ventana (`100dvh`, con
+`100vh` delante para quien no lo tenga), scroll interno y `overscroll-behavior:
+contain`; y la fila de Volver/Restablecer **pegada abajo** con fondo opaco (la
+regla de la 94: la acción no se va de la pantalla). En la cabina no cambia nada.
+
+Medido después (`opc104`, a 1280×720, 1366×768, 1920×1080 y 2560×1080, en la
+pausa y en el menú de ESC del multijugador): cabe entero (de 24 a 696 px a
+1280×720), las dos sensibilidades y Volver a la vista al abrir, la rueda llega al
+final con Volver a la vista, mover la sensibilidad con el teclado la guarda en
+`aimcore.settings.v1` y **el motor la aplica al momento** (5.76e−4 → 5.95e−4
+rad/cuenta), la de la mirilla también llega al motor y se guarda, y Volver cierra.
+
+**Por qué nadie lo vio en siete vueltas**: todos los bancos de opciones lo abrían
+desde la cabina, donde crece sin tope y se desplaza la carcasa. `esc101` lo abría
+en la pausa, pero sólo comprobaba que se abriera y se cerrara con ESC. La lección
+es la de «está en pantalla» y «se ve» (vuelta 89) por la puerta del tamaño: **un
+componente que se monta en dos contenedores se mide en los dos**.
+
+La batería entera se pasó antes de subir, cada banco con el huésped que pide:
+treinta bancos en verde. Un renglón en rojo, **caducado y no roto**: `flujo92`
+esperaba que un ESC con la armería abierta en la pausa la cerrara **sin**
+reanudar, que era la regla de la 89; la 101 la cambió a propósito (ESC acaba
+siempre en la partida) y ese renglón sigue midiendo la vieja, como `esc89b` y
+`esc91`, que la 101 ya retiró.
+
+### 104.2 — La música: Spotify no, y cuatro vías que sí
+
+Escrito entero en `docs/propuestas/12-musica.md`, sin código. El encargo ya traía
+el descarte —la política de Spotify prohíbe usar su plataforma para un juego y
+mezclar su audio—, y lo que se valora son cuatro vías que no compiten: controles
+de medios del sistema en la app (limpia, cero euros, un `.exe` nuevo), un enlace a
+una playlist oficial (limpia, cero euros), música propia o licenciada dentro del
+juego (limpia **con contrato**: sincronización, máster, libre de entidad o con su
+licencia, y que cubra la emisión de los jugadores; revisión legal antes del primer
+contrato) y un balance juego/música con atenuación automática para que **los
+pasos se oigan siempre**. Orden recomendado: la playlist, los controles de medios,
+y la música propia con su balance cuando haya catálogo.

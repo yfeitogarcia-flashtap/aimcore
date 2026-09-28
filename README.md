@@ -2074,6 +2074,12 @@ vieja.
 El panel sólo se abre con la partida parada, así que reconstruir las mallas al
 cambiar de tipo o de tamaño nunca cae dentro del bucle de render.
 
+Opciones es el mismo panel en el menú principal, en la pausa del entrenamiento
+y en el menú de ESC del multijugador. Sobre la partida mide como mucho el alto de
+la ventana y se desplaza por dentro, con Volver siempre a la vista; lo que se
+cambia ahí —la sensibilidad y la de la mirilla incluidas— se aplica al momento y
+se guarda igual que desde el menú.
+
 ## Armas
 
 Trece armas, en el bloque `WEAPONS` de `config.js`. Se llamaban **Scalar-2,

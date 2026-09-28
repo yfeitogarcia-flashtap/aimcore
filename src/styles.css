@@ -930,6 +930,42 @@ body {
   max-width: 720px;
 }
 
+/* **Opciones sobre la partida: cabe en la ventana y se desplaza por dentro**
+   (vuelta 104). Es el mismo panel que el de la cabina —el mismo componente, la
+   misma store—, pero abierto desde la pausa o desde el menú de ESC del
+   multijugador flota centrado en un `.overlay`, y ahí la reescritura de Cabina
+   (vuelta 99) le había quitado el tope de alto y el scroll que tenía desde la
+   92. Con más filas que ventana, el `.overlay` lo centraba y **recortaba las dos
+   puntas**: por arriba se iban las dos sensibilidades —que es lo que se
+   reportó como «no hay sensibilidad en ESC»— y por abajo, Volver. Sin scroll,
+   no había forma de llegar a ninguna de las dos.
+
+   Dentro de la cabina manda `.cab-main > .panel` (más abajo), que lo deja
+   crecer porque ahí el que se desplaza es el contenido de la carcasa. */
+.overlay > .panel--options {
+  gap: var(--cab-e3);
+  align-items: stretch;
+  width: min(720px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  max-height: calc(100dvh - 48px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  text-align: left;
+}
+
+/* Y **Volver no se va de la vista** mientras se baja por la lista: es la regla
+   de la vuelta 94 (la acción no se va de la pantalla) en un panel con scroll.
+   Fondo opaco, porque el panel es translúcido y las filas se leerían a través
+   de los botones. */
+.overlay > .panel--options .panel__actions {
+  position: sticky;
+  bottom: calc(-1 * var(--cab-e6));
+  margin: 0 -40px;
+  padding: var(--cab-e3) 40px;
+  background: var(--cab-superficie);
+  z-index: 1;
+}
+
 .panel--options .panel__title,
 .panel--training .panel__title {
   align-self: center;
