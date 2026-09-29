@@ -15834,3 +15834,25 @@ el encuadre v3 el arma se ve casi desde atrás, y de una silueta de perfil vista
 así sólo queda una línea estrecha y retorcida que no se lee como un arma. **No es
 claramente mejor que no llevar arma**, que era la condición para seguir. Queda
 pendiente de la decisión de Yago, apagado.
+
+## §106 — Los bancos viajan en git, el arma se cierra, la sensación de disparo y las peanas
+
+### 106.1 — Los bancos, a `bancos/`
+
+Hasta la 105 los bancos vivían en `scratchpad/`, que está en `.gitignore` salvo
+tres ficheros: **estaban sólo en la máquina que los escribió**, y esa máquina es
+un contenedor que se recicla. Los de las primeras cincuenta vueltas (`red45`,
+`tiro46` en su forma original, `fixes.mjs`, `live.mjs`…) ya se perdieron así, y
+lo que queda de ellos son las medidas escritas en este fichero. Ahora están en
+`bancos/`, que viaja en git, con su batería (`bateria.sh`), los dos lanzadores de
+servidores (`dev.sh`, `host.sh`) y un `LEEME.md` que dice qué pide cada grupo.
+
+Lo que **no** viaja son las capturas: siguen yendo a `scratchpad/`. Son material
+de medida de una tanda, y una imagen por banco y por vuelta en la historia del
+repositorio sería justo lo que el `.gitignore` de la raíz evita desde la 65.
+
+Al moverlos se hizo inventario. Cuatro scripts eran sondas de una tarde
+(`dbg2`, `probe`, `sonda`, `t`) y uno una captura suelta (`alch100shot`): se
+borraron. `esc89` era un informe sobre un navegador sin interfaz, que no aplica
+las reglas de Chrome —que es lo que la 105 aprendió— y los nueve del arma en
+pantalla se retiran con el tema (§106.2). Todo lo demás está en la batería.

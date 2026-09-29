@@ -1,0 +1,11 @@
+import { chromium } from 'playwright-core'
+const nav = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--use-gl=swiftshader','--enable-unsafe-swiftshader','--no-sandbox'] })
+const p = await nav.newPage({ viewport: { width: 1366, height: 768 } })
+await p.goto('http://localhost:5199/duelo/', { waitUntil: 'networkidle' })
+await p.waitForTimeout(2500)
+await p.screenshot({ path: 'scratchpad/escmenu101-a.png' })
+await p.click('#invitar'); await p.waitForTimeout(300)
+await p.screenshot({ path: 'scratchpad/escmenu101-b.png' })
+await p.setViewportSize({ width: 700, height: 460 }); await p.waitForTimeout(300)
+await p.screenshot({ path: 'scratchpad/escmenu101-c.png' })
+await nav.close()

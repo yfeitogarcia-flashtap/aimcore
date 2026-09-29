@@ -6032,9 +6032,18 @@ afirma, mide.)
 cada «FALLO» o «NO» impreso suma y el banco sale con 1. Lo que puede haber es un
 informe, que no afirma nada; lo que no puede haber es un banco que afirme y no
 cuente. Un banco que mide una regla enmendada a propósito **se retira**
-(`scratchpad/retirados/`, con su motivo) en vez de quedarse en rojo «esperado».
-Y ojo: `scratchpad/` está en `.gitignore` salvo tres ficheros, así que los bancos
-viven en la máquina que los escribió.
+(`bancos/retirados/`, con su motivo) en vez de quedarse en rojo «esperado».
+
+**Los bancos viven en `bancos/`, y viajan en git** (vuelta 106). Hasta la 105
+vivían en `scratchpad/`, que está en `.gitignore`: estaban sólo en la máquina que
+los escribió, y esa máquina es un contenedor que se recicla. Ahí siguen yendo las
+**capturas** que escriben (`scratchpad/*.png`), que son material de medida y no
+del proyecto. La batería es `bancos/bateria.sh`, por grupos según lo que cada
+banco pide del huésped —sin navegador, contra el servidor de desarrollo, y cuatro
+formas del huésped—; `bancos/dev.sh` y `bancos/host.sh` relanzan los dos
+servidores comprobando que el que contesta es el nuevo; y `bancos/LEEME.md` dice
+qué pide cada grupo. **Ningún banco de la batería puede estar en rojo**: se
+arregla o se retira con su motivo.
 
 **Un error de página es un fallo, no una línea de registro** (vuelta 60). Un
 `FOOTSTEPS is not defined` produjo **318 errores** en una tanda entera y las seis

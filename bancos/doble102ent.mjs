@@ -1,0 +1,16 @@
+import { chromium } from 'playwright-core'
+const nav = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'] })
+const p = await nav.newPage({ viewport: { width: 1280, height: 800 } })
+await p.addInitScript(() => { const P = window.__p = { osc: 0, buf: 0 }; const C = AudioContext.prototype; const o = C.createOscillator, b = C.createBufferSource
+  C.createOscillator = function (...a) { P.osc++; return o.apply(this, a) }; C.createBufferSource = function (...a) { P.buf++; return b.apply(this, a) } })
+await p.goto('http://localhost:5199/', { waitUntil: 'networkidle' }); await p.waitForTimeout(1500)
+await p.mouse.click(40, 690); await p.waitForTimeout(1500)
+const r = await p.evaluate(() => { const m = window.vektor?.engine ?? window.__engine; return !!m })
+console.log('asa motor', r)
+const leer = () => p.evaluate(() => ({ ...window.__p }))
+await p.keyboard.press('Digit2'); await p.waitForTimeout(500)
+const a = await leer()
+await p.mouse.down(); await p.waitForTimeout(60); await p.mouse.up(); await p.waitForTimeout(800)
+const b = await leer()
+console.log('un clic con la pistola:', { osc: b.osc - a.osc, buf: b.buf - a.buf })
+await nav.close()

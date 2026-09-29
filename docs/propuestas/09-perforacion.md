@@ -8,7 +8,7 @@ la mitad del trabajo: **«valorad cómo afecta al equilibrio de los mapas actual
 antes de activarlo»**.
 
 Se ha valorado, con un barrido sobre los dos mapas de verdad
-(`scratchpad/perfora95.mjs`), y la medida cambia la recomendación. Está en §1.
+(`bancos/perfora95.mjs`), y la medida cambia la recomendación. Está en §1.
 
 ---
 
@@ -233,7 +233,7 @@ Es el umbral global del encargo, y sólo tiene sentido con tres cosas puestas:
   (0.50). Con eso ninguna pared se cruza de frente y lo que se ablanda es el borde:
   **2.9 % de los escondites del Plano A y 4.5 % de los de El Espejo**.
 - **Su auditoría publicada y pasada de nuevo con cada mapa nuevo**
-  (`scratchpad/perfora95.mjs`, que no afirma: mide, como `x8.mjs`). Un umbral sin
+  (`bancos/perfora95.mjs`, que no afirma: mide, como `x8.mjs`). Un umbral sin
   esa tabla al lado es un número que nadie puede discutir.
 - **Y el aviso del editor** cuando el mapa trae una pieza más fina que el umbral.
 
