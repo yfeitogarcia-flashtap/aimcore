@@ -16040,3 +16040,58 @@ en red no se ha medido con dos navegadores**: ningún mapa publicado tiene peana
 todavía, y el cliente monta el mapa de su propio catálogo. `peanas106` mide el
 servidor y `peanas106nav` el motor; el primer mapa de peanas que se haga en
 Alchemist es la prueba (está en la lista de `docs/beta-cerrada.md`).
+
+### 106.5 — Los rojos «de siempre», uno por uno
+
+La batería entera con los bancos ya en `bancos/` dio **catorce rojos**. Ninguno
+se miró con una teoría: cada uno se pasó **también contra el código de la
+vuelta anterior** (un árbol de `efa16ef` con su `dist/` y su huésped), que es lo
+que separa un fallo del código de un fallo del banco. Doce eran rojos también
+allí; los otros dos (`paridad101nav` y `todos101nav`) salieron verdes dos veces
+seguidas contra el código nuevo al pasarlos solos: eran sensibles a la carga.
+
+Lo que había detrás, agrupado por la causa y no por el banco, porque las causas
+se repiten y es lo que vale la pena recordar:
+
+- **`innerText` aplica `text-transform`.** Desde Cabina los nombres de la
+  armería van en mayúsculas, y `krakov93nav` y `pump91nav` buscaban «Krakov» en
+  un texto que decía «KRAKOV». Se leen con `textContent`.
+- **El reloj de pared no es el del juego** (la regla de la vuelta 75, otra vez).
+  `u286nav` esperaba 2.8 s de pared a una recarga de 2 s de juego, y con WebGL
+  por software el mundo va a cámara lenta: el clic siguiente caía recargando.
+  Ahora espera a que el HUD deje de decir «RECARGANDO» y mide lo lento que va el
+  mundo con esa misma recarga para esperar la cadencia. Y `red45` contaba
+  muestras con un `setInterval` de 16 ms que aquí dispara 12 veces por segundo:
+  pedía 50 y el jugador despegaba en 7 de 7 pulsaciones. Se exigen despegues.
+- **Un banco que conoce un número del mapa mide el mapa.** `u286nav` jugaba en
+  el Plano A y el jugador sale a metro y medio del muro de aparición: el tercer
+  cohete le mataba a él (el U2 alcanza a su dueño, vuelta 86), y morir repone la
+  reserva. `doble103` se ponía en (±3, −16), donde el mapa de duelo de hoy ya no
+  tiene línea de visión. Los dos buscan ahora su sitio: la sala vacía, y el
+  mismo barrido de `ficha101`.
+- **Un jugador por navegador** (vueltas 50 y 57), que `red45` y `tiro46` no
+  cumplían: las dos pestañas en el mismo navegador, la de atrás frenada.
+- **El grupo tiene que ser el que el banco necesita.** `ficha101` y `ficha101t`
+  estaban con el lobby puesto y esperaban jugar al entrar: se quedaban en el
+  lobby sin rival. `aire88red` mide cero correcciones y estaba con rondas, donde
+  la fase de compra y su corralito sí corrigen. `retraso101nav` juega a dos bajas
+  y medía cuatro: las dos últimas vueltas no tenían a quién matar y la mediana
+  salía `NaN`, con las dos de verdad diciendo lo que se mide.
+- **Una regla enmendada deja un banco midiendo la de antes.** `duelomenu98`
+  pedía el «Volver» de antes del rival, que la 101 quitó con el lobby: se ha
+  quedado con lo que sigue valiendo (la tabla de controles y los botones con
+  partida). `nav88` iba al menú de la 88, que ya no existe, y se retira: lo que
+  medía lo guardan `opc104`, `arm95`, `armeria98` y `mapas98`.
+- **Y un denominador que el contenedor no puede dar.** `tiro46` pedía dos
+  escenarios en los que el tope de rebobinado no muerda, y desde que el colchón
+  del rival se adapta (vuelta 103) aquí sólo cabe el de 0 ms: cualquier latencia
+  simulada lleva el rebobinado pedido de ~125 a ~260 ms. La fila de 10 ms se
+  queda en la tabla porque es la que lo enseña; la premisa pide ahora una fila
+  sin tope **con al menos doce disparos**, que es lo que sostiene la afirmación.
+
+Y `paridad101nav` lee el `!` varias veces dentro de su ventana en vez de una a
+los 400 ms de pared, que es lo que lo hacía sensible a la carga.
+
+La regla que sale, y que ya estaba escrita a trozos: **antes de creerse un rojo,
+pasarlo contra el código de antes.** Verde con el viejo y rojo con el nuevo es
+una regresión; rojo con los dos es el banco.
