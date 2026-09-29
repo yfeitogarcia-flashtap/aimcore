@@ -58,7 +58,10 @@ const dos = sanearMapa(ambos.mapa)
 afirmar(JSON.stringify(dos.mapa) === JSON.stringify(ambos.mapa), 'y sanear dos veces da lo mismo, byte a byte')
 for (const [k, m] of Object.entries(MAPAS_DE_FICHERO)) {
   const a = sanearMapa(m).mapa
-  afirmar(a.modos === undefined, `${k}: abrirlo no le escribe modos`)
+  // Un mapa guardado desde Alchemist puede declarar ya sus modos (vuelta 107:
+  // el-espejo-peanas). Lo que se guarda es que abrirlo no escriba unos que no estaban.
+  afirmar(m.modos === undefined ? a.modos === undefined : JSON.stringify(a.modos) === JSON.stringify(m.modos),
+    `${k}: abrirlo no le escribe modos${m.modos ? ' (declara ' + m.modos.join('+') + ')' : ''}`)
 }
 
 const navegador = await chromium.launch({ executablePath: CHROME, args: ['--use-gl=swiftshader', '--enable-unsafe-swiftshader', '--no-sandbox'] })
