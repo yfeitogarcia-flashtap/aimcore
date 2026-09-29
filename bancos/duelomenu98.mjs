@@ -1,9 +1,11 @@
 /**
  * duelomenu98 — el menú del duelo de la vuelta 98 (puntos 5, 6 y 7).
- *  [1] Solo en la sala (crear): hay «Volver», no hay «Salir» ni «Pausar».
+ *  [1] Solo en la sala: ni «Pausar» ni «Volver» (desde la vuelta 101 crear la
+ *      sala es el lobby, y el menú de ESC es sólo de la partida).
  *  [2] El botón del teclado abre una tabla con las teclas de los binds.
- *  [3] Con el rival dentro: aparece «Salir de la partida», se va «Volver».
- *  [4] «Volver» lleva al menú del juego.
+ *  [3] Con el rival dentro: «Pausar» y «Salir de la partida».
+ *  El «Volver» de la 98 y su punto [4] se fueron con la 101: lo que guardaba
+ *  —poder volver al menú antes de jugar— lo hace ahora el lobby.
  * Contra `bash bancos/dev.sh` (5192) y el huésped (5199).
  */
 import { chromium } from 'playwright-core'
@@ -22,7 +24,7 @@ await a.goto('http://127.0.0.1:5192/duelo/', { waitUntil: 'load' })
 await a.waitForTimeout(3000)
 console.log('[1] Solo, creando la sala')
 const solo = await visibles(a)
-afirmar(solo.volver && !solo.salir && !solo.pausar, `botones: ${JSON.stringify(solo)}`)
+afirmar(!solo.volver && !solo.pausar && solo.opciones && solo.teclado, `botones: ${JSON.stringify(solo)}`)
 console.log('\n[2] La tabla de controles')
 afirmar(await a.$eval('#tablaControles', (t) => t.hidden), 'cerrada de salida')
 await a.click('#teclado')
@@ -40,18 +42,7 @@ b.on('pageerror', (e) => errores.push(String(e)))
 await b.goto(enlace.replace(/^https?:\/\/[^/]+/, 'http://127.0.0.1:5192'), { waitUntil: 'load' })
 await a.waitForTimeout(3500)
 const conRival = await visibles(a)
-afirmar(!conRival.volver && conRival.salir, `botones con partida: ${JSON.stringify(conRival)}`)
-const hay = await a.$eval('#hayRival', (e) => e.textContent)
-afirmar(hay === 'dentro', `premisa: el rival está ${hay}`)
-console.log('\n[4] Volver, en el que no tiene rival')
-await b.close()
-await a.waitForTimeout(1500)
-const c = await (await nav2.newContext({ viewport: { width: 1366, height: 768 } })).newPage()
-await c.goto('http://127.0.0.1:5192/duelo/', { waitUntil: 'load' })
-await c.waitForTimeout(2500)
-await c.click('#volver')
-await c.waitForTimeout(1500)
-afirmar(new URL(c.url()).pathname === '/', `Volver lleva a ${new URL(c.url()).pathname}`)
+afirmar(!conRival.volver && conRival.pausar && conRival.salir, `botones con partida: ${JSON.stringify(conRival)}`)
 afirmar(errores.length === 0, `sin errores de página (${errores.length}) ${errores.slice(0, 2)}`)
 await nav1.close(); await nav2.close()
 console.log(`\n${fallos === 0 ? 'TODO BIEN' : `${fallos} FALLOS`}`)

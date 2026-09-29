@@ -37,3 +37,9 @@ Y en la vuelta 106, al mover los bancos a `bancos/`:
   rótulo bajo el logo, los dos modos como botones). La 99 la rehízo, y lo que
   guarda las mismas reglas —las dos puertas iguales, Jugar a la vista, las
   filas inertes y ningún «por defecto» encendido— es `cabina99b`.
+- `nav88.mjs` — la pantalla de inicio de la vuelta 88: Opciones en el primer
+  paso y el selector de mapas dentro de Opciones. La 92 sacó el selector a
+  Entrenamiento y la 99 lo metió todo en Cabina, así que se quedaba esperando un
+  botón que ya no está. Lo que medía lo guardan `opc104` (ESC cierra Opciones),
+  `arm95` y `armeria98` (la armería lista todo el arsenal) y `mapas98` (el
+  selector no ofrece lo que no está publicado).

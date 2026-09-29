@@ -104,6 +104,14 @@ for (let vuelta = 0; vuelta < Number(process.env.VUELTAS || 4); vuelta++) {
     if ((await A.evaluate(() => window.vektorNet.cliente.bajas)) > antes) break
   }
   await A.waitForTimeout(800)
+  /**
+   * **Sólo cuenta una vuelta con baja** (vuelta 106). El huésped de este grupo
+   * juega a dos bajas (`VEKTOR_BAJAS=2`), así que la partida se acaba en la
+   * segunda y la tercera y la cuarta vuelta no tienen a quién matar: sus filas
+   * salían en blanco y la mediana en `NaN`, con las dos bajas de verdad
+   * diciendo exactamente lo que se mide. Se para ahí y se enseña de cuántas.
+   */
+  if ((await A.evaluate(() => window.vektorNet.cliente.bajas)) <= antes) break
   const m = await A.evaluate(() => ({ inm: [...window.__m.inmediato.values()], foto: [...window.__m.enFoto.values()], baja: window.__m.baja.map((b) => b.t), pose: window.__m.poseVieja.map((p) => p.t), fc: window.vektorNet.cliente.fotoCada, rtt: window.vektorNet.cliente.medidas.rtt }))
   const tBaja = m.baja.at(-1)
   const click = clicks.filter((c) => c < tBaja).at(-1)
@@ -120,6 +128,7 @@ for (let vuelta = 0; vuelta < Number(process.env.VUELTAS || 4); vuelta++) {
 const med = (k) => { const v = filas.map((f) => f[k]).sort((a, b) => a - b); return v[Math.floor(v.length / 2)] }
 console.log(`\n  mediana de ${filas.length} bajas, ms desde el clic (fotos cada ${await A.evaluate(() => window.vektorNet.cliente.fotoCada)} pasos):`)
 for (const k of ['rtt', 'veredictoInmediato', 'veredictoEnFoto', 'baja', 'cuerpoPorFotos']) console.log(`    ${k.padEnd(20)} ${med(k)}`)
+ok(filas.length >= 2, `premisa: al menos dos bajas medidas (${filas.length})`)
 ok(filas.length > 0 && filas.every((f) => f.baja <= f.veredictoEnFoto && f.veredictoInmediato <= f.veredictoEnFoto), 'el aviso inmediato llega antes (o a la vez) que la foto')
 ok(filas.every((f) => f.baja < f.cuerpoPorFotos), 'y el cuerpo cae con la baja, antes que por las fotos')
 errores.forEach((e, i) => ok(e.length === 0, `${nombres[i]}: ${e.length} ${e.slice(0, 2).join(' | ')}`))
