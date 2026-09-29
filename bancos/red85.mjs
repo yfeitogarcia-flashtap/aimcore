@@ -99,14 +99,16 @@ console.log('\n[3] una carga floja pega menos que una llena')
     // **La x también**, que `entra` los coloca en las salidas del mapa y en El
     // Espejo no están en el mismo eje: sin esto la flecha pasa de largo y las
     // dos filas dan cero, que es una medida rota disfrazada de resultado.
-    x.pose.position.x = 0; x.pose.position.z = 6
-    y.pose.position.x = 0; y.pose.position.z = -6
+    // Y a 6 u y apuntando al pecho (vuelta 106): con 12 u y la mira alta, la
+    // flecha floja caía corta desde que el arco se recalibró en la 88.
+    x.pose.position.x = 0; x.pose.position.z = 3
+    y.pose.position.x = 0; y.pose.position.z = -3
     let m = p2.paso + 1
     for (let k = 0; k < 8; k++) { mandar(p2, x, entrada(m + k)); mandar(p2, y, entrada(m + k)); }
     for (let k = 0; k < 8; k++) p2.tick()
     const antes = y.vida
     m = p2.paso + 1
-    mandar(p2, x, entrada(m, { d: { f: 0, yaw: 0, pitch: 0.03, seq: 1, c: carga } }))
+    mandar(p2, x, entrada(m, { d: { f: 0, yaw: 0, pitch: -0.08, seq: 1, c: carga } }))
     mandar(p2, y, entrada(m))
     p2.tick()
     let g = 0
@@ -127,8 +129,8 @@ console.log('\n[4] un cliente que miente con la carga se acota')
   const p3 = new Partida({ escenario, rondas: false, depurar: true })
   const x = p3.jugadores.get(p3.entra(() => {}))
   const y = p3.jugadores.get(p3.entra(() => {}))
-  x.pose.position.x = 0; x.pose.position.z = 6
-  y.pose.position.x = 0; y.pose.position.z = -6
+  x.pose.position.x = 0; x.pose.position.z = 3
+  y.pose.position.x = 0; y.pose.position.z = -3
   let m = p3.paso + 1
   for (let k = 0; k < 8; k++) { mandar(p3, x, entrada(m + k)); mandar(p3, y, entrada(m + k)); }
   for (let k = 0; k < 8; k++) p3.tick()

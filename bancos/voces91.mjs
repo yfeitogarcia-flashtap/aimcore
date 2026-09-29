@@ -1,3 +1,4 @@
+import { WEAPONS } from '../src/config.js'
 // Banco: la página de voces carga, lista todas las armas de rayo y ninguna
 // cae ya a la voz clásica. Y se toca una de cada para comprobar que suena.
 import { chromium } from 'playwright-core'
@@ -18,7 +19,10 @@ await p.goto('http://localhost:5192/editor/sonidos.html', { waitUntil: 'networki
 await p.waitForTimeout(800)
 
 const armas = await p.locator('.arma').count()
-afirmar('sale una ficha por arma de rayo', armas === 7, `${armas}`)
+// Cuántas armas de rayo hay lo dice el catálogo, no un número a mano: el Krakov
+// (vuelta 93) hizo ocho y el banco se quedó contando siete (vuelta 106).
+const deRayo = Object.values(WEAPONS).filter((w) => !w.tiro && !w.melee).length
+afirmar('sale una ficha por arma de rayo', armas === deRayo, `${armas} de ${deRayo}`)
 
 const heredadas = await p.locator('.meta', { hasText: 'heredada' }).count()
 afirmar('ninguna hereda ya la voz clásica', heredadas === 0, `${heredadas} heredadas`)

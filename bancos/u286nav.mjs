@@ -41,7 +41,12 @@ console.log('== u286nav ==\n')
 
 // Arrancar la sesión: el botón de jugar, y luego el clic que captura el ratón
 // va **a una esquina** (vuelta 61: el centro puede ser un control).
-const jugar = pagina.locator('button', { hasText: /JUGAR|Jugar/ }).first()
+// Tres pasos desde la vuelta 92: marca → portada → configurar (ver arco85).
+await pagina.click('text=Jugar ahora')
+await pagina.waitForTimeout(400)
+await pagina.click('text=Entrenamiento')
+await pagina.waitForTimeout(400)
+const jugar = pagina.locator('button', { hasText: /^Jugar/ }).last()
 await jugar.click({ timeout: 5000 })
 await pagina.waitForTimeout(800)
 await pagina.mouse.click(60, 560)

@@ -111,7 +111,7 @@ for (const accel of [10, 14, 24, 60]) {
   MOVEMENT.airAccel = antes
   console.log(`  airAccel ${String(accel).padStart(2)} → 6 saltos ${seis.pico.toFixed(4)} u/s`)
 }
-console.log('\n  el que manda es airWishFactor (hoy 0.12)')
+console.log(`\n  el que manda es airWishFactor (hoy ${MOVEMENT.airWishFactor})`)
 for (const wish of [0.12, 0.16, 0.20, 0.26, 0.34]) {
   const antes = MOVEMENT.airWishFactor
   MOVEMENT.airWishFactor = wish
@@ -122,10 +122,22 @@ for (const wish of [0.12, 0.16, 0.20, 0.26, 0.34]) {
   console.log(`  wish ${wish.toFixed(2)} → 1 salto ${uno.pico.toFixed(2)} · 3 ${tres.pico.toFixed(2)} · 6 ${seis.pico.toFixed(2)} (techo ${MOVEMENT.airStrafeMaxSpeed})`)
 }
 
-afirmar('el techo NO se alcanza en seis saltos con ninguna arma',
-  filas.every((f) => f.pico < MOVEMENT.airStrafeMaxSpeed - 1), `mejor pico ${mejor.pico.toFixed(2)} de ${MOVEMENT.airStrafeMaxSpeed}`)
-afirmar('y el arma no explica la inconsistencia: todas ganan lo mismo',
-  mejor.gana - peor.gana < 10, `${(mejor.gana - peor.gana).toFixed(1)} puntos entre la mejor y la peor`)
+/*
+ * **Lo que se afirma es la regla que dejó la vuelta 91**, no su diagnóstico. Las
+ * dos aserciones de entonces («el techo no se alcanza en seis saltos» y «todas
+ * ganan lo mismo») describían el 0.12 de antes del arreglo; con 0.20 lo que hay
+ * que guardar es que la técnica se encadena: un salto suelto no gana nada, seis
+ * llegan cerca del techo y nadie lo pasa (vuelta 106).
+ */
+const pulse = filas.find((f) => f.arma === 'pulse')
+const unSalto = cadena({ arma: 'pulse', saltos: 1 })
+const diez = cadena({ arma: 'pulse', saltos: 10 })
+afirmar('un salto suelto no gana nada', unSalto.pico <= unSalto.v0 + 0.01, `${unSalto.v0.toFixed(3)} → ${unSalto.pico.toFixed(3)}`)
+afirmar('seis saltos con la pistola llegan al 90 % del techo o más',
+  pulse.pico >= 0.9 * MOVEMENT.airStrafeMaxSpeed, `${pulse.pico.toFixed(2)} de ${MOVEMENT.airStrafeMaxSpeed}`)
+afirmar('diez saltos tocan el techo', Math.abs(diez.pico - MOVEMENT.airStrafeMaxSpeed) < 0.05, diez.pico.toFixed(3))
+afirmar('ninguna arma pasa del techo', filas.every((f) => f.pico <= MOVEMENT.airStrafeMaxSpeed + 1e-6))
+afirmar('y todas ganan con la técnica (más del 25 %)', filas.every((f) => f.gana > 25), `la que menos, ${peor.arma} +${peor.gana.toFixed(1)}%`)
 
 console.log(fallos ? `\n${fallos} FALLOS` : '\nTODO OK')
 process.exit(fallos ? 1 : 0)

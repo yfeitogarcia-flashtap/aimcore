@@ -26,3 +26,10 @@ Y en la vuelta 106, al mover los bancos a `bancos/`:
   se cerró en la vuelta 106 (`docs/decisions.md` §106.2). El código sigue en el
   juego, apagado (`VIEWMODEL.disponible`); si el tema se reabre, sus medidas
   están aquí.
+- `alto.mjs` — un informe de la vuelta 92 sobre el alto de las fichas de la
+  armería, que llegaba a ella por el botón del paso 2 del menú. Desde Cabina
+  (vuelta 99) se llega por el raíl, y lo que guarda que las fichas quepan son
+  `arm95` y `cabina99b`.
+- `combo93.mjs` — las combinaciones de la tienda de la 93 («5 1» era la Scout).
+  La 98 rehízo la tabla —la categoría es la ranura y el código el orden de la
+  ficha— y la que la mide arma a arma y en los tres sitios es `armeria98`.

@@ -74,7 +74,9 @@ for (const [w, h] of TAMANOS) {
   p.on('pageerror', (e) => errores.push(String(e)))
   await p.goto('http://127.0.0.1:5192/duelo/', { waitUntil: 'load' })
   // Desde la 101 la página abre en el lobby: el botón que se mide es LISTO.
-  await p.waitForSelector('#listo', { timeout: 30000 })
+  // Basta con que esté en la página: la letra se lee igual oculto, y con un
+  // huésped sin lobby (`VEKTOR_LOBBY=0`, el grupo B) el lobby no se enseña.
+  await p.waitForSelector('#listo', { state: 'attached', timeout: 30000 })
   const f = await p.evaluate(() => getComputedStyle(document.getElementById('listo')).fontFamily)
   afirmar(f === fuenteJuego, '[5] el botón del lobby usa la letra de los botones del juego', f)
   const cuerpo = await p.evaluate(() => getComputedStyle(document.body).fontFamily)

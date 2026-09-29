@@ -42,7 +42,13 @@ function conSalidas(n, base) {
     salidas.push({ x: Math.cos(a) * 16, z: Math.sin(a) * 16, yaw: a })
   }
   return new Proxy(base, {
-    get: (obj, clave) => (clave === 'salidasDeDuelo' ? salidas : Reflect.get(obj, clave)),
+    // Desde la 101 la partida pide `salidasDeEquipos(porEquipo)` (el duelo es
+    // un modo de equipos de uno); `salidasDeDuelo` se deja por si otro la lee.
+    get: (obj, clave) => {
+      if (clave === 'salidasDeDuelo') return salidas
+      if (clave === 'salidasDeEquipos') return () => salidas
+      return Reflect.get(obj, clave)
+    },
   })
 }
 

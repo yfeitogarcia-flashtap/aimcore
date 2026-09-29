@@ -57,6 +57,10 @@ function salaAbierta(lado, n) {
  */
 function medir(definicion, n, { fotoCada = null, lejosU = null, guardar = false } = {}) {
   const topeAntes = TODOS.maxJugadores
+  // Y el de salidas que lee un mapa (`TODOS.maxSalidas`), que desde la 101 es
+  // lo que recorta la lista antes de que la partida cuente sus butacas.
+  const salidasAntes = TODOS.maxSalidas
+  TODOS.maxSalidas = Math.max(salidasAntes, n)
   const lejosAntes = NET.interes.lejosU
   const fcAntes = NET.fotoCada.todos
   TODOS.maxJugadores = Math.max(topeAntes, n)
@@ -124,6 +128,7 @@ function medir(definicion, n, { fotoCada = null, lejosU = null, guardar = false 
     }
   } finally {
     TODOS.maxJugadores = topeAntes
+    TODOS.maxSalidas = salidasAntes
     NET.interes.lejosU = lejosAntes
     NET.fotoCada.todos = fcAntes
   }

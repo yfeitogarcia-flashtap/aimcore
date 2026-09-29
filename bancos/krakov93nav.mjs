@@ -38,7 +38,8 @@ await p.waitForTimeout(1200)
 console.log('\n[1] La armería dice lo que hace')
 await p.getByRole('button', { name: /Jugar ahora/i }).click()
 await p.waitForTimeout(300)
-await p.getByRole('button', { name: /^Armería/i }).click()
+// Desde Cabina (vuelta 99) la armería es una sección del raíl.
+await p.click('.cab-rail__item:has-text("Armería")')
 await p.waitForTimeout(700)
 const fichas = await p.locator('.armoury__card').allInnerTexts()
 const ficha = fichas.find((f) => f.includes('Krakov')) ?? ''

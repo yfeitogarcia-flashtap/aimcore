@@ -23,16 +23,19 @@ await p.goto('http://localhost:5192/', { waitUntil: 'networkidle' })
 await p.waitForTimeout(1200)
 
 // Las fichas de la armería primero: que la escopeta diga lo suyo.
-await p.getByRole('button', { name: /Armer/i }).first().click()
+// Desde Cabina (vuelta 99): marca, y la armería es una sección del raíl.
+await p.click('text=Jugar ahora')
+await p.waitForTimeout(300)
+await p.click('.cab-rail__item:has-text("Armería")')
 await p.waitForTimeout(600)
 const fichas = await p.locator('.armoury__card').allInnerTexts()
 const ficha = fichas.find((f) => f.includes('Pump')) ?? ''
 afirmar('la ficha dice los perdigones', /8 por disparo en un cono de 6/.test(ficha), ficha.slice(0, 80))
 afirmar('y que se recarga cartucho a cartucho', /cartucho a cartucho/.test(ficha))
-await p.keyboard.press('Escape')
+await p.click('.cab-rail__item:has-text("Entrenar")')
 await p.waitForTimeout(400)
 
-await p.locator('button', { hasText: /JUGAR|RONDA/i }).first().click()
+await p.locator('button', { hasText: /^Jugar/ }).last().click()
 await p.waitForTimeout(900)
 await p.mouse.click(60, 660)
 await p.waitForTimeout(1200)

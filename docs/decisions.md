@@ -15856,3 +15856,30 @@ Al moverlos se hizo inventario. Cuatro scripts eran sondas de una tarde
 borraron. `esc89` era un informe sobre un navegador sin interfaz, que no aplica
 las reglas de Chrome —que es lo que la 105 aprendió— y los nueve del arma en
 pantalla se retiran con el tema (§106.2). Todo lo demás está en la batería.
+
+### 106.2 — El arma en pantalla: tema cerrado
+
+Decisión de Yago tras ver la lámina de la 105: **no hay arma en pantalla en
+Vektor**, y no se hacen más pilotos. Tres vueltas la construyeron (la maqueta de
+la 103, la v2 de la 104 y la v3 calibrada por tipo de la 105) y dos pilotos la
+pusieron a prueba (la silueta con grosor por zonas y el contorno holográfico);
+ninguno fue claramente mejor que no llevar nada, que era la condición.
+
+**Lo que queda, y cómo:**
+
+- **El código se conserva, apagado.** `src/game/armaEnMano.js` sigue entero, con
+  sus poses por tipo (`VIEWMODEL.poses`), el agarre de cada foto
+  (`VIEWMODEL.armas`) y el piloto holográfico (`VIEWMODEL.holograma`). Lo apaga
+  `VIEWMODEL.disponible: false`, que el motor mira antes que el ajuste: con él
+  apagado **no se construye ni se dibuja nada**, lo tenga el jugador encendido o
+  no, y no cuesta ni un frame.
+- **El ajuste `armaEnPantalla` se sigue guardando y saneando**, sin fila en
+  Opciones. Si el tema se reabre, vuelve con lo que cada uno eligió.
+- **Sus bancos están en `bancos/retirados/`** (`vista102/104/105`, `holo105`,
+  las láminas y `piloto105`), con la regla de siempre: se guardan para poder leer
+  cómo se medía.
+
+**Lo que ocupa su sitio** es la propuesta 13, aprobada en esta misma vuelta: que
+disparar se sienta con un fogonazo de luz, una sacudida de la vista y la silueta
+del HUD reaccionando (§106.3). Es la respuesta a la pregunta que el arma venía a
+contestar —«¿ha salido una bala?»— sin prometer un objeto que no se dibuja.
