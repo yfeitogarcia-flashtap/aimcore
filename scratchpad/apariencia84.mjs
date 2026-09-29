@@ -9,6 +9,11 @@ import * as THREE from 'three'
 import { Scenario } from '../src/game/scenario.js'
 import { COLORS, COVER } from '../src/config.js'
 
+let fallos = 0
+/** Un veredicto impreso también cuenta: un paso en rojo hace fallar el banco (auditoría de la vuelta 105). */
+const veredicto = (bien, si = 'sí', no = 'NO') => { if (!bien) fallos += 1; return bien ? si : no }
+
+
 const base = { clave: 'a84', nombre: 'A', sala: { lado: 40, alto: 12 }, spawnZone: [] }
 
 function montar(boxes) {
@@ -37,13 +42,13 @@ console.log('== apariencia84 ==\n')
 console.log(`[1] una losa de dispositivo sola: ${soloLosa.mallas} malla(s) de caja + marca`)
 console.log(`    una pieza normal sola:        ${soloNormal.mallas} malla(s)`)
 console.log(`    losa + pieza normal:          ${losaYNormal.mallas} malla(s)`)
-console.log(`    → la losa no añade caja: ${losaYNormal.mallas === soloNormal.mallas + (soloLosa.mallas) ? 'sí' : 'REVISAR'}`)
+console.log(`    → la losa no añade caja: ${veredicto(losaYNormal.mallas === soloNormal.mallas + (soloLosa.mallas), 'sí', 'REVISAR')}`)
 console.log(`[2] un dispositivo más alto que el escalón (${COVER.stepHeight}) sí se dibuja: ` +
-  `${conAlta.mallas > soloLosa.mallas ? 'sí' : 'NO'} (${conAlta.mallas} contra ${soloLosa.mallas})`)
-console.log(`[3] la marca sigue dibujándose: ${soloLosa.lineas + soloLosa.mallas > 0 ? 'sí' : 'NO'}`)
+  `${veredicto(conAlta.mallas > soloLosa.mallas, 'sí', 'NO')} (${conAlta.mallas} contra ${soloLosa.mallas})`)
+console.log(`[3] la marca sigue dibujándose: ${veredicto(soloLosa.lineas + soloLosa.mallas > 0, 'sí', 'NO')}`)
 console.log(`[4] colores en juego: ${soloLosa.colores.join(', ')}`)
 console.log(`    amarillo de dispositivo (${COLORS.dispositivo}): ` +
-  `${soloLosa.colores.includes(COLORS.dispositivo.toUpperCase()) ? 'presente' : 'AUSENTE'}`)
+  `${veredicto(soloLosa.colores.includes(COLORS.dispositivo.toUpperCase()), 'presente', 'AUSENTE')}`)
 
 // [5] Una tirolina: su cable se queda azul.
 const conCable = montar([])
@@ -62,5 +67,8 @@ const conCable = montar([])
   })
   console.log(`[5] con tirolina, colores dibujados: ${colores.join(', ')}`)
   console.log(`    cable azul (${COLORS.electric}) y marca amarilla a la vez: ` +
-    `${colores.includes(COLORS.electric.toUpperCase()) && colores.includes(COLORS.dispositivo.toUpperCase()) ? 'sí' : 'NO'}`)
+    `${veredicto(colores.includes(COLORS.electric.toUpperCase()) && colores.includes(COLORS.dispositivo.toUpperCase()), 'sí', 'NO')}`)
 }
+
+console.log(fallos ? `\n${fallos} FALLO(S)` : '\nTODO VERDE')
+process.exit(fallos ? 1 : 0)

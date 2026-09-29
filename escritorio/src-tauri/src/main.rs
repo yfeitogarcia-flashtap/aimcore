@@ -53,6 +53,20 @@ fn atajo_de_pantalla_completa() -> Shortcut {
     Shortcut::new(None, Code::F11)
 }
 
+/// **ESC también es de la ventana** (vuelta 105). Si ESC llega a la página con
+/// el ratón capturado, lo suelta el navegador, y Chrome trata esa salida como
+/// del usuario: para volver exige un gesto, y ESC no lo es. Quedándose la tecla
+/// aquí y contándoselo a la página, **la que suelta el ratón es la página**, y
+/// entonces volver no pide gesto ni espera: ESC reanuda a la primera, siempre.
+/// Con el ratón ya suelto, la página lo convierte en una pulsación normal, así
+/// que los menús lo entienden igual que en un navegador (`src/game/captura.js`).
+fn atajo_de_escape() -> Shortcut {
+    Shortcut::new(None, Code::Escape)
+}
+
+/// El aviso de ESC. Escrito también en `src/game/captura.js`.
+const AVISO_DE_ESCAPE: &str = "vektor:escape";
+
 /// **La marca que la página lee para saber dónde está**, inyectada en cada
 /// documento antes que ningún script suyo. Congelada, y con la versión dentro:
 /// es también lo que enseña el panel de opciones, que es la forma de comprobar a
@@ -118,12 +132,15 @@ fn alternar_desde_la_ventana(ventana: &WebviewWindow) {
 /// tira nada: la página sigue escuchando F11 como en la 97.
 fn escuchar_f11(app: &tauri::AppHandle, escuchar: bool) {
     let atajos = app.global_shortcut();
-    let atajo = atajo_de_pantalla_completa();
-    let puesto = atajos.is_registered(atajo);
-    if escuchar && !puesto {
-        let _ = atajos.register(atajo);
-    } else if !escuchar && puesto {
-        let _ = atajos.unregister(atajo);
+    // Y ESC con la misma regla (vuelta 105): sólo con el foco, o ESC dejaría de
+    // funcionar en el resto de programas mientras Vektor está abierto.
+    for atajo in [atajo_de_pantalla_completa(), atajo_de_escape()] {
+        let puesto = atajos.is_registered(atajo);
+        if escuchar && !puesto {
+            let _ = atajos.register(atajo);
+        } else if !escuchar && puesto {
+            let _ = atajos.unregister(atajo);
+        }
     }
 }
 
@@ -135,11 +152,15 @@ fn main() {
                     if evento.state != ShortcutState::Pressed {
                         return;
                     }
-                    if *atajo != atajo_de_pantalla_completa() {
-                        return;
-                    }
-                    if let Some(ventana) = app.get_webview_window(VENTANA) {
+                    let Some(ventana) = app.get_webview_window(VENTANA) else { return };
+                    if *atajo == atajo_de_pantalla_completa() {
                         alternar_desde_la_ventana(&ventana);
+                    } else if *atajo == atajo_de_escape() {
+                        // Un `eval` y no un evento de Tauri, por lo mismo que F11:
+                        // tiene que llegar aunque el dominio cambie.
+                        let _ = ventana.eval(format!(
+                            "window.dispatchEvent(new CustomEvent({AVISO_DE_ESCAPE:?}))"
+                        ));
                     }
                 })
                 .build(),

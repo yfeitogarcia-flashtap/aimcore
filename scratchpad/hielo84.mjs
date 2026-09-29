@@ -16,6 +16,10 @@ import { Scenario } from '../src/game/scenario.js'
 import { crearPose } from '../net/pose.js'
 import { SIM } from '../src/config.js'
 
+// Un paso en rojo hace fallar el banco (auditoría de la vuelta 105).
+let rojos = 0
+const veredicto = (bien, si = 'OK', no = 'FALLO') => { if (!bien) rojos += 1; return bien ? si : no }
+
 const DT = 1 / SIM.hz
 const NOW_STEP = 1000 / SIM.hz
 
@@ -94,7 +98,7 @@ for (const conSalto of [false, true]) {
     if (!ok) { fallos += 1; detalle.push(`${i * 10}° (${cerca.toFixed(2)} u)`) }
   }
   const etiqueta = conSalto ? 'tras un salto en otra dirección' : 'recién aparecido'
-  console.log(`[${conSalto ? 2 : 1}] ${etiqueta}: ${36 - fallos}/36 entran`)
+  console.log(`[${conSalto ? 2 : 1}] ${etiqueta}: ${36 - fallos}/36 entran`, veredicto(fallos === 0))
   if (fallos) console.log(`    no entran: ${detalle.join(', ')}`)
 }
 
@@ -116,7 +120,7 @@ for (const conSalto of [false, true]) {
   mov.input.forward = false                 // se sueltan las teclas en el aire
   for (let t = 0; t < 2000; t += NOW_STEP) { now += NOW_STEP; mov.update(DT, now) }
   const deriva = zAlEntrar - pose.position.z
-  console.log(`\n[3] cae en la pista y sigue deslizando sin teclas: ${deriva.toFixed(3)} u`)
+  console.log(`\n[3] cae en la pista y sigue deslizando sin teclas: ${deriva.toFixed(3)} u`, veredicto(deriva > 1))
 }
 
 /** **[4] El hielo sigue siendo hielo**: soltar la tecla no te para en el paso. */
@@ -142,7 +146,7 @@ for (const conSalto of [false, true]) {
   mov.input.forward = false
   const z0 = pose.position.z
   for (let t = 0; t < 4000; t += NOW_STEP) { now += NOW_STEP; mov.update(DT, now) }
-  console.log(`[4] deriva al soltar la tecla en hielo: ${(z0 - pose.position.z).toFixed(3)} u`)
+  console.log(`[4] deriva al soltar la tecla en hielo: ${(z0 - pose.position.z).toFixed(3)} u`, veredicto(z0 - pose.position.z > 1))
 }
 
 /** **[5] Y un mapa sin hielo acaba donde acababa**, dígito a dígito. */
@@ -163,3 +167,6 @@ for (const conSalto of [false, true]) {
   const p = pose.position
   console.log(`[5] paseo por un mapa sin hielo: ${p.x.toFixed(9)}, ${p.z.toFixed(9)}, ${mov.feetY.toFixed(9)}`)
 }
+
+console.log(rojos ? `\n${rojos} FALLO(S)` : '\nTODO VERDE')
+process.exit(rojos ? 1 : 0)

@@ -28,6 +28,7 @@ import Training from './ui/Training.jsx'
 import Cabina, { Icono } from './ui/Cabina.jsx'
 import { vigilarActualizaciones } from './ui/actualizacion.js'
 import { crearVueltaConEscape } from './ui/volverConEscape.js'
+import { cancelarCaptura } from './game/captura.js'
 import Summary from './ui/Summary.jsx'
 
 /**
@@ -417,7 +418,11 @@ export default function App() {
   const vuelta = useMemo(() => crearVueltaConEscape(() => engineRef.current?.requestLock()), [])
   useEffect(() => {
     if (phase === PHASE.PAUSED) vuelta.soltado()
-    else vuelta.cancelar()
+    else {
+      vuelta.cancelar()
+      // Fuera de la pausa no hay a qué volver: ni reintento ni aviso (vuelta 105).
+      cancelarCaptura()
+    }
   }, [phase, vuelta])
 
   useEffect(() => {

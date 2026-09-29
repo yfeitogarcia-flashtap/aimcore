@@ -80,6 +80,7 @@ geometría. Está entero en §3 y en `docs/decisions.md` §93.8. Para todo lo de
 | Configurar partida | `src/ui/Training.jsx` | La pantalla de **Entrenamiento**: el modo arriba, todo lo que decide una partida en tarjetas, y a la derecha «Vas a jugar» con **Jugar** (vuelta 99). Lo que hasta la 91 estaba escondido en opciones. |
 | Filas de ajuste | `src/ui/fields.jsx` | `SliderRow`, `SegmentedRow`, `ToggleRow` y su cabecera. **Las usan los dos paneles que escriben ajustes**, que es lo que impide que se comporten distinto. |
 | Capa del duelo | `src/ui/duelo.jsx` | Monta **los mismos** `Hud`, `Crosshair`, `Options` y `Armoury` en la página del 1v1 y los publica como un asa imperativa. No dibuja nada propio (vuelta 73). |
+| Captura | `src/game/captura.js` | **Capturar el ratón y volver a él** (vuelta 105, F2): quién lo soltó (la página con `soltarRaton()`, o el usuario), el reintento mientras quede gesto, el aviso de «haz clic o pulsa cualquier tecla» y el ESC de la ventana de escritorio. **Del motor, con su propia hoja de estilos**, para las dos páginas. |
 | Tajo | `src/game/slash.js` | El destello de un golpe de cuchillo. **Del motor, con su propia hoja de estilos**: sin arma en la mano, la pantalla es lo único que cuenta el golpe. |
 | Mirilla | `src/game/scope.js` | La lente del francotirador: negro alrededor, cruceta fina y punto rojo. **Del motor, con su propia hoja de estilos**, para que salga igual en los dos modos. |
 | Silueta del arma | `src/ui/weaponSilhouette.js` | Qué trazado toca —con supresor es otra foto— y el SVG como texto. **Sin React, para que lo usen los dos modos.** |
@@ -1005,7 +1006,11 @@ rival era la mitad de los bytes. Tres cosas que son el mecanismo:
 (vuelta 100). Es la fase barata de la propuesta 11: N butacas —**tantas como
 salidas declara el mapa** (`todos.salidas`, hasta `TODOS.maxJugadores`); no hay un
 número de jugadores aparte que pueda contradecir a la lista—, la reaparición por
-reloj de entradas de la vuelta 52, un marcador y un cronómetro. Cinco reglas:
+reloj de entradas de la vuelta 52, un marcador y un cronómetro. **Y desde la 105
+cada mapa admite de 3 a 10**: los que quepan por sus salidas, con una sola cuenta
+(`capacidadDeTodos`) que miran el lobby, su pantalla («3–6 jugadores» en la tarjeta
+del mapa) y Alchemist. **El lobby no lanza con más gente en la sala de la que
+cabe**, y lo dice. Cinco reglas:
 
 - **Se vuelve por la salida más lejos del vivo más cercano, y lo dice tu foto**
   (`sal`), así que la reaparición se predice en el sitio bueno.
@@ -1023,7 +1028,10 @@ reloj de entradas de la vuelta 52, un marcador y un cronómetro. Cinco reglas:
 
 Lo que un mapa de todos contra todos tiene que garantizar **no es simetría, es que
 ninguna salida vea a otra**, y es una medida (`todos100` para La Rotonda, «Medir»
-en Alchemist para cualquiera). La Rotonda salió con 4 de 28 pares viéndose en su
+en Alchemist para cualquiera). Desde la 105 Alchemist lo avisa **en rojo en la
+barra sin pulsar nada**, con la misma función que «Medir», y también si hay menos
+de tres salidas. El rojo es para lo que deja el mapa sin jugarse bien; el naranja,
+para lo que se juega igual. La Rotonda salió con 4 de 28 pares viéndose en su
 primera versión, y un pilar en la diagonal lo cerró.
 
 **Toda partida multijugador sale de un lobby, y el lobby es uno** (vuelta 101).
@@ -1926,6 +1934,27 @@ Medido (`esc101`): tres ESC seguidos dentro de la espera vuelven en 0.6 s; un ES
 150 ms después de abrir la armería o la tienda la cierra y vuelve; la segunda B
 recaptura en 17 ms; y **el menú del código no asoma ni un frame** en toda la
 secuencia. `esc89b` y `esc91` medían la regla vieja.
+
+**Y volver tiene que funcionar con las reglas de Chrome, no con las de un banco**
+(vuelta 105, F2). Tras soltar el ratón **el usuario**, Chrome pide un gesto para
+volver a capturarlo —un clic o una tecla— y **ESC no es un gesto**. Tras soltarlo
+**la página**, vuelve sin gesto y sin espera. Un navegador sin interfaz no aplica
+ninguna de las dos, y por eso `esc101` salía verde con el fallo delante: ESC
+volvía «a veces», las de haber disparado hacía menos de 5 s. Cinco reglas que
+viven en `src/game/captura.js`:
+
+- **La página suelta el ratón con `soltarRaton()`**, nunca con `exitPointerLock`
+  a pelo. Si no, no se sabe de quién fue la salida.
+- **Un clic o REANUDAR dentro de la espera se reintentan** al acabarla, mientras
+  quede gesto.
+- **Sin gesto, se dice**: aviso «**Haz clic** o pulsa cualquier tecla», y
+  cualquier tecla que no sea ESC vuelve y no hace nada más.
+- **En la app, ESC es de la ventana** (`main.rs`, 0.5.0), como F11. La página
+  suelta el ratón ella misma y por eso ESC vuelve a la primera, siempre.
+- **Y el banco imita a Chrome** (`esc105`), con su propio modelo del gesto:
+  `page.evaluate` de Playwright corre con gesto de usuario, así que leer el de
+  Chrome desde el banco da siempre «activo». Contra el código de antes sale
+  rojo, que es lo que lo hace una medida.
 
 **Lo que tú ves no tiembla porque tiemble el cable** (vuelta 103). **Ésta es la
 convención permanente para cualquier cosa que se dibuje con el reloj de la
@@ -4509,6 +4538,14 @@ La mano de apoyo bajo el guardamanos existe como **opción comparativa**
 mismo sitio respecto al centro en los tres formatos. Las luces son de su escena y
 el mundo sigue sin ninguna.
 
+**Y la silueta 3D no se sigue afinando** (vuelta 105, decisión de Yago): tal como
+está, el juego se ve mejor sin arma. Tampoco se añaden piezas procedurales, que
+darían armas cuadradas, como ya dio una figura burda el dummy procedural. El
+piloto de grosor por zonas se construyó y se quitó (`docs/decisions.md` §105.4).
+Lo que queda en pie es un único piloto de otro estilo, **holográfico**: sólo el
+contorno en líneas finas del color del jugador. Si no es claramente mejor que no
+llevar arma, el tema se cierra.
+
 **Los colores de equipo se eligieron midiendo, y la paleta libre es estrecha.**
 Están cogidos el naranja (dianas), el rojo (te disparan), el verde (botones y
 brújula), el ámbar (explosivo), el amarillo (te han detectado) y el azul
@@ -5984,6 +6021,15 @@ verdad cazó a la primera una regresión de 12/12 a 0/12. Si un test no puede
 fallar, no está guardando nada. (`x8.mjs` sigue siendo un informe a propósito: no
 afirma, mide.)
 
+**Y un veredicto impreso cuenta para la salida** (vuelta 105). `flujo92` imprimía
+«FALLO» y salía con 0, y de más de ochenta bancos otros nueve hacían lo mismo. Ahora
+cada «FALLO» o «NO» impreso suma y el banco sale con 1. Lo que puede haber es un
+informe, que no afirma nada; lo que no puede haber es un banco que afirme y no
+cuente. Un banco que mide una regla enmendada a propósito **se retira**
+(`scratchpad/retirados/`, con su motivo) en vez de quedarse en rojo «esperado».
+Y ojo: `scratchpad/` está en `.gitignore` salvo tres ficheros, así que los bancos
+viven en la máquina que los escribió.
+
 **Un error de página es un fallo, no una línea de registro** (vuelta 60). Un
 `FOOTSTEPS is not defined` produjo **318 errores** en una tanda entera y las seis
 suites salieron **verdes**: `_loop` reprograma el frame siguiente **antes** de
@@ -6295,6 +6341,8 @@ reloj y cable:
   **Y cambiar la dirección que abre no obliga a nadie a reinstalar**: el huésped
   redirige al dominio nuevo con `VEKTOR_DOMINIO` y **a la app no la redirige**,
   porque su canal con el proceso nativo está atado al origen.
+  **Desde la 0.5.0 (vuelta 105) también ESC es de la ventana**, para que volver
+  desde la pausa no dependa del gesto que Chrome exige (§3, F2).
   **Desde la vuelta 98 (0.3.0) F11 lo atiende la propia ventana** y la página se
   sabe en la app por dos señales, no una; el pie de *Opciones* dice «Vektor de
   escritorio 0.3.0», que es cómo se ve que se ha enterado. Las imágenes del
@@ -6363,8 +6411,8 @@ página del duelo antes de pasar el enlace, y viaja en la dirección del socket
 como la fase de compra.
 
 **Y desde la vuelta 100 hay un todos contra todos**, en la misma página. Caben
-**diez** desde la 101 —el mapa de fábrica es **La Rotonda**, 64 × 64 con doce
-salidas—; cada uno sale con lo que elija en la armería (que ahí sí equipa) y **con
+**de 3 a 10, tantos como salidas tenga el mapa** (vuelta 105; diez desde la 101)
+—el de fábrica es **La Rotonda**, 64 × 64 con doce salidas, o sea diez—; cada uno sale con lo que elija en la armería (que ahí sí equipa) y **con
 su color**, vuelve a los 2 s por la salida más lejos de los vivos y con 2 s de
 gracia, y gana el primero que llegue a **20 bajas** o el que más lleve a los **8
 minutos**. **TAB** abre el marcador de la sala, que dice arriba qué hace falta para
@@ -6625,7 +6673,7 @@ en `docs/propuestas/10-panel-de-capas.md`: los dos piden que cada elemento tenga
 identidad propia, que es un campo nuevo en el formato.
 
 **Y desde la 100 un mapa se publica también en el todos contra todos**, con sus
-salidas: la casilla le pone ocho, **Jugadores** en la hoja Duelo pone y quita, y
+salidas: la casilla le pone diez, **Salidas** en la hoja Duelo pone y quita, y
 cada una es un **cono blanco** que se arrastra y se gira como las del duelo, con su
 fila en Capas, Supr y un **Medir** que dice cuántos pares de salidas se ven.
 
@@ -7245,14 +7293,16 @@ abrirlas:
 - **Y las dos de la vuelta 95 van al final de la cola** (08 y 09): la 96 las puso
   detrás de cerrar Alchemist y la 97 les metió delante el bloque de las salas.
 
-- **08 — el arsenal del mapa** (peanas de arma y dotación completa). La mitad está
-  hecha: `duelo.dotacion` existe desde la vuelta 72 y le faltan dos campos
-  —granadas y arrojadizo—, así que **la fase 1 no tiene mecánica nueva**. Lo que la
-  acota es un encuadre: **un mapa de peanas es un mapa sin economía**, porque una
-  peana es lo primero del juego que daría un arma sin cobrarla y con tienda abierta
-  el catálogo entero pasa a ser decoración. Y si las peanas van en zona de cada
-  jugador o compartidas **no es un campo: lo dice dónde se ponen**, porque el mapa
-  de duelo es simétrico por giro (vuelta 66).
+- **08 — el arsenal del mapa** (reescrita en la vuelta 105 con las reglas de Yago,
+  y **esperando su aprobación**). Un panel «Reglas de partida» guardado en el mapa:
+  las armas del mapa, marcadas por código y guardadas por clave, y **tres modos
+  excluyentes**: Equipadas, Peanas y Armería. Un mapa sin reglas es Armería con
+  todo, o sea lo de hoy, y Los Pilares se lee como Equipadas sin tocar su fichero.
+  Las peanas **no se agotan**, se cogen **apuntando y con E** (la cuarta rama de la
+  contextual, detrás del explosivo y delante del cable, porque la desambigua
+  apuntar), llevan **la misma ficha que un jugador** y el servidor valida cada
+  recogida. Cuesta 0 bytes por foto y 0.27 µs por paso con 160 peanas
+  (`peanas105`). Fase 1: el panel, sin mecánica nueva.
 - **09 — perforación** (disparar a través de una esquina), y ésta **es la que la
   medida cambió**. «Por grosor atravesado» es el modelo correcto y es casi gratis
   —el *slab test* de `cortarSegmento` ya calcula entrada y salida y tira la
@@ -7286,6 +7336,13 @@ sobrevive a que se apague la sala. Dos cosas de ahí que ya son decisiones: **se
 sigue pudiendo jugar sin cuenta, en igualdad** —es lo que protege la promesa del
 enlace por código— y **la presencia no puede convertirse en un registro de
 salas**, que es lo que la vuelta 47 decidió que no hubiera.
+
+**La sensación de disparo sin arma en pantalla está propuesta y sin construir**
+(vuelta 105): `docs/propuestas/13-sensacion-de-disparo.md`. Son tres cosas
+baratas: un fogonazo de luz abajo a la derecha, un golpe de cámara que vuelve
+solo y va sólo en el dibujo (la mira sigue sin volver sola), y la silueta del HUD
+reaccionando al disparar, al recargar y en seco. Se juzgan al lado del piloto
+holográfico.
 
 **La música está valorada y sin construir** (vuelta 104):
 `docs/propuestas/12-musica.md`. **Spotify no se integra**: su política prohíbe

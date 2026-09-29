@@ -5590,6 +5590,24 @@ export function definicionDeTodos(key) {
 }
 
 /**
+ * **Cuántos caben en un mapa de todos contra todos** (vuelta 105): de
+ * `TODOS.minJugadores` a tantos como salidas haya colocado quien lo construyó,
+ * con el tope de `TODOS.maxJugadores`. No es un campo del mapa: es su número de
+ * salidas, como desde la vuelta 100, y así no hay dos datos que puedan decir
+ * cosas distintas. Lo miran el lobby (huecos y si se puede lanzar), su pantalla
+ * (el «3–6 jugadores») y Alchemist (el aviso en rojo): una sola cuenta.
+ */
+export function capacidadDeTodos(definicion) {
+  const salidas = Array.isArray(definicion?.todos?.salidas) ? definicion.todos.salidas.length : 0
+  return { min: TODOS.minJugadores, max: Math.min(TODOS.maxJugadores, salidas), salidas }
+}
+/** Cómo se dice ese rango: «3–6 jugadores», o «10 jugadores» si no hay rango. */
+export function rangoDeJugadores({ min, max }) {
+  if (max < min) return `faltan salidas (mín. ${min})`
+  return max === min ? `${max} jugadores` : `${min}–${max} jugadores`
+}
+
+/**
  * **Los modos de una sala en red** (vuelta 100; los de equipos, de la 101).
  *
  * Una sola lista y todo lo demás se deriva de ella: el lobby pinta un botón por
@@ -5757,6 +5775,36 @@ export const RESUME_KEY_DELAY_MS = 1300
  * tarda más que esto.
  */
 export const ESC_MISMA_PULSACION_MS = 300
+
+/**
+ * **Volver a la partida a la primera, o decir por qué no** (vuelta 105, F2).
+ *
+ * Chrome tiene dos reglas para volver a capturar el ratón, y las dos son de la
+ * norma y no un capricho:
+ *
+ * - **Tras soltarlo el usuario** (ESC, perder el foco) no deja pedirlo en algo
+ *   más de un segundo (`RESUME_KEY_DELAY_MS`), **y exige un gesto**: un clic o
+ *   una tecla. **ESC no es un gesto**: la norma de HTML excluye expresamente la
+ *   tecla Esc de lo que activa una página. Así que un ESC para volver sólo
+ *   funciona si hubo un clic en los últimos segundos, que dura lo que Chrome
+ *   guarda la activación. Por eso funcionaba «a veces».
+ * - **Tras soltarlo la página** (`exitPointerLock`), vuelve sin gesto y sin
+ *   espera.
+ *
+ * De ahí el arreglo, en `src/game/captura.js`: **reintentar** mientras haya
+ * gesto (un clic o REANUDAR dentro de la espera), **avisar** si no lo hay
+ * («haz clic o pulsa cualquier tecla»), y **en la app de escritorio**, que la
+ * ventana se quede el ESC como se queda el F11: así lo suelta la página y
+ * vuelve sin gesto. Un navegador sin interfaz no aplica ninguna de las dos
+ * reglas, y por eso `esc101` salía verde; `esc105` las imita.
+ */
+export const CAPTURA = {
+  /** Reintentos mientras quede gesto, y cada cuánto. */
+  reintentos: 3,
+  reintentoMs: 250,
+  /** Dos ESC de la ventana más juntos que esto son la tecla mantenida, no dos pulsaciones. */
+  escRepeticionMs: 250,
+}
 
 export const SESSION_DURATIONS = {
   mode: { label: 'La del modo', seconds: null },
@@ -7913,6 +7961,11 @@ export const TODOS = {
    */
   maxJugadores: 10,
   /**
+   * **Y cada mapa decide cuántos entre 3 y 10** (vuelta 105): los que quepan
+   * por sus salidas (`capacidadDeTodos`). El lobby ofrece esos huecos y no deja
+   * lanzar si en la sala hay más gente de la que cabe; Alchemist avisa en rojo
+   * por debajo de tres. La Rotonda sigue con doce salidas, o sea diez.
+   *
    * **Y salidas puede haber más que butacas** (vuelta 101): La Rotonda lleva
    * doce para diez, porque reaparecer es ir a la salida más lejos del vivo más
    * cercano y con alguna de sobra siempre hay una lejos. Tope del formato, como

@@ -399,6 +399,21 @@ bienvenida, y abajo «Vektor Installer» con su versión en vez de «Nullsoft In
 System». Los seis sitios donde hay que probarla y el paso a paso, en
 `escritorio/README.md`.
 
+## Volver desde la pausa
+
+**ESC** pausa, y para volver valen **un clic en cualquier sitio**, **Reanudar** o
+**otro ESC**.
+
+En un navegador hay una regla de Chrome que no se puede saltar: tras soltar el
+ratón con ESC, volver a capturarlo pide un gesto (un clic o una tecla), y ESC no
+lo es. Así que si llevas unos segundos sin tocar el ratón, el segundo ESC no puede
+volver solo. En ese caso sale el aviso **«Haz clic o pulsa cualquier tecla para
+volver a la partida»**, y cualquier tecla o clic te devuelve a la primera. Nunca
+se queda atascado.
+
+**En la app de escritorio (0.5.0) no pasa**: ESC es de la ventana, y ESC pausa y
+ESC vuelve, siempre a la primera.
+
 ## Multijugador: el lobby
 
 Se entra por **Multijugador** en el menú. Abre **el lobby de una sala nueva**, con
@@ -407,8 +422,9 @@ la misma cara que la pantalla de Entrenamiento:
 - **Modo**: Duelo 1v1, 2v2, 3v3, 4v4, 5v5 o Todos contra todos.
 - **Mapa**: un carrusel con el plano de cada mapa que sirve para ese modo.
 - **Fase de compra**: en botones (en el todos contra todos no hay).
-- **Los huecos**: dos columnas por equipo, o diez colores en el todos contra
-  todos. **Cada uno elige su hueco pinchándolo**; quien llega se sienta en el
+- **Los huecos**: dos columnas por equipo, o un color por hueco en el todos contra
+  todos, tantos como admita el mapa (de 3 a 10: cada tarjeta del carrusel dice
+  «3–6 jugadores» o lo que sea). **Cada uno elige su hueco pinchándolo**; quien llega se sienta en el
   equipo que tenga menos, y el anfitrión puede **mezclar los equipos**.
 - A la derecha, la sala: **copiar el enlace** o **el código**, lo que se va a
   jugar, cuántos faltan, **LISTO** —uno por jugador— y, para el anfitrión,
@@ -417,7 +433,10 @@ la misma cara que la pantalla de Entrenamiento:
 Sólo el anfitrión cambia la configuración y lanza; los demás la ven apagada. Se
 puede lanzar con **un listo en cada equipo** (también desequilibrado, 2 contra 3)
 o con **tres listos** en el todos contra todos. Quien no estaba listo sigue en el
-lobby, y en el todos contra todos puede **entrar con la partida en marcha**.
+lobby, y en el todos contra todos puede **entrar con la partida en marcha**. En el
+todos contra todos **no se lanza si hay más gente en la sala de la que cabe en el
+mapa**: el aviso dice cuántos sobran, y basta elegir un mapa con más salidas o que
+salga alguien.
 
 **Al acabar**, todos ven el resultado con dos botones: **Volver a jugar** —vuelves
 al lobby de la misma sala, listo, con el mismo modo y mapa— y **Salir al menú**.
@@ -571,9 +590,10 @@ en el entrenamiento; la baja sí espera a que la confirme el servidor.
 ## Todos contra todos
 
 En la misma página del duelo, **Modo → Todos contra todos** crea una sala para
-varios: entra todo el que abra el enlace, hasta llenar el mapa. El de fábrica es
-**La Rotonda** (64 × 64, ocho jugadores); un mapa hecho en Alchemist sale aquí si se
-publica en este modo con sus salidas.
+varios: entra todo el que abra el enlace, hasta llenar el mapa. **Cada mapa admite
+de 3 a 10 jugadores, tantos como salidas tenga.** El de fábrica es **La Rotonda**
+(64 × 64, de 3 a 10); un mapa hecho en Alchemist sale aquí si se publica en este
+modo con al menos tres salidas.
 
 - **Sin rondas, sin tienda y sin pausa.** Cada uno sale con lo que tenga elegido en
   su **armería** (tecla B), que aquí sí equipa.
@@ -583,8 +603,8 @@ publica en este modo con sus salidas.
   Diez segundos con el resultado y empieza otra, con el marcador a cero.
 - **TAB** abre el marcador de la sala, y arriba se ven el reloj, tus bajas y las del
   que va primero.
-- **Todos los rivales son del mismo color**: para ti todos son un rival. Quién es
-  cada uno lo dice su ficha al apuntarle.
+- **Cada jugador lleva su color**, el de su hueco en el lobby, y su ficha con el
+  nick al apuntarle.
 
 Lo que te llega de los demás lo decide el servidor: a quien está cerca —donde se le
 oiría andar— siempre, a quien está a media distancia sólo si se ve, y a quien está a
@@ -1288,11 +1308,14 @@ otra pieza. El plan por fases está en `docs/propuestas/10-panel-de-capas.md`.
 Un mapa se publica en el todos contra todos marcando la casilla en **Mapa →
 Publicado en**, y eso le pone **diez salidas**. Se colocan en la hoja **Duelo**:
 
-- **Salidas** pone y quita salidas. Caben tantos jugadores como salidas haya, hasta
-  diez; puede haber más salidas que jugadores (La Rotonda lleva doce), y las de
-  sobra son sitios más donde reaparecer lejos de todos.
-- **Si faltan salidas, Alchemist lo dice** en la barra de arriba: un mapa publicado
-  en el todos contra todos con menos de diez, o un mapa de duelo en el que a algún
+- **Salidas** pone y quita salidas. Caben tantos jugadores como salidas haya, **de
+  3 a 10**, y la cuenta de la hoja lo dice («5 salidas · 3–5 jugadores»); puede
+  haber más salidas que jugadores (La Rotonda lleva doce), y las de sobra son sitios
+  más donde reaparecer lejos de todos.
+- **En rojo, en la barra de arriba y sin pulsar nada**, lo que deja el mapa sin
+  jugarse bien: menos de tres salidas, o dos salidas que se ven entre sí (la misma
+  cuenta que **Medir**).
+- **En naranja, lo que se juega igual pero conviene mirar**: un mapa de duelo en el que a algún
   compañero del 5v5 no le cabe su sitio al lado de la salida (los compañeros salen
   junto a la salida de su equipo; si hay una pared o un desnivel, aparta la salida).
 - Cada salida es un **cono blanco**: se arrastra por la rejilla y se gira por la

@@ -33,7 +33,7 @@
  *   sienta en tu hueco y, si estabas jugando, en tu butaca de la partida — que
  *   se reconecta con el suyo, por el camino de la vuelta 62.
  */
-import { ROUNDS, TODOS, bandoDeRanura, escenarioDeSala, esModoDeEquipos, minimoParaLanzar, modoDeSala, plazasDeModo } from '../src/config.js'
+import { ROUNDS, bandoDeRanura, capacidadDeTodos, escenarioDeSala, esModoDeEquipos, minimoParaLanzar, modoDeSala, plazasDeModo } from '../src/config.js'
 import { Partida } from './partida.js'
 import { MSG, esDelLobby } from './protocolo.js'
 
@@ -102,7 +102,7 @@ export class Lobby {
   get huecos() {
     const { modo, mapa } = this.config
     if (esModoDeEquipos(modo)) return plazasDeModo(modo)
-    return Math.min(TODOS.maxJugadores, this._escenario(modo, mapa).salidasDeTodos.length)
+    return capacidadDeTodos(this._escenario(modo, mapa).definition).max
   }
 
   _escenario(modo, mapa) {
@@ -341,6 +341,19 @@ export class Lobby {
     } else {
       faltan = Math.max(0, minimo - listos.length)
       if (faltan > 0) motivo = `${faltan === 1 ? 'Falta' : 'Faltan'} ${faltan} jugador${faltan === 1 ? '' : 'es'} listo${faltan === 1 ? '' : 's'} para comenzar`
+      /**
+       * **Y no se lanza con más gente de la que cabe** (vuelta 105). Cada mapa
+       * del todos contra todos admite tantos como salidas tenga; cambiar a uno
+       * más pequeño deja a alguien sin hueco, y lanzar así sería empezar una
+       * partida dejándole mirando. Cuenta todo el que está en la sala —también
+       * quien se ha caído, que conserva su sitio (vuelta 62)—.
+       */
+      const enSala = this.miembros.size
+      if (enSala > this.huecos) {
+        const sobran = enSala - this.huecos
+        motivo = `Sois ${enSala} y en este mapa caben ${this.huecos}: elige uno con más salidas o que salga${sobran === 1 ? '' : 'n'} ${sobran}`
+        faltan = Math.max(faltan, 1)
+      }
     }
     if (!motivo && this._enJuego()) motivo = 'Hay una partida en juego'
     return { listos: listos.length, minimo, maximo: this.huecos, faltan, puede: faltan === 0 && !this._enJuego(), motivo }

@@ -24,7 +24,7 @@
  */
 
 import * as THREE from 'three'
-import { CLAVES_INTEGRADAS, COLORS, MODOS_DE_MAPA, MODOS_MULTIJUGADOR, modosDeMapa, COVER, FANS, FONDOS, GIZMO, MOVEMENT, ESCALERAS, ESTAMPADOS, PRIMARY_WEAPONS, PRISMAS, ROUNDS, SCENARIOS, SURFACES, TARGET, TEAMS, TELEPORTS, TODOS, TUBES, ZIPLINES, coverHeight, coverTintedColor, esFotoDeFondo, esImagenDeEstampado, fisicaDeEscenario, giro180, scenarioRoom } from '../src/config.js'
+import { CLAVES_INTEGRADAS, COLORS, MODOS_DE_MAPA, MODOS_MULTIJUGADOR, modosDeMapa, COVER, FANS, FONDOS, GIZMO, MOVEMENT, ESCALERAS, ESTAMPADOS, PRIMARY_WEAPONS, PRISMAS, ROUNDS, SCENARIOS, SURFACES, TARGET, TEAMS, TELEPORTS, TODOS, TUBES, ZIPLINES, capacidadDeTodos, coverHeight, coverTintedColor, esFotoDeFondo, esImagenDeEstampado, fisicaDeEscenario, giro180, rangoDeJugadores, scenarioRoom } from '../src/config.js'
 import { Avatar } from '../src/game/avatar.js'
 import { Engine } from '../src/game/engine.js'
 import { MovementController } from '../src/game/movement.js'
@@ -1801,13 +1801,28 @@ const escenaDeMentira = { add() {}, remove() {} }
  * que dice una cosa y una sala que hace otra.
  */
 let faltasDeSalidas = []
+/** Las salidas del todos contra todos que se ven entre sí, medidas con retardo (abajo). */
+let parejasQueSeVen = []
+let medirParejasLuego = null
 const MAYOR_EQUIPO = Math.max(...MODOS_MULTIJUGADOR.map((m) => m.porEquipo))
 function medirFaltasDeSalidas(medido) {
   const modos = modosDeMapa(mapa)
   const faltas = []
   if (modos.includes('todos')) {
+    // **De 3 a 10, los que quepan por sus salidas** (vuelta 105): un mapa con
+    // seis salidas ya no es un mapa al que le faltan cuatro. Lo que falta de
+    // verdad es bajar de tres, y eso va en rojo.
     const n = medido.salidasDeTodos.length
-    if (n < TODOS.maxJugadores) faltas.push(`todos contra todos: ${n} salidas para ${TODOS.maxJugadores} jugadores`)
+    if (n < TODOS.minSalidas) faltas.push(`todos contra todos: ${n} salida${n === 1 ? '' : 's'} y hacen falta ${TODOS.minSalidas}`)
+    // Y si dos salidas se ven: la misma cuenta que «Medir», con retardo, porque
+    // esto corre en cada arrastre y son N·(N−1)/2 rayos.
+    clearTimeout(medirParejasLuego)
+    medirParejasLuego = setTimeout(() => {
+      parejasQueSeVen = salidasQueSeVen(salidasDeTodosLeer()).seVen
+      pintarFaltasDeSalidas()
+    }, 300)
+  } else {
+    parejasQueSeVen = []
   }
   if (modos.includes('duelo')) {
     const sinSitio = medido.salidasDeEquipos(MAYOR_EQUIPO).filter((p) => !p.libre).length
@@ -1819,16 +1834,48 @@ function medirFaltasDeSalidas(medido) {
   pintarFaltasDeSalidas()
 }
 function pintarFaltasDeSalidas() {
+  const todos = [...faltasDeSalidas]
+  if (parejasQueSeVen.length) {
+    todos.push(`todos contra todos: se ven ${parejasQueSeVen.length} pareja${parejasQueSeVen.length === 1 ? '' : 's'} de salidas (${parejasQueSeVen.slice(0, 4).join(', ')}${parejasQueSeVen.length > 4 ? '…' : ''})`)
+  }
+  // Rojo lo que deja el mapa sin jugarse bien en el todos contra todos; naranja
+  // lo demás, que se juega igual (vuelta 105).
+  const grave = todos.some((f) => f.startsWith('todos contra todos'))
   const aviso = $('barra-salidas')
-  aviso.hidden = !faltasDeSalidas.length
-  aviso.textContent = faltasDeSalidas.length ? `faltan salidas · ${faltasDeSalidas.join(' · ')}` : ''
+  aviso.hidden = !todos.length
+  aviso.className = `dato ${grave ? 'mal' : 'aprieta'}`
+  aviso.textContent = todos.length ? `salidas · ${todos.join(' · ')}` : ''
   for (const id of ['salidas-aviso', 'salidas-aviso-duelo']) {
-    $(id).hidden = !faltasDeSalidas.length
-    $(id).textContent = faltasDeSalidas.length
-      ? `Faltan salidas para lo que se ofrece: ${faltasDeSalidas.join('; ')}. `
-        + 'En el todos contra todos se añaden en la hoja Duelo; en equipos, aparta la salida de las paredes o de los desniveles.'
+    $(id).hidden = !todos.length
+    $(id).className = `nota ${grave ? 'mal' : 'aprieta'}`
+    $(id).textContent = todos.length
+      ? `Salidas: ${todos.join('; ')}. `
+        + 'En el todos contra todos se añaden en la hoja Duelo y se separan con algo en medio; en equipos, aparta la salida de las paredes o de los desniveles.'
       : ''
   }
+}
+
+/**
+ * **Qué salidas del todos contra todos se ven entre sí**, con el mismo rayo que
+ * la aparición y contra el mapa entero —ocultar una pieza no puede cambiar el
+ * veredicto—. La llaman «Medir» y el aviso de la barra (vuelta 105): una sola
+ * cuenta, o el botón y el aviso podrían decir cosas distintas.
+ */
+function salidasQueSeVen(salidas) {
+  const ojos = 1.7
+  const seVen = []
+  let cerca = Infinity
+  for (let i = 0; i < salidas.length; i++) {
+    for (let j = i + 1; j < salidas.length; j++) {
+      const a = salidas[i]
+      const b = salidas[j]
+      cerca = Math.min(cerca, Math.hypot(b.x - a.x, b.z - a.z))
+      if (escenarioMedido && hasLineOfSight(
+        new THREE.Vector3(a.x, ojos, a.z), new THREE.Vector3(b.x, ojos, b.z), escenarioMedido.occluders,
+      )) seVen.push(`${i + 1}–${j + 1}`)
+    }
+  }
+  return { seVen, cerca, pares: (salidas.length * (salidas.length - 1)) / 2 }
 }
 
 function remontar() {
@@ -6123,14 +6170,15 @@ function pintarTodos() {
   const salidas = salidasDeTodosLeer()
   $('todos-jugadores').value = salidas.length
   $('todos-jugadores').max = TODOS.maxSalidas
-  const caben = Math.min(salidas.length, TODOS.maxJugadores)
-  const llena = salidas.length >= TODOS.maxJugadores
+  // **Caben tantos como salidas, de 3 a 10** (vuelta 105), con la misma cuenta
+  // que el lobby: por debajo de tres, rojo.
+  const pocas = salidas.length < TODOS.minSalidas
   $('cuenta-todos').textContent = !salidas.length
     ? ''
-    : salidas.length < TODOS.minSalidas
-      ? `${salidas.length} salidas · hacen falta ${TODOS.minSalidas}`
-      : `${salidas.length} salidas · caben ${caben} de ${TODOS.maxJugadores}`
-  $('cuenta-todos').className = `nota ${llena ? 'cabe' : 'aprieta'}`
+    : pocas
+      ? `${salidas.length} salida${salidas.length === 1 ? '' : 's'} · hacen falta ${TODOS.minSalidas}`
+      : `${salidas.length} salidas · ${rangoDeJugadores(capacidadDeTodos(mapa))}`
+  $('cuenta-todos').className = `nota ${pocas ? 'mal' : 'cabe'}`
   $('todos-fichas').innerHTML = salidas.map((s, i) => {
     const puesta = marcaElegida?.que === 'todos' && marcaElegida.i === i
     return `<div class="ficha-salida ${puesta ? 'puesta' : ''}" style="--filo:#e8e8e8">
@@ -6237,24 +6285,13 @@ $('t-medir').addEventListener('click', () => {
     $('t-medida').textContent = 'Hacen falta al menos dos salidas para medir.'
     return
   }
-  const ojos = 1.7
-  const seVen = []
-  let cerca = Infinity
-  for (let i = 0; i < salidas.length; i++) {
-    for (let j = i + 1; j < salidas.length; j++) {
-      const a = salidas[i]
-      const b = salidas[j]
-      cerca = Math.min(cerca, Math.hypot(b.x - a.x, b.z - a.z))
-      if (escenarioMedido && hasLineOfSight(
-        new THREE.Vector3(a.x, ojos, a.z), new THREE.Vector3(b.x, ojos, b.z), escenarioMedido.occluders,
-      )) seVen.push(`${i + 1}–${j + 1}`)
-    }
-  }
-  const pares = (salidas.length * (salidas.length - 1)) / 2
+  const { seVen, cerca, pares } = salidasQueSeVen(salidas)
+  parejasQueSeVen = seVen
+  pintarFaltasDeSalidas()
   $('t-medida').textContent = `${cerca.toFixed(1)} u entre las dos más cercanas · ` + (seVen.length
     ? `SE VEN ${seVen.length} de ${pares} pares (${seVen.slice(0, 6).join(', ')}${seVen.length > 6 ? '…' : ''}): mete algo en medio`
     : `ninguna ve a otra (${pares} pares)`)
-  $('t-medida').className = `nota ${seVen.length ? 'aprieta' : 'cabe'}`
+  $('t-medida').className = `nota ${seVen.length ? 'mal' : 'cabe'}`
 })
 
 /**

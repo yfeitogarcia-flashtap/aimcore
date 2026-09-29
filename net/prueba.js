@@ -34,6 +34,7 @@ import { montarLobby } from '../src/ui/Lobby.jsx'
 import { vigilarActualizaciones } from '../src/ui/actualizacion.js'
 import { montarPantallaCompleta } from '../src/escritorio.js'
 import { crearVueltaConEscape } from '../src/ui/volverConEscape.js'
+import { soltarRaton } from '../src/game/captura.js'
 import { getKeybinds, keyLabel, keysOf, subscribeKeybinds } from '../src/keybinds.js'
 import { MSG, compraAbierta } from './protocolo.js'
 import { codigoDeLaDireccion, direccionDeLaBarra, enlaceDeSala, mapaDeLaDireccion, modoDeLaDireccion, urlDeSala } from './sala-cliente.js'
@@ -456,7 +457,7 @@ cliente.onDesconectado = (d) => {
   $('quien').textContent = 'fuera de la partida'
   // Se suelta el ratón: seguir capturado en una partida que ya no existe es
   // dejar al jugador encerrado en una pantalla que no responde.
-  if (document.pointerLockElement === lienzo) document.exitPointerLock()
+  if (document.pointerLockElement === lienzo) soltarRaton()
   pintarRed(performance.now())
 }
 /** `mm:ss` de unos milisegundos, redondeando hacia arriba: 0 es 0, no 0.4. */
@@ -546,7 +547,7 @@ function pintarPausa() {
       '<button id="reclamar" hidden>dar la partida por abandonada</button>'
     $('reclamar').addEventListener('click', () => cliente.reclamar())
     // Sólo al llegar: ver la nota de arriba.
-    if (!caidaAntes && document.pointerLockElement === lienzo) document.exitPointerLock()
+    if (!caidaAntes && document.pointerLockElement === lienzo) soltarRaton()
   } else if (p.pausada) {
     panelPausa.hidden = false
     panelPausa.innerHTML = '<b>PARTIDA EN PAUSA</b><em id="pausaResta">&nbsp;</em>' +
@@ -561,7 +562,7 @@ function pintarPausa() {
     // reanudarlo. Al rival no se le toca: él no ha pedido nada, y devolverle al
     // menú sería castigarle por haber dicho que sí.
     if (p.mia && !pausaMiaAntes && document.pointerLockElement === lienzo) {
-      document.exitPointerLock()
+      soltarRaton()
     }
   } else {
     panelPausa.hidden = true
@@ -1120,7 +1121,7 @@ function ponerFin(fin) {
   $('finQuien').textContent = fin.titulo
   $('finQuien').style.color = fin.color
   $('finDetalle').textContent = fin.detalle
-  if (document.pointerLockElement === lienzo) document.exitPointerLock()
+  if (document.pointerLockElement === lienzo) soltarRaton()
 }
 
 /**
@@ -1325,7 +1326,7 @@ function ponerVista(cual) {
   capa.conHud(!enLobby)
   motor.dibujar(!enLobby)
   if (enLobby) {
-    if (document.pointerLockElement === lienzo) document.exitPointerLock()
+    if (document.pointerLockElement === lienzo) soltarRaton()
     alternarTienda(false)
     return
   }

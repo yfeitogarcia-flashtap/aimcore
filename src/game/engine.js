@@ -44,6 +44,7 @@ import { VueloDeProyectiles } from './vuelo.js'
 import { ArmaEnMano } from './armaEnMano.js'
 import { SpawnCone } from './spawnCone.js'
 import { PickupField } from './pickups.js'
+import { montarCaptura, pedirCaptura, soltarRaton } from './captura.js'
 import { PlayerStatus, esPorLaEspalda, hitPlayer, playerBody } from './player.js'
 import { getSettings, subscribeSettings, updateSettings } from '../settings.js'
 import { eventCode, getKeybinds, keyLabel, keysOf, subscribeKeybinds, typingInField } from '../keybinds.js'
@@ -1113,6 +1114,8 @@ export class Engine {
     window.addEventListener('blur', this._onWindowBlur)
     this.canvas.addEventListener('contextmenu', this._onContextMenu)
     document.addEventListener('pointerlockchange', this._onPointerLockChange)
+    // Quién soltó el ratón, el aviso de «falta un clic» y el ESC de la app.
+    montarCaptura()
     this.controls.connect(document)
     this.movement.connect(window)
 
@@ -1158,7 +1161,7 @@ export class Engine {
     if (this._unsubscribeSettings) this._unsubscribeSettings()
     if (this._unsubscribeKeybinds) this._unsubscribeKeybinds()
     if (this._resizeObserver) this._resizeObserver.disconnect()
-    if (document.pointerLockElement === this.canvas) document.exitPointerLock()
+    if (document.pointerLockElement === this.canvas) soltarRaton()
     this.avatar?.dispose()
     this._stopShieldSound()
     this.enemyFire.dispose()
@@ -1202,42 +1205,39 @@ export class Engine {
     // El listener necesita el contexto de audio, que no existe hasta este
     // gesto. Es idempotente: llamarla en cada click no cuesta nada.
     attachListener(this.camera)
+    // **La petición pasa por `captura.js`** (vuelta 105): ahí se sabe si el
+    // ratón lo soltó el usuario o la página, se reintenta mientras quede gesto y,
+    // si falta, se dice. Aquí sólo queda cómo se pide.
+    pedirCaptura(() => this._pedirCapturaReal())
+  }
+
+  /**
+   * La petición de verdad, con su promesa. `unadjustedMovement` desactiva la
+   * aceleración del sistema operativo, que es lo que queremos en un aim trainer.
+   *
+   * **Y si esta plataforma no admite la opción, no se vuelve a pedir** (vuelta
+   * 62). Es de Chromium y en algunos sistemas —este contenedor, sin ir más
+   * lejos— se rechaza con `NotSupportedError`. Preguntar antes no se puede (no
+   * hay detección de característica), así que se pregunta **una vez** y se
+   * recuerda.
+   */
+  _pedirCapturaReal() {
     const element = this.canvas
-    const fallback = () => {
-      try {
-        element.requestPointerLock()
-      } catch {
-        /* El navegador puede rechazarlo (p. ej. cooldown tras Escape). */
-      }
-    }
-    // **Y si esta plataforma no admite la opción, no se vuelve a pedir**
-    // (vuelta 62). `unadjustedMovement` es de Chromium y en algunos sistemas
-    // —este contenedor, sin ir más lejos— se rechaza con `NotSupportedError`.
-    // El rechazo llega **en una promesa**, o sea un turno después, y para
-    // entonces el gesto del usuario ya se ha gastado: el reintento de dentro del
-    // `catch` sale rechazado **sin decir nada**, y el jugador se queda sin poder
-    // recuperar el ratón por más que pinche. Medido: cinco clics en diez
-    // segundos, ninguno captura.
-    //
-    // Preguntar antes no se puede —no hay detección de característica— así que
-    // se pregunta **una vez** y se recuerda. Se paga un clic la primera vez y
-    // ninguno después.
-    if (Engine._sinMovimientoCrudo) {
-      fallback()
-      return
-    }
+    const sinOpcion = () => element.requestPointerLock()
+    if (Engine._sinMovimientoCrudo) return sinOpcion()
+    let resultado
     try {
-      const result = element.requestPointerLock({ unadjustedMovement: true })
-      if (result && typeof result.catch === 'function') {
-        result.catch((error) => {
-          if (error?.name === 'NotSupportedError') Engine._sinMovimientoCrudo = true
-          fallback()
-        })
-      }
+      resultado = element.requestPointerLock({ unadjustedMovement: true })
     } catch {
       Engine._sinMovimientoCrudo = true
-      fallback()
+      return sinOpcion()
     }
+    if (!resultado || typeof resultado.then !== 'function') return resultado
+    return resultado.then(null, (error) => {
+      if (error?.name !== 'NotSupportedError') throw error
+      Engine._sinMovimientoCrudo = true
+      return sinOpcion()
+    })
   }
 
   /**
@@ -1280,7 +1280,7 @@ export class Engine {
     this.impacts.clear()
     this.dispositivos.clear()
     this._stopShieldSound()
-    if (this.isLocked) document.exitPointerLock()
+    if (this.isLocked) soltarRaton()
     this._setPhase(PHASE.IDLE)
   }
 
@@ -2051,7 +2051,7 @@ export class Engine {
     this.pickups.clear()
     this._stopShieldSound()
     this._setPhase(PHASE.FINISHED)
-    if (this.isLocked) document.exitPointerLock()
+    if (this.isLocked) soltarRaton()
 
     // En práctica libre, y con explosivo, el ritmo se mide contra lo que la
     // sesión haya durado de verdad, no contra la duración nominal.
@@ -3189,7 +3189,7 @@ export class Engine {
    * como acaban dos estados que no coinciden.
    */
   _toggleArmoury() {
-    if (this.isLocked) document.exitPointerLock()
+    if (this.isLocked) soltarRaton()
     // **En red la armería no pausa** (vuelta 64). Una pausa es parar el mundo de
     // los dos y sólo la decide el servidor (vuelta 53): abrir tu panel de compra
     // no puede congelarle la partida a nadie — y durante la fase de compra el
@@ -3516,7 +3516,7 @@ export class Engine {
     switch (buttonId) {
       case 'pause':
         // Mismo camino que Escape: soltar el ratón pausa el cronómetro.
-        if (this.isLocked) document.exitPointerLock()
+        if (this.isLocked) soltarRaton()
         break
       case 'restart':
         // Ya estamos capturados, así que la sesión arranca aquí mismo en vez
@@ -3542,7 +3542,7 @@ export class Engine {
         this._alternarSupresor()
         break
       case 'options':
-        if (this.isLocked) document.exitPointerLock()
+        if (this.isLocked) soltarRaton()
         this.callbacks.onOpenOptions?.()
         break
       default:

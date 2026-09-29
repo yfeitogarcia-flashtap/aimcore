@@ -69,8 +69,22 @@ un parámetro en la dirección a propósito: eso lo podría escribir cualquiera 
 navegador y se llevaría de premio que `Ctrl` cerrase su pestaña.
 
 **Y se ve si se ha enterado**: al pie de *Opciones* —y arriba a la derecha de
-los menús desde la vuelta 99— pone «Vektor de escritorio 0.4.0». Si pone «este
+los menús desde la vuelta 99— pone «Vektor de escritorio 0.5.0». Si pone «este
 navegador» dentro de la app, la app es anterior a la 0.3.
+
+### ESC vuelve a la partida a la primera (vuelta 105, 0.5.0)
+
+**ESC también es de la ventana**, como F11: se registra sólo mientras Vektor
+tiene el foco, y la ventana se lo cuenta a la página (`vektor:escape`). Hace falta
+por una regla de Chrome: si el ratón lo suelta **el usuario** con ESC, volver a
+capturarlo exige un gesto (un clic o una tecla), y **ESC no cuenta como gesto**.
+En cambio, si lo suelta **la página**, vuelve sin gesto. Con la tecla en la
+ventana, quien suelta el ratón es la página, y ESC pausa y reanuda a la primera,
+siempre.
+
+Con la 0.4.0 instalada, ESC va como en Chrome: vuelve si has hecho clic hace
+poco, y si no, sale el aviso «Haz clic o pulsa cualquier tecla». **Instala la
+0.5.0 para tenerlo.**
 
 ### Salir (vuelta 99, 0.4.0)
 
@@ -172,15 +186,16 @@ Los seis sitios donde esta ventana puede fallar y no el navegador:
    `Ctrl+W` jugando: la ventana sigue ahí **y el jugador se agacha andando**. En
    un navegador eso cierra la pestaña por encima de la página.
 3. **El ratón se captura.** Entra a Entrenamiento y pincha: la mira tiene que
-   quedarse en el centro. `Esc` suelta el ratón y abre el menú, como en el
-   navegador.
+   quedarse en el centro. `Esc` suelta el ratón y abre el menú, y **otro `Esc`
+   vuelve a la partida a la primera**, sin tocar el ratón (0.5.0). Pruébalo tres
+   veces seguidas, también con *Opciones* abiertas.
 4. **El icono es la marca.** En la barra de tareas y en el acceso directo sale la
    marca de Vektor en naranja, no el icono por defecto de Tauri. **Y el
    instalador también** (vuelta 97): la marca arriba a la izquierda, el logotipo
    entero en el lateral de la bienvenida, y abajo «Vektor Installer» con su
    versión en lugar de «Nullsoft Install System».
 5. **F11 y la pantalla completa.** Primero, al pie de *Opciones* tiene que
-   poner «Vektor de escritorio 0.4.0» (si no, es una instalación vieja). Pulsa
+   poner «Vektor de escritorio 0.5.0» (si no, es una instalación vieja). Pulsa
    F11: la ventana se pone a pantalla completa y el interruptor de *Opciones* se
    marca solo. Ciérrala y vuelve a abrirla: tiene que abrir así. En un navegador
    esa fila no sale.

@@ -1,363 +1,438 @@
-# Propuesta 08 — El arsenal del mapa: peanas de arma y dotación
+# Propuesta 08 — El arsenal del mapa: reglas de partida y peanas
 
-**Estado:** **diseñada, sin construir nada.** El encargo (vuelta 95) fue: «el
-creador decide con qué se juega ese mapa», en dos formas —una armería filtrada o
-**armas en el suelo sobre peanas**, que es la que gustó— más «en ese mismo panel
-el creador define qué lleva equipado cada jugador al empezar la ronda: chaleco y
-casco (sí o no), granadas y Fang».
+**Estado:** **diseñada, sin construir nada.** Reescrita en la vuelta 105 con las
+reglas que Yago fijó ese día; la versión de la vuelta 95 queda resumida en §10,
+con lo que cambia y por qué.
 
-Y tres preguntas explícitas, que se contestan en §1 antes que nada porque son las
-que deciden el resto:
+El encargo de la 105, en una frase: **el mapa dice con qué se juega en él**, en un
+panel «Reglas de partida» de Alchemist que se guarda dentro del mapa. Dos cosas:
 
-1. ¿Un arma recogida reaparece, y cada cuánto?
-2. ¿Las peanas van en la zona de cada jugador o compartidas?
-3. ¿Qué pasa con el arma que llevabas?
+- **Las armas del mapa**, marcadas por su código de armería.
+- **El modo de armas**, uno de tres y excluyentes:
+  - **Equipadas**: todos salen con el mismo equipo.
+  - **Peanas**: se recogen del suelo, sin compra ni economía.
+  - **Armería**: se compra como hoy.
+
+Y las peanas con reglas concretas:
+
+- Son ilimitadas y duplicables, y no se agotan ni desaparecen.
+- Se cogen apuntando y con **E**, con aviso en pantalla.
+- Encima llevan **la misma ficha que un jugador**, con la silueta.
+- **El servidor valida** cada recogida.
+- Opcionalmente, **se desvanecen** unos segundos después de que alguien la coja.
+
+Más cinco preguntas, que se contestan en §6.
 
 ---
 
 ## 0. La respuesta corta
 
-**Son cuatro fases, y las dos primeras no tienen mecánica nueva.**
+**Un solo dato con dos campos, y tres modos que lo leen distinto.** Las armas
+marcadas son siempre *el arsenal del mapa*; el modo dice *cómo se consigue*:
+
+| Modo | Las armas marcadas son… | Dinero | Cómo se consigue un arma |
+|---|---|---|---|
+| **Armería** | lo que ofrece la armería | en rondas, sí (como hoy) | se compra (rondas) o se equipa (todos contra todos) |
+| **Equipadas** | el equipo con el que sale todo el mundo | no | te lo dan al salir |
+| **Peanas** | lo que puede haber encima de una peana | no | apuntando a una peana y pulsando E |
+
+**Un mapa sin reglas es Armería con el catálogo entero**, que es exactamente lo
+que se juega hoy: los mapas que ya están en disco no cambian ni un byte (la
+disciplina de la vuelta 83). Y **Los Pilares no se reescribe**: su
+`sinEconomia` + `dotacion` de la vuelta 72 **se lee como** Equipadas, igual que
+`modosDeMapa` deduce los modos de un mapa viejo sin tocar el fichero (vuelta 98).
+
+Son **cuatro fases**, y las dos primeras no tienen mecánica nueva:
 
 | Fase | Qué | Coste |
 |---|---|---|
-| 1 | **La dotación completa**: `duelo.dotacion` gana granadas y arrojadizo | pequeño |
-| 2 | **La lista blanca**: `duelo.armas` filtra el catálogo y la armería | pequeño |
-| 3 | **La peana en el motor**, primero en el entrenamiento | grande |
-| 4 | **La peana en red**, con el servidor de árbitro | mediano |
-
-Lo que hace baratas las dos primeras es que **ya existen a medias**: `duelo.dotacion`
-está construido desde la vuelta 72 —Los Pilares reparte Scout, chaleco y cuchillo
-y no tiene tienda— y lo único que le falta son dos campos. O sea que **la mitad
-del encargo es una extensión de un campo**, no un sistema.
-
-Y lo que hace grande la tercera no es la geometría: es que una peana es **lo
-primero de Vektor que entrega un arma sin pagarla**.
+| 1 | **Reglas de partida**: el panel, las armas marcadas, Armería filtrada y Equipadas completa | pequeño |
+| 2 | **La peana en el motor**, en el entrenamiento, con la ficha y la E | grande |
+| 3 | **La peana en red**, con el servidor de árbitro, en duelo, equipos y todos contra todos | mediano |
+| 4 | **Desvanecerse**, la opción por peana | pequeño |
 
 ---
 
-## 1. Las tres preguntas
-
-### ¿Reaparece, y cada cuánto? Sí, y lo dice el mapa
-
-**Reaparece**, porque si no la peana no es un sitio del mapa sino un premio de
-carrera: quien llega primero la ronda 1 se lleva el rifle de todo el partido.
-
-**Cada cuánto lo declara la peana**, con un valor de fábrica, y por la misma razón
-por la que la física es del mapa desde la vuelta 72: es lo que decide el ritmo de
-ese mapa, y dos mapas con ritmos distintos son dos mapas y no dos ajustes mal
-puestos.
-
-El número de fábrica **no se inventa, se deriva de lo que el duelo ya mide**: una
-ronda dura 3 minutos, la fase de compra 15 s, cruzar El Espejo cuesta **7.0 s** y
-el primer contacto posible cae a los **3.5 s** (vuelta 66). Con eso, **20 s** es
-aproximadamente tres cruces: se puede volver a por ella, y perder la pelea por
-ella cuesta algo. `PICKUPS.respawnMs` son 15 s y **no vale de referencia** —una
-cruz de vida no cambia a qué juegas— así que esto es un número propio.
-
-Extremos que sí valen, y son los que hacen que el campo signifique algo:
-
-- **0 es «siempre puesta».** Es lo que quiere un mapa que sólo reparte: la peana
-  del rifle junto a la salida, permanente, que es la dotación por otra puerta.
-- **El tope es 120 s.** Por encima de eso, en una ronda de tres minutos la peana
-  existe una vez y media: eso no es un sitio del mapa, es un evento.
-
-Y **el reloj es el número de paso**, como todo lo demás del duelo (vuelta 45): con
-un instante de pared sería un tercer reloj que sigue corriendo en pausa, que es el
-agujero que la vuelta 54 ya cerró dos veces.
-
-### ¿Zona de cada jugador o compartidas? Ni un campo: donde se pone
-
-**No hay ajuste, y eso es la respuesta.** Una peana tiene una posición, y una
-posición ya está o en la mitad de alguien o en el centro. Lo que lo hace seguro es
-que el mapa de duelo **es simétrico por giro de 180°** (vuelta 66): se declara
-media sala y `giro180` añade la otra girada, así que **una peana declarada en una
-mitad sale con su gemela en la otra, con la misma arma, por construcción**. Y una
-declarada en el centro es compartida, también por construcción.
-
-Un campo `zona` sería la ocasión de escribir dos veces la misma peana y que una se
-quede a media unidad de su pareja — que es literalmente el argumento con el que la
-vuelta 66 eligió el giro en vez del espejo.
-
-Lo que **no** se hace es reservar una peana para su dueño. La única geografía que
-el duelo impone es la caja de compra, y es de la fase de compra (vuelta 62);
-«tu zona» es geografía y nada más, así que el rival puede ir a por tu rifle. Que
-pueda es la mitad de para qué sirve ponerlo ahí.
-
-### ¿Qué pasa con el arma que llevabas? Se va, y por eso la peana no sorprende
-
-**La peana escribe su ranura, y lo que hubiera en esa ranura desaparece.** No es
-una regla nueva: es `CAMPO[item.ranura]` de la vuelta 92, el **único** camino por
-el que se escribe un arma comprada, y usarla aquí es lo que evita que haya dos
-formas de acabar empuñando algo (vuelta 67).
-
-De ahí tres cosas, y las tres salen de reglas que ya están escritas:
-
-- **Si ya llevas esa misma arma, recoger es recargar** — no comprar, exactamente
-  como el Fang desde la vuelta 90. Y a cargador lleno **no pasa nada y la peana se
-  queda encendida**, que es la regla de `pickups.js`: si el jugador no tenía hueco,
-  el objeto se queda donde está.
-- **Si llevas otra de esa ranura, se cambia.** Eso incluye cambiar a peor —pasar
-  por encima de una peana de Volt con un Rift en la mano te deja el Volt— y **se
-  acepta a propósito**, porque la alternativa es peor: la alternativa es pedir la
-  tecla contextual, y esa tecla ya reparte tres cosas desde la vuelta 83
-  (desactivar, engancharse a un cable, el artilugio). Meterle una cuarta es
-  exactamente cómo se pierde una ronda por un reflejo.
-- **Lo que hace que eso no sea una trampa es que se lee desde lejos.** La peana
-  lleva la ficha flotante con la silueta del arma, y la silueta es lo único que se
-  ve de un arma en Vektor (vuelta 38). Pasar por encima de una peana sin saber qué
-  hay encima no puede ocurrir.
-
-Y lo que **no** se hace, aunque es tentador: **el arma que dejas no vuelve a la
-peana ni cae al suelo.** Volver a la peana convertiría su contenido en «lo que
-dejó el último», y entonces «el rifle está en el centro» deja de ser un hecho del
-mapa — que es justo lo que un mapa de arena vende. Y caer al suelo es un sistema
-entero: armas tiradas con su posición, su identidad, su caducidad y su radio, o
-sea `clavadas.js` generalizado, para resolver un problema que la peana ya
-resuelve.
-
----
-
-## 2. Lo que decide el alcance: una peana no puede convivir con la tienda
-
-**Una peana es lo primero del juego que da un arma sin cobrarla**, y de ahí sale
-la única restricción de verdad de esta propuesta: **las peanas viven en mapas
-`sinEconomia`** (vuelta 72), y el saneado lo obliga en vez de avisarlo.
-
-El motivo no es purismo. Con tienda abierta, un rifle gratis a doce unidades de la
-salida deja el catálogo entero en decoración: ningún artículo de `ECONOMY.catalogo`
-compite con «gratis y a la vuelta de la esquina», y la economía —que es lo que la
-vuelta 64 construyó entera— pasa a no decidir nada. Y al contrario: si la tienda
-puede vender el Titan, las peanas son decoración.
-
-Así que el encuadre completo, y es el que lo hace barato:
-
-> **Un mapa de peanas es un mapa sin economía.** `dotacionDeDuelo` dice con qué
-> sales, las peanas dicen qué se encuentra por el mapa, y no hay tienda que
-> contradecir a ninguna de las dos.
-
-Eso además coloca la **lista blanca** (fase 2) en su sitio: no es la alternativa a
-las peanas, es lo que se usa en un mapa **con** economía. Las dos formas del
-encargo no compiten — **contestan a mapas distintos**.
-
----
-
-## 3. Fase 1 — La dotación completa
-
-`duelo.dotacion` existe y hoy tiene tres campos: `arma`, `chaleco`, `casco`. Lo
-que pide el encargo son dos más:
+## 1. El dato
 
 ```js
-duelo: {
-  sinEconomia: true,
-  dotacion: {
-    arma: 'scout',          // ya existe
-    especial: null,         // la quinta ranura (vuelta 92)
-    chaleco: true,          // ya existe
-    casco: false,           // ya existe
-    granadas: ['ko'],       // nuevo — lista, con el tope de ECONOMY.granadasMax
-    arrojadizo: 'fang',     // nuevo — o null
+reglas: {
+  armas: ['krakov', 'rift', 'pulse', 'reaper', 'core', 'fang'],  // marcadas
+  modo: 'peanas',                  // 'armeria' | 'equipadas' | 'peanas'
+  equipo: {                        // con qué sale cada uno (Equipadas y Peanas)
+    chaleco: true, casco: false,
+    // En Equipadas, además, un arma por ranura de entre las marcadas:
+    principal: 'krakov', pistola: 'pulse', especial: null,
+    granadas: ['core'], arrojadizo: 'fang',
   },
-}
-```
-
-Cuatro reglas, y ninguna es nueva:
-
-- **Se reparte por el inventario de siempre** (`Partida._dotar`), así que llega al
-  cliente por `MSG.ECONOMIA` y el arma se pone en la mano sola — que es lo que ya
-  hace una compra desde la vuelta 67.
-- **Y después de quitar.** `_perderEquipo` deja sin chaleco al que cayó y el orden
-  de esas dos líneas **es** la regla (vuelta 72): en un mapa que reparte, morir no
-  puede costar el equipo, porque no hay forma de recuperarlo.
-- **Las granadas son una lista con su tope**, el mismo `ECONOMY.granadasMax` de la
-  vuelta 88 (2 clases): una dotación que pudiera dar las tres sería un mapa
-  saltándose el límite que la tienda respeta.
-- **Y la ranura especial entra ahora**, aunque el encargo no la nombre: existe
-  desde la vuelta 92 y dejarla fuera sería una dotación que no puede decir «en
-  este mapa se juega con arco», que es exactamente la clase de mapa que esto viene
-  a permitir.
-
-En el editor va en la hoja de **Duelo**, junto a «sin economía», que es donde ya
-está el campo que la enciende.
-
-**Lo que se mide:** que un mapa con dotación completa reparta las cinco cosas al
-empezar la ronda y al reaparecer, que morir no cueste nada de eso, y que un mapa
-sin dotación se comporte **dígito a dígito** como hoy.
-
----
-
-## 4. Fase 2 — La lista blanca
-
-`duelo.armas`: las claves que ese mapa admite. Tres reglas:
-
-- **Filtra `catalogoDeTienda()`**, que es el catálogo que miran los dos extremos
-  —el cliente para montar el panel y el servidor para aceptar (vuelta 73)—. Escrito
-  en un solo lado, el síntoma sería un artículo que el panel enseña y el servidor
-  rechaza sin decir por qué.
-- **Filtra lo que se ofrece, nunca lo que existe.** Es la regla de `publicado` de
-  la vuelta 88: `WEAPONS` no se toca, y las listas derivadas (`PRIMARY_WEAPONS` y
-  compañía) tampoco — lo que se acota es el catálogo. Un arma fuera de la lista que
-  llegue en un ajuste guardado cae a la de serie por el saneado de siempre.
-- **Y una ranura no puede quedarse vacía.** Si la lista deja la ranura de pistola
-  sin ninguna, el saneado lo dice y no la aplica: `slots.secondary` es la ranura a
-  la que se cae cuando falla otra (vuelta 89), y vaciarla es quedarse sin mano.
-
-En el entrenamiento la armería enseña lo mismo que la tienda cobraría, así que el
-filtro sale gratis ahí también — que es la convención de la vuelta 63: lo que se
-aprende en un modo vale en el otro.
-
----
-
-## 5. Fase 3 — La peana, en el motor
-
-### El dato
-
-```js
+},
 peanas: [
-  { x: 0, z: -12, arma: 'rift', reaparicionSegundos: 20 },
-]
+  { x: 0, z: 0, arma: 'krakov' },
+  { x: 0, z: 2, arma: 'krakov', desvanece: 8 },   // fase 4
+],
 ```
 
-`x`/`z` es **el centro** y no la esquina mínima, como en un tubo (vuelta 81): la
-esquina de un círculo no quiere decir nada. La altura sale del suelo que haya
-debajo (`groundHeightAt`), así que una peana sobre una plataforma funciona sin
-declarar nada — y eso obliga a lo de siempre: se consulta en la línea de al lado de
-su propio `groundHeightAt` (vuelta 80).
+Cinco reglas del formato, todas conocidas:
 
-### Qué se ve, y de qué se reutiliza
+- **Se marcan claves, se enseñan códigos.** En Alchemist cada arma sale con su
+  código de armería (`1 2` la Rift) porque es el nombre que el jugador conoce
+  (vuelta 98). En el fichero van las claves: el código es el orden de la ficha en
+  su sección y **se mueve** cuando entra un arma nueva, y un mapa que guardase
+  `1 2` cambiaría de arma solo.
+- **Lo que vale su valor de fábrica no se escribe** (vuelta 83). Un mapa sin
+  `reglas` es Armería con todo, y el saneado es un punto fijo byte a byte.
+- **El saneado dice lo que tira** (vuelta 74). Pasa con un arma que no existe, con
+  una peana con un arma no marcada o con peanas en un modo que no las usa. En este
+  último caso se conservan y se dice: quien cambia de modo para probar no pierde
+  su colocación.
+- **Una ranura no se puede quedar sin pistola** (vuelta 89). Si las marcadas no
+  incluyen ninguna pistola, sales con la de serie igual. `slots.secondary` es la
+  ranura a la que se cae cuando falla otra.
+- **El cuchillo no se marca**: se lleva siempre, en cualquier mapa y en cualquier
+  modo (vuelta 73).
 
-Tres piezas, y **ninguna es nueva**:
-
-- **La peana**: un cilindro bajo facetado, del vocabulario de `pickups.js` —sólidos
-  sin textura, porque lo que distingue una cosa de otra es la silueta—. Un
-  `InstancedMesh` para todas las del mapa, que es el patrón de `impacts.js`.
-- **El haz de luz**: un cono invertido aditivo, como el destello de un dispositivo
-  (`dispositivos.js`). Aditivo quiere decir que apagarse **es** bajar a negro, así
-  que una peana gastada no necesita un material propio.
-- **La ficha flotante**: `weaponSilhouetteSvg()`, que vive fuera de React
-  precisamente para que la usen los dos modos (vuelta 67), dibujada con el
-  `CSS3DRenderer` que ya monta la ficha sobre la cabeza de un muñeco. Y **con el
-  tope de tamaño de `MARKERS.referenceDistance`**, o a treinta unidades son cuatro
-  píxeles y lo que no se ve no se cuenta (vuelta 39).
-
-**Y no es geometría**: fuera de `occluders`, sin colisión y fuera del presupuesto.
-Una peana que parase balas sería cobertura que nadie decidió, y un haz de luz que
-tapase la vista sería un muro de aire.
-
-### Cómo se coge
-
-**Por proximidad y sin tecla**, como los recogibles desde la vuelta 33 y el Fang
-desde la 90. El radio se mide **desde los pies** —una peana está en el suelo, no
-como un cuchillo clavado en una pared— y en el **flanco de entrar**: sin flanco, un
-jugador parado encima recargaría sesenta veces por segundo.
-
-### Lo que suena y lo que se ve al cogerla
-
-**Una peana es un dispositivo**, así que le aplica entera la norma permanente de la
-vuelta 82: **nace con su voz y su destello, decididos al construirla**. Las dos ya
-existen:
-
-- **La voz es `playEquip('arma')`**, el cerrojo de la vuelta 73, que es
-  exactamente el sonido de «acabas de tener un arma». Inventarle otra sería una
-  segunda voz para el mismo suceso.
-- **El destello es un anillo de `dispositivos.js`**, tumbado y abriéndose desde la
-  peana. Y **el haz se apaga**, que es la otra mitad: sin eso, coger una peana y
-  pasar por al lado se ven igual.
-
-Apagada, la ficha se atenúa y el haz desaparece, así que **desde la otra punta del
-mapa se ve si el rifle del centro está puesto**. Eso no es adorno: es la
-información con la que se decide ir o no ir, y esconderla detrás de la distancia
-sería el fallo de la vuelta 89 con otro nombre.
-
-### En el editor, viendo el efecto
-
-La convención de la vuelta 78 en su caso fácil: la peana **se arrastra por la
-rejilla** con el mismo gesto que una pieza, lleva su arma en un desplegable que sale
-de `PRIMARY_WEAPONS` y compañía —no de una lista a mano—, y **la ficha flotante se
-dibuja ya en el editor**, así que se ve si el rifle cabe en ese pasillo. Botón en la
-hoja de **Dispositivos**, con su fila en la lista de «En el mapa», que es lo que
-resuelve el segundo problema de la vuelta 81: volver a dar con ella.
-
-Y la ficha dice lo que se va a notar jugando y no el número otra vez: «cada 20 s;
-en este mapa cruzar de una salida a otra cuesta 7.0 s».
-
-### Y en el entrenamiento, primero
-
-Se construye **en el motor y se prueba contra los muñecos antes de escribir una
-línea de red**. Es la convención de la vuelta 63 por su lado bueno: lo que vive en
-el motor sale en los dos modos, y lo que se juega antes de mandarlo por un cable es
-lo que no hay que rehacer después.
+**Tope del formato, como los de `SALA`**: `PEANAS.max` (160 = dieciséis armas por
+diez). Existe para que un fichero corrupto no meta mil, no para limitar el diseño.
+El ejemplo del encargo cabe con holgura: la misma armería repetida en la zona de
+cada uno de diez jugadores.
 
 ---
 
-## 6. Fase 4 — La peana en red
+## 2. Qué hace cada modo en cada modo de juego
 
-Todo lo del inventario lo decide el servidor desde la vuelta 64, así que esto es el
-Fang otra vez y se resuelve igual:
+| | Duelo y equipos (rondas) | Todos contra todos (sin rondas) |
+|---|---|---|
+| **Armería** | como hoy, con el catálogo filtrado a las marcadas | la armería equipa, filtrada a las marcadas |
+| **Equipadas** | cada ronda y al reaparecer, el equipo; sin tienda ni fase de compra | al reaparecer, el equipo; la armería sólo enseña fichas (`soloFicha`, vuelta 73) |
+| **Peanas** | sales con el equipo base; lo recogido se conserva si sobrevives la ronda y se pierde al morir; empezar ronda restaura todas las peanas | sales con el equipo base; reaparecer te lo devuelve y pierdes lo recogido |
 
-- **El servidor reparte y el cliente no lo predice.** Si cada cliente cogiera la
-  peana por su cuenta, los dos podrían coger la misma — que es literalmente el
-  argumento de la vuelta 90 con un cuchillo en el suelo. Llega un viaje más tarde y
-  **no se nota**, porque lo que se coge no se mueve.
-- **El reloj de la reaparición es el número de paso**, y **lo que viaja es el
-  estado**, no la fecha: un mensaje por peana cuando se apaga y cuando vuelve, que
-  es un suceso de cada veinte segundos y no un campo en la foto de 60 Hz (la regla
-  de la economía en la vuelta 64).
-- **Y empezar una ronda las devuelve todas**, por lo mismo que limpia los cuchillos
-  clavados y tira la cola sin confirmar (vuelta 62): una ronda empieza con el mapa
-  como el creador lo dejó.
-- **El identificador lo pone quien manda** (vuelta 90). Aquí es más fácil que con
-  el Fang: una peana es del mapa, así que su identificador es **su índice en la
-  lista**, que los dos extremos derivan del mismo fichero sin que viaje nada.
+Tres cosas de la tabla que son el diseño:
 
----
-
-## 7. El equilibrio de los mapas de hoy
-
-**Ninguno cambia**, y eso es una propiedad y no una promesa: las peanas sólo
-existen en mapas `sinEconomia`, y de los seis escenarios de hoy el único es **Los
-Pilares**, que no declara ninguna. Los dos mapas de duelo con tienda —El Espejo y
-lo que se dibuje en Alchemist— no pueden tenerlas.
-
-Lo que sí hay que decir, porque es el riesgo real de la fase 3: **un mapa de peanas
-es un juego distinto**, no una variante. Sin economía no hay decisión de ahorro, la
-ronda 1 deja de ser diferente y el salto de dinero por ganar no existe — o sea que
-tres de las ocho reglas de la vuelta 64 no aplican. Eso es correcto para un mapa de
-arena y sería un error como valor de fábrica, y por eso las peanas no llegan a
-ningún mapa que no las pida.
+- **Peanas y Equipadas son mapas sin economía**, y eso lo obliga el modo, no un
+  aviso. §2 de la versión de la 95 sigue en pie: un arma gratis a doce unidades de
+  la salida deja la tienda de decoración. Con los modos excluyentes esto deja de
+  ser una restricción y pasa a ser la definición: *Peanas* **es** «sin compra».
+- **«Morir cuesta el equipo» sigue siendo la regla** (vuelta 64), y en Peanas
+  cuesta lo recogido. Lo que no se pierde nunca es el equipo base, porque en un
+  mapa sin tienda no habría forma de recuperarlo. Es el orden de `_perderEquipo` y
+  `_dotar` de la vuelta 72, sin cambios.
+- **El todos contra todos ya es «Armería sin dinero»** desde la vuelta 100 (la
+  bienvenida lleva `libres`). Filtrarla a las marcadas es la misma función de
+  catálogo que en el duelo, de modo que no aparece una segunda lista.
 
 ---
 
-## 8. Qué se deja fuera, y por qué
+## 3. La peana
 
-- **Armas tiradas al suelo al morir o al cambiar.** Es el sistema que §1 descarta:
-  entidades con posición, identidad y caducidad para resolver algo que la peana ya
-  resuelve. Si algún día se quiere, el sitio es `clavadas.js` generalizado, no un
-  segundo módulo.
-- **Peanas de chaleco, casco o granadas.** El encargo las excluye explícitamente
-  —«sí o no, no se colocan en el suelo»— y tiene razón: eso ya está en el suelo
-  desde la vuelta 33 (`pickups`), y una segunda forma de coger un casco serían dos.
-- **Que la peana diga cuánto le queda.** Un número flotando sobre el suelo es
-  telemetría en el mundo; el haz apagado ya dice «no está» y eso es lo que se
-  necesita para decidir. Si jugándolo hace falta, es una fase propia.
-- **Prioridad entre una peana y un recogible en el mismo sitio.** No hace falta
-  decidirlo: son dos radios independientes y coger las dos cosas al pasar es lo
-  correcto. Lo que **no** puede pasar es que compitan bajo el punto de mira, y no
-  compiten porque ninguna de las dos se apunta.
+### No se agota, no desaparece y la coge quien quiera
+
+**Coger no la gasta.** La coge uno, la cogen cinco a la vez, y sigue ahí. De ahí
+salen tres consecuencias:
+
+- **No hay estado por peana que viaje**, salvo con la opción de desvanecerse (§5).
+  El servidor no lleva la cuenta de quién la cogió, porque cogerla no cambia la
+  peana: cambia tu inventario.
+- **«Una peana, un jugador» no es un problema que resolver.** No hay carrera por
+  el rifle del centro, a menos que el creador la pida con la opción de §5.
+- **La peana deja de ser un premio y pasa a ser un sitio.** Por eso se puede
+  repetir la misma armería en la zona de cada uno: diez peanas de Krakov son diez
+  sitios donde se consigue un Krakov.
+
+### Cómo se coge: apuntando y con E
+
+- **Se apunta a la peana, dentro de un alcance corto, y se pulsa E.** El alcance
+  es `PEANAS.alcanceU`, del orden de 2.5 u, por encima del de la tirolina (2.2) y
+  a distancia de brazo. **Pasar por encima no coge nada**, al revés que los
+  recogibles de la vuelta 33 y el Fang de la 90. Con peanas repetidas en un
+  pasillo, recoger al pisar te cambiaría el arma cada vez que pasas.
+- **«Apuntar» es un rayo contra un volumen, no un píxel.** Cada peana tiene un
+  cilindro de agarre alrededor del arma que enseña. El rayo de la mira se corta
+  contra él analíticamente, como el hitbox (vuelta 65), y `cortarSegmento` descarta
+  que haya pared en medio. No se raycastea ninguna malla.
+- **El aviso sale bajo la mira**, donde van los mensajes de ayuda:
+  «**E** · Recoger Krakov». Si ya la llevas, dice «**E** · Recargar Krakov». La
+  tecla **sale del bind**, con `keysOf('use')` (vuelta 97): si alguien la reasignó
+  a la F, dice F.
+
+### Y la E ya hace tres cosas: el orden
+
+La E es `use`, la tecla contextual, y hoy reparte tres cosas (vueltas 27 y 83): el
+explosivo, la tirolina y el artilugio. La versión de la 95 descartó una cuarta con
+un argumento que sigue siendo cierto («es cómo se pierde una ronda por un
+reflejo»). **Aquí se admite, porque lo que la desambigua es apuntar**, y apuntar
+es la señal de intención más fuerte que tiene el juego. Orden:
+
+1. **Dentro del radio del explosivo**, desactivar, y nada más ahí dentro (vuelta
+   27, intacta). Sólo existe en el entrenamiento con escenario, y en esos mapas no
+   hay peanas en red.
+2. **Una peana apuntada y al alcance**, recogerla.
+3. **Un cable al alcance**, engancharse.
+4. Si no, el artilugio.
+
+La peana va delante del cable porque apuntar a algo concreto es más deliberado
+que estar cerca de algo. Al revés, alguien que apunta a un rifle debajo del
+anclaje de una tirolina saldría volando. Y dos seguros, porque el orden no basta
+para que no sorprenda:
+
+- **Alchemist avisa** (en naranja, es de ergonomía y el mapa se juega igual) de una
+  peana a menos de `ZIPLINES.alcanceU` de un anclaje: en ese sitio la E hace dos
+  cosas según dónde mires.
+- **El aviso bajo la mira es la verdad de lo que va a hacer la E.** Lo decide la
+  misma función que ejecuta la pulsación, y no una segunda cuenta que pueda decir
+  otra cosa (vuelta 67).
+
+**Un bind nuevo no es la salida**, y conviene decirlo porque parece la limpia. La
+invariante de `KEYBINDS` es que dos acciones nunca comparten tecla, así que una
+acción «Recoger» no podría nacer en la E. Nacería en otra tecla que nadie buscaría
+para coger un arma.
+
+### Lo que se lleva: sustituye su ranura
+
+- **La peana escribe su ranura** por `CAMPO[item.ranura]` (vuelta 92), el único
+  camino por el que se escribe un arma. **Lo que hubiera ahí desaparece**: no cae
+  al suelo ni vuelve a ninguna peana (§9).
+- **Se pone en la mano** si la ranura cambió, que es la regla de comprar (vuelta
+  67). Recargar no te cambia el arma que empuñas.
+- **Cubre cuatro ranuras**: principal, pistola, especial y arrojadizas (granadas y
+  Fang). No cubre el cuchillo, que se lleva siempre, ni el chaleco ni el casco, que
+  son de `pickups.js` desde la vuelta 33: una segunda forma de coger un casco
+  serían dos.
+- **Una granada de una peana respeta `ECONOMY.granadasMax`** (vuelta 88): si ya
+  llevas dos clases y la tercera no cabe, el aviso lo dice en vez de la tecla. Un
+  límite que se aplica en silencio es un agujero.
+
+### La ficha encima: la misma que la de un jugador
+
+**Es el mismo componente**: la ficha de `markers.js`, con la silueta de
+`weaponSilhouetteSvg()` y el nombre del arma donde un jugador lleva su nick. No se
+dibuja otra.
+
+**Y sale con las reglas de visibilidad de los jugadores**: encuadre más rayo, con
+`sight.js`, el mismo veredicto que decide la brújula (vuelta 42). Así, **una peana
+detrás de una pared no se anuncia**. Hay una diferencia que conviene decidir en voz
+alta. La ficha de un rival pide además **sostener la mira** 350 ms (`dwellMs`),
+porque una ficha por jugador visible es una pantalla de rótulos. **Aquí se propone
+sin esa espera**, porque la ficha de una peana es la información con la que se
+decide ir a ella. Si jugándolo sobran rótulos, es una bandera del componente, no
+un segundo componente.
+
+Dos cosas del mecanismo:
+
+- **Tope de fichas a la vez** (las `n` más cercanas de las que se ven) y **rayos
+  con presupuesto por frame** (`MARKERS.sight.raysPerFrame`), como la brújula.
+  Veinte peanas en el encuadre no pueden ser veinte rayos en un frame.
+- **Lo que se ve de la peana es el arma**, la misma silueta extruida del arma en
+  pantalla (vuelta 105), girando despacio sobre un zócalo bajo. Es una malla por
+  tipo de arma (`InstancedMesh`), así que diez peanas de Krakov son **una** llamada
+  de dibujo. Fuera de `occluders`, sin colisión y fuera del presupuesto: una peana
+  que parase balas sería cobertura que nadie decidió.
+
+### Sonido y destello (norma permanente de la vuelta 82)
+
+Una peana es un dispositivo, así que nace con los suyos, y los dos existen:
+
+- La voz es **`playEquip('arma')`**, el cerrojo de «acabas de tener un arma»
+  (vuelta 73).
+- El destello es **un anillo de `dispositivos.js`** abriéndose desde el zócalo.
+
+Sale en quien la coge, y no en los demás: coger una peana no cambia el mundo.
 
 ---
 
-## 9. Qué hacer primero
+## 4. En red: el servidor valida cada recogida
 
-**La fase 1, y sola.** Es la mitad del encargo, no tiene mecánica nueva, no toca el
-protocolo y se puede jugar el mismo día: un mapa que reparte Krakov, chaleco, casco,
-dos KO y un Fang ya es un mapa con su propio arsenal.
+- **El cliente pide** (`MSG.RECOGER { i }`, el índice de la peana). **El
+  identificador es su índice en la lista del mapa**, que los dos extremos derivan
+  del mismo fichero sin que viaje nada (vuelta 90).
+- **El servidor comprueba**, en este orden y por lo más barato primero (vuelta 46):
+  1. que el jugador está vivo;
+  2. que el modo es Peanas;
+  3. que la peana existe, está puesta y lleva un arma marcada;
+  4. la distancia de sus ojos a la peana, contra el alcance **más una holgura de
+     red** (`PEANAS.holguraU`);
+  5. y un `cortarSegmento` de sus ojos a la peana, contra paredes.
 
-La fase 2 va detrás porque es igual de barata y contesta a la otra mitad para los
-mapas **con** tienda.
+  **No se rebobina.** Recoger no es un disparo y no tiene un instante que juzgar:
+  la holgura cubre lo que te has movido en un viaje.
+- **Contesta por el inventario de siempre** (`MSG.ECONOMIA`, vuelta 64): el arma
+  entra en tu ranura y **se te pone en la mano** con la regla de comprar. **El
+  cliente no lo predice**: un viaje de retraso no se nota en algo que no se mueve
+  (vuelta 90), y predecirlo sería una segunda idea de qué llevas.
+- **Rechazar también contesta**, como un disparo rechazado (vuelta 56). Si no, el
+  aviso de la mira se queda esperando algo que no va a llegar.
 
-Y la fase 3 **no se empieza hasta haber jugado un mapa de dotación completa**, por
-una razón concreta: la mitad de lo que una peana viene a dar —«en este mapa se
-juega con esto»— la da ya la dotación, y jugarla es lo que dice si lo que falta es
-encontrar armas por el mapa o sólo elegir con qué se sale. Construir la peana antes
-es construirla sin saber contra qué se compara.
+---
+
+## 5. Fase 4 — Desvanecerse, la opción por peana
+
+`desvanece: X` (segundos, **apagada de fábrica**). Tras la primera recogida la
+peana sigue **X segundos** y se apaga para todos. Es para los mapas de carrera al
+centro: el primero que llega se lleva el rifle y los demás tienen X segundos para
+seguirle.
+
+- **Vuelve al empezar la ronda**, en los modos de rondas: el mapa empieza como el
+  creador lo dejó (vuelta 62).
+- **En el todos contra todos, que no tiene rondas, vuelve sola** a los
+  `vuelve: Y` segundos (de fábrica, 30). Sin eso, una peana que desaparece la
+  primera vez no vuelve nunca, y a los tres minutos el mapa es otro.
+- **Lo único que viaja** es su cambio de estado, un mensaje por peana al apagarse y
+  al volver, a todos, un suceso cada muchos segundos. **Su reloj es el número de
+  paso**, que en pausa no corre (vueltas 45 y 54).
+- **Mientras se desvanece se dice**: la ficha cuenta hacia atrás y la silueta se
+  apaga. Una peana que desaparece sin aviso es una trampa (vuelta 80).
+
+---
+
+## 6. Las cinco preguntas
+
+### Coger el arma que ya llevas: sí, recarga
+
+**Llena cargador y reserva hasta lo que traería recién cogida**, que es la regla
+del Fang (vuelta 90): recoger lo que ya llevas es recargar, no comprar. Con todo
+lleno **no pasa nada**, y el aviso lo dice («Krakov · lleno») en vez de ofrecer
+una tecla que no hará nada. Es la regla de `pickups.js`: si no hay hueco, el
+objeto se queda como está, que aquí es siempre.
+
+### Con qué munición llega: la de comprarla
+
+**Cargador lleno y su reserva inicial**, exactamente lo que da comprarla
+(`r.inicial`, vueltas 86 y 88). Si llegase a medias, el mismo Krakov valdría
+distinto según de dónde saliera, y el jugador tendría que aprender dos Krakovs.
+
+### ¿El anfitrión cambia el modo de armas en el lobby? No: lo decide el mapa
+
+**El modo de armas es del mapa**, por la misma razón que su física (vuelta 72): es
+lo que lo define. Las peanas están colocadas para Peanas, y el mismo mapa en
+Armería es un mapa lleno de peanas que no hacen nada. Un Equipadas de francotirador
+en Armería deja de ser el mapa de francotirador. **El lobby lo enseña**, como hoy
+enseña «el mapa reparte» (vuelta 72): una fila más en el resumen, «Armas: peanas».
+
+Si algún día se quiere que el anfitrión elija, el camino es que **el mapa declare
+qué modos admite** y el lobby ofrezca esos, igual que un mapa se publica por modo
+de juego (vuelta 98). Nunca que el lobby imponga uno que el mapa no pensó. Esto
+queda fuera de las cuatro fases.
+
+### Cómo encaja en duelo, equipos y todos contra todos
+
+La tabla de §2. En una línea: **los tres modos de armas valen en los tres modos de
+juego**, y lo que cambia entre ellos es lo que ya cambiaba: las rondas deciden
+cuándo vuelve el equipo y cuándo se restauran las peanas, y el todos contra todos
+lo resuelve al reaparecer.
+
+### Coste de red y CPU con muchas peanas
+
+**Red: cero por foto.** Las peanas son datos del mapa, que los dos extremos montan
+igual (vuelta 72). Lo que viaja son sucesos:
+
+- una petición por recogida y su inventario de vuelta (lo mismo que una compra);
+- con la opción de §5, un mensaje por peana al apagarse y al volver.
+
+Ciento sesenta peanas pesan lo mismo que una.
+
+**CPU, medido** (`peanas105`, en Node, sobre el Plano A):
+
+| | 160 peanas |
+|---|---|
+| buscar la apuntada, por paso | **0.27 µs** |
+| un corte de segmento, sólo a la candidata | **1.48 µs** |
+| total, frente a los 200 µs de un paso | **0.9 %** |
+
+El servidor paga lo mismo **sólo cuando alguien pulsa E**, no por paso.
+
+**Dibujo**: una llamada por tipo de arma distinta (`InstancedMesh`), más el zócalo y
+el brillo, que son una cada uno. Lo caro de verdad serían las fichas, que son DOM
+en el espacio (`CSS3DRenderer`), y por eso llevan tope y presupuesto de rayos
+(§3). Se mide en la fase 2 con la escalera de siempre (0, 40, 160 peanas) y su
+denominador delante.
+
+---
+
+## 7. El panel «Reglas de partida» en Alchemist
+
+Una hoja nueva del raíl, con la palabra debajo (vuelta 78):
+
+- **El modo de armas**: tres botones excluyentes, con una frase de qué significa
+  cada uno *en ese mapa*.
+- **Las armas del mapa**: las fichas de la armería por categorías, cada una con su
+  código, una casilla y «todas» y «ninguna» por categoría. Salen de
+  `catalogoDeTienda()` y `RANURAS`, no de una lista a mano.
+- **El equipo**:
+  - en Equipadas, una ranura por fila, eligiendo de entre las marcadas;
+  - en Peanas, sólo el equipo base (chaleco y casco);
+  - en Armería, oculto, porque no significa nada ahí. Se apaga y se dice, que es
+    la regla de la vuelta 94.
+- **Las peanas se colocan en la vista**, con la convención permanente de la vuelta
+  96: nacen delante de la cámara y dentro de la sala, se eligen pinchándolas, se
+  arrastran por su cuerpo, **Supr las borra**, **se duplican** con el duplicado sin
+  solapes de la vuelta 93 (Ctrl+C / Ctrl+V), tienen fila en Capas con su ojo, y
+  su ficha se dibuja ya en el editor. Entran en `TIPOS_DE_MAPA`, que es lo que les
+  da todo eso sin tocar nada más.
+- **Y una fila de estado**: «8 peanas · 4 armas · 2 de ellas desvanecen». Es la
+  regla de la vuelta 77, la barra dice el estado.
+
+---
+
+## 8. Qué se mide al construirlo
+
+- **Fase 1.** Un mapa sin reglas se juega igual, dígito a dígito. Los Pilares se lee
+  como Equipadas sin cambiar el fichero. Armería filtrada: el panel no enseña lo
+  que el servidor rechazaría, en los dos extremos. Equipadas: reparte las cinco
+  ranuras al empezar y al reaparecer, y morir no cuesta el equipo.
+- **Fase 2.** Con teclado y ratón de verdad (vuelta 48):
+  - apuntar y pulsar E coge, y pasar por encima no;
+  - el aviso dice lo que hace la E, también debajo de un cable;
+  - a cargador lleno no pasa nada;
+  - la ficha no sale detrás de una pared;
+  - y el coste con 0, 40 y 160 peanas.
+- **Fase 3.** Sin navegador, contra `Partida`: el servidor rechaza fuera de alcance,
+  con pared en medio, muerto y con un arma no marcada, y contesta igual. Cinco
+  cogiendo la misma peana a la vez se llevan cinco armas. Morir cuesta lo recogido
+  y no el equipo base. Una ronda nueva restaura. Y con navegadores: el arma entra
+  en la mano un viaje después.
+- **Fase 4.** Se apaga a los X s de la primera recogida y para todos, vuelve con la
+  ronda o a los Y s, y en pausa no cuenta.
+
+---
+
+## 9. Qué se deja fuera, y por qué
+
+- **Armas tiradas al suelo** al morir o al cambiar. Es un sistema entero
+  (posición, identidad, caducidad) para algo que las peanas ya resuelven, y con
+  peanas que no se agotan tiene aún menos sentido. Si algún día hace falta, el
+  sitio es `clavadas.js` generalizado.
+- **Que el anfitrión elija el modo de armas.** Contestado en §6: si llega, llega
+  como «el mapa declara los que admite».
+- **Peanas de chaleco o casco.** Existen desde la vuelta 33, y son los recogibles.
+- **Una peana con cantidad** («quedan 3 Krakovs»). Contradice «no se agota», que es
+  la regla, y el caso de la carrera ya lo cubre desvanecerse.
+
+---
+
+## 10. Qué cambia respecto a la versión de la vuelta 95
+
+| Vuelta 95 | Vuelta 105 | Por qué |
+|---|---|---|
+| La peana se gasta y reaparece cada 20 s | No se gasta. Opción de desvanecerse | Las peanas son sitios, no premios, y se repiten |
+| Se coge al pasar, sin tecla | Apuntando y con E, con aviso | Con peanas repetidas, pasar por encima te cambiaría el arma cada vez |
+| No a una cuarta rama de la E | Sí, porque la desambigua apuntar | El argumento de la 95 era contra la proximidad, no contra la intención |
+| Dotación y lista blanca, dos campos sueltos | Un panel, `reglas`, con tres modos excluyentes | Las dos formas del encargo eran el mismo dato leído de dos maneras |
+| Peanas sólo en mapas de duelo sin economía | En los tres modos de juego, con modo Peanas | El todos contra todos ya no tiene economía, y Peanas **es** sin economía |
+
+Lo que no cambia: **el arma que llevabas se va**, **el identificador es el índice
+en la lista del mapa**, **el reloj es el número de paso**, **una ronda nueva
+restaura el mapa** y **Peanas y Armería no conviven**.
+
+---
+
+## 11. Qué hacer primero
+
+**La fase 1, sola**:
+
+- es el panel y el dato, sin mecánica nueva ni protocolo;
+- cubre Equipadas y Armería filtrada;
+- y con ella se puede jugar el mismo día un mapa con su propio arsenal.
+
+**La fase 2 se construye en el entrenamiento y se juega contra los muñecos antes de
+tocar la red**, que es la convención de la vuelta 63 por su lado bueno: lo que vive
+en el motor sale en los dos modos. La 3 va detrás, y la 4 es pequeña y va al final,
+cuando haya un mapa de carrera que la pida.

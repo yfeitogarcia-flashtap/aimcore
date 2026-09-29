@@ -15563,7 +15563,7 @@ munición del HUD, abajo a la derecha. El HUD va encima y se sigue leyendo. Ancl
 arma a una fracción del ancho la alejaría de ahí, pero entonces su tamaño y su giro
 cambiarían con el aspecto, que es justo lo que se pidió que no cambiara.
 
-## §105 — `flujo92` al día y el arma en pantalla calibrada por tipo
+## §105 — Volver desde la pausa (F2), bancos que fallan de verdad y el todos contra todos de 3 a 10
 
 ### 105.1 — Ningún banco en rojo «esperado»
 
@@ -15633,4 +15633,182 @@ volumen de un modelo de CS (el cargador, el guardamanos redondo, la mira), y la 
 de apoyo lo enseña. El paso siguiente, si se aprueba el encuadre, es decidir si el
 arma en pantalla justifica volumen de verdad: modelos, que serían **assets** y
 chocarían con la regla de §2, o piezas procedurales por arma (cajas y cilindros
-sobre la silueta), que no.
+sobre la silueta), que no. **Yago las descartó el mismo día** (105.4): con el dummy
+procedural de una referencia ya salió una figura burda, y un arma hecha de cajas
+saldría cuadrada. Lo que se sigue es la silueta, con más forma dentro de ella.
+
+### 105.3 — Ningún veredicto impreso sale en verde por su cuenta
+
+El defecto de `flujo92` —imprimía «FALLO» y salía con código 0— se buscó en todos
+los bancos. En setenta y tantos, el veredicto ya contaba para la salida. En nueve,
+no, y ahora sí: `apariencia84`, `hielo84`, `dinero89`, `destello90`, `fang90`,
+`fang90ent`, `ranura92`, `duelo92srv` y `cache93`. Todos cuentan cada paso en rojo
+y salen con 1, y los que abren un navegador cuentan además los errores de página.
+Pasados después del cambio, **los nueve salen en verde contra el juego de hoy**.
+
+Uno se puso en rojo al convertirlo, y el fallo era suyo: `fang90` medía «acertar la
+gasta» leyendo la vida del rival al final. Un Fang cargado mata (100 al torso) y,
+sin fase de compra, esa baja cierra la ronda y la siguiente le devuelve la vida
+**en el mismo paso**: la vida salía 100 → 100 con el golpe dado. Ahora se lee en el
+aviso de golpe que recibe el rival (`MSG.GOLPE`). Es el denominador de la vuelta 46
+por otra puerta: un número que puede valer lo mismo con el fenómeno y sin él no
+mide el fenómeno.
+
+**Se retiraron tres** a `scratchpad/retirados/`, con una nota: `arm90`, `esc89b` y
+`esc91` medían reglas que el juego enmendó a propósito (la armería antes de la 92 y
+el ESC antes de la 101), y ya tienen sucesor (`armeria98`, `esc101`). Un banco que
+exige la regla vieja está siempre en rojo, y un rojo que se da por esperado es lo
+que la 105.1 vino a quitar.
+
+Y **los informes siguen siendo informes**, a propósito, como `x8` (vuelta 61):
+`aire88`, `dano90`, `salas97`, `cpu103` y compañía miden y no afirman. Lo que no
+puede haber es un banco que afirme y no cuente.
+
+Ojo con una cosa de dónde viven: `scratchpad/` está en `.gitignore` salvo tres
+ficheros, así que estos arreglos **existen en esta máquina** y en ninguna otra. Si
+los bancos tienen que sobrevivir al contenedor, hay que versionarlos (una carpeta
+`bancos/` fuera del ignorado), y eso es una decisión, no un arreglo de paso.
+
+### 105.4 — El piloto de la silueta con grosor por zonas, y por qué se anuló
+
+Se construyó para Krakov y Pulse: la extrusión de la v3 con un grosor por zona, un
+canto redondeado corto y un Delaunay propio. Con la lámina delante, **Yago decidió
+que tal como está el juego se ve mejor sin arma**, y lo anuló: no se sigue
+afinando la silueta 3D. El código se quitó entero (`armaEnMano.js` vuelve a la
+v3) y el banco y la lámina están en `scratchpad/retirados/`. Tres cosas que se
+aprendieron y valen para lo que venga:
+
+- **Inflar la silueta entera es plastilina**: la pared vertical es lo que la deja
+  mecanizada.
+- **Las siluetas de `Reference/Weapons/` se leen con `evenodd`**, como el logotipo:
+  con la regla de fábrica, el guardamonte y las ranuras salen como sólidos
+  encima del cuerpo y no como huecos. **La v3 lo tiene así**, y como se va a quedar
+  apagada no se ha tocado.
+- **Con puntos dentro de una cara, `earcut` no vale**: los une al contorno con
+  puentes de punta a punta, y se ven estrías.
+
+Lo que sigue en su lugar es otra cosa: quitar el arma del menú para la beta y un
+único piloto **holográfico** —sólo el contorno, en líneas finas del color del
+jugador—, que se cierra si no es claramente mejor que no llevar arma.
+
+### 105.5 — El todos contra todos es de 3 a 10, y lo dice el mapa
+
+La mitad ya estaba desde la 101: los huecos del lobby eran `min(10, salidas del
+mapa)`. Lo que faltaba:
+
+- **Decirlo antes de elegir.** «3–6 jugadores» en la tarjeta del mapa del
+  carrusel, en su pista y en el resumen de la sala. Sale de una sola función,
+  `capacidadDeTodos`, que miran el lobby, su pantalla y Alchemist: tres cuentas
+  serían tres respuestas el día que una cambie.
+- **No lanzar con más gente de la que cabe.** Cambiar a un mapa más pequeño dejaba
+  a los que sobraban sin hueco, y la partida se lanzaba sin ellos. Ahora
+  `requisitos()` —que es a la vez lo que enciende el botón y lo que decide
+  `_lanzar`— lo impide y lo dice: «Sois 7 y en este mapa caben 5: elige uno con
+  más salidas o que salgan 2». Cuenta **a todo el que está en la sala**, también
+  a quien se ha caído y conserva su sitio (vuelta 62).
+- **En Alchemist, en rojo, lo que deja el mapa sin jugarse bien.** Hay dos casos:
+  menos de tres salidas, y dos salidas que se ven entre sí. El segundo lo mide la
+  misma función que «Medir», ahora sacada del botón. Sale en la barra de arriba
+  sin pulsar nada, con un retardo de 300 ms, porque `remontar` corre en cada
+  arrastre y son N·(N−1)/2 rayos. Hasta aquí se avisaba de algo que ya no es un
+  fallo, «n salidas para 10 jugadores», que en un mapa de seis salidas es el
+  diseño y no un error. **El rojo es el de `COLORS.threat`**; el naranja se queda
+  para lo que se juega igual.
+
+**La Rotonda sigue igual**: doce salidas, 3–10 jugadores. Los topes no se tocan
+(`TODOS.minJugadores` 3, `maxJugadores` 10, `maxSalidas` 16), y el saneado del
+formato ya quitaba el modo por debajo de tres desde la 100. Medido: `todos105`,
+contra `Lobby` y `Partida` sin navegador (siete en la sala, cambio a un mapa de
+cinco, no se lanza, se van dos, se lanza con cinco butacas); `todos105ed`, contra
+Alchemist (rojo con dos, rango con cinco, «se ven» en la barra igual que «Medir»,
+y el aviso se va al taparlas); y `todos105nav`, contra la pantalla del lobby.
+
+### 105.6 — La propuesta 08, reescrita con las reglas de la 105
+
+`docs/propuestas/08-armas-del-mapa.md`, sin construir nada. Hay un panel «Reglas
+de partida» con las armas del mapa (marcadas por código, guardadas por clave) y
+tres modos excluyentes: **Equipadas**, **Peanas** y **Armería**. Lo que cambia
+respecto a la 95 y por qué está en su §10. En corto:
+
+- la peana ya no se gasta;
+- se coge apuntando y con E, no al pasar;
+- y la E gana una cuarta rama, porque lo que la desambigua es **apuntar**.
+
+El orden de esa tecla queda así: el explosivo, la peana apuntada, la tirolina y el
+artilugio. Alchemist avisa de una peana junto a un anclaje. Coste medido
+(`peanas105`): con 160 peanas, **0.27 µs** por paso para buscar la apuntada y
+**1.48 µs** el corte contra paredes de la candidata. **Cero bytes por foto**: las
+peanas son del mapa, y sólo viajan la petición de recoger y, si se desvanece, su
+cambio de estado.
+
+### 105.7 — F2: volver desde la pausa, a la primera y sin quedarse atascado
+
+Se reportó en Chrome y en la app, en el entrenamiento y en el multijugador:
+ESC, un clic o REANUDAR para volver desde la pausa funcionaban a veces, a veces
+había que insistir y a veces **no volvía nunca**. `esc101` estaba en verde porque
+un navegador sin interfaz no aplica las dos reglas con las que Chrome decide si
+deja volver a capturar el ratón:
+
+- **Tras una salida del usuario** (ESC, perder el foco) rechaza la petición algo
+  más de un segundo, **y después sólo la admite con un gesto**: un clic o una
+  tecla. **ESC no es un gesto**, porque la norma de HTML excluye expresamente la
+  tecla Esc de lo que activa una página. Chrome guarda un gesto unos 5 s, y ése
+  era el «a veces»: ESC volvía si habías disparado hacía poco.
+- **Tras una salida de la página** (`exitPointerLock`), vuelve sin gesto y sin
+  espera. Lo dice la documentación de Chromium, y es por lo que **B → B** siempre
+  funcionó: abrir la armería lo suelta la página.
+
+Nada de eso daba error visible: la petición fallaba y el juego no se enteraba.
+
+**El arreglo es una pieza del motor, `src/game/captura.js`**, que las dos páginas
+comparten por la convención de la 63:
+
+- **Sabe quién soltó el ratón.** Las once llamadas de la página a
+  `exitPointerLock` pasan por `soltarRaton()`; cualquier otra salida es del
+  usuario.
+- **Reintenta mientras quede gesto.** Un clic o REANUDAR dentro de la espera se
+  repiten al acabarla (el gesto dura más), y un rechazo se reintenta hasta tres
+  veces (`CAPTURA`).
+- **Sin gesto, lo dice.** Sale un aviso, «**Haz clic** o pulsa cualquier tecla
+  para volver a la partida», y **cualquier tecla que no sea ESC** vuelve, porque
+  ésa sí es un gesto. Esa tecla sólo sirve para volver: si además siguiera su
+  camino, una B abriría la tienda a la vez. Nunca se queda mudo.
+- **En la app de escritorio, ESC es de la ventana**, como F11 desde la 98
+  (`main.rs`, **0.5.0**). La ventana se queda la tecla antes que la página y se
+  lo cuenta con un `eval` (`vektor:escape`). Si el ratón está capturado, la
+  página lo suelta ella misma, **y por eso volver no pide gesto ni espera**. Si
+  no, lo convierte en una pulsación de ESC normal, y los menús lo entienden igual
+  que en un navegador. Con la salida de la página, `volverConEscape` tampoco
+  guarda ya la espera de 1.3 s.
+
+**Lo que no se puede, y queda dicho**: en un navegador, un ESC para volver **sin
+haber tocado el ratón en los últimos segundos** no puede recapturar. Ninguna
+página puede. Lo que se garantiza es que en ese caso sale el aviso y basta un
+clic o una tecla. La API que lo evitaría (Keyboard Lock) sólo funciona a pantalla
+completa del documento. En la app, en cambio, ESC vuelve siempre, a la primera.
+
+**El banco que no deja que vuelva a salir en verde**: `esc105`. Imita las dos
+reglas con un envoltorio de `requestPointerLock` instalado antes que ningún
+script, y **lleva su propio modelo del gesto**: `page.evaluate` de Playwright
+corre con gesto de usuario, así que leer el de Chrome daba siempre «activo» y
+todo pasaba. Ese fue el primer intento, en verde contra el código roto. Cuentan
+los clics y las teclas de verdad (`isTrusted`), menos ESC, durante 5 s.
+
+**Contra el código de antes** (`HEAD` construido aparte) sale **rojo**:
+
+- ESC sin gesto: sin aviso y sin volver, en los dos modos;
+- REANUDAR dentro de la espera: seis rechazos y no vuelve;
+- en el multijugador, aporrear ESC con clic reciente: no vuelve;
+- en la app, ESC no pausa.
+
+**Contra el arreglo**, los cuatro recorridos en verde:
+
+- el aviso sale a los 20–30 ms y una tecla vuelve a los 15–30;
+- REANUDAR y el clic dentro de la espera vuelven a los ~0.7–1 s;
+- en la app, ESC pausa y ESC vuelve tres veces seguidas a los 22–80 ms, sin un
+  rechazo ni un aviso, también con Opciones abiertas.
+
+El `.exe` 0.5.0 compila para Windows desde aquí
+(`cargo check --target x86_64-pc-windows-msvc`). **Hay que instalarlo** para
+tener ESC a la primera en la app: con la 0.4.0, la app se comporta como Chrome,
+aviso incluido.

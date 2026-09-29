@@ -1,4 +1,5 @@
 import { ESC_MISMA_PULSACION_MS, RESUME_KEY_DELAY_MS } from '../config.js'
+import { ultimaSalida } from '../game/captura.js'
 
 /**
  * **ESC es un «atrás» forzado, y siempre acaba en la partida** (vuelta 101).
@@ -45,6 +46,15 @@ export function crearVueltaConEscape(capturar) {
      * apertura es una vuelta y no el eco de la salida.
      */
     pedir(ahora = performance.now(), cierraAlgo = false) {
+      // **Si el ratón lo soltó la página, no hay espera que guardar** (vuelta
+      // 105): Chrome sólo la impone tras una salida del usuario, y ESC no pudo
+      // soltarlo —en la app es de la ventana, y en un navegador lo que soltó la
+      // página fue abrir la tienda o la armería—. Se vuelve en el acto.
+      if (!ultimaSalida().porUsuario) {
+        cancelar()
+        capturar()
+        return true
+      }
       const desde = ahora - soltadoEn
       if (desde < ESC_MISMA_PULSACION_MS && !cierraAlgo) return false
       if (desde >= RESUME_KEY_DELAY_MS) {

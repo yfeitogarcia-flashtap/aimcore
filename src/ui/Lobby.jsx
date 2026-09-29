@@ -9,10 +9,12 @@ import {
   ROUNDS,
   TODOS,
   bandoDeRanura,
+  capacidadDeTodos,
   colorDeJugador,
   escenariosDeSala,
   esModoDeEquipos,
   modoMultijugador,
+  rangoDeJugadores,
 } from '../config.js'
 
 import '../styles.css'
@@ -68,6 +70,11 @@ function Carrusel({ modo, mapa, puede, onElegir }) {
           >
             <ScenarioThumbnail scenarioKey={clave} definicion={mapas[clave]} />
             <span className="scenarios__name">{mapas[clave].label}</span>
+            {/* En el todos contra todos cada mapa admite los que quepan por sus
+                salidas (vuelta 105): se elige sabiéndolo, no al lanzar. */}
+            {!esModoDeEquipos(modo) && (
+              <span className="lobby-carrusel__plazas">{rangoDeJugadores(capacidadDeTodos(mapas[clave]))}</span>
+            )}
           </button>
         ))}
       </div>
@@ -169,6 +176,7 @@ function Lobby({ estado, codigo, enlace, reconectar, api }) {
     ['Modo', ficha.label],
     ['Mapa', mapa?.label ?? '—'],
     ['Compra', !equipos ? 'no hay' : reparte ? 'el mapa reparte' : nombreDeCompra(estado.compra, true)],
+    ...(equipos ? [] : [['Jugadores', rangoDeJugadores(capacidadDeTodos(mapa))]]),
     ['Listos', equipos
       ? `${listosPorBando[0]} azul · ${listosPorBando[1]} magenta`
       : `${req.listos} de ${estado.huecos} (mín. ${req.minimo})`],
@@ -226,7 +234,7 @@ function Lobby({ estado, codigo, enlace, reconectar, api }) {
                   ? ficha.porEquipo === 1
                     ? `Uno contra uno, a ${ROUNDS.maxRondas} rondas: gana quien se lleve ${Math.floor(ROUNDS.maxRondas / 2) + 1}.`
                     : `Dos equipos de hasta ${ficha.porEquipo}, a ${ROUNDS.maxRondas} rondas. Se puede empezar desequilibrado si queréis: basta un listo en cada equipo.`
-                  : `Cada uno a lo suyo, hasta ${TODOS.maxJugadores}. Hacen falta ${TODOS.minJugadores} listos para empezar.`}
+                  : `Cada uno a lo suyo: de ${TODOS.minJugadores} a ${TODOS.maxJugadores}, según las salidas del mapa. Hacen falta ${TODOS.minJugadores} listos para empezar.`}
             </span>
           </Grupo>
 
@@ -235,7 +243,7 @@ function Lobby({ estado, codigo, enlace, reconectar, api }) {
             <span className="field__hint">
               {equipos
                 ? 'Los mapas de duelo: cada equipo sale de una punta y los compañeros aparecen a su lado.'
-                : `Los mapas con salidas para el todos contra todos. En ${mapa?.label ?? 'éste'} caben ${estado.huecos}.`}
+                : `Los mapas con salidas para el todos contra todos. ${mapa?.label ?? 'Éste'}: ${rangoDeJugadores(capacidadDeTodos(mapa))}.`}
             </span>
           </Grupo>
 

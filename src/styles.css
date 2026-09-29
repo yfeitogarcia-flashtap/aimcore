@@ -1223,6 +1223,13 @@ body {
   cursor: default;
 }
 
+/* Cuántos caben en ese mapa del todos contra todos (vuelta 105). */
+.lobby-carrusel__plazas {
+  display: block;
+  color: var(--cab-texto-apagado);
+  font-size: var(--cab-t-micro);
+}
+
 .lobby-carrusel__flecha {
   height: 100%;
   border: 0;

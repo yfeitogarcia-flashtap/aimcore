@@ -7,6 +7,8 @@
   --apagado: #7a7a7a;
   --naranja: #e4462b;
   --accion: #2fcb82;
+  /** El rojo de `COLORS.threat`: lo que deja un mapa sin poderse jugar bien (vuelta 105). */
+  --rojo: #ff2d1f;
 }
 
 * { box-sizing: border-box; }
@@ -668,6 +670,8 @@ kbd {
 
 .cabe { color: var(--accion); }
 .aprieta { color: var(--naranja); }
+.mal { color: var(--rojo); }
+#barra .mal { color: var(--rojo); }
 
 /* --- El panel de capas (vuelta 96) --------------------------------------- */
 
