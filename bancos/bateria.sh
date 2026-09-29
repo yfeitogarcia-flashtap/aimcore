@@ -32,20 +32,20 @@ A="aire88 aire91 alchemist99 apariencia84 armas90 barrera95 barrera96 compra102
    perfora95 pump91 pump91red rampa93 red85 retraso101 rot101 salas100 salas97
    subir94 todos100 todos105 u286 volumen96 vuelo85"
 # E · contra el servidor de desarrollo, sin huésped: el juego y Alchemist.
-E="alchemist100 alto arco85 arm89 arm95 barrera95ed borrador99 cabina99 capas96
-   coloca96 combo93 controles97 corr103 dibujo100 entreno98 escritorio98 est95
+E="alchemist100 arco85 arm89 arm95 barrera95ed borrador99 cabina99 capas96
+   coloca96 controles97 dibujo100 entreno98 escritorio98 est95
    est96 fang90ent flujo92 foto87 gizmo93 gran87nav granada102 krakov93nav
-   mapas98 menu89 menu92 menu94 pump91nav ranura92 salidas101ed subir93
+   mapas98 menu92 pump91nav ranura92 salidas101ed subir93
    todos105ed u286nav ui92 voces91 voz91"
 # B · huésped sin lobby y sin rondas, con COLOCAR: el motor y la red.
-B="armeria98 armeria102 cabina99b esc105 opc104 doble103 destello90 duelo87
+B="armeria98 armeria102 cabina99b esc105 opc104 doble103 destello90 corr103 todos100nav
    laser87 lag103 lag103b suave103 cpu103 pump102red nav88 red45 tiro46"
 # B2 · sin lobby y con rondas: lo que se juega a rondas.
-B2="esc101 dinero89 aire88red cap88 duelo88 duelo92 duelo92nav duelomenu98
+B2="esc101 dinero89 duelo87 aire88red cap88 duelo88 duelo92 duelo92nav duelomenu98
     escmenu101 doble102 doble102ent"
 # C · con lobby, COLOCAR y partidas de dos bajas.
 C="lobby101nav lobby101tam paridad101nav retraso101nav ficha101 ficha101t
-   todos100nav todos101nav todos105nav"
+   todos101nav todos105nav"
 # D · el huésped de serie.
 D="compra102nav"
 # F · el despliegue: reconstruye dist y relanza el huésped por su cuenta.

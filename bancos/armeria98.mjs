@@ -62,9 +62,11 @@ async function recorrerArmeria(p, donde) {
       const trasPrimero = await p.$eval('.armoury__ranura--activa .armoury__ranura-cat', (e) => e.textContent)
       await p.keyboard.press(`Digit${k}`)
       await p.waitForTimeout(200)
+      // **De lo guardado, no importando el store** (vuelta 106): un `import()`
+      // desde el banco puede dar otra instancia del módulo (vuelta 91) y leer
+      // los ajustes de fábrica con la página equipando bien por delante.
       const r = await p.evaluate(async () => {
-        const { getSettings } = await import('/src/settings.js')
-        const s = getSettings()
+        const s = JSON.parse(localStorage.getItem('aimcore.settings.v1') ?? '{}')
         return {
           ajustes: { weapon: s.weapon, secondary: s.secondary, special: s.special, throwable: s.throwable },
           activa: document.querySelector('.armoury__ranura--activa .armoury__ranura-cat')?.textContent,

@@ -33,3 +33,7 @@ Y en la vuelta 106, al mover los bancos a `bancos/`:
 - `combo93.mjs` — las combinaciones de la tienda de la 93 («5 1» era la Scout).
   La 98 rehízo la tabla —la categoría es la ranura y el código el orden de la
   ficha— y la que la mide arma a arma y en los tres sitios es `armeria98`.
+- `menu89.mjs`, `menu94.mjs` — la pantalla de inicio de antes de Cabina (el
+  rótulo bajo el logo, los dos modos como botones). La 99 la rehízo, y lo que
+  guarda las mismas reglas —las dos puertas iguales, Jugar a la vista, las
+  filas inertes y ningún «por defecto» encendido— es `cabina99b`.

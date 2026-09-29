@@ -11,6 +11,7 @@
 //  [4] Puestos tapados y lejos, el otro sale de tu foto y de tu pantalla.
 //  [5] Cero errores de página en los tres.
 import { chromium } from 'playwright-core'
+import { SCENARIOS, capacidadDeTodos } from '../src/config.js'
 const OUT = '/home/user/aimcore/scratchpad'
 let fallos = 0
 const ok = (c, t) => { console.log(`  ${c ? 'ok  ' : 'FALLO'} ${t}`); if (!c) fallos += 1 }
@@ -42,10 +43,13 @@ const estado = (p) => p.evaluate(() => {
 })
 const est = await Promise.all(pags.map(estado))
 console.log('   ', JSON.stringify(est))
-ok(est.every((e) => e.modo === 'todos' && e.plazas === 8 && e.fc === 3 && e.escenario === 'rotonda'),
-  'los tres en modo todos, 8 plazas, foto cada 3 pasos y La Rotonda')
+// Las plazas las dice el mapa (vuelta 105): tantas como salidas, hasta el tope.
+const plazas = capacidadDeTodos(SCENARIOS.rotonda).max
+ok(est.every((e) => e.modo === 'todos' && e.plazas === plazas && e.fc === 3 && e.escenario === 'rotonda'),
+  `los tres en modo todos, ${plazas} plazas, foto cada 3 pasos y La Rotonda`)
 ok(est.every((e) => e.ocupadas === 3), 'la sala cuenta tres butacas')
-ok(est[0].titulo === 'Vektor · Todos contra todos' && est[0].modoSel === 'todos', 'el menú dice el modo')
+// El selector de modo del menú se fue con el lobby (vuelta 101); lo dice el título.
+ok(est[0].titulo === 'Vektor · Todos contra todos', 'el título dice el modo')
 ok(est.every((e) => e.fase === 'juego'), 'la partida está en marcha')
 
 // A jugar: el clic a una esquina (el centro del menú es un `.control`).
