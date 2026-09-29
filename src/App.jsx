@@ -1,3 +1,4 @@
+import { reglasDeMapa } from './game/arsenal.js'
 import {
   useCallback,
   useEffect,
@@ -13,6 +14,7 @@ import {
   FEEDBACK,
   MOVEMENT,
   NET,
+  definicionDeEntrenamiento,
 } from './config.js'
 import { Engine, PHASE } from './game/engine.js'
 import { disposeAudio } from './audio/sfx.js'
@@ -195,6 +197,10 @@ export default function App() {
           if (next === PHASE.RUNNING) setSummary(null)
         },
         onFrame: (stats) => hudRef.current?.update(stats),
+        // La silueta del arma reacciona al disparo y en seco (vuelta 106).
+        onArma: (evento) => hudRef.current?.reaccionArma(evento),
+        // Lo que va a hacer la E con la peana que apuntas (vuelta 106).
+        onPeana: (texto) => hudRef.current?.avisoDePeana(texto),
         onDamage: (severity, bearing) => {
           // Dos avisos y no uno: el anillo dice **cuánto** te han dado y la cuña
           // del borde **de dónde**. El primero está en la mira porque hay que
@@ -341,12 +347,20 @@ export default function App() {
     />
   )
 
+  /**
+   * **Las reglas del mapa que se va a jugar** (vuelta 106): la armería no equipa
+   * lo que el mapa no admite, y en un mapa que reparte (Equipadas o Peanas) sólo
+   * enseña, como la del duelo: ahí lo que llevas lo decide el mapa.
+   */
+  const reglasDelMapa = reglasDeMapa(definicionDeEntrenamiento(settings.scenario))
   const armouryPanel = (
     <Armoury
       settings={settings}
       equipped={equipped}
       onChange={updateSettings}
       onClose={closeArmoury}
+      reglas={reglasDelMapa}
+      soloFicha={reglasDelMapa.modo !== 'armeria'}
     />
   )
 

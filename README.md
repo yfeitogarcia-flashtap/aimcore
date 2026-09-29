@@ -742,6 +742,22 @@ Las silenciadas no son las normales con el volumen bajado: se les quitan el grav
 y el chasquido de banda ancha —las dos capas que delatan un disparo a distancia—
 y se les deja el **cerrojo**, que suena un instante después.
 
+### Lo que se ve al disparar
+
+Vektor no dibuja un arma en la mano, así que un disparo se cuenta con tres cosas
+más, además del sonido y el retroceso:
+
+- **Una luz cálida abajo a la derecha**, donde estaría la boca, que se enciende
+  con cada bala y se va en menos de una décima. Con silenciador, casi nada; con
+  el arco o una granada, ninguna: no queman pólvora.
+- **Un golpe de la vista** —un poco atrás, un poco arriba— que **no mueve la
+  mira**: sólo el dibujo. Se quita en *Opciones → Sacudida de cámara al disparar*.
+- **La silueta del arma del HUD** recula al disparar, tiembla en seco, se apaga
+  al recargar y se vuelve a llenar de atrás adelante; con la Pump, salta con cada
+  cartucho.
+
+Todos sus números están en `SENSACION`, en `src/config.js`.
+
 ### Probar voces alternativas
 
 Con `npm run dev` levantado, **`/editor/sonidos.html`** es un banco para oír el
@@ -846,9 +862,9 @@ Tres cosas más:
 - **Agacharse lo achata.** Sólo escala en vertical: no hay esqueleto ni
   animación, y el factor sale de la misma altura de ojos de la que salen las
   zonas de disparo.
-- **Sin arma visible**, ni en primera ni en tercera persona. Lo que se dibuja de
-  un arma es su silueta —en el HUD y en la ficha flotante—, no un modelo en la
-  mano.
+- **Sin arma visible**, ni en primera ni en tercera persona, y es decisión
+  tomada (vuelta 106). Lo que se dibuja de un arma es su silueta —en el HUD, en la
+  ficha flotante y sobre una peana—, no un modelo en la mano.
 - **Sin texturas y sin líneas**, como todo lo demás: en esta escena no hay ni una
   luz, así que un mapa no se vería.
 
@@ -1302,6 +1318,30 @@ Y cada fila tiene un **ojo** que la quita del editor. Con él puesto:
 cada elemento tenga nombre propio, y hoy se identifica por su posición en la
 lista, así que borrar uno renumeraría los demás y un candado acabaría apuntando a
 otra pieza. El plan por fases está en `docs/propuestas/10-panel-de-capas.md`.
+
+### Reglas: con qué armas se juega en el mapa
+
+La hoja **Reglas** del raíl decide dos cosas del mapa:
+
+- **Sus armas**, marcadas por categoría y con su código de la armería. La pistola
+  de serie y el cuchillo van siempre.
+- **Cómo se consiguen**, uno de tres modos:
+  - **Armería**: como siempre — se compra en el duelo y en equipos, se equipa en
+    el todos contra todos, con sólo las armas marcadas.
+  - **Equipadas**: todos salen con el mismo equipo, que se elige ahí mismo
+    (principal, pistola, especial, granadas, chaleco y casco). Sin tienda.
+  - **Peanas**: se sale con el equipo base y **las armas se cogen del suelo**.
+
+Una **peana** es un arma sobre un zócalo amarillo. Se ponen con **+ Peana**, se
+duplican, se arrastran por la rejilla y salen en **Capas**. En la partida **no se
+agotan nunca**: se cogen **apuntándolas y pulsando E** —pisarlas no basta— y un
+aviso bajo la mira dice qué va a pasar («E · Recoger Krakov»). Coger la que ya
+llevas la recarga; llega con la munición de comprarla; y a quien la ve de lejos le
+sale encima la misma ficha que a un jugador, nunca a través de una pared. Morir
+cuesta lo recogido.
+
+Un mapa sin reglas es la armería con todo, que es lo que había; y Los Pilares,
+que repartía desde la vuelta 72, se abre como **Equipadas** sin tocar su fichero.
 
 ### Salidas del todos contra todos
 

@@ -1,3 +1,4 @@
+import { NOMBRE_DE_MODO, reglasDeMapa } from '../game/arsenal.js'
 import { StrictMode, useEffect, useRef, useState } from 'react'
 import { createRoot } from 'react-dom/client'
 
@@ -148,7 +149,13 @@ function Lobby({ estado, codigo, enlace, reconectar, api }) {
   const puedeConfigurar = soyAnfitrion && !enJuego
   const mapas = escenariosDeSala(estado.modo)
   const mapa = mapas[estado.mapa]
-  const reparte = Boolean(mapa?.duelo?.dotacion)
+  /**
+   * **Con qué armas se juega lo dice el mapa, y el lobby lo enseña** (vuelta
+   * 106): Armería, Equipadas o Peanas. No es un control del anfitrión —el modo
+   * de armas es del mapa, como su física (vuelta 72)—, es una fila más.
+   */
+  const reglas = reglasDeMapa(mapa)
+  const reparte = reglas.modo !== 'armeria'
   const porHueco = new Map(estado.m.filter((m) => m.h !== null).map((m) => [m.h, m]))
   const esperando = estado.m.filter((m) => m.h === null)
   const nombreAnfitrion = estado.m.find((m) => m.id === anfitrion)?.n ?? '—'
@@ -176,6 +183,7 @@ function Lobby({ estado, codigo, enlace, reconectar, api }) {
     ['Modo', ficha.label],
     ['Mapa', mapa?.label ?? '—'],
     ['Compra', !equipos ? 'no hay' : reparte ? 'el mapa reparte' : nombreDeCompra(estado.compra, true)],
+    ['Armas', reglas.armas ? `${NOMBRE_DE_MODO[reglas.modo]} · ${reglas.armas.length} del mapa` : NOMBRE_DE_MODO[reglas.modo]],
     ...(equipos ? [] : [['Jugadores', rangoDeJugadores(capacidadDeTodos(mapa))]]),
     ['Listos', equipos
       ? `${listosPorBando[0]} azul · ${listosPorBando[1]} magenta`

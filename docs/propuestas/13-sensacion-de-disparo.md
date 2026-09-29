@@ -1,6 +1,8 @@
 # Propuesta 13 — Que disparar se sienta sin un arma en pantalla
 
-**Estado:** **propuesta, sin construir nada** (vuelta 105). El encargo: para la
+**Estado:** **construida en la vuelta 106**, con las tres partes y todo su tuning
+en `SENSACION` (`config.js`); lo medido y lo que cambió está en
+`docs/decisions.md` §106.3. Escrita en la vuelta 105. El encargo: para la
 beta el arma en pantalla se quita del menú, así que lo que un arma en la mano
 cuenta al disparar (que ha salido una bala, cuánto patea y que se está
 recargando) tiene que contarlo otra cosa, y **con coste bajo**. Se pidieron tres

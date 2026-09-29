@@ -20,6 +20,7 @@
  * contraria. Lo que sigue siendo suyo: el código de partida, el menú, los
  * avisos de conexión, las pausas y los números de F3.
  */
+import { armaPermitida } from '../src/game/arsenal.js'
 import { masterGain, playEquip, playRoundTick } from '../src/audio/sfx.js'
 import { BANDOS, COLORS, CROSSHAIR, ECONOMY, NET, RESUME_KEY_DELAY_MS, ROUNDS, TARGET, TODOS, WEAPONS, articuloDeCombinacion, catalogoDeTienda, colorDeJugador, definicionDeSala, esModoDeEquipos, modoMultijugador } from '../src/config.js'
 import { Engine } from '../src/game/engine.js'
@@ -124,6 +125,8 @@ const capa = montarCapaDeDuelo(document.getElementById('capa'), {
 
 const motor = new Engine(lienzo, {
   onFrame: (stats) => pintarHud(stats),
+  onArma: (evento) => capa.reaccionArma(evento),
+  onPeana: (texto) => capa.avisoDePeana(texto),
   onWeapon: (w) => capa.arma(w.weaponKey, w.suppressed),
   onDamage: (fraccion, rumbo) => capa.dano(fraccion, rumbo),
   onVerdict: (v) => marcarDisparo(v),
@@ -400,6 +403,8 @@ cliente.onBienvenida = (m) => {
   document.title = `Vektor · ${codigo} · ${m.nick ?? m.id}`
   $('titulo').textContent = `Vektor · ${modoMultijugador(m.modo).label}`
   capa.equipa(Boolean(m.libres))
+  // Qué admite el mapa de esta partida (vuelta 106): la armería y la tienda lo miran.
+  capa.reglas(motor.scenario.reglas)
 }
 // **Después de poner lo suyo**: `usarRed` encadena sobre la bienvenida para
 // arrancar la sesión en el mismo turno, y encadenar sobre algo que todavía no
@@ -1646,6 +1651,8 @@ function porQueNo(item, eco, fase) {
   // vistazo y no compite con «sin saldo» por el mismo hueco de diez píxeles.
   if (!item.disponible) return ''
   if (item.deSerie) return 'siempre contigo'
+  // **Lo que el mapa no admite** (vuelta 106), con la misma función que el servidor.
+  if (!armaPermitida(motor.scenario.reglas, item.clave)) return 'no en este mapa'
   // **Cuándo está abierta la tienda lo dice `compraAbierta`**, la misma función
   // que el servidor mira para aceptar la compra (vuelta 65). Sin fase de compra
   // configurada no hay ventana entre rondas donde meterla, así que la ventana es

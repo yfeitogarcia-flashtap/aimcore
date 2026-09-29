@@ -29,12 +29,13 @@ host() { bash bancos/host.sh "$@" > /dev/null; }
 A="aire88 aire91 alchemist99 apariencia84 armas90 barrera95 barrera96 compra102
    corte85 dano90 desvio88 duelo92srv escritorio97 estampado93 fang90 fang91
    gran87 gran87red granadas88 hielo84 krakov93 lobby101 paleta93 peanas105
-   perfora95 pump91 pump91red rampa93 red85 retraso101 rot101 salas100 salas97
+   peanas106 perfora95 pump91 pump91red rampa93 red85 retraso101 rot101 salas100 salas97
    subir94 todos100 todos105 u286 volumen96 vuelo85"
 # E · contra el servidor de desarrollo, sin huésped: el juego y Alchemist.
 E="alchemist100 arco85 arm89 arm95 barrera95ed borrador99 cabina99 capas96
    coloca96 controles97 dibujo100 entreno98 escritorio98 est95
    est96 fang90ent flujo92 foto87 gizmo93 gran87nav granada102 krakov93nav
+   peanas106nav sensacion106
    mapas98 menu92 pump91nav ranura92 salidas101ed subir93
    todos105ed u286nav ui92 voces91 voz91"
 # B · huésped sin lobby y sin rondas, con COLOCAR: el motor y la red.

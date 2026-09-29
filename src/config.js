@@ -556,6 +556,134 @@ export const MELEE_FX = {
   barridoDeg: 26,
 }
 
+/**
+ * **Que disparar se sienta sin un arma en pantalla** (vuelta 106, propuesta 13).
+ *
+ * Vektor no dibuja el arma en la mano (vuelta 106: tema cerrado), así que lo
+ * que un arma en la mano cuenta al disparar —ha salido una bala, cuánto patea,
+ * se está recargando— lo cuentan tres cosas, y las tres viven aquí para
+ * calibrarlas juntas:
+ *
+ * - **El fogonazo** (`src/game/fogonazo.js`): luz, no fuego. Un degradado
+ *   cálido abajo a la derecha, donde estaría la boca del arma, que se enciende
+ *   en cada disparo y se apaga en unas decenas de milisegundos.
+ * - **La sacudida** (en `engine.js`, junto a la pose de dibujo): un golpe de la
+ *   vista **que vuelve solo** y que vive sólo lo que dura el dibujado, como la
+ *   pose interpolada de la vuelta 44. **No es el retroceso**: la mira no se
+ *   mueve (vuelta 61), y un disparo sale igual con ella encendida o apagada. Es
+ *   un ajuste del jugador (`SETTINGS.sacudidaCamara`).
+ * - **La silueta del HUD** (`Hud.jsx`): recula al disparar, se apaga y se
+ *   llena de atrás adelante al recargar, salta con cada cartucho y tiembla en
+ *   seco.
+ *
+ * Nada de esto trabaja por frame cuando no se dispara: el fogonazo y la
+ * silueta son animaciones del navegador sobre `opacity` y `transform`, y la
+ * sacudida son dos sumas y una resta mientras dura.
+ */
+export const SENSACION = {
+  fogonazo: {
+    /**
+     * **El techo de opacidad**, bajo a propósito: con fuego automático son diez
+     * destellos por segundo en el borde de la vista, y lo que tiene que decir
+     * es «ha salido una bala», no deslumbrar. Un arma lo multiplica por su
+     * factor (abajo) y nunca pasa de `opacidadMax`.
+     */
+    opacidad: 0.3,
+    opacidadMax: 0.5,
+    /** Cuánto dura, de encendido a apagado. */
+    duracionMs: 75,
+    /**
+     * **Dónde está la luz**, en fracción de la pantalla desde arriba a la
+     * izquierda: abajo, a la derecha del centro, que es donde estaría la boca
+     * de un arma en la mano derecha. **No cae sobre el bloque de arma** —abajo
+     * a la derecha del todo—, que es la regla de la vuelta 89 (estar en pantalla
+     * no es verse): lo mide `sensacion106`.
+     */
+    x: 0.6,
+    y: 1.0,
+    /** El radio del degradado, en fracción del lado corto de la pantalla. */
+    radio: 0.3,
+    /**
+     * **El color es luz de pólvora**, un blanco cálido. No es un tono de la
+     * paleta porque no es una señal —no dice «naranja: diana» ni «rojo: te
+     * disparan»—, y por la misma razón no sale en ningún otro sitio.
+     */
+    color: '255, 214, 160',
+    /**
+     * **Con silenciador, casi nada**: es la mitad de lo que el silenciador
+     * promete, y el fogonazo del rival ya se apaga con él.
+     */
+    silenciado: 0.2,
+    /**
+     * **En automático, un destello de cada dos más flojo.** Diez iguales por
+     * segundo se leen como una luz que parpadea; alternando se leen como
+     * disparos.
+     */
+    alternaAuto: 0.7,
+    /**
+     * **Cuánto destella cada arma.** Lo que no está aquí no destella: el
+     * cuchillo, el arco y las arrojadizas no queman pólvora. Las pesadas más,
+     * la Volt menos y más corta, porque a 800 RPM un destello largo es un
+     * parpadeo continuo.
+     */
+    porArma: {
+      pulse: 0.8,
+      reaper: 1.2,
+      rift: 1,
+      krakov: 1.05,
+      volt: 0.75,
+      scout: 1.25,
+      titan: 1.6,
+      pump: 1.5,
+      u2: 1.6,
+    },
+    /** Y cuánto dura para cada una, si no es la de arriba. */
+    duracionPorArma: { volt: 55, titan: 110, pump: 100, u2: 130 },
+  },
+  sacudida: {
+    /**
+     * **El golpe**: cuánto se va la vista hacia atrás (en unidades del mundo) y
+     * hacia arriba (en grados) en el pico, y el pellizco de campo de visión en
+     * tanto por uno. Suave de fábrica, que es lo que se pidió: se nota sin
+     * que el mundo baile.
+     */
+    atrasU: 0.03,
+    arribaDeg: 0.3,
+    fov: 0.008,
+    /** Lo que tarda en llegar al pico y en volver del todo. */
+    subidaMs: 12,
+    duracionMs: 95,
+    /**
+     * **Cada arma patea con lo que ya dice su patrón** (vuelta 61): el golpe se
+     * escala con el primer paso vertical de su retroceso contra el de la Rift,
+     * que es la referencia. Así el Titan patea más que la Pulse sin un número
+     * nuevo por arma, y un arma sin patrón no sacude.
+     */
+    pasoDeReferencia: 0.7,
+    escalaMin: 0.6,
+    escalaMax: 2.2,
+    /** El cohete no tiene patrón de retroceso y sí patada: se dice aquí. */
+    escalaCohete: 2,
+  },
+  silueta: {
+    /** Al disparar: hacia atrás (derecha, que las fotos miran a la izquierda) y arriba. */
+    atrasPx: 4,
+    arribaPx: 2,
+    giroDeg: -2.5,
+    disparoMs: 90,
+    /** Un brillo breve del trazo, en blanco: la paleta no tiene tonos libres (vuelta 39). */
+    brillo: 1.9,
+    /** Recargando, la parte que falta se ve apagada a esta opacidad. */
+    apagada: 0.28,
+    /** Cada cartucho que entra, un salto hacia arriba. */
+    cartuchoPx: 3,
+    cartuchoMs: 120,
+    /** En seco, un temblor corto a los lados. */
+    secoPx: 3,
+    secoMs: 160,
+  },
+}
+
 export const LOOK = {
   sensitivity: 1.5,
   degreesPerCount: 0.022,
@@ -3478,6 +3606,16 @@ export const SETTINGS = {
     default: true,
   },
   /**
+   * **La sacudida de la vista al disparar** (vuelta 106, propuesta 13). Es del
+   * jugador y de su pantalla, no de la partida, así que vive en opciones (la
+   * regla de la vuelta 92). Encendida y suave de fábrica; apagarla no cambia a
+   * dónde va ninguna bala, porque la sacudida no es la mira. Ver `SENSACION`.
+   */
+  sacudidaCamara: {
+    label: 'Sacudida de cámara al disparar',
+    default: true,
+  },
+  /**
    * **El arma en pantalla, en maqueta** (vuelta 103). Apagado de fábrica: desde
    * la vuelta 38 Vektor no dibuja el arma en la mano, y esto es una maqueta
    * para decidir con ella delante si eso cambia. Es del jugador y de su
@@ -4317,6 +4455,79 @@ export const ZIPLINES = {
    */
   marca: { grosor: 0.05, anclaje: 0.42, flechas: 5, flecha: 0.5, flechaFinal: 2.2 },
 }
+
+/**
+ * **Las peanas: armas que el mapa deja en el suelo** (vuelta 106, propuesta 08).
+ *
+ * Una peana **no se agota**: cogerla cambia tu inventario, no la peana, así que
+ * la coge uno, la cogen cinco y sigue ahí. Por eso no hay nada suyo que viaje
+ * por la red —los dos extremos la leen del mismo mapa— salvo la petición de
+ * recogerla, que el servidor valida (`MSG.RECOGER`).
+ *
+ * Se coge **apuntándola y con la tecla contextual**, nunca pasando por encima:
+ * con peanas repetidas en un pasillo, recoger al pisar te cambiaría el arma cada
+ * vez que pasas. El orden de la tecla es bomba › peana › tirolina › artilugio.
+ */
+export const PEANAS = {
+  /** Hasta dónde se coge, de los ojos al arma: a distancia de brazo, un poco más que un cable. */
+  alcanceU: 2.5,
+  /**
+   * **Lo que el servidor perdona**, además del alcance: lo que te has movido
+   * durante el viaje de la petición. No se rebobina, porque recoger no es un
+   * disparo y no tiene un instante que juzgar.
+   */
+  holguraU: 1.2,
+  /**
+   * **El volumen que se apunta**, un cilindro alrededor del arma: el rayo de la
+   * mira se corta contra él con aritmética, como el hitbox (vuelta 65). Es más
+   * gordo que el arma dibujada porque se apunta a algo pequeño a dos pasos.
+   */
+  radioU: 0.55,
+  /** A qué altura flota el arma sobre el suelo, y lo alto del volumen de agarre. */
+  alturaArmaU: 1.0,
+  altoAgarreU: 1.6,
+  /** El largo del arma dibujada, en unidades del mundo: las fotos se escalan a esto. */
+  largoArmaU: 0.9,
+  /**
+   * **El arma es su silueta plana y mira siempre a quien la ve** (en planta), que
+   * es como Vektor dibuja un arma en todas partes —el HUD, la ficha—. Una silueta
+   * extruida que gira pasaba de canto la mitad del tiempo y costaba el triple de
+   * triángulos (vuelta 106, `peanas106nav`). Lo que se mueve es un vaivén suave,
+   * para que se lea como algo que se puede coger y no como un cartel.
+   */
+  vaivenU: 0.06,
+  vaivenPorSegundo: 0.5,
+  /** El zócalo: un disco bajo, que es lo que dice «esto es un sitio», no un arma tirada. */
+  zocaloRadioU: 0.5,
+  zocaloAltoU: 0.12,
+  /** Lados del zócalo: con un disco bajo no se ven más, y cada uno son cuatro triángulos por peana. */
+  zocaloLados: 10,
+  /**
+   * **Tope del formato, como los de `SALA`**: dieciséis armas por diez jugadores.
+   * Existe para que un fichero corrupto no meta mil, no para limitar el diseño.
+   */
+  max: 160,
+  /** Cuántas fichas a la vez como mucho: las más cercanas de las que se ven. */
+  fichasMax: 6,
+  /** Hasta dónde sale la ficha de una peana. Más lejos, es una peana más del paisaje. */
+  fichaDistanciaU: 22,
+  /**
+   * **Y de cerca, tampoco**: dentro de esta distancia la ficha se quita, porque
+   * lo que dice lo dice ya el aviso bajo la mira, y a dos unidades una ficha del
+   * tamaño de la de un rival tapa el centro de la pantalla (medido en la captura
+   * de `peanas106nav`).
+   */
+  fichaMinU: 4,
+  /**
+   * **Cuántas veces por frame se pregunta si hay pared** entre tus ojos y una
+   * peana, y cada cuánto se repite: la regla de la brújula (vuelta 42) con
+   * `cortarSegmento`, que cuesta 1.5 µs y no un raycast. Veinte peanas en el
+   * encuadre no pueden ser veinte cortes en un frame.
+   */
+  cortesPorFrame: 4,
+  recompruebaMs: 180,
+}
+
 
 /**
  * **Los prismas convexos de un mapa** (vuelta 83). El último renglón del

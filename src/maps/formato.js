@@ -10,7 +10,8 @@
  * Nada de geometría: eso es de `scenario.js`, que monta **estos mismos datos**.
  */
 
-import { COVER, MODOS_DE_MAPA, ESCALERAS, ESTAMPADOS, FANS, FONDOS, PRIMARY_WEAPONS, PRISMAS, ROOM, ROUNDS, SURFACES, TODOS, TUBES, ZIPLINES, coverHeight, esFotoDeFondo, esImagenDeEstampado } from '../config.js'
+import { MODOS_DE_ARMAS, armasMarcables } from '../game/arsenal.js'
+import { COVER, MODOS_DE_MAPA, PEANAS, WEAPONS, ESCALERAS, ESTAMPADOS, FANS, FONDOS, PRIMARY_WEAPONS, PRISMAS, ROOM, ROUNDS, SURFACES, TODOS, TUBES, ZIPLINES, coverHeight, esFotoDeFondo, esImagenDeEstampado } from '../config.js'
 
 /**
  * **Todos los campos que puede tener un mapa, en el orden en que se escriben.**
@@ -21,8 +22,8 @@ import { COVER, MODOS_DE_MAPA, ESCALERAS, ESTAMPADOS, FANS, FONDOS, PRIMARY_WEAP
  * campo a un escenario, va aquí y en `sanearMapa`.
  */
 export const CAMPOS = [
-  'clave', 'label', 'card', 'modos', 'publicado', 'soloDuelo', 'fondo', 'room', 'spawn', 'fisica', 'duelo', 'todos',
-  'boxes', 'prismas', 'ramps', 'tubos', 'escaleras', 'estampados', 'ventiladores', 'tirolinas', 'teletransportes', 'spawnZone', 'objectiveSites', 'pickups', 'routes',
+  'clave', 'label', 'card', 'modos', 'publicado', 'soloDuelo', 'fondo', 'room', 'spawn', 'fisica', 'duelo', 'todos', 'reglas',
+  'boxes', 'prismas', 'ramps', 'tubos', 'escaleras', 'estampados', 'ventiladores', 'tirolinas', 'teletransportes', 'peanas', 'spawnZone', 'objectiveSites', 'pickups', 'routes',
   'anchors',
 ]
 
@@ -669,6 +670,10 @@ export function sanearMapa(bruto) {
   if (duelo) mapa.duelo = duelo
   const todos = sanearTodos(bruto.todos, problemas)
   if (todos) mapa.todos = todos
+  // **Las reglas de partida** (vuelta 106): sólo si el mapa las declara, así
+  // que un mapa sin ellas se guarda byte a byte igual (vuelta 83).
+  const reglas = sanearReglas(bruto.reglas, problemas)
+  if (reglas) mapa.reglas = reglas
   /**
    * **Y no se publica en el todos contra todos lo que no tiene sus salidas**
    * (vuelta 100). Es la misma regla que el duelo de arriba, con el número que
@@ -697,6 +702,20 @@ export function sanearMapa(bruto) {
     mapa[campo] = bruta.map(sanea).filter(Boolean)
   }
   mapa.estampados = acotarEstampados(mapa.estampados, problemas)
+  /**
+   * **Las peanas, sólo si hay alguna** (vuelta 106). Las demás listas se
+   * escriben siempre, vacías o no; ésta es nueva, y escribir `peanas: []` en
+   * cada mapa que se abra y se guarde cambiaría todos los ficheros del disco
+   * por un campo que no usan (vuelta 83: lo que vale su valor de fábrica no se
+   * escribe).
+   */
+  const peanas = enLista(bruto.peanas).map((p, i) => sanearPeana(p, mapa.reglas, problemas, `peana ${i}`)).filter(Boolean)
+  if (peanas.length > PEANAS.max) problemas.push(`peanas: ${peanas.length} pasan del tope de ${PEANAS.max}; sobran las últimas`)
+  if (peanas.length) mapa.peanas = peanas.slice(0, PEANAS.max)
+  if (peanas.length && mapa.reglas?.modo !== 'peanas') {
+    // Se conservan: quien cambia de modo para probar no pierde su colocación.
+    problemas.push('peanas: el mapa no está en modo Peanas, así que no se pueden coger (se conservan)')
+  }
 
   // Sitios del explosivo, recogibles y rutas no se editan todavía (salen de un
   // barrido medido, no de ponerlos a ojo), así que se conservan tal cual.
@@ -744,6 +763,75 @@ function sanearSalida(s, i, problemas, donde) {
  * número de jugadores aparte que pueda contradecir a la lista, que es la regla
  * de `TRAINER_SCENARIOS` derivándose de un dato y no de una segunda lista.
  */
+/**
+ * **Las reglas de partida** (vuelta 106, propuesta 08): el modo de armas, las
+ * armas marcadas y el equipo de salida. Se marcan **claves**, no códigos: el
+ * código es el orden de la ficha en su sección y se mueve cuando entra un arma
+ * nueva (vuelta 98), así que un mapa que guardase `1 2` cambiaría de arma solo.
+ *
+ * Tres cosas que no se escriben porque valen lo de fábrica: `armas` cuando son
+ * todas, `equipo` cuando no da nada, y el bloque entero en Armería con todo.
+ */
+function sanearReglas(bruto, problemas) {
+  if (!bruto || typeof bruto !== 'object') return null
+  const modo = MODOS_DE_ARMAS.includes(bruto.modo) ? bruto.modo : 'armeria'
+  if (bruto.modo !== undefined && modo !== bruto.modo) problemas.push(`reglas: modo «${bruto.modo}» desconocido; se pone armería`)
+  const reglas = { modo }
+  const marcables = new Set(armasMarcables().map((i) => i.clave))
+  if (Array.isArray(bruto.armas)) {
+    const armas = []
+    for (const clave of bruto.armas) {
+      if (!marcables.has(clave)) { problemas.push(`reglas: «${clave}» no es un arma que se pueda marcar; se quita`); continue }
+      if (!armas.includes(clave)) armas.push(clave)
+    }
+    // Todas marcadas es lo mismo que no decir nada.
+    if (armas.length < marcables.size) reglas.armas = armas
+  }
+  const e = bruto.equipo
+  if (e && typeof e === 'object') {
+    const equipo = {}
+    if (e.chaleco) equipo.chaleco = true
+    if (e.casco) equipo.casco = true
+    const ranura = (clave, cual, slot) => {
+      if (clave === undefined || clave === null) return
+      if (WEAPONS[clave]?.slot !== slot) { problemas.push(`reglas: el equipo lleva «${clave}» como ${cual}, que no lo es; se quita`); return }
+      if (reglas.armas && !reglas.armas.includes(clave)) { problemas.push(`reglas: «${clave}» está en el equipo y no entre las armas del mapa; se quita`); return }
+      equipo[cual] = clave
+    }
+    ranura(e.principal, 'principal', 'primary')
+    ranura(e.pistola, 'pistola', 'secondary')
+    ranura(e.especial, 'especial', 'special')
+    if (Array.isArray(e.granadas)) {
+      const g = []
+      for (const clave of e.granadas) {
+        if (WEAPONS[clave]?.slot !== 'throwable') { problemas.push(`reglas: «${clave}» no es una granada; se quita`); continue }
+        if (reglas.armas && !reglas.armas.includes(clave)) { problemas.push(`reglas: «${clave}» no está entre las armas del mapa; se quita`); continue }
+        if (!g.includes(clave)) g.push(clave)
+      }
+      if (g.length) equipo.granadas = g
+    }
+    if (Object.keys(equipo).length) reglas.equipo = equipo
+  }
+  if (reglas.modo === 'armeria' && !reglas.armas && !reglas.equipo) return null
+  return reglas
+}
+
+/**
+ * **Una peana**: dónde está y qué arma enseña. Un arma que no existe, o que el
+ * mapa no admite, se tira diciéndolo: una peana que ofrece lo que el servidor
+ * va a rechazar es una trampa.
+ */
+function sanearPeana(bruto, reglas, problemas, donde) {
+  if (!bruto || !finito(bruto.x) || !finito(bruto.z)) { problemas.push(`${donde}: sin posición; se quita`); return null }
+  const marcables = new Set(armasMarcables().map((i) => i.clave))
+  if (!marcables.has(bruto.arma)) { problemas.push(`${donde}: «${bruto.arma}» no es un arma de peana; se quita`); return null }
+  if (reglas?.armas && !reglas.armas.includes(bruto.arma)) {
+    problemas.push(`${donde}: «${bruto.arma}» no está entre las armas del mapa; se quita`)
+    return null
+  }
+  return { x: bruto.x, z: bruto.z, arma: bruto.arma }
+}
+
 function sanearTodos(bruto, problemas) {
   if (!bruto || typeof bruto !== 'object') return null
   if (!Array.isArray(bruto.salidas)) {

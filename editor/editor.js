@@ -24,7 +24,7 @@
  */
 
 import * as THREE from 'three'
-import { CLAVES_INTEGRADAS, COLORS, MODOS_DE_MAPA, MODOS_MULTIJUGADOR, modosDeMapa, COVER, FANS, FONDOS, GIZMO, MOVEMENT, ESCALERAS, ESTAMPADOS, PRIMARY_WEAPONS, PRISMAS, ROUNDS, SCENARIOS, SURFACES, TARGET, TEAMS, TELEPORTS, TODOS, TUBES, ZIPLINES, capacidadDeTodos, coverHeight, coverTintedColor, esFotoDeFondo, esImagenDeEstampado, fisicaDeEscenario, giro180, rangoDeJugadores, scenarioRoom } from '../src/config.js'
+import { CLAVES_INTEGRADAS, COLORS, MODOS_DE_MAPA, MODOS_MULTIJUGADOR, modosDeMapa, COVER, FANS, FONDOS, GIZMO, MOVEMENT, ESCALERAS, ESTAMPADOS, PRIMARY_WEAPONS, PRISMAS, ROUNDS, SCENARIOS, SURFACES, TARGET, TEAMS, TELEPORTS, TODOS, TUBES, ZIPLINES, PEANAS, WEAPONS, CATEGORIA_DE_RANURA, ECONOMY, capacidadDeTodos, coverHeight, coverTintedColor, esFotoDeFondo, esImagenDeEstampado, fisicaDeEscenario, giro180, rangoDeJugadores, scenarioRoom } from '../src/config.js'
 import { Avatar } from '../src/game/avatar.js'
 import { Engine } from '../src/game/engine.js'
 import { MovementController } from '../src/game/movement.js'
@@ -37,6 +37,8 @@ import { cajasDeTubo } from '../src/maps/tubo.js'
 import { cajasDeEscalera, medidasDeEscalera } from '../src/maps/escalera.js'
 import { envolventeDePrisma } from '../src/maps/prisma.js'
 import { montarCapaDeDuelo } from '../src/ui/duelo.jsx'
+import { MODOS_DE_ARMAS, NOMBRE_DE_MODO, armasMarcables, reglasDeMapa } from '../src/game/arsenal.js'
+import { geometriaDeArma } from '../src/game/peanas.js'
 import { LOGO } from '../src/ui/logoPaths.js'
 import { getKeybinds, keyLabel, keysOf } from '../src/keybinds.js'
 
@@ -1073,6 +1075,40 @@ function pintarMarcas() {
     punta.userData.marca = { que: 'todos-rumbo', i, prioridad: PRIORIDAD.tirador }
     grupo.add(punta)
     pinchables.push(punta)
+    marcas.add(grupo)
+  }
+
+  /**
+   * **Las peanas** (vuelta 106): el zócalo y el arma que enseña, que es la misma
+   * silueta extruida que se ve jugando. Lo que se pincha es un cilindro
+   * invisible del tamaño del volumen de agarre, a prioridad de cuerpo, como un
+   * cono de salida: se arrastra por él.
+   */
+  for (const [i, peana] of peanasDe().entries()) {
+    if (estaOculto('peanas', i)) continue
+    const grupo = new THREE.Group()
+    grupo.position.set(peana.x, 0, peana.z)
+    const zocalo = new THREE.Mesh(
+      new THREE.CylinderGeometry(PEANAS.zocaloRadioU, PEANAS.zocaloRadioU, PEANAS.zocaloAltoU, PEANAS.zocaloLados),
+      new THREE.MeshBasicMaterial({ color: COLORS.dispositivo }),
+    )
+    zocalo.position.y = PEANAS.zocaloAltoU / 2
+    grupo.add(zocalo)
+    const geom = geometriaDeArma(peana.arma)
+    if (geom) {
+      const arma = new THREE.Mesh(geom, new THREE.MeshBasicMaterial({ color: COLORS.crosshair, side: THREE.DoubleSide }))
+      arma.position.y = PEANAS.alturaArmaU
+      grupo.add(arma)
+    }
+    const agarre = new THREE.Mesh(
+      new THREE.CylinderGeometry(PEANAS.radioU, PEANAS.radioU, PEANAS.altoAgarreU, 12),
+      new THREE.MeshBasicMaterial({ color: COLORS.dispositivo, wireframe: true, transparent: true, opacity: 0.25 }),
+    )
+    agarre.position.y = PEANAS.alturaArmaU
+    agarre.userData.marca = { que: 'peana', i, prioridad: PRIORIDAD.cuerpo }
+    realceQueCrece(agarre)
+    grupo.add(agarre)
+    pinchables.push(agarre)
     marcas.add(grupo)
   }
 
@@ -2361,6 +2397,10 @@ function comenzarArrastreDeMarca(marca, punto) {
     return { que: 'todos', i: marca.i, dx: s.x - punto.x, dz: s.z - punto.z }
   }
   if (marca.que === 'todos-rumbo') return { que: 'todos-rumbo', i: marca.i }
+  if (marca.que === 'peana') {
+    const pe = peanasDe()[marca.i]
+    return { que: 'peana', i: marca.i, dx: pe.x - punto.x, dz: pe.z - punto.z }
+  }
   if (marca.que === 'caja') return { que: 'caja' }
   if (marca.que === 'zona') {
     const z = mapa.spawnZone[marca.i]
@@ -2464,6 +2504,13 @@ function moverMarca(arrastre, punto) {
     if (!s) return
     s.x = aRejilla(punto.x + arrastre.dx)
     s.z = aRejilla(punto.z + arrastre.dz)
+    return
+  }
+  if (arrastre.que === 'peana') {
+    const pe = peanasDe()[arrastre.i]
+    if (!pe) return
+    pe.x = aRejilla(punto.x + arrastre.dx)
+    pe.z = aRejilla(punto.z + arrastre.dz)
     return
   }
   if (arrastre.que === 'todos-rumbo') {
@@ -3069,7 +3116,8 @@ function elegirMarca(marca) {
     || marca.que.startsWith('rampa') || marca.que.startsWith('escalera')) abrirPanel(true, 'construir')
   else if (marca.que.startsWith('tp') || marca.que.startsWith('vent') || marca.que.startsWith('tiro')) {
     abrirPanel(true, 'dispositivos')
-  } else abrirPanel(true, 'duelo')
+  } else if (marca.que.startsWith('peana')) abrirPanel(true, 'reglas')
+  else abrirPanel(true, 'duelo')
 }
 
 /**
@@ -3437,6 +3485,41 @@ function salidasDeTodosParaEscribir() {
   return mapa.todos.salidas
 }
 
+/** Las peanas (vuelta 106): leer no crea la lista (vuelta 83). */
+function peanasDe() {
+  return listaDe('peanas')
+}
+
+/**
+ * **Las reglas del mapa para escribir en ellas** (vuelta 106). La primera vez se
+ * crean con lo que el mapa ya dice —y en un mapa de antes, como Los Pilares, eso
+ * es su `sinEconomia` con su `dotacion`, que se pasan a las reglas y se borran
+ * del bloque de duelo: dos sitios diciendo con qué se sale serían dos verdades—.
+ */
+function reglasParaEscribir() {
+  if (!mapa.reglas) {
+    const r = reglasDeMapa(mapa)
+    mapa.reglas = { modo: r.modo }
+    if (r.armas) mapa.reglas.armas = [...r.armas]
+    const e = {}
+    if (r.equipo.chaleco) e.chaleco = true
+    if (r.equipo.casco) e.casco = true
+    if (r.equipo.principal) e.principal = r.equipo.principal
+    if (Object.keys(e).length) mapa.reglas.equipo = e
+    if (mapa.duelo) { delete mapa.duelo.sinEconomia; delete mapa.duelo.dotacion }
+  }
+  return mapa.reglas
+}
+
+/** Y al revés: unas reglas que valen lo de fábrica no se escriben (vuelta 83). */
+function limpiarReglas() {
+  const r = mapa.reglas
+  if (!r) return
+  if (r.armas && r.armas.length === armasMarcables().length) delete r.armas
+  if (r.equipo && !Object.keys(r.equipo).length) delete r.equipo
+  if (r.modo === 'armeria' && !r.armas && !r.equipo) delete mapa.reglas
+}
+
 /** Los prismas del mapa. */
 function prismasDe() {
   return listaDe('prismas')
@@ -3718,6 +3801,14 @@ const TIPOS_DE_MAPA = [
     nombre: 'Salidas (todos contra todos)',
     lista: () => salidasDeTodosLeer(),
     fila: (s, i) => `salida ${i + 1} · (${s.x}, ${s.z})`,
+  },
+  {
+    /**
+     * **Las peanas** (vuelta 106), con todo lo que da estar en esta tabla: fila
+     * en Capas con su ojo, Supr y elegir pinchando la fila.
+     */
+    clave: 'peanas', prefijo: 'peana', nombre: 'Peanas', lista: () => peanasDe(),
+    fila: (p) => `${WEAPONS[p.arma]?.label ?? p.arma} · (${p.x}, ${p.z})`,
   },
 ]
 
@@ -5467,6 +5558,8 @@ function probar() {
      * lo que se ve jugando, o no se está probando lo mismo.
      */
     onFrame: (stats) => capa?.pintar(stats),
+    onArma: (evento) => capa?.reaccionArma(evento),
+    onPeana: (texto) => capa?.avisoDePeana(texto),
     onWeapon: (w) => capa?.arma(w.weaponKey, w.suppressed),
     onDamage: (fraccion, rumbo) => capa?.dano(fraccion, rumbo),
     onHelp: (texto, ms) => capa?.ayuda(texto, ms),
@@ -6790,6 +6883,7 @@ function refrescarPanel() {
   if (!panelAbierto()) return
   pintarPanel()
   pintarDuelo()
+  pintarReglas()
 }
 
 window.addEventListener('keydown', (evento) => {
@@ -7080,3 +7174,248 @@ window.vektorEditor = {
     return { ...pieza }
   },
 }
+
+// ---------------------------------------------------------------- reglas
+
+/**
+ * **La hoja «Reglas de partida»** (vuelta 106, propuesta 08): con qué armas se
+ * juega en este mapa y cómo se consiguen. Tres modos excluyentes —Armería,
+ * Equipadas y Peanas—, las armas del mapa marcadas con su código de armería (el
+ * nombre que el jugador conoce, vuelta 98) y el equipo de salida. Se guarda en
+ * el mapa (`reglas`), y lo que vale lo de fábrica no se escribe.
+ *
+ * Se pinta al abrir la hoja y al cambiar algo, no por frame (la regla del HUD
+ * en una página sin React).
+ */
+const FRASE_DE_MODO = {
+  armeria: 'Se compra (duelo y equipos) o se equipa en la armería (todos contra todos), sólo entre las armas marcadas.',
+  equipadas: 'Todos salen con el mismo equipo, el de abajo. Sin tienda ni dinero; al morir se vuelve a salir con él.',
+  peanas: 'Se sale con el equipo base y las armas se cogen de las peanas, apuntando y con la tecla de acción. Sin tienda ni dinero.',
+}
+
+function pintarReglas() {
+  const hoja = document.querySelector('[data-hoja="reglas"]')
+  if (!hoja || hoja.hidden) return
+  const r = reglasDeMapa(mapa)
+  for (const b of hoja.querySelectorAll('[data-modo]')) b.setAttribute('aria-pressed', String(b.dataset.modo === r.modo))
+  $('reglas-modo-nota').textContent = FRASE_DE_MODO[r.modo]
+
+  // Las armas del mapa, por categorías, con su código.
+  const marcables = armasMarcables()
+  const marcada = (clave) => !r.armas || r.armas.includes(clave)
+  $('reglas-cuenta').textContent = `· ${marcables.filter((i) => marcada(i.clave)).length} de ${marcables.length}`
+  const porCategoria = new Map()
+  for (const item of marcables) {
+    if (!porCategoria.has(item.categoria)) porCategoria.set(item.categoria, [])
+    porCategoria.get(item.categoria).push(item)
+  }
+  const caja = $('reglas-armas')
+  caja.innerHTML = ''
+  for (const [categoria, items] of porCategoria) {
+    const grupo = document.createElement('div')
+    grupo.className = 'reglas-cat'
+    const titulo = document.createElement('h3')
+    titulo.textContent = `${categoria} · ${ECONOMY.categorias[categoria] ?? ''}`
+    const todas = document.createElement('button')
+    todas.type = 'button'; todas.textContent = 'todas'; todas.dataset.cat = categoria; todas.dataset.valor = '1'
+    const ninguna = document.createElement('button')
+    ninguna.type = 'button'; ninguna.textContent = 'ninguna'; ninguna.dataset.cat = categoria; ninguna.dataset.valor = '0'
+    titulo.append(' ', todas, ' ', ninguna)
+    grupo.appendChild(titulo)
+    for (const item of items) {
+      const l = document.createElement('label')
+      l.className = 'checkline'
+      l.innerHTML = `<input type="checkbox" data-arma="${item.clave}" ${marcada(item.clave) ? 'checked' : ''}/> <span class="codigo">${item.categoria} ${item.codigo}</span> ${item.nombre}`
+      grupo.appendChild(l)
+    }
+    caja.appendChild(grupo)
+  }
+
+  // El equipo: entero en Equipadas, sólo el base en Peanas, nada en Armería.
+  const e = r.equipo
+  $('reglas-equipo').hidden = r.modo === 'armeria'
+  $('reglas-equipo-armas').hidden = r.modo !== 'equipadas'
+  $('reglas-chaleco').checked = Boolean(e.chaleco)
+  $('reglas-casco').checked = Boolean(e.casco)
+  const opciones = (slot, valor, vacio) => [
+    `<option value="">${vacio}</option>`,
+    ...marcables.filter((i) => WEAPONS[i.clave]?.slot === slot && marcada(i.clave))
+      .map((i) => `<option value="${i.clave}" ${i.clave === valor ? 'selected' : ''}>${i.categoria} ${i.codigo} · ${i.nombre}</option>`),
+  ].join('')
+  $('reglas-principal').innerHTML = opciones('primary', e.principal, 'ninguna')
+  $('reglas-pistola').innerHTML = opciones('secondary', e.pistola, 'la de serie')
+  $('reglas-especial').innerHTML = opciones('special', e.especial, 'ninguna')
+  const granadas = $('reglas-granadas')
+  granadas.innerHTML = ''
+  for (const item of marcables.filter((i) => WEAPONS[i.clave]?.slot === 'throwable' && marcada(i.clave))) {
+    const l = document.createElement('label')
+    l.className = 'checkline'
+    l.innerHTML = `<input type="checkbox" data-granada="${item.clave}" ${(e.granadas ?? []).includes(item.clave) ? 'checked' : ''}/> ${item.nombre}`
+    granadas.appendChild(l)
+  }
+
+  // Las peanas.
+  const peanas = peanasDe()
+  $('reglas-peanas').hidden = r.modo !== 'peanas' && peanas.length === 0
+  $('cuenta-peanas').textContent = `· ${peanas.length}${peanas.length ? ` · ${new Set(peanas.map((p) => p.arma)).size} armas` : ''}`
+  const elegida = marcaElegida?.que === 'peana' ? peanas[marcaElegida.i] : null
+  $('peana-ficha').hidden = !elegida
+  if (elegida) {
+    $('peana-arma').innerHTML = marcables.filter((i) => marcada(i.clave))
+      .map((i) => `<option value="${i.clave}" ${i.clave === elegida.arma ? 'selected' : ''}>${i.categoria} ${i.codigo} · ${i.nombre}</option>`).join('')
+  }
+  // **Los avisos**: peanas en un modo que no las usa, y una peana al alcance de
+  // un anclaje de tirolina, donde la tecla haría dos cosas según dónde mires.
+  const avisos = []
+  if (peanas.length && r.modo !== 'peanas') avisos.push('Estas peanas no se pueden coger: el mapa no está en modo Peanas (se conservan).')
+  if (r.modo === 'peanas' && !peanas.length) avisos.push('Modo Peanas sin ninguna peana: se sale sólo con el equipo base y la pistola.')
+  for (const [i, p] of peanas.entries()) {
+    for (const t of tirolinasDe()) {
+      for (const a of [t.desde, t.hasta]) {
+        if (Math.hypot(a.x - p.x, a.z - p.z) < ZIPLINES.alcanceU + PEANAS.radioU) {
+          avisos.push(`La peana ${i + 1} está al alcance de un cable: la tecla de acción coge el arma si la apuntas y el cable si no.`)
+        }
+      }
+    }
+  }
+  $('peanas-aviso').textContent = avisos.join(' ')
+}
+
+/** Aplica un cambio a las reglas, anotando el deshacer y repintando. */
+function cambiarReglas(fn) {
+  anotarParaDeshacer()
+  fn(reglasParaEscribir())
+  limpiarReglas()
+  sucio = true
+  pintarPanel()
+  pintarReglas()
+}
+
+document.querySelector('[data-hoja="reglas"]')?.addEventListener('click', (evento) => {
+  const modo = evento.target.closest('[data-modo]')?.dataset.modo
+  if (modo && MODOS_DE_ARMAS.includes(modo)) {
+    cambiarReglas((r) => { r.modo = modo })
+    return
+  }
+  const cat = evento.target.dataset?.cat
+  if (cat !== undefined) {
+    const valor = evento.target.dataset.valor === '1'
+    cambiarReglas((r) => {
+      const todas = armasMarcables()
+      const actuales = new Set(r.armas ?? todas.map((i) => i.clave))
+      for (const i of todas) if (String(i.categoria) === cat) (valor ? actuales.add(i.clave) : actuales.delete(i.clave))
+      r.armas = todas.map((i) => i.clave).filter((c) => actuales.has(c))
+    })
+  }
+})
+document.querySelector('[data-hoja="reglas"]')?.addEventListener('change', (evento) => {
+  const t = evento.target
+  if (t.dataset.arma) {
+    cambiarReglas((r) => {
+      const todas = armasMarcables().map((i) => i.clave)
+      const actuales = new Set(r.armas ?? todas)
+      if (t.checked) actuales.add(t.dataset.arma); else actuales.delete(t.dataset.arma)
+      r.armas = todas.filter((c) => actuales.has(c))
+      // El equipo no puede llevar lo que el mapa ya no admite.
+      const e = r.equipo
+      if (e) {
+        for (const k of ['principal', 'pistola', 'especial']) if (e[k] && !actuales.has(e[k])) delete e[k]
+        if (e.granadas) { e.granadas = e.granadas.filter((g) => actuales.has(g)); if (!e.granadas.length) delete e.granadas }
+      }
+    })
+    return
+  }
+  if (t.dataset.granada) {
+    cambiarReglas((r) => {
+      const e = (r.equipo ??= {})
+      const g = new Set(e.granadas ?? [])
+      if (t.checked) g.add(t.dataset.granada); else g.delete(t.dataset.granada)
+      e.granadas = [...g].slice(0, ECONOMY.granadasMax)
+      if (!e.granadas.length) delete e.granadas
+    })
+    return
+  }
+  const campos = { 'reglas-principal': 'principal', 'reglas-pistola': 'pistola', 'reglas-especial': 'especial' }
+  if (campos[t.id]) {
+    cambiarReglas((r) => {
+      const e = (r.equipo ??= {})
+      if (t.value) e[campos[t.id]] = t.value; else delete e[campos[t.id]]
+    })
+    return
+  }
+  if (t.id === 'reglas-chaleco' || t.id === 'reglas-casco') {
+    const clave = t.id === 'reglas-chaleco' ? 'chaleco' : 'casco'
+    cambiarReglas((r) => {
+      const e = (r.equipo ??= {})
+      if (t.checked) e[clave] = true; else delete e[clave]
+    })
+    return
+  }
+  if (t.id === 'peana-arma' && marcaElegida?.que === 'peana') {
+    anotarParaDeshacer()
+    const p = peanasDe()[marcaElegida.i]
+    if (p) p.arma = t.value
+    sucio = true
+    pintarPanel()
+    pintarReglas()
+  }
+})
+
+/**
+ * **Poner una peana** (vuelta 106): delante de la cámara y dentro de la sala,
+ * con la primera arma marcada, y elegida. La convención de la vuelta 96.
+ */
+function anadirPeana(arma, cerca = null) {
+  const r = reglasDeMapa(mapa)
+  const clave = arma ?? armasMarcables().find((i) => !r.armas || r.armas.includes(i.clave))?.clave
+  if (!clave) return null
+  const lista = listaParaEscribir('peanas')
+  if (lista.length >= PEANAS.max) { contar([], `tope de ${PEANAS.max} peanas`); return null }
+  const punto = cerca ?? puntoParaColocar(1, 1, true)
+  lista.push({ x: punto.x, z: punto.z, arma: clave })
+  return lista.length - 1
+}
+
+$('peana-anadir')?.addEventListener('click', () => {
+  anotarParaDeshacer()
+  const i = anadirPeana()
+  if (i === null) return
+  marcaElegida = { que: 'peana', i }
+  sucio = true
+  pintarPanel()
+  pintarReglas()
+  contar([], `peana ${i + 1} · arrástrala por la rejilla`)
+})
+
+/**
+ * **Duplicar la elegida**: la misma arma, a dos unidades en el primer sitio
+ * libre de un anillo. Las peanas se repiten —diez de Krakov son diez sitios
+ * donde se consigue un Krakov—, así que duplicar es el gesto normal, no un atajo.
+ */
+$('peana-duplicar')?.addEventListener('click', () => {
+  if (marcaElegida?.que !== 'peana') return
+  const origen = peanasDe()[marcaElegida.i]
+  if (!origen) return
+  const libre = (x, z) => peanasDe().every((p) => Math.hypot(p.x - x, p.z - z) >= 1.5)
+  let sitio = null
+  for (let k = 0; k < 8 && !sitio; k++) {
+    const a = (k / 8) * Math.PI * 2
+    const x = aRejilla(origen.x + Math.cos(a) * 2)
+    const z = aRejilla(origen.z + Math.sin(a) * 2)
+    if (libre(x, z)) sitio = { x, z }
+  }
+  anotarParaDeshacer()
+  const i = anadirPeana(origen.arma, sitio ?? { x: origen.x + 2, z: origen.z })
+  if (i === null) return
+  marcaElegida = { que: 'peana', i }
+  sucio = true
+  pintarPanel()
+  pintarReglas()
+  contar([], `peana ${i + 1} · copia de la ${peanasDe().indexOf(origen) + 1}`)
+})
+
+$('peana-quitar')?.addEventListener('click', () => {
+  if (marcaElegida?.que !== 'peana') return
+  borrarLoElegido()
+  pintarReglas()
+})

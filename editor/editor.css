@@ -730,3 +730,10 @@ kbd {
 .capa .ojo:hover { opacity: 1; }
 .capa .ojo[aria-pressed="true"] { opacity: 0.5; }
 #capas-ocultas[hidden] { display: none; }
+
+/* **Reglas de partida** (vuelta 106): el modo elegido se marca con el fondo, como
+   un segmento; las armas del mapa van por categorías con su código. */
+.modos-de-armas button[aria-pressed="true"] { background: var(--dispositivo, #FFC21E); color: #0a0a0a; }
+.reglas-cat h3 { display: flex; align-items: baseline; gap: 6px; margin: 10px 0 4px; }
+.reglas-cat h3 button { font-size: 10px; padding: 1px 6px; }
+.reglas-cat .codigo { display: inline-block; min-width: 2.6em; opacity: 0.6; font-variant-numeric: tabular-nums; }

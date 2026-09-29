@@ -90,6 +90,13 @@
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20l7-7M20 4l-7 7"/><path d="M3 15l6 6M21 9l-6-6"/></svg>
           <span>Duelo</span>
         </button>
+        <!-- **Reglas de partida** (vuelta 106, propuesta 08): con qué armas se
+             juega en el mapa, y las peanas. En el amarillo de los dispositivos,
+             que es el color del zócalo de una peana. -->
+        <button type="button" data-pestana="reglas" title="Reglas de partida · armas del mapa y peanas">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 14h13l3-3M5 14v3h3v-3"/><path d="M8 20h8"/></svg>
+          <span>Reglas</span>
+        </button>
         <button type="button" data-pestana="capas" title="Capas · todo lo que hay en el mapa">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3l9 5-9 5-9-5z"/><path d="M3 13l9 5 9-5"/></svg>
           <span>Capas</span>
@@ -717,7 +724,14 @@
                 que encierra al jugador.</p>
               <label>Lado de la caja <input id="caja-compra" type="number" step="0.5" min="1" /></label>
 
+              <!-- **Desde la vuelta 106 la dotación vive en «Reglas de partida»**
+                   (modo Equipadas). Los campos de antes siguen aquí, escondidos,
+                   para que un mapa viejo se siga leyendo igual: la hoja de
+                   Reglas los traduce la primera vez que se toca algo. -->
               <h3>Dotación</h3>
+              <p class="nota">Lo que reparte el mapa se elige ahora en <b>Reglas</b>,
+                con el modo <b>Equipadas</b>.</p>
+              <div hidden>
               <label class="checkline"><input id="sin-economia" type="checkbox" />
                 Sin economía: el mapa reparte en vez de vender</label>
               <p class="nota">Sin economía no hay tienda, ni dinero, ni elección de
@@ -734,6 +748,7 @@
                 <p class="nota">La dotación es <b>del mapa y no de cada salida</b>: en
                   un mapa simétrico por giro, dos dotaciones distintas serían dos
                   juegos distintos según por dónde te toque salir.</p>
+              </div>
               </div>
 
               <h3>Gracia al empezar la ronda</h3>
@@ -840,6 +855,62 @@
                salían en ninguna: para inventariar un mapa había que pasar por
                cuatro pestañas. El ojo es de esta vuelta; **agrupar y bloquear
                no**, y se dice aquí en vez de dejar dos botones apagados. -->
+          <div class="hoja" data-hoja="reglas" hidden>
+            <section>
+              <h2>Reglas de partida</h2>
+              <div class="botonera modos-de-armas">
+                <button type="button" data-modo="armeria">Armería</button>
+                <button type="button" data-modo="equipadas">Equipadas</button>
+                <button type="button" data-modo="peanas">Peanas</button>
+              </div>
+              <p id="reglas-modo-nota" class="nota"></p>
+              <p class="nota">El modo de armas <b>es del mapa</b>, como su física:
+                el lobby lo enseña y nadie lo cambia al crear la sala.</p>
+            </section>
+            <section>
+              <h2>Armas del mapa <span id="reglas-cuenta" class="nota"></span></h2>
+              <p class="nota">Las marcadas son lo que se compra, lo que se reparte o
+                lo que puede haber en una peana. El cuchillo y la pistola de serie
+                se llevan siempre.</p>
+              <div id="reglas-armas"></div>
+            </section>
+            <section id="reglas-equipo">
+              <h2>Equipo de salida</h2>
+              <div id="reglas-equipo-armas">
+                <label>Principal <select id="reglas-principal"></select></label>
+                <label>Pistola <select id="reglas-pistola"></select></label>
+                <label>Especial <select id="reglas-especial"></select></label>
+                <div id="reglas-granadas"></div>
+              </div>
+              <div class="trio">
+                <label class="checkline"><input id="reglas-chaleco" type="checkbox" /> Chaleco</label>
+                <label class="checkline"><input id="reglas-casco" type="checkbox" /> Casco</label>
+                <label></label>
+              </div>
+              <p class="nota">Al morir se vuelve a salir con esto. En Peanas es el
+                equipo base: las armas se cogen del suelo y lo recogido se pierde
+                al morir.</p>
+            </section>
+            <section id="reglas-peanas">
+              <h2>Peanas <span id="cuenta-peanas" class="nota"></span></h2>
+              <div class="botonera">
+                <button id="peana-anadir" type="button">+ Peana</button>
+              </div>
+              <p class="nota">Nunca se agotan: la coge quien quiera, las veces que
+                quiera. Se cogen <b>apuntándolas y con la tecla de acción</b>, a
+                distancia de brazo, nunca pasando por encima. Arrástralas por la
+                rejilla; <b>Supr</b> las borra.</p>
+              <div id="peana-ficha" hidden>
+                <label>Arma <select id="peana-arma"></select></label>
+                <div class="botonera">
+                  <button id="peana-duplicar" type="button">Duplicar</button>
+                  <button id="peana-quitar" type="button">Quitar</button>
+                </div>
+              </div>
+              <p id="peanas-aviso" class="nota"></p>
+            </section>
+          </div>
+
           <div class="hoja" data-hoja="capas" hidden>
             <section>
               <h2>Capas <span id="capas-cuenta" class="dato"></span></h2>

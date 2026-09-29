@@ -17,7 +17,8 @@
  * Y sigue sin tener código de juego: importa `movement.js`, `scenario.js`,
  * `hitPlayer` y `hasLineOfSight` tal cual.
  */
-import { ECONOMY, NET, PAUSE, PLAYER, PROJECTILES, ROUNDS, SIM, SIM_STEP_MS, TODOS, WEAPONS, WEAPON_ORDER, bandoDeRanura, catalogoDeTienda, modoDeSala, modoMultijugador } from '../src/config.js'
+import { ECONOMY, NET, PAUSE, PLAYER, PROJECTILES, ROUNDS, SIM, SIM_STEP_MS, TODOS, WEAPONS, WEAPON_ORDER, bandoDeRanura, catalogoDeTienda, PEANAS, SECONDARY_WEAPON, modoDeSala, modoMultijugador } from '../src/config.js'
+import { armaPermitida, equipoDeSalida, recogerEnInventario } from '../src/game/arsenal.js'
 import { MovementController } from '../src/game/movement.js'
 import { encajarImpacto, hitPlayer, zoneDamage } from '../src/game/player.js'
 import { Clavadas } from '../src/game/clavadas.js'
@@ -190,7 +191,15 @@ export class Partida {
      */
     // En el todos contra todos no se reparte (vuelta 100): cada uno sale con lo
     // que haya elegido en su armería — ver `libres` en la bienvenida.
-    this.dotacion = todos ? null : escenario.dotacionDeDuelo
+    /**
+     * **Y desde la vuelta 106 lo dicen las reglas del mapa** (propuesta 08), en
+     * todos los modos de juego: en Armería no se reparte nada (`null`, el camino
+     * de siempre), en Equipadas el equipo entero y en Peanas el base. Los
+     * Pilares se lee como Equipadas sin tocar su fichero (`reglasDeMapa`), así
+     * que la dotación de la vuelta 72 sale igual por aquí.
+     */
+    this.reglas = escenario.reglas
+    this.dotacion = equipoDeSalida(this.reglas)
     this.compraSegundos = ROUNDS.compraSegundos
     this.configurarCompra(compraSegundos)
     this.colchon = colchon
@@ -854,6 +863,10 @@ export class Partida {
       this._comprar(jugador, mensaje.q, mensaje.a)
       return
     }
+    if (mensaje.t === MSG.RECOGER) {
+      this._recoger(jugador, mensaje.i)
+      return
+    }
     if (mensaje.t === MSG.LISTO_COMPRA) {
       this._listoParaRonda(jugador, Boolean(mensaje.v))
       return
@@ -1362,6 +1375,13 @@ export class Partida {
       // reaparece. Es una entrada concreta, con su número, así que el cliente
       // puede hacer exactamente lo mismo y no hay corrección que pagar.
       this._reaparecer(jugador)
+      // **Y sin rondas, reaparecer es volver a salir** (vuelta 106): en un mapa
+      // con reparto se pierde lo recogido y se vuelve al equipo de salida.
+      if (!this.conRondas && this.dotacion) {
+        this._perderEquipo(jugador)
+        this._dotar(jugador)
+        this._enviarEconomia(jugador)
+      }
     }
     desempaquetarTeclas(entrada.k, m.keys)
     // **El arma viaja con cada entrada y su peso entra en la simulación**
@@ -1371,7 +1391,7 @@ export class Partida {
     // error. De aquí salen además la cadencia que se le exige y el arma que el
     // rival ve en su ficha.
     const arma = WEAPONS[WEAPON_ORDER[entrada.w]]
-    if (arma) {
+    if (arma && this._llevaArma(jugador, WEAPON_ORDER[entrada.w]) && armaPermitida(this.reglas, WEAPON_ORDER[entrada.w])) {
       jugador.arma = WEAPON_ORDER[entrada.w]
       m.setWeaponWeight(arma.weight)
     }
@@ -2149,6 +2169,9 @@ export class Partida {
 
     const item = this._delCatalogo(clave)
     if (!item || !item.disponible) return
+    // **Y sólo lo que el mapa admite** (vuelta 106): el panel se filtra con la
+    // misma función, así que no enseña lo que esto va a rechazar.
+    if (!armaPermitida(this.reglas, clave)) return
 
     // **Y en un mapa sin economía se acaba aquí: no hay tienda que abrir.**
     // El corte va **después** del supresor a propósito: conmutarlo no es una
@@ -2266,7 +2289,9 @@ export class Partida {
    * foto compartida viajaría a los dos.
    */
   _enviarEconomia(jugador) {
-    if (!this.conRondas) return
+    // Con reparto también sin rondas (vuelta 106): en un todos contra todos de
+    // Equipadas o Peanas lo que llevas lo decide el servidor, y viaja así.
+    if (!this.conRondas && !this.dotacion) return
     jugador.enviar(
       JSON.stringify({
         t: MSG.ECONOMIA,
@@ -2376,10 +2401,65 @@ export class Partida {
    * pistola, y eso lo sabe el motor sin preguntarle a nadie.
    */
   _dotar(jugador) {
-    if (!this.dotacion) return
-    jugador.inventario.primaria = this.dotacion.arma ?? null
-    jugador.escudo = this.dotacion.chaleco ? ECONOMY.escudoPorChaleco : 0
-    jugador.casco = Boolean(this.dotacion.casco)
+    const e = this.dotacion
+    if (!e) return
+    /**
+     * **En Peanas se da el equipo base y nada más** (vuelta 106): las armas se
+     * cogen del suelo, y lo que recogió quien sobrevive la ronda se conserva
+     * —quien cayó ya lo perdió en `_perderEquipo`—. En Equipadas, el equipo
+     * entero cada vez, que es lo que hacía la dotación de la vuelta 72.
+     */
+    const inv = jugador.inventario
+    if (this.reglas.modo === 'equipadas') {
+      inv.primaria = e.primaria
+      inv.secundaria = e.secundaria
+      inv.especial = e.especial
+      inv.granadas = [...e.granadas]
+      for (const clave of [e.primaria, e.especial, ...e.granadas]) if (clave) this._darReservaInicial(jugador, clave)
+      jugador.escudo = e.chaleco ? ECONOMY.escudoPorChaleco : 0
+      jugador.casco = e.casco
+      return
+    }
+    if (e.chaleco) jugador.escudo = Math.max(jugador.escudo, ECONOMY.escudoPorChaleco)
+    if (e.casco) jugador.casco = true
+  }
+
+  /**
+   * **¿Lleva este arma?** (vuelta 106). En un mapa con reparto lo que llevas lo
+   * decide el servidor, así que el arma que declara cada entrada tiene que ser
+   * una de las suyas: la pistola (la de serie si no hay otra), el cuchillo, o
+   * lo que tenga en el inventario. Con economía no se mira, como hasta aquí.
+   */
+  _llevaArma(jugador, clave) {
+    if (!this.dotacion) return true
+    const inv = jugador.inventario
+    if (WEAPONS[clave]?.slot === 'melee') return true
+    if (clave === (inv.secundaria ?? SECONDARY_WEAPON)) return true
+    return clave === inv.primaria || clave === inv.especial || (inv.granadas ?? []).includes(clave)
+  }
+
+  /**
+   * **Recoger una peana** (vuelta 106, propuesta 08). El servidor valida, por lo
+   * más barato primero (vuelta 46): vivo, modo Peanas, que la peana exista, la
+   * distancia de sus ojos al arma con holgura de red, y que no haya pared. **No
+   * se rebobina**: recoger no es un disparo, y la holgura cubre lo que te has
+   * movido en un viaje. Y contesta **siempre**, también para decir que no.
+   */
+  _recoger(jugador, i) {
+    const responder = (ok, extra = {}) => jugador.enviar(JSON.stringify({ t: MSG.RECOGER, i, ok: ok ? 1 : 0, ...extra }))
+    const peana = Number.isInteger(i) ? this.escenario.peanas[i] : null
+    if (!peana || jugador.vida <= 0 || this.reglas.modo !== 'peanas' || !armaPermitida(this.reglas, peana.arma)) return responder(false)
+    const ojos = jugador.pose.position
+    const cy = peana.y + PEANAS.alturaArmaU
+    const d = Math.hypot(ojos.x - peana.x, ojos.y - cy, ojos.z - peana.z)
+    if (d > PEANAS.alcanceU + PEANAS.holguraU) return responder(false, { m: 'lejos' })
+    if (!this.escenario.peanaALaVista(i, ojos.x, ojos.y, ojos.z)) return responder(false, { m: 'pared' })
+    const r = recogerEnInventario(jugador.inventario, peana.arma)
+    if (!r.ok) return responder(false, { m: r.motivo })
+    // Primero el inventario —el arma entra en su ranura— y después el sí: el
+    // cliente pone en la mano lo que acaba de coger cuando ya lo tiene.
+    this._enviarEconomia(jugador)
+    responder(true, { a: peana.arma, rc: r.recarga ? 1 : 0 })
   }
 
   // ------------------------------------------------------------------ rondas
@@ -2718,6 +2798,12 @@ export class Partida {
       j.salidaSiguiente = null
       j.golpeadoPor = null
       this._reaparecer(j)
+      // Con reparto, cada partida sale con el equipo del mapa (vuelta 106).
+      if (this.dotacion) {
+        this._perderEquipo(j)
+        this._dotar(j)
+        this._enviarEconomia(j)
+      }
       j.historial.fill(null)
     }
     this.proyectiles.apagarTodos()

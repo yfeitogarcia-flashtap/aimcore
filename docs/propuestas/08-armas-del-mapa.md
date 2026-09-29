@@ -1,8 +1,12 @@
 # Propuesta 08 — El arsenal del mapa: reglas de partida y peanas
 
-**Estado:** **diseñada, sin construir nada.** Reescrita en la vuelta 105 con las
-reglas que Yago fijó ese día; la versión de la vuelta 95 queda resumida en §10,
-con lo que cambia y por qué.
+**Estado:** **fase 1 construida en la vuelta 106** —el panel «Reglas de partida»,
+los tres modos y las peanas— con las respuestas de Yago a §6. Lo que se hizo
+distinto de lo escrito aquí, y por qué, está en `docs/decisions.md` §106.4: el arma
+de la peana es **plana y encarada** a quien mira, no extruida y girando, y la
+ficha **no sale de cerca** (4 u). La fase de desvanecerse (§5) sigue sin construir.
+Reescrita en la vuelta 105 con las reglas que Yago fijó ese día; la versión de la
+vuelta 95 queda resumida en §10, con lo que cambia y por qué.
 
 El encargo de la 105, en una frase: **el mapa dice con qué se juega en él**, en un
 panel «Reglas de partida» de Alchemist que se guarda dentro del mapa. Dos cosas:

@@ -15883,3 +15883,160 @@ ninguno fue claramente mejor que no llevar nada, que era la condición.
 disparar se sienta con un fogonazo de luz, una sacudida de la vista y la silueta
 del HUD reaccionando (§106.3). Es la respuesta a la pregunta que el arma venía a
 contestar —«¿ha salido una bala?»— sin prometer un objeto que no se dibuja.
+
+### 106.3 — Que disparar se sienta: la propuesta 13, construida
+
+Aprobada por Yago con tres condiciones: la sacudida **sólo visual**, con
+interruptor en Opciones, **encendida y suave de fábrica**; todo en `config.js`
+(`SENSACION`) para calibrarlo juntos; y **medir que no cuesta FPS**.
+
+**Un solo sitio enciende las tres cosas** (`_sentirDisparo`), justo después de
+contar la bala en `_shoot` —por donde pasan el disparo en red, el del
+entrenamiento y el perdigonazo— y en `_lanzarProyectil` para el cohete. El arco
+y lo que se tira sólo mueven la silueta: no queman pólvora.
+
+- **El fogonazo** (`src/game/fogonazo.js`) es luz: un degradado radial cálido,
+  abajo a la derecha del centro, que se enciende con cada bala y se apaga en
+  55–130 ms según el arma. Es un `div` encima del lienzo y **por debajo del HUD**,
+  animado con la API de animaciones sobre `opacity`, que corre en el compositor.
+  Con silenciador pesa un 20 %; en automático, un destello de cada dos va al 70 %,
+  porque diez iguales por segundo se leen como una luz que parpadea. Su color
+  (255, 214, 160) **no es de la paleta** a propósito: no es una señal.
+- **La sacudida** vive lo que dura el dibujado, como la pose interpolada de la 44:
+  se pone justo antes de `render()` y `_quitarSacudida` **deja la cámara
+  exactamente como estaba** —se guardan los valores, no se resta, para que no
+  quede ni un error de coma flotante en la mira—. Un golpe atrás, arriba y un
+  pellizco de campo de visión, escalado con el primer paso vertical del patrón
+  de retroceso de cada arma contra el de la Rift. No es el retroceso: la mira no
+  vuelve nunca sola (vuelta 61) y esto sí, porque no es la mira.
+- **La silueta del HUD** son dos copias exactas: la de abajo se apaga al
+  recargar y la de encima se llena de atrás adelante con el mismo progreso que
+  la barra (con la Pump, lo que hay dentro más lo que entra). Al disparar recula
+  y brilla, en seco tiembla y con cada cartucho da un salto. Todo por refs y
+  animaciones del navegador: ni un `setState` por disparo.
+
+**Medido** (`sensacion106`, contra el motor del editor con la Rift):
+
+- **Una luz por bala**: 6 balas, 6 fogonazos, con el pico en 0.30 y por debajo
+  del techo; el cuchillo no lo enciende.
+- **La sacudida no toca la mira**: con golpe en 10 frames de una ráfaga, la
+  cámara vuelve **exactamente** a donde estaba después de cada dibujo (0 frames
+  distintos), y con el interruptor apagado no hay ninguno.
+- **La silueta** recula al disparar, se apaga recargando y se llena de atrás
+  adelante (del 67 % al 34 % de recorte en medio segundo), tiembla en seco y
+  vuelve entera al acabar.
+- **Lo que cuesta**: la sacudida, **13–16 µs por frame**; encender las tres cosas,
+  **72–100 µs por disparo** (el presupuesto de un frame es 200 µs y un disparo no
+  es por frame). Los FPS disparando con las tres y sin nada salen iguales dentro
+  del ruido de WebGL por software (35.3 contra 35.3, y 36.0 contra 38.3 en otra
+  tanda): **no cuesta FPS**.
+- **Y la luz no cae sobre el bloque de arma** en las cuatro resoluciones de
+  siempre: entre 277 y 533 px de distancia, con un radio de 230 a 324.
+
+Mirado en la captura, que es lo que el banco no dice: se lee como un resplandor
+cálido abajo a la derecha del centro, donde estaría la boca de un arma, y se va
+antes de que se pueda mirar. Suave, que es lo que se pidió; si se queda corto
+jugando, los números están en `SENSACION.fogonazo`.
+
+### 106.4 — Las peanas: la propuesta 08, fase 1
+
+Aprobada por Yago con sus cuatro respuestas: **coger la que llevas la recarga**;
+**llega con la munición de comprarla**; **el modo de armas lo decide el mapa, no
+el anfitrión**; y el orden de la E es **bomba › peana › tirolina › artilugio**.
+
+**Una sola lógica para los tres que deciden** (`src/game/arsenal.js`, sin
+`three`): el servidor, el motor —que en el entrenamiento hace de servidor de sí
+mismo con un inventario local (`_invLocal`)— y Alchemist. Ahí viven qué armas
+admite un mapa (`armaPermitida`), con qué sale cada uno (`equipoDeSalida`), qué
+pasa al coger (`recogerEnInventario`) y qué peana se apunta (`peanaApuntada`).
+Escrito dos veces sería una peana que el cliente enseña cogible y el servidor
+rechaza sin decir por qué: el fallo de la vuelta 65 por la puerta del suelo.
+
+**Los mapas de hoy no cambian ni un byte.** `reglas` y `peanas` no se escriben si
+no dicen nada, un mapa sin reglas es Armería con todo, y **Los Pilares se lee como
+Equipadas** sin tocar su fichero: su `duelo.sinEconomia` con su `dotacion` de la
+vuelta 72 es exactamente eso. La hoja vieja de Dotación se esconde en Alchemist y
+lo que escribía, lo migra la hoja nueva al primer cambio.
+
+**Cómo se coge** es la parte que costó, y son tres decisiones:
+
+- **Apuntando, con aritmética**: el rayo de la mira contra un cilindro de agarre
+  alrededor del arma (0.55 u de radio, 1.6 de alto), la más cercana dentro de
+  2.5 u, y **sólo a la ganadora** se le pregunta si hay pared, con
+  `cortarSegmento`. 1.6–3.1 µs por búsqueda con 160 peanas (`peanas106`).
+- **Pisarla no la coge.** Con los ojos dentro del cilindro —estar encima— el
+  corte del rayo con el cilindro sale en `t = 0` mires a donde mires, y la
+  primera versión la cogía así: lo cazó `peanas106nav` con la E pulsada encima de
+  una Pump mirando al frente. Ahora, dentro del cilindro, cuenta **mirar el
+  arma**: el rayo corta el plano a su altura y tiene que caer en el círculo. Es
+  la misma función en el servidor, así que no hay una segunda regla.
+- **Y la peana va antes que el cable**, que es lo que Yago decidió y lo que hace
+  falta: apuntar a algo concreto es más deliberado que estar cerca de algo. La
+  pulsación que coge una peana **no escribe la tecla** en el movimiento, o el
+  mismo flanco te colgaría además del cable.
+
+**El aviso bajo la mira lo decide la misma búsqueda que la E** —«E · Recoger
+Krakov», «E · Recargar Krakov» o «Krakov · lleno»—, publicado al cambiar y no por
+frame.
+
+**Lo que se ve, y dos cosas que cambiaron al mirarlo:**
+
+- **El arma es su silueta plana, encarada a quien mira, con un vaivén.** La
+  propuesta decía «extruida y girando», y medido eran **185 360 triángulos con
+  160 peanas** —la extrusión envuelve cada curva del trazado— y la mitad del
+  tiempo se veía de canto. Plana son 33 000 (la silueta del Krakov, 414), y es
+  como Vektor dibuja un arma en todas partes: el HUD y la ficha.
+- **La ficha de encima no sale a menos de 4 u** (`PEANAS.fichaMinU`). En la
+  primera captura, la del Krakov a 2 u tapaba el centro de la pantalla justo
+  donde el aviso ya decía lo mismo.
+
+Lo demás es lo escrito: la ficha de `markers.js` con el nombre del arma donde un
+jugador lleva su nick, **sólo con línea de visión** (con tope de seis y de cuatro
+cortes por frame), sin la espera de sostener la mira; y al coger, el cerrojo de
+`playEquip('arma')` y un anillo de `dispositivos.js`, sólo en quien la coge.
+
+**En red** el servidor valida por lo más barato primero —vivo, modo Peanas, la
+peana existe y el mapa admite el arma, distancia de los ojos con holgura (2.5 +
+1.2 u), y pared— sin rebobinar, **contesta siempre** (`MSG.RECOGER`, también para
+decir que no) y el arma llega por el inventario de siempre. Dos cosas que salieron
+construyéndolo:
+
+- **El inventario tiene que viajar también sin rondas**: en el todos contra todos
+  no había `MSG.ECONOMIA`, y una peana cogida no habría llegado nunca. Ahora sale
+  en cuanto el mapa reparte o se coge del suelo.
+- **El arma que declara una entrada tiene que ser una que llevas** (`_llevaArma`),
+  y además una que el mapa admita. Antes daba igual —en el todos contra todos las
+  armas eran libres—; con peanas, declarar un Titan que no se ha cogido sería
+  tenerlo.
+
+**Medido** (`peanas106`, sin navegador, y `peanas106nav`, con el teclado de
+verdad contra el editor):
+
+- Recoger apuntando lo pone en la mano lleno (30/30), recoger la que llevas con
+  cinco balas gastadas la recarga, la peana sigue ahí, y mirando a otro lado no
+  hay aviso; encima de una sin apuntarla la E no hace nada, y mirándola a los pies
+  sí.
+- La ficha: se anuncian las que se ven, **no la que está detrás del muro**, sí
+  rodeándolo, y no la que está a 1 u.
+- En `Partida`: una recogida lejos, a través de una pared o en un mapa que no es
+  de peanas se rechaza con su motivo; morir cuesta lo recogido y no el equipo
+  base; Armería con armas marcadas no vende ni cobra lo que no está marcado; y en
+  rondas, Equipadas reparte cada ronda y Peanas conserva lo de quien sobrevive.
+- **Lo que cuesta**, por frame (buscar la apuntada, el aviso, las fichas y el
+  vaivén): 0.5–0.8 µs sin peanas, 14–19 con 40 y 21 con 160. Contra 200 de
+  presupuesto.
+- **Y lo que cuesta dibujarlas, dicho con su denominador**: con WebGL por software
+  los FPS pasan de 32–36 sin peanas a 22–27 con 20–40 y a 14–15 con 160. Aquí se
+  paga por triángulo, así que el número que vale es ése: **160 peanas son 33 000
+  triángulos y el Plano A entero son 9 500**. En una tarjeta gráfica es nada; en
+  un PC sin ella, un mapa con 160 peanas pesa como tres Planos A. Un mapa normal
+  tendrá diez o veinte.
+
+**Residuo anotado:** una **barrera** no para la mano. La pared se pregunta con
+`cortarSegmento`, que se salta las barreras desde la vuelta 96 —la atraviesa todo
+lo que se dispara o se lanza—, así que a menos de 2.5 u se coge una peana a través
+de un cristal. Hoy ningún mapa tiene las dos cosas. Y **el viaje de ida y vuelta
+en red no se ha medido con dos navegadores**: ningún mapa publicado tiene peanas
+todavía, y el cliente monta el mapa de su propio catálogo. `peanas106` mide el
+servidor y `peanas106nav` el motor; el primer mapa de peanas que se haga en
+Alchemist es la prueba (está en la lista de `docs/beta-cerrada.md`).

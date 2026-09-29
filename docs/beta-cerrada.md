@@ -159,6 +159,11 @@ hace falta que esté escrito antes de pedirle a alguien que escriba.
   la prueba de Yago entre dos redes.
 - **V101-2**, un todos contra todos de tres personas de verdad, que espera a que
   haya tres.
+- **V106-1, las peanas en red**: coger, recargar y que te lo quiten al morir, con
+  dos navegadores. Está medido el servidor sin navegador y el motor en el
+  entrenamiento, pero no el viaje entero, porque ningún mapa publicado tiene
+  peanas todavía. Es la primera prueba del primer mapa de peanas que se haga en
+  Alchemist.
 
 La beta es justo cuando van a jugar en redes que no controlamos. Invitarles antes
 de saber cómo se porta el juego fuera de casa es convertir su primera tarde en la
@@ -173,9 +178,10 @@ diez personas reporten lo mismo y dice qué **sí** interesa que cuenten.
 
 - **No se ve cuántas balas quedan en reserva** del U2, las granadas y el Fang
   (vuelta 90): sólo el aviso de «no te quedan».
-- **Sin arma en pantalla**, a propósito (vuelta 106). Si la sensación de disparo
-  (propuesta 13) no está para entonces, el disparo sólo se cuenta con sonido,
-  retroceso y marca de impacto.
+- **Sin arma en pantalla**, a propósito (vuelta 106). Lo que cuenta el disparo es
+  el sonido, el retroceso, la marca de impacto y, desde la misma vuelta, un
+  fogonazo de luz abajo, un golpe de la vista (se quita en Opciones) y la silueta
+  del HUD reaccionando.
 - **Los nicks son `VK-01`, `VK-02`…**: no hay nombres (propuesta 07).
 - **En un navegador, volver desde ESC pide un clic** si hace más de cinco
   segundos que no se ha tocado nada: el juego lo dice con un aviso (F2). En la app

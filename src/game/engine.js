@@ -13,11 +13,14 @@
 
 import * as THREE from 'three'
 import { CSS3DRenderer } from 'three/examples/jsm/renderers/CSS3DRenderer.js'
-import { ACCURACY, ACTION_PANEL, AUDIO, AVATAR, BANDOS, CAMERA, CLAVADAS, COLORS, COVER, EDITOR, ENEMY, FEEDBACK, FOOTSTEPS, FRAME_LIMITS, GRENADES, HELP, IMPACTS, LOOK, MELEE_WEAPON, MOVEMENT, NET, OBJECTIVE, PLAYER, PROJECTILES, RECOIL_RESET_MS, RENDER, SCOPE, SECONDARY_WEAPON, SESSION_DURATION_S, SESSION_DURATIONS, SESSION_MODES, SIM, SIM_STEP_MS, SURFACES, TARGET, TEAMS, THROWABLE_WEAPONS, TRAJECTORY, VIEWMODEL, WEAPONS, WEAPON_ORDER, claveDeEscenario, colorDeJugador, definicionDeEntrenamiento, weaponSpeedFactor } from '../config.js'
+import { ACCURACY, ACTION_PANEL, AUDIO, AVATAR, BANDOS, CAMERA, CLAVADAS, COLORS, COVER, EDITOR, ENEMY, FEEDBACK, FOOTSTEPS, FRAME_LIMITS, GRENADES, HELP, IMPACTS, LOOK, MELEE_WEAPON, MOVEMENT, NET, OBJECTIVE, PLAYER, PROJECTILES, RECOIL_RESET_MS, PEANAS, RENDER, SCOPE, SECONDARY_WEAPON, SENSACION, SESSION_DURATION_S, SESSION_DURATIONS, SESSION_MODES, SIM, SIM_STEP_MS, SURFACES, TARGET, TEAMS, THROWABLE_WEAPONS, TRAJECTORY, VIEWMODEL, WEAPONS, WEAPON_ORDER, claveDeEscenario, colorDeJugador, definicionDeEntrenamiento, weaponSpeedFactor } from '../config.js'
 import { createScene } from './scene.js'
 import { Scenario } from './scenario.js'
 import { Scope } from './scope.js'
 import { Slash } from './slash.js'
+import { Fogonazo } from './fogonazo.js'
+import { DibujoDePeanas } from './peanas.js'
+import { armaPermitida, equipoDeSalida, recogerEnInventario } from './arsenal.js'
 import { Granadas } from './granadas.js'
 import { hasLineOfSight } from './sight.js'
 import { Objective, OUTCOME } from './objective.js'
@@ -71,6 +74,8 @@ const _spreadFallback = new THREE.Vector3(1, 0, 0)
 /** Para convertir rumbo+cabeceo en vector, desviarlo y volver. Ver `_miraConDesvio`. */
 const _miraDir = new THREE.Vector3()
 const _mira = { yaw: 0, pitch: 0 }
+/** La pose de la cámara antes de la sacudida, para dejarla exactamente igual (vuelta 106). */
+const _sacudidaAntes = new THREE.Vector3()
 /** Hacia dónde mira la cámara, para saber de qué lado te han disparado. */
 const _bearingForward = new THREE.Vector3()
 /**
@@ -392,6 +397,15 @@ export class Engine {
     this.pickups.setSites(this.scenario.pickupSites)
     this.enemyFire.setOccluders(this.scenario.occluders)
     this.markers.setOccluders(this.scenario.occluders)
+    this.dibujoPeanas?.montar(this.scenario)
+    this._invLocal = null
+    this._filtrarArmasDelMapa()
+    // **Las peanas del mapa** (vuelta 106): se dibujan con el escenario.
+    this.dibujoPeanas = new DibujoDePeanas(this.scene, this.cssScene)
+    this.dibujoPeanas.montar(this.scenario)
+    this._peanaApuntada = -1
+    this._avisoPeana = null
+    this._invLocal = null
     /** Mando del zumbido de carga, mientras dure. */
     this._shieldSound = null
 
@@ -898,6 +912,12 @@ export class Engine {
      */
     this._invRed = null
     cliente.onEconomia = (eco) => this._aplicarInventario(eco.inv)
+    // **La respuesta a recoger una peana** (vuelta 106). El arma ya llegó por
+    // el inventario; esto la pone en la mano, y un no se dice.
+    cliente.onRecogida = (m) => {
+      if (m.ok) this._alRecoger(m.a, Boolean(m.rc), m.i)
+      else if (m.m) this._showHelp(`No se puede coger: ${m.m}`)
+    }
     return cliente
   }
 
@@ -1129,6 +1149,8 @@ export class Engine {
     this.slash = new Slash(parent || document.body)
     // **Del motor, como el tajo y la mirilla**, así que sale en los dos modos.
     this.granadas = new Granadas(parent || document.body)
+    // Y la luz de tu propio disparo (vuelta 106), por lo mismo que el tajo.
+    this.fogonazo = new Fogonazo(parent || document.body)
 
     this._resizeObserver = new ResizeObserver(this._onResize)
     this._resizeObserver.observe(this.canvas.parentElement || this.canvas)
@@ -1147,6 +1169,10 @@ export class Engine {
     this.slash = null
     this.granadas?.dispose()
     this.granadas = null
+    this.fogonazo?.dispose()
+    this.fogonazo = null
+    this.dibujoPeanas?.dispose()
+    this.dibujoPeanas = null
     this._running = false
     cancelAnimationFrame(this._rafId)
     this.canvas.removeEventListener('mousedown', this._onMouseDown)
@@ -1322,6 +1348,9 @@ export class Engine {
      */
     // Y para la beta, ni eso: sin `VIEWMODEL.disponible` no se construye nunca.
     this._conArmaEnMano = VIEWMODEL.disponible && Boolean(settings.armaEnPantalla)
+    // La sacudida de la vista al disparar (vuelta 106): del jugador, y sólo
+    // del dibujo. Apagarla no cambia a dónde va ninguna bala.
+    this._conSacudida = Boolean(settings.sacudidaCamara)
     if (this._conArmaEnMano && !this.armaEnMano) {
       this.armaEnMano = new ArmaEnMano()
       this.armaEnMano.poner(this.weaponKey, this.suppressorEnabled)
@@ -1398,6 +1427,7 @@ export class Engine {
         this._refillMagazine()
       }
     }
+    this._filtrarArmasDelMapa()
     this._publishWeapon(settings)
     // Los muñecos disparan **sólo con escenario y hitbox completo**: sin
     // cobertura no habría dónde meterse, y una esfera flotante no dispara.
@@ -1490,7 +1520,10 @@ export class Engine {
    * que no haya economía confundiría un mapa que reparte con uno libre.
    */
   get _armasDelServidor() {
-    return this.enRed && !this.net?.armasLibres
+    // **Y en el entrenamiento, cuando el mapa reparte** (vuelta 106): con
+    // Equipadas o Peanas lo que llevas lo lleva el motor, que hace de servidor
+    // de sí mismo (`_invLocal`), y un ajuste guardado no puede dártelo.
+    return (this.enRed && !this.net?.armasLibres) || Boolean(this._invLocal)
   }
 
   /** El arma vigente, tal cual está descrita en config.js. */
@@ -1545,6 +1578,141 @@ export class Engine {
     const i = llevo.indexOf(this.weaponKey)
     this.slots.throwable = llevo[(i + 1) % llevo.length]
     this._equipSlot('throwable')
+  }
+
+  /**
+   * **El equipo de salida del mapa, en el entrenamiento** (vuelta 106). Con
+   * Equipadas o Peanas, el motor hace de servidor de sí mismo: monta el
+   * inventario con `equipoDeSalida` —la misma función que el servidor— y lo
+   * aplica por `_aplicarInventario`, el mismo camino que el de una partida en
+   * red. En Armería no hace nada, que es lo de siempre.
+   */
+  _salirConElEquipoDelMapa() {
+    if (this.enRed) return
+    const e = equipoDeSalida(this.scenario?.reglas)
+    this._invLocal = e
+      ? { primaria: e.primaria, secundaria: e.secundaria, especial: e.especial, granadas: [...e.granadas], supresor: {}, reserva: {} }
+      : null
+    if (!this._invLocal) return
+    for (const clave of [e.primaria, e.especial, ...e.granadas]) {
+      const r = clave && WEAPONS[clave]?.tiro?.reserva
+      if (r) this._invLocal.reserva[clave] = r.inicial
+    }
+    this._aplicarInventario(this._invLocal)
+    this._resetLoadout()
+  }
+
+  /**
+   * **Sólo lo que el mapa admite** (vuelta 106). En Armería con las armas
+   * marcadas, un arma guardada en la armería del jugador que el mapa no admite
+   * no sale a la partida: la principal se queda vacía, la pistola vuelve a la
+   * de serie. El servidor lo exige igual, con la misma función (`armaPermitida`).
+   */
+  _filtrarArmasDelMapa() {
+    const reglas = this.scenario?.reglas
+    if (!reglas?.armas) return
+    const vacio = { primary: null, secondary: SECONDARY_WEAPON, special: null, throwable: null }
+    for (const slot of Object.keys(vacio)) {
+      const clave = this.slots[slot]
+      if (!clave || armaPermitida(reglas, clave)) continue
+      delete this._stowed[clave]
+      this.slots[slot] = vacio[slot]
+      if (slot === 'throwable') this._granadas = []
+      if (this.slot === slot) {
+        this.slot = this.slots.primary ? 'primary' : 'secondary'
+        this.weaponKey = this.slots[this.slot]
+        this._releaseTrigger()
+        this._cancelReload()
+        this._refillMagazine()
+      }
+    }
+  }
+
+  /** La peana que apuntan los ojos ahora mismo, o -1. Aritmética y un corte. */
+  _buscarPeanaApuntada() {
+    if (!this.scenario?.peanas.length) return -1
+    const c = this.camera
+    const cp = Math.cos(c.rotation.x)
+    return this.scenario.peanaApuntadaDesde(
+      c.position.x, c.position.y, c.position.z,
+      -Math.sin(c.rotation.y) * cp, Math.sin(c.rotation.x), -Math.cos(c.rotation.y) * cp,
+    )
+  }
+
+  /**
+   * **¿Llevo ya esto, y lleno?** Recoger lo que ya llevas recarga (la regla del
+   * Fang, vuelta 90); con todo lleno no pasa nada, y el aviso lo dice en vez de
+   * ofrecer una tecla que no hará nada.
+   */
+  _peanaLlena(clave) {
+    const arma = WEAPONS[clave]
+    if (!arma) return false
+    const lleva = clave === this.weaponKey || Object.values(this.slots).includes(clave)
+      || (this._invRed?.granadas ?? []).includes(clave)
+    if (!lleva) return false
+    const cargador = clave === this.weaponKey ? this.ammo : this._stowed[clave]?.ammo ?? arma.magazine
+    const r = arma.tiro?.reserva
+    return cargador >= arma.magazine && (!r || this.reservaDe(clave) >= r.inicial)
+  }
+
+  /**
+   * **El aviso bajo la mira dice lo que va a hacer la E** (vuelta 106), y lo
+   * decide la misma búsqueda que ejecuta la pulsación, no una segunda cuenta
+   * que pueda decir otra cosa (vuelta 67). Se publica al cambiar, no por frame.
+   */
+  _actualizarAvisoDePeana() {
+    const i = this.phase === PHASE.RUNNING && this.isLocked ? this._buscarPeanaApuntada() : -1
+    this._peanaApuntada = i
+    let texto = null
+    if (i >= 0) {
+      const clave = this.scenario.peanas[i].arma
+      const nombre = WEAPONS[clave]?.label ?? clave
+      const tecla = this._tecla('use')
+      if (this._peanaLlena(clave)) texto = `${nombre} · lleno`
+      else {
+        const lleva = Object.values(this.slots).includes(clave) || (this._invRed?.granadas ?? []).includes(clave)
+        texto = `${tecla} · ${lleva ? 'Recargar' : 'Recoger'} ${nombre}`
+      }
+    }
+    if (texto !== this._avisoPeana) {
+      this._avisoPeana = texto
+      this.callbacks.onPeana?.(texto)
+    }
+  }
+
+  /**
+   * **Recoger una peana.** En red se pide y el servidor valida (`MSG.RECOGER`);
+   * el arma llega por el inventario de siempre y la respuesta la pone en la
+   * mano. En el entrenamiento, el motor hace lo mismo con su inventario local y
+   * la misma función (`recogerEnInventario`).
+   */
+  _recogerPeana(i) {
+    const clave = this.scenario.peanas[i]?.arma
+    if (!clave || this._peanaLlena(clave)) return
+    if (this.enRed) {
+      this.net.recoger?.(i)
+      return
+    }
+    if (!this._invLocal) return
+    const r = recogerEnInventario(this._invLocal, clave)
+    if (!r.ok) { this._showHelp(`No cabe: ${r.motivo}`); return }
+    this._aplicarInventario(this._invLocal)
+    this._alRecoger(clave, r.recarga, i)
+  }
+
+  /** Lo que pasa en tu pantalla al coger un arma: en la mano, llena, con su voz y su destello. */
+  _alRecoger(clave, recarga, i) {
+    const slot = WEAPONS[clave]?.slot
+    if (slot === 'throwable') this.slots.throwable = clave
+    if (recarga) {
+      if (clave === this.weaponKey) { this._cancelReload(); this._refillMagazine() }
+      else delete this._stowed[clave]
+    }
+    if (slot && this.slots[slot] === clave && this.weaponKey !== clave) this._equipSlot(slot)
+    playEquip('arma')
+    const p = this.scenario.peanas[i]
+    if (p) this.dispositivos.emitir('rebote', p.x, p.y + PEANAS.zocaloAltoU, p.z, 0, this.gameTime)
+    this._avisoPeana = undefined
   }
 
   _equipSlot(slot) {
@@ -1945,6 +2113,7 @@ export class Engine {
     this._cancelReload()
     this._resetLoadout()
     this._reiniciarReservas()
+    this._salirConElEquipoDelMapa()
     this._refillMagazine()
     this.granadas?.limpiar()
     /**
@@ -2270,6 +2439,8 @@ export class Engine {
     // en una prueba que ponía ese estado a mano, y no se podía oír jugando.
     if (this.ammo <= 0) {
       playDrySound()
+      // Y la silueta del HUD tiembla a la vez que suena (vuelta 106).
+      this.callbacks.onArma?.('seco')
       // Pedir R mientras la recarga ya corre sería un mal consejo: el HUD
       // enseña su barra y no hay nada que pulsar.
       if (!this.reloading) this._showHelp(`Pulsa ${this._tecla('reload')} para recargar`)
@@ -3089,6 +3260,8 @@ export class Engine {
     // repone munición, no te cambia de arma.
     this._stowed = {}
     this._reiniciarReservas()
+    // Sin red, reaparecer es volver a salir: lo recogido se pierde (vuelta 106).
+    if (!this.enRed) this._salirConElEquipoDelMapa()
     this._refillMagazine()
     // **Y la pantalla se limpia**: heredar la ceguera de la vida anterior sería
     // aparecer sin poder ver por algo que le pasó a un cuerpo que ya no existe.
@@ -3283,6 +3456,18 @@ export class Engine {
       event.preventDefault()
       this._defuseHeld = true
       if (this.objective.isPlayerInRange(this.camera)) return
+      /**
+       * **Una peana apuntada va antes que el cable** (vuelta 106, propuesta
+       * 08): apuntar a algo concreto es más deliberado que estar cerca de algo,
+       * y al revés, quien apunta a un rifle debajo del anclaje de una tirolina
+       * saldría volando. Y **no escribe la tecla**: si la escribiera, el mismo
+       * flanco te colgaría además del cable.
+       */
+      const peana = this._buscarPeanaApuntada()
+      if (peana >= 0) {
+        this._recogerPeana(peana)
+        return
+      }
       this.movement.input.use = true
       if (!this.movement.hayTirolinaAlAlcance()) this._equipUltimate()
       return
@@ -3912,6 +4097,10 @@ export class Engine {
     }
 
     this.shots += 1
+    // **Lo que se ve de tu disparo, en el mismo sitio para los dos modos**
+    // (vuelta 106): aquí pasan el disparo en red, el del entrenamiento y el
+    // perdigonazo, y ninguno ha salido todavía por una rama propia.
+    this._sentirDisparo()
 
     /**
      * **En red el disparo no se resuelve aquí: se manda** (vuelta 56). Quién
@@ -4215,6 +4404,10 @@ export class Engine {
      * Y el cohete estrena lo que no había: **un sonido que dura mientras
      * vuela**, con su asa para pararlo al estallar.
      */
+    // **Y lo que se ve de un lanzamiento** (vuelta 106): el cohete lleva
+    // fogonazo y patada, como un disparo; el arco y lo que se tira sólo mueven
+    // la silueta del HUD, que no queman pólvora.
+    this._sentirDisparo(l.tipo === 'cohete')
     if (l.tipo === 'cohete') {
       this._emisorDispositivo.setPosition(l.x, l.y, l.z)
       playRocket('salida', this._emisorDispositivo)
@@ -4921,6 +5114,9 @@ export class Engine {
     // El fondo panorámico va con la cámara en posición (vuelta 77): se coloca
     // con la pose ya interpolada y antes de dibujar, como todo lo demás.
     this.scenario.seguirConFondo(this.camera)
+    // Las peanas: el giro, sus fichas y el aviso de la E (vuelta 106).
+    this.dibujoPeanas.update(this.camera, now)
+    this._actualizarAvisoDePeana()
     /**
      * **Y el láser de la curva y los proyectiles se dibujan con la pose
      * interpolada** (vuelta 85), que es por lo que van aquí dentro y no en el
@@ -4941,9 +5137,11 @@ export class Engine {
     // pantalla de menú opaca no hay nada que ver y sí una tarjeta gráfica que
     // gastar. Ver `dibujar`.
     if (this._dibujar !== false) {
+      const sacude = this._aplicarSacudida(now)
       this.renderer.render(this.scene, this.camera)
       this._dibujarArmaEnMano(delta)
       this.cssRenderer.render(this.cssScene, this.camera)
+      if (sacude) this._quitarSacudida()
     }
 
     // **Y se devuelve.** La pose interpolada vive sólo lo que dura el dibujado:
@@ -5266,6 +5464,87 @@ export class Engine {
     this.trayectoria.dibujar(
       this.camera.position, _velSalida, tiro.gravedad, carga, this._cortarSegmento, _desvio,
     )
+  }
+
+  /**
+   * **Lo que se ve de un disparo tuyo, sin un arma en pantalla** (vuelta 106,
+   * propuesta 13). Tres cosas y un solo sitio que las enciende, que es por lo
+   * que no pueden desfasarse de la bala: el fogonazo, la sacudida de la vista
+   * y el aviso a la silueta del HUD.
+   *
+   * @param {boolean} [conPolvora] en un lanzamiento, si es un cohete: el arco y
+   *   lo que se tira sólo mueven la silueta.
+   */
+  _sentirDisparo(conPolvora = !this.armaDeTiro) {
+    this.callbacks.onArma?.('disparo')
+    if (!conPolvora) return
+    this.fogonazo?.show(this.weaponKey, {
+      silenciado: this.suppressorEnabled,
+      // Un destello de cada dos, más flojo, con fuego automático.
+      alterno: this.weapon.mode === 'auto' && this._sprayIndex % 2 === 1,
+    })
+    if (!this._conSacudida) return
+    const s = SENSACION.sacudida
+    const paso = this.weapon.recoil?.[0]?.[0]
+    let escala = this.armaDeTiro?.proyectil === 'cohete' ? s.escalaCohete : paso ? paso / s.pasoDeReferencia : 0
+    if (escala <= 0) return
+    escala = Math.min(s.escalaMax, Math.max(s.escalaMin, escala))
+    // Un disparo que llega con la anterior todavía viva no la suma: empieza
+    // otra con la mayor de las dos, o el automático acabaría en un terremoto.
+    const viva = this._amplitudDeSacudida(performance.now())
+    this._sacudidaDesde = performance.now()
+    this._sacudidaEscala = Math.max(escala, viva)
+  }
+
+  /** Cuánto queda de la sacudida en curso, de 0 al pico de su escala. */
+  _amplitudDeSacudida(now) {
+    const s = SENSACION.sacudida
+    const t = now - (this._sacudidaDesde ?? -Infinity)
+    if (!(t >= 0) || t >= s.duracionMs) return 0
+    if (t < s.subidaMs) return this._sacudidaEscala * (t / s.subidaMs)
+    const u = 1 - (t - s.subidaMs) / (s.duracionMs - s.subidaMs)
+    return this._sacudidaEscala * u * u
+  }
+
+  /**
+   * **La sacudida vive lo que dura el dibujado**, como la pose interpolada
+   * (vuelta 44): se pone justo antes de `render()` y `_quitarSacudida` deja la
+   * cámara **exactamente** como estaba —se guardan los valores, no se resta—,
+   * así que la mira no se entera. Es la regla de la vuelta 61 por la otra
+   * punta: el retroceso mueve la mira y no vuelve solo; esto vuelve solo
+   * porque no es la mira.
+   *
+   * @returns {boolean} si ha tocado la cámara
+   */
+  _aplicarSacudida(now) {
+    if (!this._conSacudida || this._avatarDebug || this.phase !== PHASE.RUNNING) return false
+    const a = this._amplitudDeSacudida(now)
+    if (a <= 0) return false
+    const s = SENSACION.sacudida
+    const cam = this.camera
+    _sacudidaAntes.copy(cam.position)
+    this._sacudidaPitch = cam.rotation.x
+    this._sacudidaFov = cam.fov
+    const yaw = cam.rotation.y
+    const pitch = cam.rotation.x
+    const cp = Math.cos(pitch)
+    const atras = s.atrasU * a
+    cam.position.x += Math.sin(yaw) * cp * atras
+    cam.position.y -= Math.sin(pitch) * atras
+    cam.position.z += Math.cos(yaw) * cp * atras
+    cam.rotation.x = pitch + THREE.MathUtils.degToRad(s.arribaDeg * a)
+    cam.fov = this._sacudidaFov * (1 - s.fov * a)
+    cam.updateProjectionMatrix()
+    return true
+  }
+
+  _quitarSacudida() {
+    const cam = this.camera
+    cam.position.copy(_sacudidaAntes)
+    cam.rotation.x = this._sacudidaPitch
+    cam.fov = this._sacudidaFov
+    cam.updateProjectionMatrix()
+    cam.updateMatrixWorld()
   }
 
   /** Devuelve la cámara a la pose autoritativa en cuanto se ha dibujado. */

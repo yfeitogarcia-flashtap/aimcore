@@ -985,6 +985,11 @@ export class ClienteRed {
       this.onEconomia?.(this.economia)
       return
     }
+    // **La respuesta a recoger una peana** (vuelta 106): sí o no, y siempre.
+    if (mensaje.t === MSG.RECOGER) {
+      this.onRecogida?.(mensaje)
+      return
+    }
     if (mensaje.t === MSG.FOTO) this._reconciliar(mensaje)
   }
 
@@ -998,6 +1003,17 @@ export class ClienteRed {
   comprar(clave, arma = null) {
     if (!this.conectado) return
     this.transporte.send(JSON.stringify({ t: MSG.COMPRAR, q: clave, ...(arma ? { a: arma } : null) }))
+  }
+
+  /**
+   * **Pedir una peana** (vuelta 106). Como comprar: se manda y ya, y el arma
+   * llega por `MSG.ECONOMIA` un viaje después. No se predice —un viaje no se
+   * nota en algo que está quieto (vuelta 90), y predecirlo sería una segunda
+   * idea de qué llevas—.
+   */
+  recoger(i) {
+    if (!this.conectado) return
+    this.transporte.send(JSON.stringify({ t: MSG.RECOGER, i }))
   }
 
   /** ¿He dicho «listo» en esta compra sin límite? Lo dice el servidor, en la foto. */

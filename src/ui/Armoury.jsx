@@ -1,3 +1,4 @@
+import { armaPermitida } from '../game/arsenal.js'
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import {
   CAMERA,
@@ -280,7 +281,7 @@ for (const arma of Object.values(WEAPONS)) {
   ARMAS_POR_RANURA[arma.slot] = (ARMAS_POR_RANURA[arma.slot] ?? 0) + 1
 }
 
-function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip, onSuppressor, soloFicha }) {
+function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip, onSuppressor, soloFicha, permitida = true }) {
   const weapon = WEAPONS[weaponKey]
   const precio = lineaDePrecio(weaponKey)
   // **Una ranura con un arma sola no ofrece ninguna decisión**, así que su
@@ -348,6 +349,10 @@ function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip,
           // La pistola no se equipa: se lleva. Ocupa el hueco del botón con la
           // razón por la que no lo tiene, que es lo que alguien va a buscar ahí.
           <span className="armoury__fixed">Siempre encima</span>
+        ) : !permitida ? (
+          // **Lo que el mapa no admite no se equipa, y se dice** (vuelta 106):
+          // en el hueco del botón, que es donde se busca por qué no hay botón.
+          <span className="armoury__fixed">No en este mapa</span>
         ) : (
           <button
             type="button"
@@ -585,7 +590,7 @@ function WeaponCard({ weaponKey, equipped, inHand, suppressed, slotKey, onEquip,
  *   onClose: () => void,
  * }} props
  */
-export default function Armoury({ settings, equipped, onChange, onClose, soloFicha = false }) {
+export default function Armoury({ settings, equipped, onChange, onClose, soloFicha = false, reglas = null }) {
   /**
    * **Por categorías, y una cada vez** (vuelta 92). Eran las catorce fichas
    * seguidas en una rejilla, y con el arsenal cerrado eso son tres filas y
@@ -713,6 +718,7 @@ export default function Armoury({ settings, equipped, onChange, onClose, soloFic
       const arma = item && WEAPONS[item.clave]
       if (!item) setAviso(`${ahora[0]} ${ahora[1]} · no hay nada ahí`)
       else if (!arma) setAviso(`${ahora[0]} ${ahora[1]} · ${item.nombre} se compra en el duelo`)
+      else if (!armaPermitida(reglas, item.clave)) setAviso(`${ahora[0]} ${ahora[1]} · ${item.nombre} no se juega en este mapa`)
       else {
         setAviso(`${ahora[0]} ${ahora[1]} · ${item.nombre}`)
         // Se abre su categoría: equipar algo sin ver qué has equipado es lo
@@ -723,7 +729,7 @@ export default function Armoury({ settings, equipped, onChange, onClose, soloFic
     }
     window.addEventListener('keydown', onKey, true)
     return () => window.removeEventListener('keydown', onKey, true)
-  }, [soloFicha, onChange])
+  }, [soloFicha, onChange, reglas])
 
   /**
    * **Y el foco va al panel, no al botón de cerrar** (vuelta 92, con la lección
@@ -813,6 +819,7 @@ export default function Armoury({ settings, equipped, onChange, onClose, soloFic
             onEquip={(next) => onChange({ [SLOT_SETTING[WEAPONS[next].slot]]: next })}
             onSuppressor={toggleSuppressor}
             soloFicha={soloFicha}
+            permitida={armaPermitida(reglas, key)}
           />
         ))}
       </div>

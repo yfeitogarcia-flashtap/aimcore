@@ -93,11 +93,14 @@ geometría. Está entero en §3 y en `docs/decisions.md` §93.8. Para todo lo de
 | Fuego enemigo | `src/game/enemyFire.js` | Los muñecos disparando: visión, reacción, cadencia y cono. Y **publica en qué fase está cada uno**. |
 | Marcadores | `src/game/markers.js` | Brújula, iconos `?` / `!` y ficha arma+nick sobre cada muñeco. Sólo dibuja, y la brújula **sólo a quien se ve de verdad**. |
 | Fogonazo | `src/game/muzzleFlash.js` | El destello de cada disparo enemigo. Pool de estrellas aditivas; sólo dibuja. |
+| Fogonazo propio | `src/game/fogonazo.js` | La luz de **tu** disparo, abajo a la derecha del centro (vuelta 106). Un degradado animado en el compositor, por debajo del HUD. **Del motor, con su propia hoja de estilos**, para los dos modos. |
 | Destello de dispositivo | `src/game/dispositivos.js` | El anillo de usar un rebote, una plataforma de velocidad o una puerta. **Del motor**, así que sale en los dos modos; pool de anillos aditivos, sólo dibuja. |
 | Proyectiles | `src/game/proyectiles.js` | **Lo que vuela y tarda en llegar**: parábolas en forma cerrada y contra qué chocan. No sabe dibujar ni a quién hiere — eso cambia según quién lo llame. **Sin three**, así que lo montan el motor, el duelo y `net/partida.js` en Node. |
 | Curva de tiro | `src/game/trayectoria.js` | El láser que dibuja lo que va a pasar, de la **misma fórmula** que el vuelo. Del motor, así que sale en los dos modos. |
 | Proyectil (dibujo) | `src/game/vuelo.js` | Sólo dibuja: `InstancedMesh` como `impacts.js` —el huso de lo que vuela y **la esfera de neón de una granada**, con su franja y su resplandor (vuelta 103)—, con la estela orientada a la velocidad y **más larga cuanto más cargado salió**. |
-| Arma en mano | `src/game/armaEnMano.js` | **Maqueta** (vuelta 103, rehecha en la 104 y calibrada en la 105; apagada de fábrica): la silueta del arma extruida y con aristas redondeadas, **empuñada** por una esfera del color del jugador, en una segunda pasada con su propia cámara de FOV fijo y sus dos luces. **Una colocación por tipo de arma** (`VIEWMODEL.poses`). Sólo dibuja. |
+| Arma en mano | `src/game/armaEnMano.js` | **Tema cerrado en la vuelta 106: código conservado y sin construirse** (`VIEWMODEL.disponible`). Maqueta (vuelta 103, rehecha en la 104 y calibrada en la 105): la silueta del arma extruida y con aristas redondeadas, **empuñada** por una esfera del color del jugador, en una segunda pasada con su propia cámara de FOV fijo y sus dos luces. **Una colocación por tipo de arma** (`VIEWMODEL.poses`). Sólo dibuja. |
+| Arsenal del mapa | `src/game/arsenal.js` | **Con qué se juega en un mapa** (vuelta 106): qué armas admite, con qué sale cada uno, qué pasa al coger de una peana y qué peana se apunta. **Sin `three`**, y lo llaman los tres que deciden: el servidor, el motor y Alchemist. |
+| Peanas (dibujo) | `src/game/peanas.js` | El zócalo, el arma plana encarada a quien mira y su ficha con línea de visión. `InstancedMesh` por arma; sólo dibuja. |
 | Clavados | `src/game/clavadas.js` | **Lo que un jugador deja en el mundo y se puede volver a coger**: hoy los cuchillos del Fang. Sin `three`, como `proyectiles.js`, porque lo montan el motor **y el servidor**; lo dibuja `vuelo.js`. |
 | Ceguera y aturdimiento | `src/game/granadas.js` | Lo que una Blind y una KO le hacen a **la pantalla**. **Del motor, con su propia hoja de estilos**, para que salga igual en los dos modos. |
 | Recogibles | `src/game/pickups.js` | Cruces de vida, cargas de escudo y casco por el suelo. |
@@ -1088,6 +1091,38 @@ reconexión y **la segunda entraba en la butaca de la primera**: dos mandos, un
 jugador, y un recuento de tres siendo cuatro. El pase va con un identificador de
 pestaña (`sessionStorage`), y si un pase vuelve a entrar el huésped **cierra el
 cable viejo** en vez de dejar dos en una butaca.
+
+**Un mapa dice con qué se juega en él** (vuelta 106, fase 1 de la propuesta 08).
+**Ésta es la convención permanente para cualquier cosa que decida qué arma puede
+tener un jugador.** Un mapa declara `reglas` —las armas que admite y **cómo se
+consiguen**: Armería, Equipadas o Peanas— y `peanas`, armas puestas en el suelo que
+no se agotan. **El modo lo decide el mapa, no el anfitrión** (Yago, vuelta 106).
+Cinco reglas:
+
+- **Una sola lógica para los tres que deciden** (`src/game/arsenal.js`, sin
+  `three`): el servidor, el motor del entrenamiento —que hace de servidor de sí
+  mismo con un inventario local— y Alchemist.
+- **Un mapa sin reglas es Armería con todo**, y Los Pilares se **lee** como
+  Equipadas sin tocar su fichero. `reglas` y `peanas` no se escriben si no dicen
+  nada, así que los mapas de hoy no cambian ni un byte.
+- **Se coge apuntando y con la E, y pisarla no la coge**: estando encima cuenta
+  mirar el arma, no estar dentro del cilindro de agarre. La peana va en la E
+  **detrás del explosivo y delante del cable**, y la pulsación que coge no escribe
+  la tecla. Coger la que llevas la recarga; llega con la munición de comprarla.
+- **El servidor valida y contesta siempre** (`MSG.RECOGER`): vivo, modo Peanas,
+  el mapa admite el arma, distancia con holgura y pared, sin rebobinar. El arma
+  llega por el inventario de siempre, que ahora viaja **también sin rondas**. Y el
+  arma que declara una entrada tiene que ser **una que llevas y que el mapa
+  admite**.
+- **Lo que se ve es la silueta plana encarada a quien mira**, no extruida: 160
+  peanas son 33 000 triángulos (el Plano A, 9 500) y extruidas eran 185 000. La
+  ficha sale sólo con línea de visión y **no a menos de 4 u**, donde el aviso bajo
+  la mira ya lo dice.
+
+Medido (`peanas106`, `peanas106nav`): recoger, recargar, no agotarse, no cogerse
+pisando, la ficha detrás de un muro, la validación del servidor en los tres modos,
+y 21 µs por frame con 160. **El viaje en red con dos navegadores está pendiente**
+(V106-1 en `docs/beta-cerrada.md`): ningún mapa publicado tiene peanas todavía.
 
 **Todo el tuning en `config.js`.** Ninguna constante de juego vive suelta en un
 módulo. Si necesitas un número nuevo, va a `config.js` aunque lo use un solo
@@ -2779,9 +2814,11 @@ tuning:
   SPACE da un salto desde la 68, y el flanco se deduce comparando la máscara de
   este paso con la del anterior: no hace falta ni un campo más en el protocolo.
 
-**Y la tecla contextual reparte ahora tres cosas, en este orden**: dentro del
+**Y la tecla contextual reparte ahora cuatro cosas, en este orden**: dentro del
 radio del explosivo `use` desactiva y **nunca hace nada más ahí dentro** (vuelta
-27); fuera manda el cable que tengas al alcance; y si no hay cable, el artilugio.
+27); fuera, **la peana que apuntes** (vuelta 106: apuntar a algo concreto es más
+deliberado que estar cerca de algo); si no, el cable que tengas al alcance; y si
+no hay cable, el artilugio.
 Quién dice que hay cable es **el propio movimiento** (`hayTirolinaAlAlcance`), no
 una segunda cuenta desde el motor — dos ideas de «estoy al lado de un cable» se
 despegarían el día que una cambie de radio.
@@ -4503,7 +4540,8 @@ Y no se anima:
   que te han dado a ti, dibujado alrededor de ella, y es uno de los tres canales
   de la vuelta 40. Quitarlo sería quitar información, no animación.
 
-**Sin arma visible, en ninguna parte** — la maqueta de la vuelta 103 sigue en el
+**Sin arma visible, en ninguna parte, y es tema cerrado** (vuelta 106, decisión
+de Yago: no se hacen más pilotos) — la maqueta de la vuelta 103 sigue en el
 código, **sin fila en Opciones y sin construirse** desde la 105
 (`VIEWMODEL.disponible`). Ni en tercera persona
 ni en primera. Lo que se dibuja de un arma es su silueta —en el HUD y en la
@@ -4548,9 +4586,35 @@ contorno en líneas finas del color del jugador (`VIEWMODEL.holograma`, Krakov y
 Pulse). Si no es claramente mejor que no llevar arma, el tema se cierra, y la
 lámina de la 105 dice que no lo es.
 
-**Y para la beta no hay arma en pantalla**: la fila de Opciones se quitó y el motor
-no la construye aunque el ajuste guardado esté encendido. Lo decide
-`VIEWMODEL.disponible`, no el ajuste, que se sigue guardando por si vuelve.
+**Y no hay arma en pantalla**: la fila de Opciones se quitó y el motor no la
+construye aunque el ajuste guardado esté encendido. Lo decide
+`VIEWMODEL.disponible`, no el ajuste, que se sigue guardando por si el tema se
+reabre. El holográfico tampoco siguió: la vuelta 106 lo cerró (`decisions.md`
+§106.2).
+
+**Lo que cuenta el disparo en su lugar es luz, un golpe de la vista y el HUD**
+(vuelta 106, propuesta 13). **Un solo sitio los enciende** (`_sentirDisparo`),
+justo después de contar la bala, y todo el tuning está en `SENSACION`. Tres
+reglas:
+
+- **El fogonazo es luz, no un objeto** (`src/game/fogonazo.js`): un degradado
+  cálido abajo a la derecha del centro, por debajo del HUD y animado en el
+  compositor. Su color **no es de la paleta** a propósito: no es una señal. Con
+  silenciador pesa un 20 %; el arco y lo que se tira no lo encienden, porque no
+  queman pólvora.
+- **La sacudida vive lo que dura el dibujado**, como la pose interpolada de la
+  44: se pone antes de `render()` y `_quitarSacudida` **devuelve los valores
+  guardados**, no resta. Así la mira no se entera, que es lo que se pidió: el
+  retroceso sigue siendo lo único que mueve la mira, y no vuelve solo (vuelta 61).
+  Se apaga en Opciones (`sacudidaCamara`, encendida de fábrica).
+- **La silueta del HUD son dos copias**: la de abajo se apaga recargando y la de
+  encima se llena con el mismo progreso que la barra. Recula al disparar, tiembla
+  en seco y salta con cada cartucho. Por refs y animaciones del navegador: ni un
+  `setState` por disparo.
+
+Medido (`sensacion106`): una luz por bala, la cámara igual al último decimal tras
+cada dibujo, 13–16 µs por frame la sacudida y 72–100 µs por disparo las tres, y
+los FPS disparando iguales con y sin ellas.
 
 **Los colores de equipo se eligieron midiendo, y la paleta libre es estrecha.**
 Están cogidos el naranja (dianas), el rojo (te disparan), el verde (botones y
@@ -6460,6 +6524,15 @@ centrada, rifles abajo a la derecha con la culata fuera de la pantalla, el cuchi
 con la hoja hacia arriba— y apuntando a la mira; recula al disparar y se esconde
 con la mirilla.
 
+**Y desde la vuelta 106 disparar se siente, y un mapa puede tener peanas.** Cada
+bala enciende una luz cálida abajo a la derecha, un golpe de la vista que no mueve
+la mira (se quita en *Opciones → Sacudida de cámara al disparar*) y la silueta del
+HUD recula, se apaga y se rellena al recargar y tiembla en seco. Y en Alchemist
+hay una hoja **Reglas** —con su icono en el raíl— donde un mapa elige sus armas y
+cómo se consiguen: **Armería** (se compra o se equipa, como siempre), **Equipadas**
+(todos salen con lo mismo) o **Peanas** (armas en el suelo que se cogen apuntando
+y con la E, y no se agotan). La armería y el lobby dicen qué armas admite el mapa.
+
 **Y desde la vuelta 56 el duelo lo lleva el motor completo** (la «Opción B»).
 La página del duelo ya no monta una escena mínima: instancia `engine.js` y le
 entrega el cliente de red. Lo que eso trae a una partida real es **el arma de
@@ -7309,8 +7382,8 @@ abrirlas:
 - **Y las dos de la vuelta 95 van al final de la cola** (08 y 09): la 96 las puso
   detrás de cerrar Alchemist y la 97 les metió delante el bloque de las salas.
 
-- **08 — el arsenal del mapa** (reescrita en la vuelta 105 con las reglas de Yago,
-  y **esperando su aprobación**). Un panel «Reglas de partida» guardado en el mapa:
+- **08 — el arsenal del mapa. Su fase 1 está hecha en la vuelta 106** (§3, «Un mapa
+  dice con qué se juega en él»); queda la fase de desvanecerse. Lo que decía: Un panel «Reglas de partida» guardado en el mapa:
   las armas del mapa, marcadas por código y guardadas por clave, y **tres modos
   excluyentes**: Equipadas, Peanas y Armería. Un mapa sin reglas es Armería con
   todo, o sea lo de hoy, y Los Pilares se lee como Equipadas sin tocar su fichero.
@@ -7353,12 +7426,9 @@ sigue pudiendo jugar sin cuenta, en igualdad** —es lo que protege la promesa d
 enlace por código— y **la presencia no puede convertirse en un registro de
 salas**, que es lo que la vuelta 47 decidió que no hubiera.
 
-**La sensación de disparo sin arma en pantalla está propuesta y sin construir**
-(vuelta 105): `docs/propuestas/13-sensacion-de-disparo.md`. Son tres cosas
-baratas: un fogonazo de luz abajo a la derecha, un golpe de cámara que vuelve
-solo y va sólo en el dibujo (la mira sigue sin volver sola), y la silueta del HUD
-reaccionando al disparar, al recargar y en seco. Se juzgan al lado del piloto
-holográfico.
+**La sensación de disparo sin arma en pantalla se construyó en la vuelta 106**
+(propuesta 13; §3, junto a «Sin arma visible»). Lo que queda es calibrarla
+jugando, con los números de `SENSACION` delante.
 
 **La música está valorada y sin construir** (vuelta 104):
 `docs/propuestas/12-musica.md`. **Spotify no se integra**: su política prohíbe

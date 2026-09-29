@@ -633,6 +633,50 @@ body {
 
 
 
+/**
+ * **El aviso de la peana que apuntas** (vuelta 106): bajo la mira, un poco más
+ * cerca que los mensajes de ayuda, porque es lo que hace la tecla ahora mismo.
+ * En el amarillo de los dispositivos, que es el color del zócalo.
+ */
+.hud__peana {
+  z-index: 2;
+  position: absolute;
+  left: 50%;
+  top: calc(50% + 42px);
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 4px 10px;
+  font-size: 13px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--dispositivo, #FFC21E);
+  background: rgba(10, 10, 10, 0.55);
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+/**
+ * **La silueta que reacciona** (vuelta 106, propuesta 13). El bloque recula y
+ * tiembla con animaciones que pone `Hud.jsx`; aquí vive lo que dura toda una
+ * recarga: la silueta de siempre apagada y una copia exacta encima que se
+ * llena de atrás adelante (el recorte lo escribe el HUD con el progreso).
+ */
+.hud__silueta {
+  position: relative;
+  line-height: 0;
+}
+.hud__silueta-llena {
+  position: absolute;
+  inset: 0;
+  display: none;
+}
+.hud__silueta--recargando > .weapon__svg {
+  opacity: var(--silueta-apagada, 0.3);
+}
+.hud__silueta--recargando > .hud__silueta-llena {
+  display: block;
+}
+
 .hud__ammo {
   display: flex;
   align-items: baseline;

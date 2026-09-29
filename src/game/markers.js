@@ -212,7 +212,7 @@ function queryShapes(size) {
  * La ficha: dos filas de DOM, silueta arriba y nick debajo. Se construye a mano
  * y no con React porque vive en la escena del `CSS3DRenderer`, fuera del árbol.
  */
-function nameplateElement() {
+export function nameplateElement() {
   const root = document.createElement('div')
   root.className = 'nameplate'
   const weapon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')

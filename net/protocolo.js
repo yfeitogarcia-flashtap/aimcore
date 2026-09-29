@@ -117,6 +117,16 @@ export const MSG = {
    */
   COMPRAR: 'm',
   /**
+   * **Recoger una peana** (vuelta 106, propuesta 08). Del cliente, `{ i }`: el
+   * índice de la peana en la lista del mapa, que los dos extremos derivan del
+   * mismo fichero sin que viaje nada (vuelta 90). El servidor comprueba —vivo,
+   * modo Peanas, alcance con holgura y sin pared— y contesta **siempre** con el
+   * mismo verbo, `{ i, ok, a, rc }`: si no, el aviso de la mira se quedaría
+   * esperando algo que no va a llegar (vuelta 56). Lo recogido llega además por
+   * `ECONOMIA`, que es el inventario de siempre.
+   */
+  RECOGER: 'rp',
+  /**
    * **Listo para empezar la ronda** (vuelta 102), sólo en la compra **sin
    * límite**: ahí no hay reloj que la cierre, así que la cierra que todos los
    * que están conectados lo digan. `v` es 1 o 0 —se puede desmarcar— y el

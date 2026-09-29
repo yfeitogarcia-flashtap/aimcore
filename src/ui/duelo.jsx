@@ -89,6 +89,8 @@ function CapaDuelo({ api, alCerrarPanel, equipa: equipaInicial = false }) {
    * no hay HUD: no hay partida que medir.
    */
   const [equipa, setEquipa] = useState(equipaInicial)
+  /** Las reglas del mapa de la partida (vuelta 106): qué admite la armería. */
+  const [reglas, setReglas] = useState(null)
   const [conHud, setConHud] = useState(true)
 
   const hudRef = useRef(null)
@@ -116,6 +118,7 @@ function CapaDuelo({ api, alCerrarPanel, equipa: equipaInicial = false }) {
     api.setACuchillo = setACuchillo
     api.setPanel = setPanel
     api.setEquipa = setEquipa
+    api.setReglas = setReglas
     api.setConHud = setConHud
     api.leerPanel = () => panel
   })
@@ -163,6 +166,7 @@ function CapaDuelo({ api, alCerrarPanel, equipa: equipaInicial = false }) {
               onChange={updateSettings}
               onClose={cerrar}
               soloFicha={!equipa}
+              reglas={reglas}
             />
           )}
         </div>
@@ -191,6 +195,10 @@ export function montarCapaDeDuelo(contenedor, { alCerrarPanel, equipa = false } 
   return {
     /** Por frame. Escribe por refs; si aún no ha montado, no hace nada. */
     pintar: (stats) => api.hud?.current?.update(stats),
+    /** La silueta del HUD reacciona al disparo y al gatillo en seco (vuelta 106). */
+    reaccionArma: (evento) => api.hud?.current?.reaccionArma(evento),
+    /** Lo que hará la E con la peana que apuntas (vuelta 106). */
+    avisoDePeana: (texto) => api.hud?.current?.avisoDePeana(texto),
     dano: (fraccion, rumbo) => {
       api.hud?.current?.damageFrom(rumbo ?? 0, fraccion)
       api.mira?.current?.damage(fraccion)
@@ -206,6 +214,7 @@ export function montarCapaDeDuelo(contenedor, { alCerrarPanel, equipa = false } 
     panel: (cual) => api.setPanel?.(cual),
     hayPanel: () => Boolean(api.leerPanel?.()),
     equipa: (valor) => api.setEquipa?.(Boolean(valor)),
+    reglas: (valor) => api.setReglas?.(valor ?? null),
     conHud: (valor) => api.setConHud?.(Boolean(valor)),
   }
 }

@@ -3,7 +3,7 @@ import { VektorMark } from './Logo.jsx'
 import WeaponSilhouette from './WeaponSilhouette.jsx'
 import { STAR_PATH } from './Stars.jsx'
 import { ICON_PATHS } from './iconPaths.js'
-import { FEEDBACK, PLAYER, WEAPONS, WEAPON_MODES } from '../config.js'
+import { FEEDBACK, PLAYER, SENSACION, WEAPONS, WEAPON_MODES } from '../config.js'
 import { ratio } from './Summary.jsx'
 
 /**
@@ -104,6 +104,19 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed, dinero = null, duel
   const scoreDeathsRef = useRef(null)
   const scoreAccuracyRef = useRef(null)
   const scoreRatioRef = useRef(null)
+  /**
+   * **La silueta que reacciona** (vuelta 106, propuesta 13): el bloque que
+   * recula y tiembla, y la copia de encima que se llena de atrás adelante
+   * mientras se recarga. Por refs y con animaciones del navegador, como todo el
+   * HUD: ni un `setState` por disparo.
+   */
+  const siluetaRef = useRef(null)
+  /** El aviso de la peana que apuntas (vuelta 106), bajo la mira. */
+  const peanaRef = useRef(null)
+  const llenaRef = useRef(null)
+  /** El arma de este render, para saber en `update` si recarga por cartuchos. */
+  const armaRef = useRef(weaponKey)
+  armaRef.current = weaponKey
 
   // Últimos valores mostrados, como números: comparamos antes de formatear,
   // así que un frame que no cambia nada no genera ni un string.
@@ -135,6 +148,8 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed, dinero = null, duel
     scoreKills: -1,
     scoreDeaths: -1,
     scoreAccuracy: -1,
+    ammoN: -1,
+    llenado: -1,
   })
 
   useImperativeHandle(ref, () => ({
@@ -224,13 +239,83 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed, dinero = null, duel
 
       if (stats.reloading !== last.reloading) {
         if (reloadRef.current) reloadRef.current.hidden = !stats.reloading
+        siluetaRef.current?.classList.toggle('hud__silueta--recargando', Boolean(stats.reloading))
         last.reloading = stats.reloading
+        last.llenado = -1
       }
-      if (stats.reloading && reloadBarRef.current) {
-        reloadBarRef.current.style.transform = `scaleX(${stats.reloadProgress.toFixed(3)})`
+      /**
+       * **Recargando, la silueta se apaga y se llena de atrás adelante**
+       * (vuelta 106). Es la misma cuenta que la barra de debajo, así que no
+       * puede ir a otro ritmo, y se para sola si la recarga se corta. Con una
+       * escopeta lo lleno es lo que ya hay dentro más lo que entra ahora: el
+       * trazo crece cartucho a cartucho en vez de vaciarse con cada uno.
+       */
+      if (stats.reloading) {
+        if (reloadBarRef.current) reloadBarRef.current.style.transform = `scaleX(${stats.reloadProgress.toFixed(3)})`
+        const porCartucho = WEAPONS[armaRef.current]?.recargaPorCartucho && stats.magazine > 0
+        const lleno = porCartucho ? (stats.ammo + stats.reloadProgress) / stats.magazine : stats.reloadProgress
+        const pct = Math.round(Math.min(1, lleno) * 1000) / 10
+        if (pct !== last.llenado && llenaRef.current) {
+          // Las fotos miran a la izquierda: atrás es la derecha, y se llena
+          // desde ahí recortando por la izquierda.
+          llenaRef.current.style.clipPath = `inset(0 0 0 ${(100 - pct).toFixed(1)}%)`
+          last.llenado = pct
+        }
+        if (porCartucho && stats.ammo > last.ammoN && last.ammoN >= 0) this.reaccionArma('cartucho')
       }
+      last.ammoN = stats.ammo
 
       this.updateVitals(stats, last)
+    },
+
+    /**
+     * **Lo que va a hacer la tecla contextual con la peana que apuntas**
+     * (vuelta 106): «E · Recoger Krakov», o nada. Lo escribe el motor al
+     * cambiar, con la misma búsqueda que ejecuta la pulsación. Va aparte de los
+     * mensajes de ayuda porque dura lo que dura apuntar, no unos segundos, y
+     * sale aunque los mensajes de ayuda estén apagados: no es una ayuda, es lo
+     * que hace una tecla.
+     */
+    avisoDePeana(texto) {
+      const el = peanaRef.current
+      if (!el) return
+      el.hidden = !texto
+      if (texto) el.textContent = texto
+    },
+
+    /**
+     * **La silueta reacciona a lo que hace el arma** (vuelta 106, propuesta
+     * 13). Llega como pulsación desde el motor (`onArma`), no por frame, y es
+     * una animación del navegador sobre `transform` y `filter`.
+     *
+     * @param {'disparo'|'seco'|'cartucho'} evento
+     */
+    reaccionArma(evento) {
+      const el = siluetaRef.current
+      if (!el?.animate) return
+      const c = SENSACION.silueta
+      if (evento === 'disparo') {
+        el.animate(
+          [
+            { transform: 'none', filter: 'none' },
+            { transform: `translate(${c.atrasPx}px, ${-c.arribaPx}px) rotate(${c.giroDeg}deg)`, filter: `brightness(${c.brillo})`, offset: 0.2 },
+            { transform: 'none', filter: 'none' },
+          ],
+          { duration: c.disparoMs, easing: 'ease-out' },
+        )
+      } else if (evento === 'seco') {
+        const x = c.secoPx
+        el.animate(
+          [{ transform: 'none' }, { transform: `translateX(${-x}px)` }, { transform: `translateX(${x}px)` },
+            { transform: `translateX(${-x / 2}px)` }, { transform: 'none' }],
+          { duration: c.secoMs, easing: 'linear' },
+        )
+      } else if (evento === 'cartucho') {
+        el.animate(
+          [{ transform: 'none' }, { transform: `translateY(${-c.cartuchoPx}px)`, offset: 0.3 }, { transform: 'none' }],
+          { duration: c.cartuchoMs, easing: 'ease-out' },
+        )
+      }
     },
 
     /**
@@ -652,7 +737,19 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed, dinero = null, duel
         * pantalla.
         */}
       <div className="hud__weapon">
-        <WeaponSilhouette weaponKey={weaponKey} suppressed={suppressed} />
+        {/* **Dos veces la misma silueta** (vuelta 106): la de abajo se apaga al
+            recargar y la de encima se llena. Fuera de una recarga la de encima
+            no se dibuja. */}
+        <div
+          className="hud__silueta"
+          ref={siluetaRef}
+          style={{ '--silueta-apagada': SENSACION.silueta.apagada }}
+        >
+          <WeaponSilhouette weaponKey={weaponKey} suppressed={suppressed} />
+          <div className="hud__silueta-llena" ref={llenaRef} aria-hidden="true">
+            <WeaponSilhouette weaponKey={weaponKey} suppressed={suppressed} />
+          </div>
+        </div>
 
         <div className="hud__weapon-row">
           <span className="hud__weapon-name">
@@ -685,6 +782,7 @@ const Hud = forwardRef(function Hud({ weaponKey, suppressed, dinero = null, duel
       {/* **La ayuda se queda en el centro**, que es donde se lee una frase. Iba
           dentro del bloque de arma y se habría ido con él a la esquina. */}
       <p className="hud__help" ref={helpRef} hidden />
+      <p className="hud__peana" ref={peanaRef} hidden />
     </>
   )
 })

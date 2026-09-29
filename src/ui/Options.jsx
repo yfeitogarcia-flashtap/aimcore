@@ -232,6 +232,20 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
         }
       />
 
+      {/* **La sacudida de la vista al disparar** (vuelta 106, propuesta 13).
+          Encendida y suave de fábrica; la frase dice lo que no hace, porque es
+          lo que alguien que apunta al milímetro va a preguntarse. */}
+      <ToggleRow
+        setting="sacudidaCamara"
+        value={settings.sacudidaCamara}
+        onChange={onChange}
+        hint={
+          settings.sacudidaCamara
+            ? 'La vista da un golpe breve con cada disparo y vuelve sola. No mueve la mira: las balas van al mismo sitio.'
+            : 'Sin golpe de vista: disparar sólo se ve en el fogonazo, el retroceso y la silueta del arma.'
+        }
+      />
+
       {/* Para la beta, sin arma en pantalla (vuelta 105): la fila sólo sale con
           `VIEWMODEL.disponible`. */}
       {VIEWMODEL.disponible && <ToggleRow

@@ -17,11 +17,12 @@
 
 import * as THREE from 'three'
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
-import { COLORS, COVER, EQUIPOS, FANS, ROUNDS, SURFACES, TELEPORTS, TODOS, ZIPLINES, claveDeEscenario, coverColor, coverEdgeColor, coverHeight, coverTintedColor, definicionDeEscenario, fisicaDeEscenario, fondoDeEscenario, scenarioRoom } from '../config.js'
+import { COLORS, COVER, EQUIPOS, FANS, PEANAS, ROUNDS, SURFACES, TELEPORTS, TODOS, ZIPLINES, claveDeEscenario, coverColor, coverEdgeColor, coverHeight, coverTintedColor, definicionDeEscenario, fisicaDeEscenario, fondoDeEscenario, scenarioRoom } from '../config.js'
 import { bandaDePrisma, carasDePrisma, dentroDePrisma, envolventeDePrisma, puntosDePrisma } from '../maps/prisma.js'
 import { cajasDeTubos } from '../maps/tubo.js'
 import { cajasDeEscaleras } from '../maps/escalera.js'
 import { Estampados } from './estampados.js'
+import { centroDePeana, peanaApuntada, reglasDeMapa } from './arsenal.js'
 import { crearFondo } from './backdrop.js'
 
 /**
@@ -818,6 +819,22 @@ export class Scenario {
     this._pintarSuperficies()
 
     /**
+     * **Las reglas de partida y las peanas** (vuelta 106, propuesta 08). Las
+     * reglas salen de `reglasDeMapa`, que lee también las de antes (Los Pilares
+     * se lee como Equipadas sin tocar su fichero). Y cada peana **se apoya en lo
+     * más alto que haya en su sitio**, con la misma función que decide dónde
+     * pisas: no hay una `y` en el fichero que pueda dejarla flotando o dentro de
+     * una caja cuando alguien mueve la pieza de debajo.
+     */
+    this.reglas = reglasDeMapa(definition)
+    this.peanas = (definition.peanas ?? []).map((p) => ({
+      x: p.x,
+      z: p.z,
+      y: this.groundHeightAt(p.x, p.z, this.room.height),
+      arma: p.arma,
+    }))
+
+    /**
      * **La zona de aparición del jugador queda fuera del grafo.** Cualquier
      * punto de ruta que caiga dentro se descarta al construir, con el radio del
      * muñeco de margen: no hay dónde aparecer ni a dónde patrullar, así que la
@@ -1547,6 +1564,28 @@ export class Scenario {
    * Gana **el más cercano**, no el primero: con dos cables cruzándose, «el
    * primero de la lista» sería el orden en que se escribieron en el fichero.
    */
+  /**
+   * **La peana que se apunta desde unos ojos**, o -1 (vuelta 106). El rayo contra
+   * el volumen de agarre de cada una es aritmética (`peanaApuntada`), y sólo a
+   * la ganadora se le pregunta si hay pared en medio, con el mismo
+   * `cortarSegmento` que para una flecha. Sólo en modo Peanas: en cualquier otro
+   * las peanas del fichero se conservan pero no se cogen.
+   */
+  peanaApuntadaDesde(ox, oy, oz, dx, dy, dz) {
+    if (this.reglas.modo !== 'peanas' || this.peanas.length === 0) return -1
+    const i = peanaApuntada(this.peanas, ox, oy, oz, dx, dy, dz, {
+      alcance: PEANAS.alcanceU, radio: PEANAS.radioU, alto: PEANAS.altoAgarreU, alturaArma: PEANAS.alturaArmaU,
+    })
+    if (i < 0) return -1
+    return this.peanaALaVista(i, ox, oy, oz) ? i : -1
+  }
+
+  /** **Sin pared entre unos ojos y el arma de una peana.** Lo pregunta también el servidor. */
+  peanaALaVista(i, ox, oy, oz) {
+    const c = centroDePeana(this.peanas[i], PEANAS.alturaArmaU)
+    return this.cortarSegmento(ox, oy, oz, c.x, c.y, c.z) === null
+  }
+
   tirolinaAlAlcance(x, y, z) {
     let mejor = null
     for (let i = 0; i < this.tirolinas.length; i++) {
