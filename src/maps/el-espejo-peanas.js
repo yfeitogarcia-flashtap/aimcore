@@ -2,7 +2,9 @@
 export default {
   clave: "el-espejo-peanas",
   label: "El espejo peanas",
-  modos: [],
+  modos: [
+    "duelo",
+  ],
   soloDuelo: true,
   room: {"width":40,"depth":40,"height":10},
   spawn: {"x":0,"z":16},
