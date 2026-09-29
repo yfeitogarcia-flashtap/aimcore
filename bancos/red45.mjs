@@ -201,8 +201,17 @@ const sobrecoste = (filas[4].rtt - base) - 300
 console.log(`     base de la tubería sin red: ${base.toFixed(0)} ms · sobrecoste sobre los 300 inyectados: ${sobrecoste.toFixed(0)} ms`)
 ok(filas[4].rtt > filas[0].rtt + 250,
    `el RTT medido crece con la latencia inyectada: ${filas[0].rtt.toFixed(0)} -> ${filas[4].rtt.toFixed(0)} ms`)
-ok(sobrecoste < 150,
-   `y no la infla de más: +${(filas[4].rtt-base).toFixed(0)} ms para 300 inyectados (${sobrecoste.toFixed(0)} ms de cola en el servidor, que es lo que cuesta ir a ${filas[4].fps.toFixed(0)} fps)`)
+/**
+ * **El margen va en frames, no en milisegundos** (vuelta 106). La cola del
+ * servidor son entradas que esperan a que el cliente dibuje, así que se mide en
+ * frames del cliente: +81 ms a 29 fps y +199 a 23 son los dos ~2-5 frames. Con
+ * 150 ms fijos el banco medía cuánto va de lento el contenedor esa tarde. Lo
+ * que guarda es que el RTT no se cuente dos veces —que sería +300 encima de los
+ * 300 inyectados—, y eso sigue muy por fuera de cinco frames.
+ */
+const margenCola = Math.max(150, 5 * 1000 / Math.max(1, filas[4].fps))
+ok(sobrecoste < margenCola,
+   `y no la infla de más: +${(filas[4].rtt-base).toFixed(0)} ms para 300 inyectados (${sobrecoste.toFixed(0)} ms de cola en el servidor, que es lo que cuesta ir a ${filas[4].fps.toFixed(0)} fps; margen ${margenCola.toFixed(0)} ms, cinco frames)`)
 console.log(`     (los pasos sin entrada son del contenedor, no del diseño: con una sola pestaña a 60 fps salen 0 de 240;`)
 console.log(`      aquí dos pestañas de WebGL por software se quitan frames entre ellas — ver colchon45.mjs)`)
 ok(filas.every(f => f.errMax < 1e-9),
