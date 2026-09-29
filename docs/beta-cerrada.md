@@ -1,6 +1,29 @@
 # Beta cerrada: lo que falta para invitar a 5–10 personas
 
-**Estado:** plan, sin código (vuelta 106). Se invita a gente de confianza que no
+**Estado:** vuelta 107 — **construidos el 1, el 2, el 3 y el 5** (cómo se
+juega, feedback con la versión dentro, y contador). Faltan el 4 (versión estable
+aparte), el 6 (carta), el 7 (párrafo de privacidad), el 8 (prueba de red) y el 9
+(lista de fallos). El plan era de la vuelta 106.
+
+**En cinco líneas.** Se puede invitar a 5–10 personas cuando una tarde de juego se
+pueda contar sin nadie de Vektor delante. Para eso hacen falta tres piezas en el
+juego —cómo se juega, enviar feedback y un contador— y ya están. Faltan cuatro que
+no son código: una versión estable aparte de la de trabajo, la carta, el párrafo
+de privacidad y la lista de fallos conocidos. Y una prueba de red entre dos casas
+(V103-2 y las peanas en red), que es lo último que se mide antes de invitar.
+
+**Cómo se lee el feedback (lo tiene que poner Yago, una vez).** Dos secretos de
+Fly, que no pasan por nadie más:
+
+- `fly secrets set VEKTOR_FEEDBACK_WEBHOOK=<el webhook de un canal de Discord>`
+  (en Discord: ajustes del canal → Integraciones → Webhooks → Copiar URL). Cada
+  mensaje llega al canal con la pantalla, el modo, el mapa y la versión.
+- `fly secrets set VEKTOR_FEEDBACK_CLAVE=<una palabra tuya>` y se leen en
+  `https://<el juego>/feedback/leer?clave=<esa palabra>`. Sin disco se pierden al
+  desplegar; con el webhook puesto no importa.
+- El contador está en `https://<el juego>/contador`. Para que no se ponga a cero
+  con cada despliegue hace falta un volumen de Fly montado y `VEKTOR_DATOS` apuntando
+  a él; sin eso, cuenta desde el último despliegue y la página lo dice. Se invita a gente de confianza que no
 ha visto Vektor nunca y que no va a leer nada antes de jugar. Lo que decide qué
 es imprescindible es una pregunta: **¿se puede jugar una tarde, contar qué ha
 pasado y que Yago lo lea, sin que nadie de Vektor esté delante?** Lo que no
@@ -160,10 +183,10 @@ hace falta que esté escrito antes de pedirle a alguien que escriba.
 - **V101-2**, un todos contra todos de tres personas de verdad, que espera a que
   haya tres.
 - **V106-1, las peanas en red**: coger, recargar y que te lo quiten al morir, con
-  dos navegadores. Está medido el servidor sin navegador y el motor en el
-  entrenamiento, pero no el viaje entero, porque ningún mapa publicado tiene
-  peanas todavía. Es la primera prueba del primer mapa de peanas que se haga en
-  Alchemist.
+  dos navegadores. La mitad se probó con «El espejo peanas» y encontró F4 y F5
+  (vuelta 107: pantalla negra al crear la sala con ese mapa, y las peanas sin
+  dibujar al cambiar de mapa). Los dos arreglados y medidos (`peanas107red`); lo
+  que queda es repetir la prueba entera.
 
 La beta es justo cuando van a jugar en redes que no controlamos. Invitarles antes
 de saber cómo se porta el juego fuera de casa es convertir su primera tarde en la
@@ -250,3 +273,27 @@ fallos** y el **párrafo de privacidad** (6, 9, 7), y la **prueba de red** de Ya
 contador** juntos porque son la misma pieza del huésped (2, 3, 5), y **«cómo se
 juega»** (1). Con eso se puede invitar. Lo deseable, según lo que digan las dos
 primeras semanas de feedback.
+
+## Pruebas abiertas de la vuelta 107
+
+Lo que se arregló o se construyó en la 107 y sólo se cierra jugándolo. Todo lo
+marcado *medido* tiene su banco en verde; falta la prueba de verdad.
+
+| ID | Qué | Estado |
+|---|---|---|
+| V107-1 | ESC en la app: pausa y vuelve cinco veces seguidas, sin parpadeo (F3) | medido (`esc105`) |
+| V107-2 | Sala creada directamente con «El espejo peanas»: el invitado no ve negro (F4) | medido (`peanas107red`) |
+| V107-3 | Peanas en red: zócalo, arma y ficha a la vista; coger, recargar, perderla al morir (F5, cierra V106-1) | medido (`peanas107red`) |
+| V107-4 | Aim Camp: se aparece en el suelo; sin tercer cono en Alchemist (F6) | medido (`salidas107`) |
+| V107-5 | Sacudida apagada: sin golpe de vista; queda el retroceso (F7) | medido (`sensacion106`) |
+| V107-6 | Peana tras una barrera: no se coge ni sale su ficha (F8) | medido (`peanas106`) |
+| V107-7 | F3 «tú y el servidor · de acuerdo» cuenta; si sale «rechazados», captura (F9) | tu prueba |
+| V107-8 | Invulnerabilidad en segundos; Aim Camp guarda 3 ms, a corregir por Yago (F10) | tu prueba |
+| V107-9 | La fase de compra ya no ofrece «Sin límite» (D1) | medido (`lobby101`) |
+| V107-10 | Cuenta atrás de la sala: 15/30/45 s, todos listos 3 s, «Sacar» (D2) | medido (`cuenta107`) |
+| V107-11 | Inactividad: aviso 45 s, fuera 60 s, vuelta con tecla, expulsión 120 s (D3) | medido (`afk107`) |
+| V107-12 | Alchemist: ficha de lo elegido y «Editar» (A1) | medido (`ficha107`) |
+| V107-13 | Alchemist: «Subir al juego» bloquea un mapa al que le falta algo (A2) | medido (`publicar107`) |
+| V107-14 | «Cómo se juega» la primera vez, con las teclas del bind | medido (`beta107`) |
+| V107-15 | «Enviar feedback» llega al canal o a `/feedback/leer` (con los secretos puestos) | tu prueba |
+| V107-16 | `/contador` después de jugar | tu prueba |

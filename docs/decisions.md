@@ -16095,3 +16095,142 @@ los 400 ms de pared, que es lo que lo hacía sensible a la carga.
 La regla que sale, y que ya estaba escrita a trozos: **antes de creerse un rojo,
 pasarlo contra el código de antes.** Verde con el viejo y rojo con el nuevo es
 una regresión; rojo con los dos es el banco.
+
+## §107 — Los fallos de la tarde de pruebas, el LISTO de la sala, la inactividad y lo imprescindible de la beta
+
+### 107.1 — Ocho fallos, y lo que tenían dentro
+
+- **F3 · ESC en la app llegaba dos veces.** El atajo de la ventana (vuelta 105)
+  no se come la tecla: el WebView la entrega también a la página, así que un ESC
+  eran dos —la tecla de verdad y el aviso `vektor:escape` unos milisegundos
+  después—. Con el ratón suelto, el primero pedía volver y el segundo, que ya
+  encontraba el ratón capturado, lo volvía a soltar: la partida parpadeaba y se
+  quedaba en pausa. Ahora **una pulsación es una, llegue por donde llegue**
+  (`captura.js`): la primera actúa y la otra, dentro de `escRepeticionMs`, se
+  tira, en los dos órdenes. `esc105` lo mide. El plan B de Yago —el aviso de
+  Chrome también en la app— ya está debajo: si el WebView suelta el ratón él
+  solo, la salida cuenta como del usuario y sale el aviso de siempre.
+- **F4 · Pantalla negra al entrar en una sala creada con el mapa de peanas.** El
+  constructor del motor filtraba las armas del mapa (`_filtrarArmasDelMapa`,
+  vuelta 106) **antes de tener ranuras**: con un mapa que declara armas, la
+  página reventaba al cargar. Creada con otro mapa y cambiada después no pasaba,
+  porque para entonces las ranuras existían.
+- **F5 · Las peanas no se veían.** Las tres líneas que las montan al cambiar de
+  mapa cayeron en el constructor en la 106, donde no hacían nada, y el
+  multijugador **cambia siempre de mapa por `_buildScenario`** —el lobby monta el
+  de la partida—. La E cogía porque eso es del servidor. `peanas106nav` no lo vio
+  porque es del entrenamiento, que monta el mapa al construir. `peanas107red`
+  mide las dos puertas, y sale **rojo con el código de antes**.
+- **F6 · Nacer en el aire en Aim Camp.** El tercer cono azul del centro era el
+  `spawn` de entrenamiento, y cae **encima de un muro de 20 u** que parte el
+  mapa. `movement.reset()` ponía los pies a la altura del suelo del spawn y el
+  llamante cambiaba después `x` y `z`: se nacía a 20 u sobre la salida. Ahora
+  `reset(x, z)` pregunta el suelo **en la salida** —la regla de Yago: una salida
+  se apoya siempre en la superficie de debajo—, en el servidor y en el cliente, y
+  Alchemist apoya los conos en su superficie y no dibuja el spawn en un mapa de
+  duelo. `salidas107`.
+- **F7 · La sacudida «no se apagaba».** Se apaga: el banco mide cero golpes y el
+  cableado es el de siempre. Lo que sigue subiendo la vista es **el retroceso**
+  —0,7° por bala en la Rift contra 0,3° del golpe—, que no es un efecto: mueve la
+  mira. La fila de Opciones lo dice ahora.
+- **F8 · Peanas a través de barreras.** `peanaALaVista` usaba `cortarSegmento`,
+  que salta las barreras porque lo que vuela las atraviesa (vuelta 96). Una
+  peana no vuela: se alcanza con la mano, y una barrera delimita zonas. El
+  segmento acepta ahora `conBarreras`, y la peana lo pide —servidor y cliente,
+  cristal e invisible—. `peanas106` [7].
+- **F9 · «disparos · acuerdo» a cero.** No lo he podido reproducir: con este build
+  la fila cuenta (6 disparos, 100 %). Sí había una forma de que marcase 0 % sin
+  que la red discrepara: los disparos que el servidor **rechaza** (cadencia, o un
+  arma que no llevas) entraban en el total y no en el acuerdo. Ahora van aparte,
+  con su nombre, y la etiqueta dice qué se compara. Si vuelve a salir, la fila
+  dirá si eran rechazados.
+- **F10 · La invulnerabilidad de Aim Camp era de 3 ms.** La unidad del fichero es
+  correcta (ms, como la cuenta el servidor) y el valor de fábrica es 0; lo que
+  estaba mal es pedirle milisegundos a una persona. El campo va en segundos, el
+  fichero no cambia, y la validación de subir (A2) avisa de una gracia de menos
+  de 100 ms. **El mapa de Yago no se ha tocado.**
+
+### 107.2 — El LISTO sólo existe en la sala (D1 y D2)
+
+La compra «sin límite» de la 102 se quita: eran dos «listos» —el de la sala y el
+de la tienda— para aprender, y la fase de compra dura ahora siempre un tiempo
+fijo. `compra102` y `compra102nav` se retiran con su motivo.
+
+Y el LISTO de la sala tiene **cuenta atrás** (`CUENTA_DE_SALA`): en cuanto hay
+gente para jugar, 45 s; a los 15 parpadea el botón de quien no ha marcado y suena
+el pitido suave del final de ronda; a los 30, en rojo y el agudo; al llegar a
+cero se lanza con los listos y **sale quien no marcó** («No marcaste LISTO»). Con
+todos listos, 3 s. Cambiar mapa o modo la reinicia; que alguien se vaya por
+debajo del mínimo la para. El anfitrión puede **sacar** a alguien de la sala.
+Cuatro decisiones:
+
+- **La decide el servidor, en su paso, con reloj de pared** (como la pausa, vuelta
+  54): es una conversación entre personas y en la sala no corre el mundo.
+- **Cuenta quien está mirando la sala**: con hueco, con cable y sin estar en una
+  partida o en la pantalla del final sin haber pulsado «Volver a jugar». Los que
+  esperan sin hueco no pueden marcar, así que no se les echa.
+- **Salir es un `ADIOS` con su motivo**, el mensaje de siempre, que la página ya
+  enseña en rojo.
+- **Los sonidos no son nuevos**: son el pitido de fin de ronda (vuelta 73), el
+  suave y el agudo. «No toques nada de sonido» se respeta.
+
+### 107.3 — La inactividad es una caída (D3)
+
+Lo detecta **el servidor**, que ve las entradas: una tecla, un disparo o mover el
+ratón. A los 45 s manda «¿Sigues ahí?»; al minuto le saca de la acción **por el
+camino de una caída** (`sedesconecta`, vuelta 62): butaca guardada, pausa en el
+duelo y el «reclamar» del rival. Cualquier tecla o «Reconectar» le devuelve por
+`_reconectar`, con su bienvenida. A los dos minutos sale de la sala («Te
+expulsamos por inactividad»). Sólo en las partidas que lanza el lobby: sin lobby
+es el mundo de los bancos de netcode, con blancos quietos a propósito. En pausa y
+fuera de la partida en marcha el reloj de cada uno no corre. `afk107`.
+
+### 107.4 — Alchemist: la ficha de lo elegido y validar antes de subir (A1, A2)
+
+- **La ficha** va encima de los atajos: qué es, qué hace («Peana · entrega
+  Reaper»), lo que lo define y «Editar», que abre su hoja. Sale de la tabla de
+  Capas, así que un tipo nuevo tiene ficha en cuanto tiene fila.
+- **Validar** es `faltasParaPublicar`, en `formato.js`: la llaman el servidor de
+  desarrollo —que se niega a subir— y la lista de Alchemist, que lo pinta en rojo
+  y apaga el botón. Bloquea lo que **rompe** un mapa en el juego: publicado en
+  ningún modo, un duelo sin dos salidas, un todos contra todos con menos de tres,
+  salidas fuera de la sala, modo Peanas sin peanas o con armas que el mapa no
+  admite, una gracia de milisegundos y un estampado sin su imagen. Lo que se
+  juega peor sigue en naranja en la barra (vuelta 105). Sólo se miran los mapas
+  pendientes de subir.
+
+### 107.5 — Lo imprescindible de la beta
+
+- **Cómo se juega**: cuatro bloques con las teclas del bind (vuelta 97), la
+  primera vez tras «Jugar ahora» y desde la portada. Un navegador automatizado no
+  lo ve salvo que lo pida: una veintena de bancos pulsan «Jugar ahora» en un
+  navegador recién estrenado, y un banco no es un jugador nuevo.
+- **Enviar feedback** en el pie de Opciones, que es un solo panel en los dos
+  modos: ningún menú gana una fila (la regla de `menu62`). El huésped lo guarda y
+  lo reenvía a `VEKTOR_FEEDBACK_WEBHOOK` —un canal de Discord— y lo enseña en
+  `/feedback/leer` con `VEKTOR_FEEDBACK_CLAVE`. Los dos son secretos de Fly que
+  pone Yago; ninguno pasa por aquí.
+- **Contador** en `/contador`: sumas por día, sin cookies ni identificadores. La
+  IP sólo frena el spam y no se guarda. Sin `VEKTOR_DATOS` —un volumen de Fly— se
+  pone a cero con cada despliegue, y la página lo dice.
+
+### 107.6 — La pregunta: ¿llega el rebobinado al tope?
+
+Lo que se rebobina es `RTT + adelanto + retraso de dibujo`: la foto que ves ya
+salió hace medio viaje, tu disparo tarda el otro medio, el cliente se adelanta
+`leadTicks` (2 pasos, 33 ms) y al rival se le dibuja `interpDelayTicks` detrás
+(3 pasos, 50 ms), más lo que el colchón adaptable añada si las fotos llegan a
+tirones (vuelta 103, hasta 10 pasos). A 144 fps el frame suma unos 7 ms y el paso
+fijo cuantiza hasta 16,7. Con cable y un colchón en su suelo: **40 ms → ~125 ms,
+80 ms → ~165 ms, 120 ms → ~205 ms**, o sea el tope muerde sólo a 120 y por unos
+milisegundos. En wifi a tirones el colchón sube y el tope muerde antes. Es una
+cuenta con los números de `NET`, no una medida en un PC de verdad: aquí `tiro46`
+pide ~125 ms **sin latencia** porque renderiza por software a ~20 fps, que es lo
+que hace crecer el colchón.
+
+Lo que se nota cuando muerde: el disparo se juzga contra donde estaba el rival
+200 ms atrás, no donde lo veías. Contra alguien quieto, nada. Contra alguien
+corriendo de lado a 6,5 u/s, cada 10 ms de exceso son 6,5 cm: a 205 ms, nada; a
+260 (wifi malo), 39 cm, y un tiro al borde del cuerpo que viste entrar no hace
+daño. Desde la 103 el «tic» y la X salen de lo que tú veías, así que eso se lee
+como **una marca de acierto sin daño**. F3 enseña el rebobinado concedido.

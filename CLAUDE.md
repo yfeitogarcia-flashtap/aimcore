@@ -80,7 +80,9 @@ geometría. Está entero en §3 y en `docs/decisions.md` §93.8. Para todo lo de
 | Configurar partida | `src/ui/Training.jsx` | La pantalla de **Entrenamiento**: el modo arriba, todo lo que decide una partida en tarjetas, y a la derecha «Vas a jugar» con **Jugar** (vuelta 99). Lo que hasta la 91 estaba escondido en opciones. |
 | Filas de ajuste | `src/ui/fields.jsx` | `SliderRow`, `SegmentedRow`, `ToggleRow` y su cabecera. **Las usan los dos paneles que escriben ajustes**, que es lo que impide que se comporten distinto. |
 | Capa del duelo | `src/ui/duelo.jsx` | Monta **los mismos** `Hud`, `Crosshair`, `Options` y `Armoury` en la página del 1v1 y los publica como un asa imperativa. No dibuja nada propio (vuelta 73). |
-| Captura | `src/game/captura.js` | **Capturar el ratón y volver a él** (vuelta 105, F2): quién lo soltó (la página con `soltarRaton()`, o el usuario), el reintento mientras quede gesto, el aviso de «haz clic o pulsa cualquier tecla» y el ESC de la ventana de escritorio. **Del motor, con su propia hoja de estilos**, para las dos páginas. |
+| Captura | `src/game/captura.js` | **Capturar el ratón y volver a él** (vuelta 105, F2): quién lo soltó (la página con `soltarRaton()`, o el usuario), el reintento mientras quede gesto, el aviso de «haz clic o pulsa cualquier tecla» y el ESC de la ventana de escritorio —**una pulsación es una** aunque llegue por la ventana y por el WebView (vuelta 107)—. **Del motor, con su propia hoja de estilos**, para las dos páginas. |
+| Beta (página) | `src/beta.js`, `src/ui/Beta.jsx` | **Lo imprescindible de la beta** (vuelta 107): «Cómo se juega», el panel de feedback —en el pie de Opciones, los dos modos— y contar un entrenamiento. Sin cookies: cada página registra su contexto (pantalla, modo, mapa). |
+| Beta (huésped) | `net/beta.js` | El buzón de feedback (webhook y `/feedback/leer` con clave) y el contador (`/contador`). **Sin datos de nadie**: la IP frena el spam y no se guarda. Sólo el huésped de Node. |
 | Tajo | `src/game/slash.js` | El destello de un golpe de cuchillo. **Del motor, con su propia hoja de estilos**: sin arma en la mano, la pantalla es lo único que cuenta el golpe. |
 | Mirilla | `src/game/scope.js` | La lente del francotirador: negro alrededor, cruceta fina y punto rojo. **Del motor, con su propia hoja de estilos**, para que salga igual en los dos modos. |
 | Silueta del arma | `src/ui/weaponSilhouette.js` | Qué trazado toca —con supresor es otra foto— y el SVG como texto. **Sin React, para que lo usen los dos modos.** |
@@ -118,7 +120,7 @@ geometría. Está entero en §3 y en `docs/decisions.md` §93.8. Para todo lo de
 | Banco de voces | `editor/sonidos.html` | Oír cada arma y sus variantes antes de decidir (`/editor/sonidos.html`). **Sólo en desarrollo**, como el editor, y las variantes viven ahí y no en el catálogo. |
 | Escritorio | `escritorio/` | La ventana de Tauri: carga la URL del despliegue y nada más. **No contiene el juego**, a propósito. |
 | Partida (servidor) | `net/partida.js` | **Todo lo que decide el servidor**, sin saber por dónde viaja: entradas, pasos, disparo, rebobinado y fotos. Un jugador entra con una función `enviar(texto)` y nada más. **No hay red en este fichero.** Desde la vuelta 100, dos modos: `duelo` y `todos`. |
-| Lobby (servidor) | `net/lobby.js` | **La sala antes y entre partidas** (vuelta 101): quién está, en qué hueco, quién está listo, qué modo y mapa, y lanzar. Envuelve a `Partida` con su misma forma, así que los huéspedes no cambian; **cada partida es una `Partida` nueva** con el reloj de la sala siguiendo. |
+| Lobby (servidor) | `net/lobby.js` | **La sala antes y entre partidas** (vuelta 101): quién está, en qué hueco, quién está listo, qué modo y mapa, y lanzar. Envuelve a `Partida` con su misma forma, así que los huéspedes no cambian; **cada partida es una `Partida` nueva** con el reloj de la sala siguiendo. Desde la 107, **la cuenta atrás del LISTO** y sacar a alguien de la sala. |
 | Lobby (pantalla) | `src/ui/Lobby.jsx` | La cara del lobby en la página del multijugador, **con la carcasa de Cabina y las tarjetas del Entrenamiento**. Sólo pinta y pide: lo que decide es `net/lobby.js`. |
 | Interés | `net/interes.js` | **Quién entra en la foto de quién** (vuelta 100): `entraEnLaFoto(a, b, sala)` y su memoria. **La única regla**; el día de las salas contestará por el grafo sin que el cable se entere. |
 | Huésped de Node | `net/servidor.mjs` | Node + `ws`, y desde la vuelta 58 **el del despliegue**: encamina por código de sala, lleva un reloj por sala y sirve `dist/`. El mismo fichero en local y en Fly. |
@@ -502,6 +504,24 @@ mueren en su cara, z 0.500, y las tres granadas **rebotan** y revientan de este
 lado, z 4.571— y contra las dos variantes de barrera **los seis cruzan**, dando
 cristal e invisible **el mismo sitio** hasta el último decimal. Y el Plano A y El
 Espejo se cortan dígito a dígito igual que antes, que es la premisa.
+
+**Una salida se apoya en la superficie que tiene debajo** (vuelta 107, F6). Una
+salida declara x, z y rumbo; la altura de los pies la pone **el suelo de la
+salida**, `movement.reset(x, z)`, en el servidor y en el cliente. Antes el
+jugador se ponía en el spawn de entrenamiento y se le cambiaban x y z después, así
+que los pies se quedaban a la altura del suelo del spawn: en Aim Camp el spawn cae
+encima de un muro de 20 u, y se nacía en el aire. Alchemist apoya los conos en su
+superficie y no dibuja el spawn en un mapa de duelo, donde no significa nada.
+`salidas107`.
+
+**Subir al juego valida** (vuelta 107, A2). `faltasParaPublicar` (en
+`formato.js`) es la puerta: la llaman el servidor de desarrollo, que se niega, y
+la lista de Alchemist, que lo pinta en rojo y apaga el botón. Sólo lo que **rompe**
+un mapa en el juego —ningún modo, salidas que faltan o fuera de la sala, Peanas
+sin peanas, una gracia de milisegundos, un estampado sin imagen—; lo que se juega
+peor sigue en naranja en la barra. Y **la ficha de lo elegido** va encima de los
+atajos (A1): qué es, qué hace, sus datos y «Editar». Sale de `TIPOS_DE_MAPA`, así
+que un tipo nuevo la tiene en cuanto tiene fila. `publicar107`, `ficha107`.
 
 **Todo lo colocable pasa por el mismo sistema** (vuelta 96). **Ésta es la
 convención permanente del editor para cualquier cosa que se pueda poner en un
@@ -1121,8 +1141,23 @@ Cinco reglas:
 
 Medido (`peanas106`, `peanas106nav`): recoger, recargar, no agotarse, no cogerse
 pisando, la ficha detrás de un muro, la validación del servidor en los tres modos,
-y 21 µs por frame con 160. **El viaje en red con dos navegadores está pendiente**
-(V106-1 en `docs/beta-cerrada.md`): ningún mapa publicado tiene peanas todavía.
+y 21 µs por frame con 160.
+
+**Y la primera prueba en red encontró dos fallos, y los dos tenían la misma
+forma** (vuelta 107, F4 y F5): **lo que se monta con un mapa va en
+`_buildScenario`**, que es por donde el multijugador cambia **siempre** de mapa —el
+lobby monta el de la partida—. El montaje de las peanas había caído en el
+constructor (no se dibujaban en red, y la E cogía porque eso es del servidor), y el
+filtro de armas corría en el constructor **antes de que hubiera ranuras** (un mapa
+con armas declaradas dejaba la pantalla en negro). `peanas106nav` no vio ninguno de
+los dos porque el entrenamiento monta el mapa al construir: **un banco de un solo
+modo no guarda lo que el otro modo hace distinto**. `peanas107red` mide las dos
+puertas con navegadores y sale rojo con el código de antes.
+
+**Y una barrera es pared para la mano** (vuelta 107, F8). Lo que vuela la
+atraviesa (vuelta 96), pero una peana se alcanza con la mano, y una barrera
+delimita zonas: `cortarSegmento(…, conBarreras)` y `peanaALaVista` lo pide, en el
+servidor y en el cliente. `peanas106` [7].
 
 **Todo el tuning en `config.js`.** Ninguna constante de juego vive suelta en un
 módulo. Si necesitas un número nuevo, va a `config.js` aunque lo use un solo
@@ -1937,25 +1972,40 @@ menú. Cuatro reglas que son el mecanismo:
 - **La captura de una tecla en Controles es la excepción**: escucha en captura y
   para el evento antes de que llegue aquí, que es lo que deja cancelar un bind.
 
-**Una fase de compra sin reloj la cierra un «listo» de todos, y es un valor y no
-una bandera** (vuelta 102). `ROUNDS.compraSinLimite` (−1) viaja por los mismos
-sitios que los segundos —selector del lobby, dirección, bienvenida, economía— y
-por eso no hay dos verdades sobre cuánto dura una compra. Tres reglas:
+**El LISTO existe sólo en la sala, y tiene cuenta atrás** (vuelta 107, D1 y
+D2). La compra «sin límite» de la 102 —la cerraba un «listo» de todos en la
+tienda— **se quitó**: dos «listos» para lo mismo eran dos cosas que aprender, y la
+fase de compra dura ahora siempre un tiempo fijo (`ROUNDS.compraOpciones`). Lo que
+se queda de aquella vuelta es la regla de que **cero es «sin fase», y sólo cero**.
+`compra102` y `compra102nav` están retirados con su motivo.
 
-- **Cero es «sin fase», y sólo cero.** Cada sitio que preguntaba `<= 0` pregunta
-  `=== 0` (`compraAbierta`, `_empezarCompra`): con `<=`, la compra sin límite se
-  habría leído como la ausencia de compra, que es lo contrario.
-- **Lo decide el servidor en el paso, no en el mensaje.** `MSG.LISTO_COMPRA` sólo
-  anota (y se puede desmarcar); la ronda empieza en `_rondasTick` cuando no falta
-  nadie **conectado** —una caída no puede ser una pausa sin tope—. El estado
-  vuelve en la foto (`rd.li`, `rd.nl`, `resta: -1`), como todo lo que tienen que
-  ver igual todos. No empieza por `l`: eso es del lobby (`esDelLobby`).
-- **Y en las compras con reloj el «listo» no hace nada**: son las de competición,
-  y lo que las hace iguales para todos es que nadie las puede acortar.
+La cuenta de la sala (`CUENTA_DE_SALA`, en `net/lobby.js`) tiene cinco reglas:
 
-Medido (`compra102`, sin navegador; `compra102nav`, con dos): 90 s sin cerrarse,
-tres de cuatro no bastan, desmarcar se nota, el último «listo» empieza la ronda,
-un caído no bloquea y en una compra de 15 s el «listo» no hace nada.
+- **Se arma sola cuando hay gente para jugar** —con la misma regla que
+  `requisitos()`, sin mirar LISTO— y se para sola cuando deja de haberla. Cuenta
+  quien **mira la sala**: con hueco, con cable y sin estar en una partida o en la
+  pantalla del final sin haber pulsado «Volver a jugar».
+- **Aviso a los 15 s y urgente a los 30**: el LISTO de quien no ha marcado
+  parpadea, luego en rojo, con el pitido suave y el agudo del final de ronda
+  (vuelta 73) —no son sonidos nuevos— y sólo a quien no ha marcado.
+- **A los 45 s se lanza con los listos y sale quien no marcó**, con un `ADIOS`
+  que dice «No marcaste LISTO»; si no quedan bastantes, la cuenta se para. Con
+  todos listos, 3 s. Quien espera sin hueco no se echa: no puede marcar.
+- **Cambiar mapa o modo la vuelve a empezar**, y desmarca (vuelta 101).
+- **Reloj de pared y en el paso del servidor**, como la pausa (vuelta 54): es una
+  conversación entre personas y en la sala no corre el mundo. El anfitrión, además
+  de «Lanzar», puede **sacar** a alguien (`MSG.SACAR`), fuera de una partida en
+  juego.
+
+**Y la inactividad en una partida es una caída** (vuelta 107, D3). Lo detecta el
+servidor en las entradas —una tecla, un disparo o mover el ratón—: a los 45 s
+«¿Sigues ahí?», al minuto fuera **por `sedesconecta`** (butaca guardada, pausa
+del duelo y el «reclamar» del rival: la regla de la 62 entera), cualquier tecla o
+«Reconectar» devuelven por `_reconectar`, y a los dos minutos sale de la sala. Sólo
+en las partidas del lobby (`afk: true`): sin lobby es el mundo de los bancos, con
+blancos quietos. En pausa el reloj de cada uno no corre. Tuning en `AFK`.
+
+Medido (`cuenta107`, `afk107`, sin navegador y con el reloj adelantado a mano).
 
 **Y cerrar la tienda es volver a jugar, no ir al menú del código** (vuelta 101).
 La tecla de armería la abre y la cierra; cerrarla —con esa tecla o con ESC— pide
@@ -1985,7 +2035,11 @@ viven en `src/game/captura.js`:
 - **Sin gesto, se dice**: aviso «**Haz clic** o pulsa cualquier tecla», y
   cualquier tecla que no sea ESC vuelve y no hace nada más.
 - **En la app, ESC es de la ventana** (`main.rs`, 0.5.0), como F11. La página
-  suelta el ratón ella misma y por eso ESC vuelve a la primera, siempre.
+  suelta el ratón ella misma y por eso ESC vuelve a la primera, siempre. **Y una
+  pulsación es una, llegue por donde llegue** (vuelta 107, F3): el WebView
+  entrega también la tecla a la página, así que cada ESC eran dos —la tecla y el
+  aviso de la ventana— y el segundo deshacía al primero. La que llega primero
+  actúa y la otra, dentro de `CAPTURA.escRepeticionMs`, se tira.
 - **Y el banco imita a Chrome** (`esc105`), con su propio modelo del gesto:
   `page.evaluate` de Playwright corre con gesto de usuario, así que leer el de
   Chrome desde el banco da siempre «activo». Contra el código de antes sale
@@ -6538,6 +6592,19 @@ cómo se consiguen: **Armería** (se compra o se equipa, como siempre), **Equipa
 (todos salen con lo mismo) o **Peanas** (armas en el suelo que se cogen apuntando
 y con la E, y no se agotan). La armería y el lobby dicen qué armas admite el mapa.
 
+**Y desde la vuelta 107 la sala espera 45 s, y hay lo imprescindible para la
+beta.** En cuanto hay gente para jugar, la sala cuenta 45 s: quien no ha marcado
+LISTO ve su botón parpadear a los 15 y en rojo a los 30, y al llegar a cero la
+partida empieza con los listos y los demás salen de la sala; con todos listos,
+3 s. El anfitrión puede sacar a alguien. Quien se queda quieto en una partida
+recibe un «¿Sigues ahí?» a los 45 s, sale de la acción al minuto —como una caída,
+con su sitio guardado— y de la sala a los dos. La compra «sin límite» ya no
+existe. La primera vez que alguien pulsa «Jugar ahora» sale **Cómo se juega**, y
+**Opciones** lleva **Enviar feedback**, que llega al huésped (y a un canal de
+Discord si Yago pone el webhook); `/contador` cuenta salas, partidas, jugadores y
+entrenamientos por día. En Alchemist, **la ficha de lo elegido** encima de los
+atajos y **«Subir al juego» valida** antes de subir.
+
 **Y desde la vuelta 56 el duelo lo lleva el motor completo** (la «Opción B»).
 La página del duelo ya no monta una escena mínima: instancia `engine.js` y le
 entrega el cliente de red. Lo que eso trae a una partida real es **el arma de
@@ -6558,9 +6625,8 @@ entre ronda y ronda hay una fase de compra —**15 s de fábrica y elegible al c
 la partida**, incluida la opción de no tenerla— con cada jugador encerrado en su
 caja y sin recibir la posición del otro. Tuning en `ROUNDS` y `ECONOMY`.
 **Sin fase** (la opción de partida rápida) la tienda no cierra: se compra durante
-la ronda entera, con el mundo corriendo (vuelta 65). Y desde la **102** hay
-**compra sin límite**, para partidas entre amigos: la cierra que todos pulsen
-«Listo» en la tienda, no un reloj. Y desde la **72 un mapa
+la ronda entera, con el mundo corriendo (vuelta 65). (La compra «sin límite» de
+la 102 se quitó en la 107: el único LISTO es el de la sala.) Y desde la **72 un mapa
 puede no tener economía en absoluto** —Los Pilares reparte— que es lo contrario
 de «sin fase», no lo mismo.
 
@@ -7346,6 +7412,15 @@ lobby** que lanza todos los modos (§3 y §5). En cola, sin construir: **la foto
 binario**, para cuando el tráfico lo pida (`docs/roadmap.md`, *El protocolo*), y
 **en Alchemist, conos de salida por jugador y caja de compra por equipo** para el
 primer mapa pensado para 5v5 (hoy un mapa de equipos es uno de duelo).
+
+**Y dos propuestas más, escritas en la vuelta 107 y sin construir**:
+**14 — cuentas, amigos e invitaciones** para la beta (Supabase propio, Resend
+desde un subdominio de flicklab.gg, Turnstile; tres fases con coste, riesgo y
+plazo; el navegador no habla con Supabase sino con el huésped, y se sigue jugando
+sin cuenta en igualdad) y **15 — propiedades comunes de lo colocable** (a quién
+afecta, cuándo está activo, cuántas veces se usa, quién lo ve, y munición y
+desvanecerse para las peanas, con la auditoría de los dieciocho tipos). La
+**hibernación de mapas** está en `docs/roadmap.md`, fase 4.
 
 **Y cuatro propuestas están escritas y sin construir, con su orden decidido por el
 encargo de la vuelta 97**: primero la **11** (salas de varios, espectador y lobby

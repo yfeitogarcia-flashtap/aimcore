@@ -399,6 +399,22 @@ bienvenida, y abajo «Vektor Installer» con su versión en vez de «Nullsoft In
 System». Los seis sitios donde hay que probarla y el paso a paso, en
 `escritorio/README.md`.
 
+## Cómo se juega, feedback y contador (la beta)
+
+La primera vez que pulsas **Jugar ahora** sale **Cómo se juega**: cuatro cosas,
+con tus teclas, en veinte segundos. Se vuelve a abrir desde la portada.
+
+En **Opciones** (en el menú, en la pausa y en el ESC del multijugador) está
+**Enviar feedback**: escribes lo que ha pasado y se manda con la pantalla, el modo,
+el mapa y la versión. Nada más: ni nombre, ni correo, ni cookies.
+
+Quien lleva el juego lo lee de dos formas, que se ponen como secretos de Fly:
+`VEKTOR_FEEDBACK_WEBHOOK` (el webhook de un canal de Discord: cada mensaje llega
+ahí) y `VEKTOR_FEEDBACK_CLAVE` (se leen en `/feedback/leer?clave=…`). Y
+`/contador` enseña, por día, salas creadas, partidas, jugadores que entraron y
+entrenamientos, y el pico de gente a la vez. Con `VEKTOR_DATOS` apuntando a un
+volumen, el buzón y el contador sobreviven a un despliegue.
+
 ## Volver desde la pausa
 
 **ESC** pausa, y para volver valen **un clic en cualquier sitio**, **Reanudar** o
@@ -429,6 +445,19 @@ la misma cara que la pantalla de Entrenamiento:
 - A la derecha, la sala: **copiar el enlace** o **el código**, lo que se va a
   jugar, cuántos faltan, **LISTO** —uno por jugador— y, para el anfitrión,
   **Lanzar partida**.
+
+**La sala no espera para siempre** (vuelta 107). En cuanto hay gente para jugar
+empieza una cuenta de **45 s** que todos ven: a los 15 el botón LISTO de quien no
+lo ha pulsado parpadea y suena un pitido, a los 30 parpadea en rojo con un pitido
+más agudo, y al llegar a cero **la partida empieza con los listos y los demás
+salen de la sala** («No marcaste LISTO»). Con todos listos empieza a los 3 s.
+Cambiar el mapa o el modo la vuelve a empezar. El anfitrión, además de lanzar,
+puede **sacar** a alguien con el botón de al lado de su nombre.
+
+**Y en una partida, quien se queda quieto sale** (vuelta 107): a los 45 s sin
+tocar nada, «¿Sigues ahí?»; al minuto sale de la acción con su sitio guardado —en
+un duelo la partida espera y el rival puede reclamarla, como con una caída— y
+vuelve con cualquier tecla o **Reconectar**; a los dos minutos sale de la sala.
 
 Sólo el anfitrión cambia la configuración y lanza; los demás la ven apagada. Se
 puede lanzar con **un listo en cada equipo** (también desequilibrado, 2 contra 3)
@@ -619,11 +648,9 @@ quien crea la partida elige cuántos o si no la hay— con cada jugador encerrad
 en su zona y sin ver al otro. Ahí se abre la armería con **B** (reasignable en
 opciones): el mundo sigue corriendo, pero el ratón se suelta para poder pinchar.
 
-**Y para jugar entre amigos, compra sin límite:** en el lobby, *Fase de compra →
-Sin límite*. No hay reloj: la ronda empieza cuando **todos** pulsan **Listo** en la
-tienda (o Intro con la tienda abierta), y arriba se ve cuántos lo han dicho
-(«LISTOS 1/2»). Se puede desmarcar para seguir comprando, y quien se cae no deja a
-los demás esperando. Las opciones con reloj siguen ahí y son las de competición.
+**La fase de compra dura siempre un tiempo fijo** (desde la vuelta 107): la de
+«sin límite», que se cerraba pulsando Listo en la tienda, ya no existe. El único
+LISTO es el de la sala.
 
 **Y si eliges partida sin fase de compra, la tienda no cierra:** se compra
 durante la ronda entera, cuando puedas. No hay ventana entre rondas donde meterla,
@@ -1485,6 +1512,15 @@ Eso se hace desde **Archivo → Subir al juego**: un botón que anota los cambio
 los trae al día y los empuja. Y **la barra de arriba te dice si tienes algo sin
 subir**, así que no hay que acordarse de mirar. Alchemist también te lo avisa al
 arrancar, para cazar una sesión que se cerró sin pulsarlo.
+
+**Y antes de subir, valida** (vuelta 107). Si a un mapa le falta algo que lo
+rompería en el juego, sale en rojo debajo de su nombre y el botón no se enciende:
+que no esté publicado en ningún modo, que a un duelo le falten sus dos salidas o a
+un todos contra todos sus tres, una salida fuera de la sala, un mapa de Peanas sin
+peanas (o con armas que no admite), una gracia de invulnerabilidad de
+milisegundos, o un estampado sin su imagen. **Y encima de los atajos** está la
+ficha de lo que tengas elegido: qué es, qué hace, sus datos y **Editar**, que abre
+su hoja. La invulnerabilidad del duelo se escribe ahora **en segundos**.
 
 Tres cosas del mecanismo:
 

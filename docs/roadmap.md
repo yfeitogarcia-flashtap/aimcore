@@ -383,6 +383,17 @@ Lo que falta no es el formato, es todo lo demás:
   acotar: una gravedad de 0.1 no rompe el netcode —los dos extremos la derivan
   del mismo dato— pero sí rompe el juego.
 
+- **Hibernación de mapas** (pedida en la vuelta 107, sólo roadmap). Un mapa que
+  nadie juega en un tiempo deja de ofrecerse —sale de los selectores y del
+  carrusel del lobby, no se borra— y **se le avisa a quien lo diseñó**, que puede
+  despertarlo. Es la forma de que un catálogo de comunidad no crezca con mapas
+  abandonados. Pide tres cosas que hoy no hay: **saber cuánto se juega cada mapa**
+  (el contador de la 107 cuenta partidas, no por mapa: sería una columna más),
+  **saber de quién es** (cuentas, propuesta 14) y **un estado del mapa que no
+  viva en su fichero** —«hibernado» cambia sin que nadie edite el mapa, así que
+  no puede ser un campo que haya que subir con Alchemist—. Mientras los mapas
+  vivan en el build, hibernar es despublicar a mano (`modos`, vuelta 98).
+
 - **Bloqueante:** 2.2/2.3 (subir algo pide saber quién lo sube) y almacenamiento,
   que hoy es deliberadamente cero: «una partida vive en memoria y muere con la
   sala».
