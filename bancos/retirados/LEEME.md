@@ -43,3 +43,11 @@ Y en la vuelta 106, al mover los bancos a `bancos/`:
   botón que ya no está. Lo que medía lo guardan `opc104` (ESC cierra Opciones),
   `arm95` y `armeria98` (la armería lista todo el arsenal) y `mapas98` (el
   selector no ofrece lo que no está publicado).
+
+Y en la vuelta 107:
+
+- `compra102.mjs` y `compra102nav.mjs` — la compra «sin límite» de la vuelta
+  102, que la cerraba un «listo» de todos en la tienda. Yago la quitó (D1): la
+  fase de compra dura siempre un tiempo fijo y el único «listo» es el de la
+  sala. Lo que se sigue midiendo de la compra con reloj está en `rondas62`,
+  `duelo92srv` y `lobby101`.

@@ -33,7 +33,7 @@
  *   sienta en tu hueco y, si estabas jugando, en tu butaca de la partida — que
  *   se reconecta con el suyo, por el camino de la vuelta 62.
  */
-import { ROUNDS, bandoDeRanura, capacidadDeTodos, escenarioDeSala, esModoDeEquipos, minimoParaLanzar, modoDeSala, plazasDeModo } from '../src/config.js'
+import { CUENTA_DE_SALA, ROUNDS, bandoDeRanura, capacidadDeTodos, escenarioDeSala, esModoDeEquipos, minimoParaLanzar, modoDeSala, plazasDeModo } from '../src/config.js'
 import { Partida } from './partida.js'
 import { MSG, esDelLobby } from './protocolo.js'
 
@@ -69,6 +69,14 @@ export class Lobby {
     this._paso = 0
     this._escenarios = new Map()
     this._estadoPublicado = ''
+    /**
+     * **La cuenta atrás del LISTO** (vuelta 107, D2), o null. `desde` y
+     * `todosDesde` son del reloj de pared; `fase` es 0, 1 (aviso) o 2 (urgente),
+     * y cambia la foto de la sala cuando cambia.
+     */
+    this.cuenta = null
+    /** El reloj de la cuenta: lo cambian los bancos para no esperar 45 s de verdad. */
+    this.ahora = () => Date.now()
   }
 
   // --------------------------------------------------------- lo que ve el huésped
@@ -245,6 +253,14 @@ export class Lobby {
       case MSG.ENTRAR:
         this._entrarEnMarcha(m)
         break
+      case MSG.SACAR: {
+        // **Sacar de la sala** (vuelta 107, D2): del anfitrión, a otro, y fuera
+        // de una partida en juego — echar a alguien a mitad de una ronda es
+        // decidirle la ronda a su equipo.
+        const otro = this.miembros.get(mensaje.id)
+        if (esAnfitrion && otro && otro !== m && !this._enJuego()) this._expulsar(otro, CUENTA_DE_SALA.motivoSacado)
+        return
+      }
       default:
         return
     }
@@ -297,6 +313,9 @@ export class Lobby {
      * La fase de compra no desmarca: es cuánto se tarda en empezar, no a qué.
      */
     for (const m of this.miembros.values()) m.listo = false
+    // **Y la cuenta atrás vuelve a empezar** (vuelta 107, D2): los 45 s eran
+    // para decidirse sobre el mapa de antes.
+    this.cuenta = null
     // Y se vuelve a sentar a cada uno, en orden de llegada: un 5v5 que pasa a
     // duelo deja a ocho sin hueco, y un duelo que pasa a 3v3 reparte los bandos.
     const orden = [...this.miembros.values()]
@@ -378,7 +397,17 @@ export class Lobby {
       pasoInicial: this.paso,
       numero: ++this.numeroPartida,
       arranqueManual: true,
+      // **Y vigila la inactividad** (vuelta 107, D3): quien pasa dos minutos sin
+      // tocar nada sale **de la sala**, con su motivo, como quien no marcó LISTO.
+      afk: true,
     })
+    const partida = this.partida
+    partida.alExpulsar = (pid, razon) => {
+      if (this.partida !== partida) return
+      const m = [...this.miembros.values()].find((o) => o.pid === pid)
+      if (m) this._expulsar(m, razon)
+      else partida.abandona(pid)
+    }
     for (const m of this.miembros.values()) {
       m.pid = null
       m.pasePartida = null
@@ -452,9 +481,97 @@ export class Lobby {
     for (const m of this.miembros.values()) m.pid = null
   }
 
+  // ------------------------------------------------------- la cuenta atrás (D2)
+
+  /**
+   * **Quién está en la sala esperando jugar**: con hueco, con cable y mirando la
+   * sala —no quien está en una partida, ni quien sigue en la pantalla del final
+   * sin haber pulsado «Volver a jugar»—. Es a quien la cuenta mira y a quien
+   * puede echar.
+   */
+  _presentes() {
+    return [...this.miembros.values()].filter((m) => m.hueco !== null && !m.desconectado && (!m.pid || m.vuelto))
+  }
+
+  /** ¿Con esta gente se puede jugar? La misma regla que `requisitos`, sin mirar LISTO. */
+  _bastan(lista) {
+    const modo = this.config.modo
+    if (esModoDeEquipos(modo)) {
+      const porBando = [0, 0]
+      for (const m of lista) porBando[bandoDeRanura(m.hueco)] += 1
+      return porBando[0] > 0 && porBando[1] > 0
+    }
+    return lista.length >= minimoParaLanzar(modo) && this.miembros.size <= this.huecos
+  }
+
+  /**
+   * **La cuenta atrás, en cada paso** (vuelta 107, D2). Se arma sola cuando hay
+   * gente suficiente, se para sola cuando deja de haberla, y al llegar al final
+   * lanza con los listos y saca a los demás. Todo lo que cambia se publica en
+   * la foto de la sala, que es lo que ven las pantallas.
+   */
+  _cuentaTick() {
+    if (this.auto) return
+    const ahora = this.ahora()
+    const presentes = this._enJuego() ? [] : this._presentes()
+    if (!this._bastan(presentes)) {
+      if (this.cuenta) { this.cuenta = null; this._publicar(true) }
+      return
+    }
+    if (!this.cuenta) {
+      this.cuenta = { desde: ahora, todosDesde: null, fase: 0 }
+      this._publicar(true)
+    }
+    const c = this.cuenta
+    const todos = presentes.every((m) => m.listo) && this.requisitos().puede
+    if (todos !== (c.todosDesde !== null)) {
+      c.todosDesde = todos ? ahora : null
+      this._publicar(true)
+    }
+    const t = ahora - c.desde
+    const fase = t >= CUENTA_DE_SALA.urgenteSegundos * 1000 ? 2 : t >= CUENTA_DE_SALA.avisoSegundos * 1000 ? 1 : 0
+    if (fase !== c.fase) { c.fase = fase; this._publicar(true) }
+    if (c.todosDesde !== null && ahora - c.todosDesde >= CUENTA_DE_SALA.todosListosSegundos * 1000) {
+      this.cuenta = null
+      this._lanzar()
+      return
+    }
+    if (t < CUENTA_DE_SALA.totalSegundos * 1000) return
+    // **Se acabó el tiempo**: fuera quien no marcó, y a jugar si quedan bastantes.
+    this.cuenta = null
+    for (const m of presentes) if (!m.listo) this._expulsar(m, CUENTA_DE_SALA.motivoNoListo)
+    if (this.requisitos().puede) this._lanzar()
+    else this._publicar(true)
+  }
+
+  /** Lo que le queda a la cuenta, en ms, para la foto de la sala. */
+  _restaDeCuenta() {
+    const c = this.cuenta
+    if (!c) return null
+    const ahora = this.ahora()
+    const total = CUENTA_DE_SALA.totalSegundos * 1000 - (ahora - c.desde)
+    const todos = c.todosDesde === null ? Infinity : CUENTA_DE_SALA.todosListosSegundos * 1000 - (ahora - c.todosDesde)
+    return Math.max(0, Math.min(total, todos))
+  }
+
+  /**
+   * **Sacar a alguien de la sala, diciéndole por qué.** El `ADIOS` es el mensaje
+   * de siempre (vuelta 62) y la pantalla ya sabe enseñar su motivo en rojo; su
+   * sitio se libera como si se hubiera ido él.
+   */
+  _expulsar(m, razon) {
+    try {
+      m.enviar(JSON.stringify({ t: MSG.ADIOS, razon }))
+    } catch {
+      /* el cable se está cerrando */
+    }
+    this.abandona(m.id)
+  }
+
   // --------------------------------------------------------------------- reloj
 
   tick() {
+    this._cuentaTick()
     if (this.partida) this.partida.tick()
     else this._paso += 1
     // Una vez por segundo: lo que caduca y lo que ha cambiado de estado solo.
@@ -507,6 +624,10 @@ export class Lobby {
       })),
       pt: p ? { n: p.numero, e: estado, modo: p.modo, mapa: p.escenario.key } : { n: 0, e: 'ninguna' },
       req: this.requisitos(),
+      // La cuenta atrás (vuelta 107): cuánto le queda, en qué fase está y si es
+      // la corta de «todos listos». Cuánto queda se redondea al segundo, que es
+      // lo que se enseña: así la foto sólo cambia una vez por segundo.
+      ...(this.cuenta ? { cta: { s: Math.ceil(this._restaDeCuenta() / 1000), f: this.cuenta.fase, ...(this.cuenta.todosDesde !== null ? { t: 1 } : null) } } : null),
     }
     const texto = JSON.stringify(comun)
     if (!forzar && texto === this._estadoPublicado) return

@@ -7753,22 +7753,13 @@ export const ROUNDS = {
    */
   compraSegundos: 15,
   /**
-   * Lo que ofrece el selector del lobby. El 0 es «sin fase» y
-   * `compraSinLimite` es la compra **sin reloj** (vuelta 102).
+   * Lo que ofrece el selector del lobby. El 0 es «sin fase». **Siempre un
+   * reloj** (vuelta 107, D1): la compra «sin límite» de la 102, que la cerraba
+   * un «listo» de todos en la tienda, se quitó —dos «listos» distintos, el de la
+   * sala y el de la tienda, eran dos cosas que aprender para lo mismo—. Ahora
+   * la fase de compra dura lo que diga aquí y después empieza la acción.
    */
-  compraOpciones: [0, 5, 10, 15, 20, 30, -1],
-  /**
-   * **La compra sin límite** (vuelta 102), para partidas entre amigos: la fase
-   * no la cierra un reloj sino **que todos digan «listo»**. Es un número y no
-   * otra bandera porque viaja por los mismos sitios que los segundos —el
-   * selector, la dirección, el lobby, la bienvenida— y dos campos serían dos
-   * verdades sobre lo mismo.
-   *
-   * Negativo a propósito y **no cero**: cero significa lo contrario —que no hay
-   * fase— y por eso cada sitio que preguntaba `<= 0` pasa a preguntar `=== 0`.
-   * Las opciones con reloj se quedan como estaban: son las de competición.
-   */
-  compraSinLimite: -1,
+  compraOpciones: [0, 5, 10, 15, 20, 30],
   /**
    * **La prórroga se juega en tandas, no a muerte súbita.** Con una sola ronda
    * de desempate, las trece anteriores valdrían lo mismo que la catorceava. Al
@@ -8178,6 +8169,45 @@ export const NET = {
  * la reaparición por reloj de entradas que ya existe desde la vuelta 52. Lo que
  * sí es nuevo son los números de aquí.
  */
+/**
+ * **La cuenta atrás del LISTO en la sala** (vuelta 107, D2). El LISTO existe
+ * sólo en la sala, y una sala no puede quedarse esperando para siempre a quien
+ * se ha ido a por un café: en cuanto hay gente suficiente para jugar, empieza
+ * una cuenta de `totalSegundos` que todos ven. A los `avisoSegundos` parpadea el
+ * botón de quien no está listo y suena un pitido; a los `urgenteSegundos`, en
+ * rojo y más fuerte; y al llegar al final la partida se lanza sola y **quien no
+ * marcó LISTO sale de la sala** —con su motivo—, si quedan bastantes. Con todos
+ * listos no hace falta esperar: `todosListosSegundos` y empieza.
+ *
+ * Reloj de pared y no del mundo, como la pausa (vuelta 54): es una cuenta de la
+ * conversación entre personas, y en la sala el mundo no corre.
+ */
+export const CUENTA_DE_SALA = {
+  totalSegundos: 45,
+  avisoSegundos: 15,
+  urgenteSegundos: 30,
+  todosListosSegundos: 3,
+  /** El motivo que ve quien sale por no marcar. */
+  motivoNoListo: 'No marcaste LISTO',
+  motivoSacado: 'El anfitrión te ha sacado de la sala',
+}
+
+/**
+ * **Inactividad en una partida** (vuelta 107, D3). Quien no toca nada —ni una
+ * tecla, ni el ratón— recibe a los `avisoSegundos` un «¿Sigues ahí?»; al llegar
+ * a `fueraSegundos` sale de la acción **como una caída** (vuelta 62), con su
+ * butaca guardada y la regla de siempre en el duelo —la partida espera y el
+ * rival puede reclamarla—; y a los `expulsionSegundos` sale de la sala.
+ * Cualquier tecla antes de eso le devuelve a su sitio. Reloj de pared, como la
+ * cuenta de la sala: es del jugador, no del mundo, y en pausa no corre.
+ */
+export const AFK = {
+  avisoSegundos: 45,
+  fueraSegundos: 60,
+  expulsionSegundos: 120,
+  motivo: 'Te expulsamos por inactividad',
+}
+
 export const TODOS = {
   /**
    * **Tope de butacas: diez** (vuelta 101; eran dieciséis en la 100). Un mapa

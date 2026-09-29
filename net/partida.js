@@ -17,7 +17,7 @@
  * Y sigue sin tener código de juego: importa `movement.js`, `scenario.js`,
  * `hitPlayer` y `hasLineOfSight` tal cual.
  */
-import { ECONOMY, NET, PAUSE, PLAYER, PROJECTILES, ROUNDS, SIM, SIM_STEP_MS, TODOS, WEAPONS, WEAPON_ORDER, bandoDeRanura, catalogoDeTienda, PEANAS, SECONDARY_WEAPON, modoDeSala, modoMultijugador } from '../src/config.js'
+import { AFK, ECONOMY, NET, PAUSE, PLAYER, PROJECTILES, ROUNDS, SIM, SIM_STEP_MS, TODOS, WEAPONS, WEAPON_ORDER, bandoDeRanura, catalogoDeTienda, PEANAS, SECONDARY_WEAPON, modoDeSala, modoMultijugador } from '../src/config.js'
 import { armaPermitida, equipoDeSalida, recogerEnInventario } from '../src/game/arsenal.js'
 import { MovementController } from '../src/game/movement.js'
 import { encajarImpacto, hitPlayer, zoneDamage } from '../src/game/player.js'
@@ -109,8 +109,21 @@ export class Partida {
     pasoInicial = 0,
     numero = 1,
     arranqueManual = false,
+    afk = false,
   }) {
     this.escenario = escenario
+    /**
+     * **Si esta partida vigila la inactividad** (vuelta 107, D3). Sólo las que
+     * lanza el lobby: sin lobby (`VEKTOR_LOBBY=0`) es el mundo de los bancos de
+     * netcode, con blancos que se quedan quietos a propósito.
+     */
+    this.afk = afk
+    this._afkRevisado = 0
+    /**
+     * **A quién se le dice que alguien sale por inactividad** (vuelta 107). El
+     * lobby lo saca de la sala; sin lobby, la partida lo despide ella.
+     */
+    this.alExpulsar = null
     /**
      * **Qué partida de la sala es ésta** (vuelta 101). Una sala juega varias
      * —la revancha es otra partida en la misma sala—, y el cliente lo necesita
@@ -279,11 +292,6 @@ export class Partida {
       prorroga: false,
       /** Rondas jugadas al entrar en prórroga, para contar las tandas. */
       prorrogaDesde: 0,
-      /**
-       * **Quién ha dicho «listo» en una compra sin límite** (vuelta 102), por
-       * ranura. Vacío en cualquier otra fase y en las compras con reloj.
-       */
-      listos: new Set(),
     }
     /**
      * **Las salidas las declara el mapa** (vuelta 66). En el de duelo están en
@@ -342,42 +350,12 @@ export class Partida {
     // control que promete algo que el servidor no va a hacer.
     if (this.dotacion) { this.compraSegundos = 0; return }
     if (!Number.isFinite(segundos)) return
-    // **Sin límite es un valor, no un tope** (vuelta 102): se guarda tal cual y
-    // cada sitio que preguntaba `<= 0` («no hay fase») pregunta `=== 0`.
-    if (segundos === ROUNDS.compraSinLimite) { this.compraSegundos = ROUNDS.compraSinLimite; return }
+    // **La compra sin límite ya no existe** (vuelta 107, D1): la fase de compra
+    // dura siempre un tiempo fijo y después empieza la acción, en todos los
+    // modos; el único «listo» es el de la sala. Un enlace viejo con `compra=-1`
+    // juega la de fábrica, no «sin fase», que sería lo contrario de lo que pedía.
+    if (segundos < 0) { this.compraSegundos = ROUNDS.compraSegundos; return }
     this.compraSegundos = Math.max(0, Math.min(60, Math.round(segundos)))
-  }
-
-  /** ¿La fase de compra de esta sala la cierra un «listo» de todos y no un reloj? */
-  get compraSinLimite() {
-    return this.compraSegundos === ROUNDS.compraSinLimite
-  }
-
-  /**
-   * **Los que tienen que decir «listo»** (vuelta 102): los que juegan y siguen
-   * conectados. Quien se ha caído no bloquea la ronda —si no, una caída sería
-   * una pausa sin tope—, y cuando vuelve se le vuelve a esperar.
-   */
-  _faltanListos() {
-    let faltan = 0
-    for (const j of this.jugadores.values()) {
-      if (j.bando === null || j.desconectado) continue
-      if (!this.rondas.listos.has(j.ranura)) faltan += 1
-    }
-    return faltan
-  }
-
-  /**
-   * **«Listo» en una compra sin límite** (vuelta 102). Sólo cuenta ahí: en las
-   * compras con reloj —las de competición— no hay forma de acortarla, que es lo
-   * que las hace iguales para los dos. Se puede desmarcar, y la ronda empieza
-   * en el paso siguiente al último «listo» (`_rondasTick`), no aquí dentro de
-   * un mensaje.
-   */
-  _listoParaRonda(jugador, listo) {
-    if (!this.compraSinLimite || this.rondas.fase !== 'compra' || jugador.bando === null) return
-    if (listo) this.rondas.listos.add(jugador.ranura)
-    else this.rondas.listos.delete(jugador.ranura)
   }
 
   get llena() {
@@ -419,6 +397,75 @@ export class Partida {
    * importa, y con el reloj de pared: es el mismo reloj de la ventana de
    * reconexión, y por la misma razón —tiene que correr con el mundo parado—.
    */
+  // ------------------------------------------------------ inactividad (D3)
+
+  /**
+   * **Quién lleva cuánto sin tocar nada** (vuelta 107, D3). Fuera de una
+   * partida en marcha, y en pausa, el reloj de cada uno se queda en «ahora»:
+   * nadie está inactivo por esperar a que empiece o a que vuelva el rival.
+   */
+  _revisarAfk(ahora) {
+    const corre = this.enJuego && !this.pausa
+    for (const j of [...this.jugadores.values()]) {
+      if (j.activoEn === undefined || (!corre && !j.afk)) { j.activoEn = ahora; continue }
+      if (j.afk) {
+        if (ahora - j.afk.desde >= (AFK.expulsionSegundos - AFK.fueraSegundos) * 1000) this._expulsarAfk(j)
+        continue
+      }
+      if (j.desconectado) { j.activoEn = ahora; continue }
+      const quieto = ahora - j.activoEn
+      if (quieto >= AFK.fueraSegundos * 1000) this._ponerAfk(j, ahora)
+      else if (quieto >= AFK.avisoSegundos * 1000 && !j.afkAviso) {
+        j.afkAviso = true
+        j.enviar(JSON.stringify({ t: MSG.AFK, e: 1, s: AFK.fueraSegundos - AFK.avisoSegundos }))
+      }
+    }
+  }
+
+  _activo(jugador) {
+    jugador.activoEn = Date.now()
+    if (!jugador.afkAviso) return
+    jugador.afkAviso = false
+    jugador.enviar(JSON.stringify({ t: MSG.AFK, e: 0 }))
+  }
+
+  /**
+   * **Fuera de la acción, como una caída** (vuelta 62): la misma butaca
+   * guardada, la misma pausa en el duelo y el mismo «reclamar» para el rival.
+   * Lo único distinto es que el cable sigue vivo, así que se guarda por dónde
+   * hablarle para cuando vuelva o haya que despedirle.
+   */
+  _ponerAfk(jugador, ahora) {
+    const enviar = jugador.enviar
+    enviar(JSON.stringify({ t: MSG.AFK, e: 2, s: AFK.expulsionSegundos - AFK.fueraSegundos }))
+    this.sedesconecta(jugador.id)
+    if (!this.jugadores.has(jugador.id)) return
+    jugador.afk = { desde: ahora }
+    jugador.afkAviso = false
+    jugador.enviarAfk = enviar
+  }
+
+  _volverDeAfk(jugador) {
+    const enviar = jugador.enviarAfk
+    jugador.afk = null
+    jugador.enviarAfk = null
+    jugador.activoEn = Date.now()
+    this._reconectar(jugador, enviar)
+    enviar(JSON.stringify({ t: MSG.AFK, e: 0 }))
+  }
+
+  _expulsarAfk(jugador) {
+    const enviar = jugador.enviarAfk
+    jugador.afk = null
+    jugador.enviarAfk = null
+    if (this.alExpulsar) {
+      this.alExpulsar(jugador.id, AFK.motivo)
+      return
+    }
+    enviar?.(JSON.stringify({ t: MSG.ADIOS, razon: AFK.motivo }))
+    this.abandona(jugador.id)
+  }
+
   _caducarButacas() {
     if (this._caidos === 0) return
     const tope = ROUNDS.reconexionSegundos * 1000
@@ -867,11 +914,19 @@ export class Partida {
       this._recoger(jugador, mensaje.i)
       return
     }
-    if (mensaje.t === MSG.LISTO_COMPRA) {
-      this._listoParaRonda(jugador, Boolean(mensaje.v))
+    // **«Estoy aquí»** (vuelta 107, D3): vuelve a su butaca quien estaba fuera
+    // por inactividad, por el camino de una reconexión.
+    if (mensaje.t === MSG.AFK) {
+      if (jugador.afk) this._volverDeAfk(jugador)
+      else this._activo(jugador)
       return
     }
     if (mensaje.t !== MSG.ENTRADA) return
+    // Fuera por inactividad, sus entradas no cuentan: es una caída.
+    if (jugador.afk) return
+    // **Qué cuenta como estar ahí**: una tecla, un disparo o mover el ratón.
+    if (this.afk && (mensaje.k || mensaje.d || (jugador._yawVisto !== undefined && mensaje.yaw !== jugador._yawVisto))) this._activo(jugador)
+    jugador._yawVisto = mensaje.yaw
     // Una entrada de un paso que ya se ejecutó llega tarde y no sirve: volver
     // atrás sería rehacer el mundo entero, y el cliente ya no la espera.
     if (mensaje.n <= jugador.ack) {
@@ -1036,6 +1091,14 @@ export class Partida {
     // normales — y aun así se comprueba aquí arriba, porque una pausa recién
     // caducada no puede dejar una votación esperando un paso más.
     if (this.votacion && Date.now() >= this.votacion.expiraEn) this._resolverVotacion(true)
+    // **La inactividad, una vez por segundo** (vuelta 107, D3).
+    if (this.afk) {
+      const ahora = Date.now()
+      if (ahora - this._afkRevisado >= 1000) {
+        this._afkRevisado = ahora
+        this._revisarAfk(ahora)
+      }
+    }
     // **Con el mundo en pausa la foto sigue saliendo, pero nada avanza.** La
     // foto es cómo se enteran los dos de que hay pausa, así que callarse sería
     // dejarles sin la única señal; y el paso no sube porque el reloj del mundo
@@ -1179,9 +1242,7 @@ export class Partida {
     texto += `,"rd":${JSON.stringify({
       n: r.n,
       f: r.fase,
-      // Sin límite no hay «cuánto queda»: -1, y la lista de los que están listos.
-      resta: r.hastaPaso === Infinity ? -1 : r.hastaPaso ? Math.max(0, (r.hastaPaso - this.paso) * SIM_STEP_MS) : 0,
-      ...(r.fase === 'compra' && this.compraSinLimite ? { li: [...r.listos], nl: this._faltanListos() } : null),
+      resta: r.hastaPaso ? Math.max(0, (r.hastaPaso - this.paso) * SIM_STEP_MS) : 0,
       m: r.marcador,
       ...(r.ganador !== null ? { g: r.ganador, mot: r.motivo } : null),
       ...(r.ultima ? { u: r.ultima } : null),
@@ -2536,11 +2597,7 @@ export class Partida {
       return
     }
     this.rondas.fase = 'compra'
-    this.rondas.listos.clear()
-    // **Sin límite no tiene final en el reloj** (vuelta 102): la cierra el
-    // último «listo», en `_rondasTick`. `Infinity` y no un número muy grande,
-    // para que ninguna cuenta de «cuánto queda» pueda parecer un tiempo.
-    this.rondas.hastaPaso = this.compraSinLimite ? Infinity : this.paso + this._pasosDe(this.compraSegundos)
+    this.rondas.hastaPaso = this.paso + this._pasosDe(this.compraSegundos)
     for (const jugador of this.jugadores.values()) {
       jugador.movimiento.setCorralito(this._cajaDe(jugador.ranura))
     }
@@ -2620,7 +2677,6 @@ export class Partida {
       if (cambio) this._enviarEconomia(jugador)
     }
     this.rondas.fase = 'ronda'
-    this.rondas.listos.clear()
     this.rondas.hastaPaso = this.paso + this._pasosDe(ROUNDS.duracionSegundos)
     /**
      * **La gracia de salida, si el mapa la pide** (vuelta 78).
@@ -2742,10 +2798,6 @@ export class Partida {
         this._terminarRonda(ganador, ganador === null ? 'empate' : 'muerte')
         return
       }
-    }
-    if (r.fase === 'compra' && this.compraSinLimite && this._faltanListos() === 0) {
-      this._empezarRonda()
-      return
     }
     if (this.paso < r.hastaPaso) return
     if (r.fase === 'compra') this._empezarRonda()

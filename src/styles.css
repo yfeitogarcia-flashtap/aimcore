@@ -1442,6 +1442,61 @@ body {
   text-align: center;
 }
 
+/* **La cuenta atrás del LISTO** (vuelta 107, D2): el número grande y, al lado,
+   qué pasa al llegar a cero. En blanco mientras hay tiempo y en el rojo de
+   peligro de Cabina en los últimos 15 s. */
+.lobby-cuenta {
+  display: flex;
+  align-items: center;
+  gap: var(--cab-e3);
+  margin: 0;
+  padding: var(--cab-e3);
+  background: var(--cab-hueco);
+  color: var(--cab-texto-suave);
+  font-family: var(--cab-letra-texto);
+  font-size: var(--cab-t-micro);
+}
+
+.lobby-cuenta__num {
+  min-width: 2ch;
+  font-family: var(--cab-letra-rotulo);
+  font-stretch: condensed;
+  font-size: var(--cab-t-titulo);
+  font-variant-numeric: tabular-nums;
+  color: var(--cab-texto);
+}
+
+.lobby-cuenta--f2 .lobby-cuenta__num { color: var(--cab-peligro); }
+
+/* **El LISTO de quien no ha marcado parpadea** (vuelta 107, D2): a los 15 s en
+   su verde, a los 30 s en rojo. Es la única animación de un botón en Cabina, y
+   está porque el botón es lo que hay que pulsar para no salir de la sala. */
+.lobby-listo--apura {
+  animation: lobby-apura 0.9s steps(2, jump-none) infinite;
+}
+
+.lobby-listo--urgente {
+  background: var(--cab-peligro);
+  animation-duration: 0.45s;
+}
+
+@keyframes lobby-apura {
+  0% { filter: none; }
+  100% { filter: brightness(0.45); }
+}
+
+.lobby-hueco:has(.lobby-sacar) {
+  grid-template-columns: 10px minmax(0, 1fr) auto auto;
+}
+
+.lobby-sacar {
+  padding-block: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .lobby-listo--apura { animation: none; outline: 2px solid currentColor; }
+}
+
 .lobby-encurso .button {
   align-self: flex-start;
 }

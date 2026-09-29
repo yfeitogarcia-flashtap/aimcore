@@ -85,7 +85,7 @@ function Carrusel({ modo, mapa, puede, onElegir }) {
 }
 
 /** Un hueco: quién lo ocupa y si está listo, o el botón para sentarse. */
-function Hueco({ hueco, miembro, tu, anfitrion, color, etiqueta, onSentarse }) {
+function Hueco({ hueco, miembro, tu, anfitrion, color, etiqueta, onSentarse, onSacar }) {
   if (!miembro) {
     // Un hueco libre dice **de qué color es** en el todos contra todos, que es
     // lo que se elige al pinchar; en equipos, sólo que está libre.
@@ -107,18 +107,25 @@ function Hueco({ hueco, miembro, tu, anfitrion, color, etiqueta, onSentarse }) {
       <span className="lobby-hueco__estado">
         {miembro.c ? 'sin conexión' : miembro.p ? 'jugando' : miembro.l ? 'LISTO' : 'esperando'}
       </span>
+      {/* **Sacar de la sala** (vuelta 107, D2): sólo lo ve el anfitrión, al
+          lado de cada uno que no es él. */}
+      {onSacar && !soyYo && (
+        <button type="button" className="button button--quiet button--pequeno lobby-sacar" title={`Sacar a ${miembro.n} de la sala`} onClick={() => onSacar(miembro.id)}>
+          Sacar
+        </button>
+      )}
     </div>
   )
 }
 
 /**
  * **Cómo se llama cada opción de compra** (vuelta 102), en el selector y en el
- * resumen: cero es «sin fase» y `compraSinLimite` es la que cierra un «listo»
- * de todos. Una sola función para que las dos columnas digan lo mismo.
+ * resumen: cero es «sin fase». Una sola función para que las dos columnas digan
+ * lo mismo. (La compra «sin límite» se quitó en la 107: el único «listo» es el
+ * de la sala.)
  */
 function nombreDeCompra(segundos, largo = false) {
   if (segundos === 0) return largo ? 'sin fase (rápida)' : 'Sin fase'
-  if (segundos === ROUNDS.compraSinLimite) return largo ? 'sin límite · hasta que todos estén listos' : 'Sin límite'
   return `${segundos} s`
 }
 
@@ -160,6 +167,7 @@ function Lobby({ estado, codigo, enlace, reconectar, api }) {
   const esperando = estado.m.filter((m) => m.h === null)
   const nombreAnfitrion = estado.m.find((m) => m.id === anfitrion)?.n ?? '—'
   const req = estado.req
+  const cuenta = estado.cta ?? null
 
   const copiar = async (texto, que) => {
     const bien = await api.copiar(texto)
@@ -277,9 +285,7 @@ function Lobby({ estado, codigo, enlace, reconectar, api }) {
                 ? 'El todos contra todos no tiene rondas ni tienda: cada uno sale con lo que elija en la armería.'
                 : reparte
                   ? 'Este mapa reparte el equipo: no hay tienda ni fase de compra.'
-                  : estado.compra === ROUNDS.compraSinLimite
-                    ? 'Sin límite: la ronda empieza cuando todos pulsan «Listo» en la tienda. Para jugar entre amigos; las opciones con reloj son las de competición.'
-                    : 'Lo que dura la compra entre rondas. Sin fase, la tienda está abierta toda la ronda; sin límite, empieza cuando todos están listos.'}
+                  : 'Lo que dura la compra entre rondas; al acabar empieza la acción. Sin fase, la tienda está abierta toda la ronda.'}
             </span>
           </Grupo>
 
@@ -318,6 +324,7 @@ function Lobby({ estado, codigo, enlace, reconectar, api }) {
                         color={colorDe(h)}
                         etiqueta={equipos ? null : colorDeJugador(h).label}
                         onSentarse={api.hueco}
+                        onSacar={soyAnfitrion && !enJuego ? api.sacar : null}
                       />
                     ))}
                   </div>
@@ -361,6 +368,24 @@ function Lobby({ estado, codigo, enlace, reconectar, api }) {
           </p>
 
           {/**
+            * **La cuenta atrás** (vuelta 107, D2): en cuanto hay gente para
+            * jugar, 45 s y la partida se lanza sola. Lo que se lee es qué pasa
+            * al llegar a cero, no sólo un número.
+            */}
+          {cuenta && (
+            <p className={`lobby-cuenta lobby-cuenta--f${cuenta.f}`} id="cuenta" role="timer">
+              <span className="lobby-cuenta__num">{cuenta.s}</span>
+              <span className="lobby-cuenta__texto">
+                {cuenta.t
+                  ? 'Todos listos: empieza ya'
+                  : yo?.h !== null && !yo?.l
+                    ? 'Marca LISTO o saldrás de la sala al llegar a cero'
+                    : 'Al llegar a cero empieza la partida; quien no esté listo sale de la sala'}
+              </span>
+            </p>
+          )}
+
+          {/**
             * **LISTO, bien visible, uno por jugador** (vuelta 101): como en el
             * CS. Pulsado se queda en verde con la marca, y pulsarlo otra vez lo
             * quita — un interruptor, no un botón que se gasta.
@@ -368,7 +393,7 @@ function Lobby({ estado, codigo, enlace, reconectar, api }) {
           <button
             type="button"
             id="listo"
-            className={`button button--grande lobby-listo${yo?.l ? ' lobby-listo--puesto' : ' button--primary'}`}
+            className={`button button--grande lobby-listo${yo?.l ? ' lobby-listo--puesto' : ' button--primary'}${!yo?.l && cuenta && !cuenta.t && cuenta.f > 0 ? ` lobby-listo--apura${cuenta.f === 2 ? ' lobby-listo--urgente' : ''}` : ''}`}
             disabled={!yo || yo.h === null || Boolean(yo.p && enJuego)}
             onClick={() => api.listo(!yo?.l)}
           >

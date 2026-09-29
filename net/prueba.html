@@ -73,6 +73,20 @@
   #aviso-red.suave { background: #FFD23F; color: #141000; }
   #aviso-red small { display: block; font-weight: 400; letter-spacing: .04em; opacity: .8; }
 
+  /* **Inactividad** (vuelta 107, D3), con la forma del cartel de pausa: es una
+     conversación con el jugador, no un aviso de la red. */
+  #afk { position: fixed; top: 0; left: 0; right: 0; z-index: 6; padding: 12px 14px;
+    text-align: center; letter-spacing: .08em; background: rgba(10,10,10,.94);
+    border-bottom: 1px solid #2A2A2A; color: #FFF; }
+  #afk[hidden] { display: none !important; }
+  #afk b { letter-spacing: .2em; }
+  #afk em { margin-left: 10px; font-style: normal; font-weight: 700; font-variant-numeric: tabular-nums; }
+  #afk small { display: block; margin-top: 3px; font-weight: 400; color: #9A9A9A; letter-spacing: .04em; }
+  #afk button { margin: 7px 4px 0; background: var(--cab-accion); color: var(--cab-accion-tinta); border: 0;
+    padding: 7px 16px; font-family: var(--cab-letra-rotulo); font-stretch: condensed; font-size: var(--cab-t-texto);
+    font-weight: 700; letter-spacing: .08em; text-transform: uppercase; cursor: pointer; }
+  #afk button[hidden] { display: none; }
+
   /* **La pausa.** Panel neutro a propósito: en esta paleta el rojo, el amarillo,
      el verde, el naranja y el ámbar significan ya otras cosas. Lo único teñido
      es el botón de aceptar, que es verde porque es el color de las acciones. */
@@ -228,8 +242,6 @@
      debajo. En verde de acción porque eso es lo que hay que hacer aquí, y
      pegado al campo —margen de abajo a cero— para que se lean como una cosa y
      no como una frase suelta encima de otra. */
-  .tienda-listo { text-align: center; margin: 8px 0 4px; }
-  .tienda-listo button[hidden] { display: none; }
   .volver-esc { margin: 6px 0 12px; color: var(--cab-texto-apagado); font-size: var(--cab-t-pequeno); }
   .invita { margin: 12px 0 0; color: var(--cab-accion); font-size: var(--cab-t-pequeno); line-height: 1.4; width: 340px; }
   .linea input { flex: 1; min-width: 0; background: var(--cab-fondo); color: var(--cab-texto-suave); border: 0;
@@ -356,6 +368,7 @@
 </style>
 <canvas id="lienzo"></canvas>
 <div id="aviso-red" hidden></div>
+<div id="afk" class="control" hidden role="alert"><b id="afkTitulo"></b><em id="afkCuenta"></em><small id="afkTexto"></small><button type="button" id="afkVolver" hidden>Reconectar</button></div>
 <div id="pausa" hidden></div>
 <div id="votacion"></div>
 
@@ -474,7 +487,6 @@
   </div>
   <!-- **«Listo»**, sólo en la compra sin límite (vuelta 102): ahí no hay reloj
        que cierre la fase, la cierra que todos lo digan. Intro también vale. -->
-  <p class="tienda-listo"><button id="tiendaListo" class="control button" aria-pressed="false" hidden>Listo</button></p>
   <div id="tiendaGrid"></div>
   <p class="apagado" style="max-width:980px;margin:9px auto 0">
     <kbd id="tiendaCierra">B</kbd> cierra · clic para comprar · o teclea <b>categoría + código</b>

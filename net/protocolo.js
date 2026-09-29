@@ -127,14 +127,6 @@ export const MSG = {
    */
   RECOGER: 'rp',
   /**
-   * **Listo para empezar la ronda** (vuelta 102), sólo en la compra **sin
-   * límite**: ahí no hay reloj que la cierre, así que la cierra que todos los
-   * que están conectados lo digan. `v` es 1 o 0 —se puede desmarcar— y el
-   * estado vuelve en la foto (`rd.li`), como todo lo que tienen que ver igual
-   * todos. No empieza por `l` a propósito: eso es del lobby (`esDelLobby`).
-   */
-  LISTO_COMPRA: 'cl',
-  /**
    * **Lo que tienes y lo que puedes** (vuelta 64). Del servidor a **un** jugador:
    * dinero, inventario y el techo de la ronda. Va como mensaje suelto y no en la
    * foto por dos motivos: cambia cada pocos minutos, no sesenta veces por
@@ -248,8 +240,18 @@ export const MSG = {
    * - `LANZAR` (del anfitrión): empieza la partida con los listos.
    * - `VOLVER`: «Volver a jugar» al acabar — vuelves al lobby, y listo.
    * - `ENTRAR`: con una partida del todos contra todos en marcha, meterse.
+   * - `SACAR` (del anfitrión, vuelta 107): echar a alguien de la sala, con `id`.
+   *   Sale con un `ADIOS` que dice por qué, como quien no marcó LISTO a tiempo.
    */
   LOBBY: 'lb',
+  /**
+   * **Inactividad** (vuelta 107, D3). Del servidor, `e`: 1 es «¿sigues ahí?»,
+   * 2 es «estás fuera» —la butaca se guarda como en una caída— y 0 que todo va
+   * bien otra vez; `s`, los segundos que quedan para el paso siguiente. Del
+   * cliente, sin campos: «estoy aquí», que devuelve la butaca. No empieza por
+   * `l`: es de la partida, no de la sala.
+   */
+  AFK: 'af',
   CONFIG: 'lc',
   LISTO: 'll',
   HUECO: 'lh',
@@ -257,6 +259,7 @@ export const MSG = {
   LANZAR: 'lg',
   VOLVER: 'lv',
   ENTRAR: 'le',
+  SACAR: 'lk',
 }
 
 /** ¿Es un mensaje del lobby? Todos empiezan por `l` (ver `MSG.LOBBY`). */
@@ -284,8 +287,7 @@ export function esDelLobby(t) {
  */
 export function compraAbierta(fase, compraSegundos) {
   if (fase === 'compra') return true
-  // **Cero es «sin fase», y sólo cero** (vuelta 102): la compra sin límite es
-  // un número negativo (`ROUNDS.compraSinLimite`) y **sí** tiene fase —la más
-  // larga—, así que ahí la tienda cierra al empezar la ronda como en las demás.
+  // **Cero es «sin fase», y sólo cero** (vuelta 102). La compra sin límite de
+  // entonces se quitó en la 107 (D1), y la regla se queda como está.
   return compraSegundos === 0 && fase === 'ronda'
 }

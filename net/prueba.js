@@ -36,7 +36,7 @@ import { vigilarActualizaciones } from '../src/ui/actualizacion.js'
 import { montarPantallaCompleta } from '../src/escritorio.js'
 import { crearVueltaConEscape } from '../src/ui/volverConEscape.js'
 import { soltarRaton } from '../src/game/captura.js'
-import { getKeybinds, keyLabel, keysOf, subscribeKeybinds } from '../src/keybinds.js'
+import { getKeybinds, keyLabel, keysOf, subscribeKeybinds, typingInField } from '../src/keybinds.js'
 import { MSG, compraAbierta } from './protocolo.js'
 import { codigoDeLaDireccion, direccionDeLaBarra, enlaceDeSala, mapaDeLaDireccion, modoDeLaDireccion, urlDeSala } from './sala-cliente.js'
 import { nickDeRanura } from './cliente.js'
@@ -455,6 +455,44 @@ function pintarRed(ahora) {
     avisoRed.hidden = true
   }
 }
+/**
+ * **Inactividad** (vuelta 107, D3). El servidor avisa y la página lo cuenta:
+ * a los 45 s «¿Sigues ahí?», al minuto «estás fuera» con **Reconectar** —y
+ * cualquier tecla hace lo mismo—, y a los dos minutos llega el `ADIOS` con su
+ * motivo, que sale en el aviso rojo de siempre. La cuenta se repinta cuatro
+ * veces por segundo mientras está puesta y no más.
+ */
+let afkReloj = null
+function pintarAfk() {
+  const a = cliente.afk
+  const panel = $('afk')
+  if (!a) {
+    panel.hidden = true
+    if (afkReloj !== null) { clearInterval(afkReloj); afkReloj = null }
+    return
+  }
+  panel.hidden = false
+  $('afkTitulo').textContent = a.e === 2 ? 'ESTÁS FUERA POR INACTIVIDAD' : '¿SIGUES AHÍ?'
+  $('afkTexto').textContent = a.e === 2
+    ? 'Tu sitio se guarda. Pulsa cualquier tecla o «Reconectar» para volver; si no, saldrás de la sala.'
+    : 'Mueve el ratón o pulsa una tecla: si no, sales de la acción.'
+  $('afkVolver').hidden = a.e !== 2
+  $('afkCuenta').textContent = `${Math.max(0, Math.ceil((a.hasta - performance.now()) / 1000))} s`
+  if (afkReloj === null) afkReloj = setInterval(pintarAfk, 250)
+}
+cliente.onAfk = (a) => {
+  // Fuera de la acción, el ratón suelto: hay un botón que pulsar.
+  if (a?.e === 2 && document.pointerLockElement === lienzo) soltarRaton()
+  pintarAfk()
+}
+$('afkVolver').addEventListener('click', () => cliente.volverDeAfk())
+window.addEventListener('keydown', (evento) => {
+  if (cliente.afk?.e !== 2 || typingInField()) return
+  evento.preventDefault()
+  evento.stopImmediatePropagation()
+  cliente.volverDeAfk()
+}, true)
+
 cliente.onDesconectado = (d) => {
   redCaida = d
   // Y el panel deja de decir «conectando…» debajo de un cartel que dice que no
@@ -463,6 +501,9 @@ cliente.onDesconectado = (d) => {
   // Se suelta el ratón: seguir capturado en una partida que ya no existe es
   // dejar al jugador encerrado en una pantalla que no responde.
   if (document.pointerLockElement === lienzo) soltarRaton()
+  // Quien sale de la sala ya no está «fuera por inactividad»: está fuera.
+  cliente.afk = null
+  pintarAfk()
   pintarRed(performance.now())
 }
 /** `mm:ss` de unos milisegundos, redondeando hacia arriba: 0 es 0, no 0.4. */
@@ -1259,6 +1300,7 @@ const lobbyUI = montarLobby(document.getElementById('lobby'), {
     mezclar: () => mandarALaSala({ t: MSG.MEZCLAR }),
     lanzar: () => mandarALaSala({ t: MSG.LANZAR }),
     entrar: () => mandarALaSala({ t: MSG.ENTRAR }),
+    sacar: (id) => mandarALaSala({ t: MSG.SACAR, id }),
     salir: () => salirAlMenu(),
     copiar: (texto) => copiarTexto(texto),
     /**
@@ -1286,8 +1328,10 @@ function mandarALaSala(mensaje) {
  * mapa —si no es el que hay— **antes** de que llegue su bienvenida, que viene
  * detrás por el mismo cable.
  */
+let faseDeCuentaOida = 0
 function alEstadoDeSala(sala) {
   estadoDeSala = sala
+  avisarCuenta(sala)
   configDeSala = { modo: sala.modo, mapa: sala.mapa }
   const yo = sala.m.find((m) => m.id === sala.tu) ?? null
   const pt = sala.pt
@@ -1315,6 +1359,20 @@ function alEstadoDeSala(sala) {
       : null,
   })
   ponerVista(quiereJuego ? 'juego' : 'lobby')
+}
+
+/**
+ * **Los avisos de la cuenta atrás se oyen** (vuelta 107, D2), y sólo a quien
+ * todavía no ha marcado: a los 15 s el pitido suave de siempre —el del final de
+ * ronda, vuelta 73—, a los 30 s el agudo. Se oye **al cambiar de fase**, que es
+ * cuando lo dice el servidor; no es un segundo temporizador que pueda
+ * desfasarse del número que se ve.
+ */
+function avisarCuenta(sala) {
+  const fase = sala.cta?.t ? 0 : sala.cta?.f ?? 0
+  const yo = sala.m.find((m) => m.id === sala.tu)
+  if (fase > faseDeCuentaOida && yo && yo.h !== null && !yo.l) playRoundTick(fase === 2)
+  faseDeCuentaOida = fase
 }
 
 /**
@@ -1404,19 +1462,6 @@ function pintarRonda() {
   // queda*, no hasta cuándo: los relojes de las dos pantallas y el del servidor
   // no coinciden. Y como el reloj de la ronda es el número de paso, en pausa no
   // baja sola: deja de bajar porque el mundo deja de avanzar.
-  /**
-   * **En la compra sin límite no hay cuenta: hay listos** (vuelta 102). Lo que
-   * se enseña en el sitio del reloj es cuántos han dicho «listo» de cuántos, y
-   * se repinta el botón de la tienda con el mismo cambio, que es cuando cambia.
-   */
-  if (r.fase === 'compra' && r.sinLimite) {
-    const texto = `LISTOS ${r.listos.length}/${r.listos.length + r.faltan}`
-    if (texto === restaPintada) return
-    restaPintada = texto
-    $('rondaTiempo').textContent = texto
-    pintarListo()
-    return
-  }
   const seg = Math.ceil(Math.max(0, r.resta) / 1000)
   const texto = `${Math.floor(seg / 60)}:${String(seg % 60).padStart(2, '0')}`
   if (texto === restaPintada) return
@@ -1466,12 +1511,7 @@ function pintarFaseDeRonda(r) {
     espera: cliente.porEquipo > 1 ? 'ESPERANDO A LOS EQUIPOS' : 'ESPERANDO AL RIVAL',
     fin: ' ',
   }
-  // **Y en la sin límite, cómo se termina** (vuelta 102): con la tecla de la
-  // tienda, que es donde está el «Listo». La tecla sale del bind (vuelta 97).
-  const comoSeAcaba = r.fase === 'compra' && r.sinLimite
-    ? ` · ${keyLabel(keysOf('armoury', getKeybinds())[0])} → LISTO`
-    : ''
-  $('rondaFase').textContent = (dice[r.fase] ?? ' ') + comoSeAcaba
+  $('rondaFase').textContent = dice[r.fase] ?? ' '
   // **Al acabar la compra, la tienda se cierra sola.** Dejarla abierta sería
   // dejar al jugador con el ratón suelto justo cuando empieza la ronda; y fuera
   // de la fase no hay nada que comprar. Se repinta en cada cambio de fase por lo
@@ -1687,43 +1727,12 @@ function porQueNo(item, eco, fase) {
   return null
 }
 
-/**
- * **El «Listo» de la compra sin límite** (vuelta 102), en la tienda: es donde
- * se está al comprar, así que es donde se dice que ya se ha terminado. Sólo se
- * enseña en esa fase; dice cuántos faltan y si el tuyo ya cuenta. Marcarlo
- * cierra la tienda y te devuelve a la partida —cerrar la tienda es volver
- * (vuelta 101)—; desmarcarlo no, porque quien se desmarca va a comprar algo más.
- */
-function pintarListo() {
-  const boton = $('tiendaListo')
-  const r = cliente.rondas
-  const ver = r.fase === 'compra' && r.sinLimite
-  boton.hidden = !ver
-  if (!ver) return
-  const listo = cliente.listoEnCompra
-  boton.setAttribute('aria-pressed', String(listo))
-  boton.classList.toggle('button--primary', !listo)
-  boton.textContent = listo
-    ? `Listo ✓ · faltan ${r.faltan} · pulsa para desmarcar`
-    : `Listo · empezar la ronda (${r.listos.length}/${r.listos.length + r.faltan})`
-}
-$('tiendaListo').addEventListener('click', () => marcarListo())
-function marcarListo() {
-  const listo = !cliente.listoEnCompra
-  cliente.listoParaRonda(listo)
-  if (!listo) return
-  volviendo()
-  vuelta.cancelar()
-  motor.requestLock()
-}
-
 /** Repinta la tienda con lo que dice el servidor. */
 function pintarTienda() {
   const eco = cliente.economia
   const fase = cliente.rondas.fase
   if (tienda.hidden) return
   $('tiendaDinero').textContent = `$${eco.dinero}`
-  pintarListo()
   $('tiendaFase').textContent = !compraAbierta(fase, eco.compra)
     ? 'sólo se compra entre rondas'
     : fase === 'compra'
@@ -1784,13 +1793,6 @@ function alternarTienda(abrir = tienda.hidden) {
  */
 document.addEventListener('keydown', (evento) => {
   if (tienda.hidden) return
-  // **Intro es «Listo»** en la compra sin límite (vuelta 102): la tienda es un
-  // panel de teclado —se compra tecleando— y el botón se alcanza sin el ratón.
-  if (evento.key === 'Enter' && cliente.rondas.sinLimite && cliente.rondas.fase === 'compra') {
-    evento.preventDefault()
-    marcarListo()
-    return
-  }
   if (evento.key === 'Escape') {
     // **Cerrarla con ESC es volver a la partida** (vuelta 101): el menú del
     // código no asoma por detrás. El manejador de ESC de la ventana recibe esta

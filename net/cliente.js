@@ -185,7 +185,7 @@ export class ClienteRed {
      * y se dibuja. La misma regla que la pausa, y por el mismo motivo.
      */
     this.rondas = { n: 0, fase: 'espera', resta: 0, marcador: [0, 0], ganador: null,
-                    motivo: null, ultima: null, prorroga: false, sinLimite: false, listos: [], faltan: 0 }
+                    motivo: null, ultima: null, prorroga: false }
     /** El pase de reconexión, que da la bienvenida. Lo guarda la página. */
     this.pase = null
     /**
@@ -338,6 +338,12 @@ export class ClienteRed {
    * quedarse fuera —el servidor te echa, o el cable se corta—, porque para el
    * jugador son la misma cosa: la partida ya no está ahí.
    */
+  /** «Estoy aquí» (vuelta 107, D3): vuelve a la butaca tras estar fuera por inactividad. */
+  volverDeAfk() {
+    if (!this.conectado) return
+    this.transporte.send(JSON.stringify({ t: MSG.AFK }))
+  }
+
   _desconectar(motivo, deFuera) {
     if (this.desconexion) return
     this.conectado = false
@@ -889,6 +895,17 @@ export class ClienteRed {
       if (mensaje.d) this._compararDisparo(mensaje.d)
       return
     }
+    /**
+     * **Inactividad** (vuelta 107, D3): lo decide el servidor, que es quien ve
+     * las entradas. Aquí sólo se anota y se avisa a quien pinta: 1 «¿sigues
+     * ahí?», 2 «estás fuera» y 0 «todo bien», con los segundos que quedan
+     * anclados al reloj de aquí, como la pausa (vuelta 54).
+     */
+    if (mensaje.t === MSG.AFK) {
+      this.afk = mensaje.e ? { e: mensaje.e, hasta: performance.now() + (mensaje.s ?? 0) * 1000 } : null
+      this.onAfk?.(this.afk)
+      return
+    }
     if (mensaje.t === MSG.GOLPE) {
       this.vida = mensaje.vida
       this.escudo = mensaje.esc ?? this.escudo
@@ -1018,21 +1035,6 @@ export class ClienteRed {
     this.transporte.send(JSON.stringify({ t: MSG.RECOGER, i }))
   }
 
-  /** ¿He dicho «listo» en esta compra sin límite? Lo dice el servidor, en la foto. */
-  get listoEnCompra() {
-    return this.rondas.listos.includes(this.ranura)
-  }
-
-  /**
-   * **«Listo» en la compra sin límite** (vuelta 102). Sólo se pide: quién está
-   * listo y cuándo empieza la ronda lo decide el servidor, que lo devuelve en
-   * la foto. Fuera de esa fase no manda nada.
-   */
-  listoParaRonda(listo = !this.listoEnCompra) {
-    if (!this.conectado || !this.rondas.sinLimite || this.rondas.fase !== 'compra') return
-    this.transporte.send(JSON.stringify({ t: MSG.LISTO_COMPRA, v: listo ? 1 : 0 }))
-  }
-
 
   /**
    * **Las rondas salen enteras de la foto**, como la pausa. Lo único que hace
@@ -1063,14 +1065,6 @@ export class ClienteRed {
       motivo: r.mot ?? null,
       ultima: r.u ?? null,
       prorroga: !!r.pr,
-      /**
-       * **La compra sin límite** (vuelta 102): no hay cuenta (`resta` −1) y lo
-       * que se enseña es quién está listo. `listos` son ranuras; `faltan`, los
-       * conectados que aún no lo han dicho — los dos los cuenta el servidor.
-       */
-      sinLimite: r.resta === -1,
-      listos: r.li ?? [],
-      faltan: r.nl ?? 0,
     }
     if (!cambia) return
     this.pendientes.length = 0
@@ -1510,7 +1504,7 @@ export class ClienteRed {
     this.muertes = 0
     this.marcador = []
     this.marcadorVersion += 1
-    this.rondas = { n: 0, fase: 'espera', resta: 0, marcador: [0, 0], ganador: null, motivo: null, ultima: null, prorroga: false, sinLimite: false, listos: [], faltan: 0 }
+    this.rondas = { n: 0, fase: 'espera', resta: 0, marcador: [0, 0], ganador: null, motivo: null, ultima: null, prorroga: false }
     this.todos = { n: 0, fase: 'espera', resta: 0, objetivo: 0, ganador: null }
     this.pausa = { pausada: false, por: null, mia: false, libres: PAUSE.free, rivalLibres: PAUSE.free, motivo: null }
     this.votacion = { activa: false, por: null, mia: false, votado: false }
