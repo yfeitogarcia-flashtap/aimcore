@@ -215,6 +215,15 @@ export function montarCaptura() {
         return
       }
       ultimoEscDeLaVentana = ahora
+      // Y si es la tecla la que llega primero, hace lo mismo que haría el aviso:
+      // con el ratón capturado, soltarlo desde la página. Dejarla pasar sin más
+      // no hacía nada —en la app nadie suelta el ratón por una tecla— y el
+      // aviso de detrás se tiraba por repetido: un ESC que no pausaba.
+      if (document.pointerLockElement) {
+        evento.preventDefault()
+        evento.stopImmediatePropagation()
+        soltarRaton()
+      }
     }, true)
     window.addEventListener('vektor:escape', () => {
       const ahora = performance.now()
