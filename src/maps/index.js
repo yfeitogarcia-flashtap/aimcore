@@ -15,6 +15,7 @@
  */
 
 import mapa_Aim_camp_1 from './Aim-camp-1.js'
+import mapa_el_espejo_peanas from './el-espejo-peanas.js'
 import mapa_empty from './empty.js'
 import mapa_largoYPuerta from './largoYPuerta.js'
 import mapa_mapa_nuevo from './mapa-nuevo.js'
@@ -23,6 +24,7 @@ import mapa_test_map_190926 from './test-map-190926.js'
 /** @type {Record<string, object>} */
 export const MAPAS_DE_FICHERO = {
   'Aim-camp-1': mapa_Aim_camp_1,
+  'el-espejo-peanas': mapa_el_espejo_peanas,
   'empty': mapa_empty,
   'largoYPuerta': mapa_largoYPuerta,
   'mapa-nuevo': mapa_mapa_nuevo,
