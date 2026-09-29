@@ -95,8 +95,13 @@ console.log('[2] B dispara a A: fogonazo, voz, «!» y silbido')
 await apuntar(B, A)
 await B.evaluate(() => { window.vektorNet.motor.camera.rotation.x = 0.12 })   // por encima: que falle y silbe
 for (let i = 0; i < 3; i++) { await B.mouse.down(); await B.waitForTimeout(40); await B.mouse.up(); await B.waitForTimeout(200) }
-await A.waitForTimeout(400)
-let P = await A.evaluate(() => ({ ...window.__p, fase: window.vektorNet.motor._rivales.filter((v) => v.id).map((v) => (v.instancia.disparandoHasta > (window.vektorNet.motor._ahoraDeRed ?? 0) ? 'firing' : 'idle')) }))
+// **Se mira varias veces dentro de la ventana del «!»** (vuelta 106), no una
+// vez a los 400 ms de pared: con el mundo a cámara lenta el aviso puede llegar
+// después de esa lectura y el banco salía rojo una vez de cada tres con el
+// «!» encendiéndose un instante más tarde. `amenazaMs` es 1.5 s de juego.
+const leerP = () => A.evaluate(() => ({ ...window.__p, fase: window.vektorNet.motor._rivales.filter((v) => v.id).map((v) => (v.instancia.disparandoHasta > (window.vektorNet.motor._ahoraDeRed ?? 0) ? 'firing' : 'idle')) }))
+let P = await leerP()
+for (let k = 0; k < 8 && !P.fase.includes('firing'); k++) { await A.waitForTimeout(100); P = await leerP() }
 console.log('   ', JSON.stringify(P))
 ok(P.tiros >= 3, `A se entera de los tres disparos de B (${P.tiros})`)
 ok(P.fogonazos >= 3, `y ve sus fogonazos (${P.fogonazos})`)
