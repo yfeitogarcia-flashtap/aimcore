@@ -15496,7 +15496,7 @@ treinta bancos en verde. Un renglón en rojo, **caducado y no roto**: `flujo92`
 esperaba que un ESC con la armería abierta en la pausa la cerrara **sin**
 reanudar, que era la regla de la 89; la 101 la cambió a propósito (ESC acaba
 siempre en la partida) y ese renglón sigue midiendo la vieja, como `esc89b` y
-`esc91`, que la 101 ya retiró.
+`esc91`, que la 101 ya retiró. **Actualizado en la 105** (§105.1).
 
 ### 104.2 — La música: Spotify no, y cuatro vías que sí
 
@@ -15563,3 +15563,74 @@ munición del HUD, abajo a la derecha. El HUD va encima y se sigue leyendo. Ancl
 arma a una fracción del ancho la alejaría de ahí, pero entonces su tamaño y su giro
 cambiarían con el aspecto, que es justo lo que se pidió que no cambiara.
 
+## §105 — `flujo92` al día y el arma en pantalla calibrada por tipo
+
+### 105.1 — Ningún banco en rojo «esperado»
+
+`flujo92` medía con la regla de la 89 que un ESC con la armería abierta en la pausa
+la cerraba **sin** reanudar. Desde la 101 ESC es un «atrás» forzado y acaba siempre
+jugando, así que el renglón pasa a exigir eso: la armería se cierra, el ratón vuelve
+a estar capturado (esperando lo que pide el navegador, `RESUME_KEY_DELAY_MS`) y no
+queda panel de pausa. Y el banco ahora **falla** con un paso en rojo: antes sólo
+contaba los errores de página, así que un «FALLO» impreso salía con código 0. Un
+rojo que se da por esperado es un banco que deja de guardar nada (vuelta 57).
+
+### 105.2 — El arma en pantalla, calibrada por tipo
+
+Lo que se notaba mal en la v2, con referencias de Counter-Strike (pistola,
+escopeta, AK, M4, AWP y cuchillo) delante: el arma se veía **pegada sobre la mano y
+no empuñada**, cruzando la pantalla en diagonal y de perfil, como una pegatina. Lo
+que se pidió: recta y casi paralela a la vista, con un giro hacia dentro de 8–12° en
+vez de 25°, vista desde atrás y un poco desde arriba; más cerca y más grande, con la
+parte de atrás fuera de la pantalla; la mano envolviendo el puño y cortada por el
+borde; una colocación por tipo; y el mismo encuadre en cualquier pantalla.
+
+- **Una pose por tipo** (`VIEWMODEL.poses`): pistola (Pulse, Reaper, y las
+  granadas), rifle (Volt, Rift, Krakov, Titan, U2), francotirador (Scout), escopeta
+  (Pump) y cuchillo (Vanta, Fang). Cada una dice su largo, su grosor, dónde va la
+  mano y cuánto asoma por el borde de abajo, y el giro.
+- **Dónde se agarra cada foto** (`VIEWMODEL.armas`): la fracción del largo, desde
+  atrás, en la que está el puño y, si la hay, el guardamanos. Sale de la hoja de
+  siluetas con marcas cada 10 % (`siluetas105`). La v2 lo estimaba como «el punto
+  más bajo del tercio trasero», que en un rifle puede ser el cargador o la culata.
+  Y `largo` corrige el tamaño de un subfusil (Volt ×0.8, Rift ×0.9), cuyo cargador
+  cuelga mucho para su largo. El largo se mide ahora **de la silueta**, no del
+  lienzo de la foto.
+- **El giro se escribe; el cabeceo se despeja.** El giro hacia dentro es el de la
+  pose (8° pistola, 9° francotirador, 10° rifle, 11° escopeta). El cabeceo es el
+  que hace que la recta del cañón corte el eje de la mira (x = 0 e y = 0) a la
+  misma profundidad, así que el arma apunta a la mira y la perspectiva la lleva al
+  centro. Como mover el arma cambia ese cabeceo, cinco aproximaciones, una vez por
+  arma. Se pidió que no hiciera falta pasar por el centro; sale gratis.
+- **La mano envuelve el puño**: su centro va `envuelve` (0.6) radios por encima del
+  punto más bajo del puño, y la mano se corta con el borde de abajo (`asoma` 0.4–0.55).
+- **Más grosor, y no es volver atrás**: 0.026–0.032 según el tipo, contra 0.022. En
+  la v2 el arma se veía de perfil y el grosor era el canto; vista desde atrás, el
+  grosor **es** la cara de arriba, y con 0.022 un rifle a esa distancia era una hoja.
+- **El cuchillo no apunta a la mira**: va de plano a la cámara, girado −75° en el
+  plano de la pantalla y ladeado 25°, con la hoja hacia arriba y a la izquierda.
+- **Y el Vanta estaba al revés desde la 103.** `miranALaDerecha: ['vanta']` decía
+  que su foto miraba a la derecha; mirándola, la hoja apunta abajo a la izquierda y
+  el mango arriba a la derecha, como todas. La lista se fue.
+- **La mano de apoyo**, bajo el guardamanos, queda como **opción comparativa**
+  (`VIEWMODEL.manoDeApoyo`, apagada): en la lámina se ve pegada al costado más que
+  sujetando, porque la silueta no tiene volumen por debajo al que abrazarse.
+
+Medido (`vista105`, nueve armas a 16:9, 21:9 y 4:3): la recta del cañón pasa a
+**menos de 0.1 px** del centro en los 24 casos con cañón, con un giro de 8–11° y un
+cabeceo de −0.1° a 13°; y **la boca cae en el mismo sitio respecto al centro en los
+tres formatos** (el Krakov, a +160, +136 px en los tres), que es lo que el campo de
+visión vertical fijo promete. Coste, con WebGL por software y el Krakov con la mano
+de apoyo, que es el caso más caro: de **+0.3 a +0.6 ms** de media por frame en dos
+tandas (1.33 contra 1.02 y 1.77 contra 1.20), con unos 14 000 triángulos. Es más que
+la v2 porque el arma ocupa bastante más pantalla, y el contenedor rellena píxeles con
+la CPU; en una tarjeta gráfica no se nota, pero la medida buena es la de F3 en un PC
+de verdad. Apagada, como sale de fábrica, no se construye ni se dibuja nada.
+
+**El límite, que no se arregla calibrando**: el arma es una silueta extruida, un
+perfil con grosor. Vista desde atrás se lee como un arma; lo que no tiene es el
+volumen de un modelo de CS (el cargador, el guardamanos redondo, la mira), y la mano
+de apoyo lo enseña. El paso siguiente, si se aprueba el encuadre, es decidir si el
+arma en pantalla justifica volumen de verdad: modelos, que serían **assets** y
+chocarían con la regla de §2, o piezas procedurales por arma (cajas y cilindros
+sobre la silueta), que no.

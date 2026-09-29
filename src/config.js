@@ -6826,51 +6826,94 @@ export const MUSIC = {
 export const VIEWMODEL = {
   /**
    * **Campo de visión vertical y fijo** de la cámara del arma (vuelta 104). Es
-   * lo que ancla el arma al borde de abajo y el centro de la pantalla al eje
-   * −Z en cualquier relación de aspecto, y lo que la deja quieta cuando el
-   * juego cambia el suyo (la mirilla).
+   * lo que ancla el arma al borde de abajo y el mismo encuadre relativo en
+   * cualquier relación de aspecto, y lo que la deja quieta cuando el juego
+   * cambia el suyo (la mirilla).
    */
   fov: 54,
-  /** Largo del arma, en unidades de su escena. */
-  largoU: 0.34,
-  /** Grosor total, biseles incluidos: un 37 % menos que en la 103 (0.035). */
+  /** Grosor total, biseles incluidos (vuelta 104: un 37 % menos que en la 103). */
   grosorU: 0.022,
-  /** Las aristas redondeadas: un bisel de tres pasos sobre el perfil exacto. */
+  /** Las aristas redondeadas: un bisel de dos pasos sobre el perfil exacto. */
   bisel: { grosorU: 0.0045, anchoU: 0.0025, segmentos: 2 },
   /** Segmentos por curva del trazado: 3 en la 103 dejaba las curvas en facetas. */
   curvas: 5,
   /** Qué fracción del largo, desde la boca, se mira para saber a qué altura va el cañón. */
   punta: 0.07,
   /**
-   * **A qué distancia, por el eje de la mira, corta la línea del cañón.** Más
-   * cerca gira más el arma hacia el centro (se le ve más el costado); más lejos
-   * la deja más recta.
+   * **La mano es una esfera** del color del jugador, y **envuelve** la
+   * empuñadura (vuelta 105): su centro queda `envuelve` radios por encima del
+   * punto más bajo del puño, así que la parte baja del puño va dentro.
    */
-  convergenciaU: 0.9,
-  /** Giro del arma alrededor de su cañón (no mueve la línea del cañón). */
-  alabeoDeg: -4,
+  mano: { radioU: 0.042, envuelve: 0.6 },
   /**
-   * **La mano es una esfera** del color del jugador, que asoma por el borde de
-   * abajo (`asoma`: la fracción del diámetro que queda dentro de la pantalla) con
-   * el arma apoyada encima (`apoyo`: a qué altura de su radio cae la empuñadura).
+   * **La mano de apoyo, bajo el guardamanos** (vuelta 105), como en las
+   * referencias de Counter-Strike. **Opción comparativa**: apagada, y sólo la
+   * llevan las armas que declaran `apoyo`. `radio` es fracción de la mano.
    */
-  mano: { radioU: 0.046, x: 0.22, z: -0.5, asoma: 0.6, apoyo: 0.75 },
+  manoDeApoyo: false,
+  apoyo: { radio: 0.75, envuelve: 0.3 },
+  /**
+   * **Una colocación por tipo de arma** (vuelta 105), con las referencias de
+   * Counter-Strike delante. Todo en unidades de la escena del arma:
+   *
+   * - `largoU`: lo que mide el arma de punta a punta.
+   * - `x`, `z`: dónde va el centro de la mano (a la derecha, hacia delante).
+   *   La altura no se escribe: sale de `asoma`, la fracción del diámetro de la
+   *   mano que queda **dentro** de la pantalla por el borde de abajo. Con el
+   *   campo de visión vertical fijo, ese borde está a la misma altura en
+   *   cualquier relación de aspecto.
+   * - `giroDeg`: cuánto gira el cañón **hacia dentro**. El cabeceo no se
+   *   escribe: sale de pedir que la recta del cañón pase por el eje de la mira
+   *   a la misma profundidad a la que lo cruza de lado, así que el arma apunta
+   *   a la mira sin forzarla y la perspectiva hace el resto.
+   * - `pantallaDeg` y `ladeoDeg`, sólo el cuchillo: la hoja no apunta a la
+   *   mira. Se pone **de plano a la cámara**, girada en el plano de la pantalla
+   *   (con la foto de referencia, −85° la deja hacia arriba y a la izquierda) y
+   *   ladeada un poco para que no sea una pegatina.
+   */
+  poses: {
+    pistola: { largoU: 0.17, grosorU: 0.026, x: 0.055, z: -0.3, asoma: 0.5, giroDeg: 8 },
+    rifle: { largoU: 0.44, grosorU: 0.03, x: 0.1, z: -0.3, asoma: 0.45, giroDeg: 10 },
+    francotirador: { largoU: 0.54, grosorU: 0.03, x: 0.1, z: -0.3, asoma: 0.4, giroDeg: 9 },
+    escopeta: { largoU: 0.46, grosorU: 0.032, x: 0.1, z: -0.3, asoma: 0.45, giroDeg: 11 },
+    cuchillo: { largoU: 0.17, grosorU: 0.014, x: 0.12, z: -0.3, asoma: 0.5, pantallaDeg: -75, ladeoDeg: 25 },
+  },
+
+
+  /**
+   * **Qué pose lleva cada arma, y dónde tiene la mano en su foto** (`agarre` y
+   * `apoyo`: fracción del largo desde la parte de atrás). Es un dato de la foto
+   * de `Reference/Weapons/`, no del arma, y por eso va aquí y no en `WEAPONS`.
+   * `largo` multiplica el de su pose: un subfusil es más corto que un rifle y
+   * en su foto el cargador cuelga más. Un arma sin entrada lleva la pose de rifle y el agarre a un tercio.
+   */
+  armas: {
+    pulse: { pose: 'pistola', agarre: 0.12 },
+    reaper: { pose: 'pistola', agarre: 0.1 },
+    volt: { pose: 'rifle', agarre: 0.43, apoyo: 0.7, largo: 0.8 },
+    rift: { pose: 'rifle', agarre: 0.35, apoyo: 0.65, largo: 0.9 },
+    krakov: { pose: 'rifle', agarre: 0.33, apoyo: 0.62 },
+    titan: { pose: 'rifle', agarre: 0.22, apoyo: 0.55 },
+    scout: { pose: 'francotirador', agarre: 0.32, apoyo: 0.55 },
+    pump: { pose: 'escopeta', agarre: 0.25, apoyo: 0.62 },
+    bow: { pose: 'pistola', agarre: 0.5 },
+    u2: { pose: 'rifle', agarre: 0.47, apoyo: 0.7 },
+    vanta: { pose: 'cuchillo', agarre: 0.2 },
+    fang: { pose: 'cuchillo', agarre: 0.15 },
+    core: { pose: 'pistola', agarre: 0.5 },
+    blind: { pose: 'pistola', agarre: 0.5 },
+    ko: { pose: 'pistola', agarre: 0.5 },
+  },
   /** Dos luces sólo para esta escena: el mundo sigue sin ninguna (vuelta 38). */
   luz: { cielo: '#dfe6ef', suelo: '#1b1f25', ambiente: 2.2, directa: 3.2, desde: { x: 0.5, y: 1, z: 0.7 } },
   relleno: '#3a4049',
   contorno: '#e6ebf1',
   contornoOpacidad: 0.7,
-  retroceso: { atrasU: 0.045, arribaGrados: 6, vidaMs: 75 },
-  balanceo: { amplitudU: 0.008, pasosPorU: 0.55 },
-  inercia: { porRadian: 0.16, maxU: 0.045, vidaMs: 90 },
+  retroceso: { atrasU: 0.03, arribaGrados: 5, vidaMs: 75 },
+  balanceo: { amplitudU: 0.006, pasosPorU: 0.55 },
+  inercia: { porRadian: 0.12, maxU: 0.035, vidaMs: 90 },
   recarga: { bajaU: 0.08, giroGrados: 20 },
   subirMs: 180,
-  /**
-   * **Las fotos que miran al revés.** En las referencias el cañón apunta a la
-   * izquierda; en la del cuchillo, la hoja apunta a la derecha. Es un dato de
-   * la foto, no del arma, y por eso va aquí y no en `WEAPONS`.
-   */
-  miranALaDerecha: ['vanta'],
 }
 
 export const TEAMS = {

@@ -96,7 +96,7 @@ geometría. Está entero en §3 y en `docs/decisions.md` §93.8. Para todo lo de
 | Proyectiles | `src/game/proyectiles.js` | **Lo que vuela y tarda en llegar**: parábolas en forma cerrada y contra qué chocan. No sabe dibujar ni a quién hiere — eso cambia según quién lo llame. **Sin three**, así que lo montan el motor, el duelo y `net/partida.js` en Node. |
 | Curva de tiro | `src/game/trayectoria.js` | El láser que dibuja lo que va a pasar, de la **misma fórmula** que el vuelo. Del motor, así que sale en los dos modos. |
 | Proyectil (dibujo) | `src/game/vuelo.js` | Sólo dibuja: `InstancedMesh` como `impacts.js` —el huso de lo que vuela y **la esfera de neón de una granada**, con su franja y su resplandor (vuelta 103)—, con la estela orientada a la velocidad y **más larga cuanto más cargado salió**. |
-| Arma en mano | `src/game/armaEnMano.js` | **Maqueta** (vuelta 103, rehecha en la 104; apagada de fábrica): la silueta del arma extruida fina y con aristas redondeadas, sobre una esfera del color del jugador, en una segunda pasada con su propia cámara de FOV fijo y sus dos luces. **El cañón apunta al centro de la mira por construcción.** Sólo dibuja. |
+| Arma en mano | `src/game/armaEnMano.js` | **Maqueta** (vuelta 103, rehecha en la 104 y calibrada en la 105; apagada de fábrica): la silueta del arma extruida y con aristas redondeadas, **empuñada** por una esfera del color del jugador, en una segunda pasada con su propia cámara de FOV fijo y sus dos luces. **Una colocación por tipo de arma** (`VIEWMODEL.poses`). Sólo dibuja. |
 | Clavados | `src/game/clavadas.js` | **Lo que un jugador deja en el mundo y se puede volver a coger**: hoy los cuchillos del Fang. Sin `three`, como `proyectiles.js`, porque lo montan el motor **y el servidor**; lo dibuja `vuelo.js`. |
 | Ceguera y aturdimiento | `src/game/granadas.js` | Lo que una Blind y una KO le hacen a **la pantalla**. **Del motor, con su propia hoja de estilos**, para que salga igual en los dos modos. |
 | Recogibles | `src/game/pickups.js` | Cruces de vida, cargas de escudo y casco por el suelo. |
@@ -4481,16 +4481,33 @@ ficha flotante—, no un modelo en la mano. La maqueta existe para decidir con
 ella delante si esto cambia, y se hizo sin romper la regla por dentro: **el arma
 es la misma silueta**, extruida, y la mano es una esfera del color del equipo.
 
-**Y el cañón de la maqueta apunta al centro de la mira en cualquier encuadre**
-(vuelta 104). Su cámara tiene un campo de visión **vertical y fijo**: con eso el
-borde de abajo está siempre a la misma altura y el centro de la pantalla es
-siempre su eje −Z, sea cual sea la relación de aspecto y el campo de visión del
-juego. La geometría se centra para que la línea del cañón pase por el origen del
-arma, y el arma se orienta con `lookAt` a un punto de ese eje; la empuñadura se
-apoya en la mano por aproximaciones (cuatro, una vez por arma). Medido
-(`vista104`, Pulse, Volt, Scout y Titan a 16:9, 21:9 y 4:3): la recta del cañón
-pasa a **0.00 px** del centro en los doce casos. Las luces son de su escena y el
-mundo sigue sin ninguna.
+**Y la maqueta se coloca por tipo de arma, empuñada y casi paralela a la vista**
+(vuelta 104, calibrada en la 105 con referencias de Counter-Strike delante). Su
+cámara tiene un campo de visión **vertical y fijo**, así que el encuadre respecto
+al centro es el mismo en 16:9, 21:9 y 4:3 y no se mueve con la mirilla. Cuatro
+reglas:
+
+- **Cada tipo tiene su pose** (`VIEWMODEL.poses`: pistola, rifle, francotirador,
+  escopeta y cuchillo) y **cada foto dice dónde se agarra** (`VIEWMODEL.armas`:
+  fracción del largo desde atrás). Son datos de la foto, no del arma, y por eso no
+  van en `WEAPONS`.
+- **El giro hacia dentro se escribe (8–11°) y el cabeceo se despeja**: el que hace
+  que la recta del cañón corte el eje de la mira a la misma profundidad a la que
+  lo cruza de lado. El arma apunta a la mira sin forzar el giro y la perspectiva la
+  lleva al centro. Es una consecuencia, no un requisito: basta con que apunte
+  claramente a la mira.
+- **La mano envuelve el puño** (su centro, `envuelve` radios por encima del punto
+  más bajo del puño) y **se corta con el borde de abajo**, y la parte de atrás del
+  arma se sale de la pantalla. Nunca entera flotando.
+- **El cuchillo no apunta a la mira**: va de plano a la cámara, con la hoja hacia
+  arriba y a la izquierda. Y **todas las fotos de `Reference/Weapons/` miran a la
+  izquierda**, el Vanta también (la 103 lo daba al revés y lo empuñaba por la hoja).
+
+La mano de apoyo bajo el guardamanos existe como **opción comparativa**
+(`VIEWMODEL.manoDeApoyo`, apagada). Medido (`vista105`, nueve armas a 16:9, 21:9 y
+4:3): la recta del cañón pasa a menos de 0.1 px del centro y la boca cae en el
+mismo sitio respecto al centro en los tres formatos. Las luces son de su escena y
+el mundo sigue sin ninguna.
 
 **Los colores de equipo se eligieron midiendo, y la paleta libre es estrecha.**
 Están cogidos el naranja (dianas), el rojo (te disparan), el verde (botones y
@@ -6372,10 +6389,12 @@ porque tiemble el cable»): el rival se dibuja con un colchón que se adapta a l
 red —F3 lo enseña—, tu reloj no da tirones por un ping suelto, el acierto suena y
 se marca en el clic, y la escopeta deja la marca de cada perdigón como en el
 entrenamiento. `/salud` publica los atascos del servidor. Y hay **una maqueta del
-arma en pantalla**, apagada de fábrica en *Opciones* y rehecha en la 104: la
-silueta del arma extruida fina y con aristas redondeadas, sobre una esfera del color
-de tu equipo que asoma por abajo, con el cañón apuntando al centro de la mira en
-cualquier encuadre; recula al disparar y se esconde con la mirilla.
+arma en pantalla**, apagada de fábrica en *Opciones*, rehecha en la 104 y
+calibrada en la 105: la silueta del arma extruida y **empuñada** por una esfera del
+color de tu equipo, colocada por tipo de arma como en un shooter —pistola baja y
+centrada, rifles abajo a la derecha con la culata fuera de la pantalla, el cuchillo
+con la hoja hacia arriba— y apuntando a la mira; recula al disparar y se esconde
+con la mirilla.
 
 **Y desde la vuelta 56 el duelo lo lleva el motor completo** (la «Opción B»).
 La página del duelo ya no monta una escena mínima: instancia `engine.js` y le

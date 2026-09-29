@@ -1,33 +1,30 @@
 /**
  * **El arma en la mano** (maqueta detrás de `armaEnPantalla`, apagada de
- * fábrica; vuelta 103, rehecha en la 104).
+ * fábrica; vuelta 103, rehecha en la 104 y calibrada en la 105).
  *
  * Desde la vuelta 38 Vektor no dibuja el arma: lo que se ve de ella es su
  * silueta en el HUD. Esto es la maqueta de lo contrario, para decidir con ella
  * delante, y se construye con lo que ya hay:
  *
  * - **El arma es su silueta**, el trazado de potrace de `weaponPaths.js`,
- *   extruido con un grosor fino y **aristas redondeadas** (un bisel de tres
- *   pasos). El perfil no se toca: las dos tapas son exactamente la foto de
- *   `Reference/Weapons/`, y el contorno encendido se dibuja sobre ellas. Sale de
- *   la misma función que el HUD (`weaponShape`), así que con supresor es la otra
+ *   extruido con un grosor fino y **aristas redondeadas**. El perfil no se toca:
+ *   las dos tapas son exactamente la foto de `Reference/Weapons/`. Sale de la
+ *   misma función que el HUD (`weaponShape`), así que con supresor es la otra
  *   foto, como allí.
- * - **La mano es una esfera** del color de tu equipo —la del muñeco, no un
- *   antebrazo— que asoma por el borde de abajo, con el arma encima.
+ * - **La mano es una esfera** del color de tu equipo que **envuelve la
+ *   empuñadura** y se corta con el borde de abajo; opcionalmente, otra más
+ *   pequeña bajo el guardamanos (`VIEWMODEL.manoDeApoyo`).
  * - **Tiene su propia escena, su cámara y sus dos luces**, y se dibuja después
  *   del mundo tras limpiar la profundidad: nunca se mete en una pared, y las
  *   luces no tocan el mundo, que sigue sin ninguna (vuelta 38).
  *
- * **Y el cañón apunta al centro de la mira, por construcción** (vuelta 104). La
- * cámara del arma tiene un campo de visión **vertical y fijo** (`VIEWMODEL.fov`),
- * así que el borde de abajo está siempre a la misma altura y el centro de la
- * pantalla es siempre su eje −Z, sea cual sea la relación de aspecto y el
- * campo de visión del juego (la mirilla lo cambia; esta cámara no). La geometría
- * se centra para que **la línea del cañón pase por el origen del arma**, y el
- * arma se orienta con `lookAt` hacia un punto de ese eje
- * (`VIEWMODEL.convergenciaU`): la recta del cañón corta el centro de la pantalla
- * en ese punto, exactamente. Los gestos (retroceso, balanceo, inercia) la
- * mueven un instante y vuelve.
+ * **La colocación es por tipo de arma** (vuelta 105, `VIEWMODEL.poses`): cerca
+ * de la cámara, grande, casi paralela a la vista y **empuñada**, con la parte de
+ * atrás saliéndose por el borde. El giro hacia dentro es pequeño y se escribe
+ * (`giroDeg`); el cabeceo sale de pedir que la recta del cañón pase por el eje
+ * de la mira, así que el arma apunta a la mira y la perspectiva la lleva hacia
+ * el centro. La cámara del arma tiene un campo de visión **vertical y fijo**:
+ * el mismo encuadre en 16:9, 21:9 y 4:3, y quieto con la mirilla.
  *
  * Nada de esto toca el juego: la bala sale de los ojos y el retroceso de verdad
  * es de la cámara (vuelta 61). Sin asignar memoria por frame: la geometría de
@@ -41,13 +38,24 @@ import { weaponShape } from '../ui/weaponSilhouette.js'
 
 const GRADO = Math.PI / 180
 const _arriba = new THREE.Vector3(0, 1, 0)
-const _m = new THREE.Matrix4()
 const _q = new THREE.Quaternion()
 const _qGiro = new THREE.Quaternion()
 const _eje = new THREE.Vector3(0, 0, 1)
+const _e = new THREE.Euler(0, 0, 0, 'YXZ')
 const _o = new THREE.Vector3()
 const _g = new THREE.Vector3()
 const _p = new THREE.Vector3()
+
+/** La pose y los agarres de un arma, con los valores de rifle si no declara nada. */
+function datosDeArma(weaponKey) {
+  const a = VIEWMODEL.armas[weaponKey] ?? {}
+  return {
+    pose: VIEWMODEL.poses[a.pose] ?? VIEWMODEL.poses.rifle,
+    largo: a.largo ?? 1,
+    agarre: a.agarre ?? 0.33,
+    apoyo: a.apoyo ?? null,
+  }
+}
 
 export class ArmaEnMano {
   constructor() {
@@ -61,7 +69,7 @@ export class ArmaEnMano {
     sol.position.set(v.luz.desde.x, v.luz.desde.y, v.luz.desde.z)
     this.scene.add(sol)
 
-    /** Lo que se mueve entero con los gestos: la mano, y el arma encima. */
+    /** Lo que se mueve entero con los gestos: la mano, y el arma que empuña. */
     this.raiz = new THREE.Group()
     this.scene.add(this.raiz)
     this.arma = new THREE.Group()
@@ -70,18 +78,24 @@ export class ArmaEnMano {
     this.matRelleno = new THREE.MeshLambertMaterial({ color: v.relleno })
     this.matContorno = new THREE.LineBasicMaterial({ color: v.contorno, transparent: true, opacity: v.contornoOpacidad })
     this.matMano = new THREE.MeshLambertMaterial({ color: '#2F6BF0' })
-    this.mano = new THREE.Mesh(new THREE.SphereGeometry(v.mano.radioU, 32, 20), this.matMano)
+    this._esfera = new THREE.SphereGeometry(1, 32, 20)
+    this.mano = new THREE.Mesh(this._esfera, this.matMano)
+    this.mano.scale.setScalar(v.mano.radioU)
     this.raiz.add(this.mano)
+    /** La mano de apoyo: la misma esfera, más pequeña, bajo el guardamanos. */
+    this.manoDeApoyo = new THREE.Mesh(this._esfera, this.matMano)
+    this.manoDeApoyo.scale.setScalar(v.mano.radioU * v.apoyo.radio)
+    this.manoDeApoyo.visible = false
+    this.raiz.add(this.manoDeApoyo)
 
     /** Dónde está la mano en reposo: pegada al borde de abajo (`_anclar`). */
     this._mano = new THREE.Vector3()
-    this._anclar()
 
     /** Geometrías hechas, por silueta: cambiar de arma no vuelve a extruir. */
     this._cache = new Map()
     this._clave = null
     this.visible = false
-    this._convergencia = 0
+    this._convergencia = null
 
     // Estado de los gestos, en números sueltos.
     this._retroceso = 0
@@ -93,15 +107,14 @@ export class ArmaEnMano {
   }
 
   /**
-   * La mano, asomando por el borde de abajo. Con el campo de visión vertical
+   * La mano, cortada por el borde de abajo. Con el campo de visión vertical
    * fijo, el borde está a `−|z|·tan(fov/2)` a esa profundidad **en cualquier
-   * relación de aspecto**: por eso esto se calcula una vez.
+   * relación de aspecto**: por eso el encuadre no depende de la pantalla.
    */
-  _anclar() {
-    const v = VIEWMODEL
-    const r = v.mano.radioU
-    const borde = -Math.abs(v.mano.z) * Math.tan((v.fov / 2) * GRADO)
-    this._mano.set(v.mano.x, borde + (2 * v.mano.asoma - 1) * r, v.mano.z)
+  _anclar(pose) {
+    const r = VIEWMODEL.mano.radioU
+    const borde = -Math.abs(pose.z) * Math.tan((VIEWMODEL.fov / 2) * GRADO)
+    this._mano.set(pose.x, borde + (2 * pose.asoma - 1) * r, pose.z)
   }
 
   /** El color de la mano es el de tu equipo. */
@@ -121,45 +134,76 @@ export class ArmaEnMano {
     this.arma.clear()
     this.visible = Boolean(forma)
     this.mano.visible = this.visible
+    this.manoDeApoyo.visible = false
     if (!forma) return
+    const datos = datosDeArma(weaponKey)
     let hecha = this._cache.get(clave)
     if (!hecha) {
-      hecha = extruirSilueta(forma, this.matRelleno, this.matContorno, VIEWMODEL.miranALaDerecha.includes(weaponKey))
+      hecha = extruirSilueta(forma, this.matRelleno, this.matContorno, datos)
       this._cache.set(clave, hecha)
     }
     this.arma.add(hecha.grupo)
-    this._colocar(hecha.empunadura)
+    this._colocar(hecha, datos)
     this._tapaVisible(hecha)
     // Al sacar un arma, sube desde abajo.
     this._subir = 0
   }
 
   /**
-   * **La pose de reposo: la empuñadura sobre la mano y el cañón al centro.**
-   * Dos condiciones que dependen la una de la otra —girar el arma mueve dónde
-   * cae la empuñadura, y moverla cambia el giro que apunta al centro—, así que
-   * se resuelven por aproximaciones: cuatro vueltas bastan porque el giro es de
-   * pocos grados. Una vez por arma, nunca por frame.
+   * **La pose de reposo: el arma empuñada, y apuntando a la mira.** La mano va
+   * donde dice la pose; el arma se cuelga de ella por su empuñadura. El giro
+   * hacia dentro está escrito y el cabeceo se despeja: la recta del cañón corta
+   * el plano vertical del eje (x = 0) a cierta profundidad, y el cabeceo es el
+   * que la hace cortar también el horizontal (y = 0) ahí. Como mover el arma
+   * cambia ese cabeceo y el cabeceo mueve el arma, se resuelve por
+   * aproximaciones: cinco vueltas, una vez por arma y nunca por frame.
    */
-  _colocar(empunadura) {
+  _colocar(hecha, datos) {
     const v = VIEWMODEL
-    const objetivo = _p.set(0, 0, -v.convergenciaU)
-    // Dónde tiene que quedar la empuñadura: encima de la mano.
-    const agarre = _g.copy(this._mano)
-    agarre.y += v.mano.radioU * v.mano.apoyo
-    _qGiro.setFromAxisAngle(_eje, v.alabeoDeg * GRADO)
-    _o.copy(agarre).sub(empunadura)
-    for (let i = 0; i < 4; i++) {
-      _m.lookAt(_o, objetivo, _arriba)
-      _q.setFromRotationMatrix(_m).multiply(_qGiro)
-      _o.copy(empunadura).applyQuaternion(_q)
-      _o.subVectors(agarre, _o)
+    const pose = datos.pose
+    this._anclar(pose)
+    // En el arma, dónde va el centro de la mano: dentro del puño.
+    const agarre = _g.copy(hecha.agarre)
+    agarre.y += v.mano.radioU * v.mano.envuelve
+    this._convergencia = null
+    if (pose.pantallaDeg != null) {
+      // El cuchillo: de plano a la cámara (la foto, tal cual), girado en el
+      // plano de la pantalla y ladeado un poco.
+      _q.setFromAxisAngle(_arriba, Math.PI / 2)
+      _qGiro.setFromAxisAngle(_eje, pose.pantallaDeg * GRADO)
+      _q.premultiply(_qGiro)
+      _qGiro.setFromAxisAngle(_arriba, (pose.ladeoDeg ?? 0) * GRADO)
+      _q.premultiply(_qGiro)
+      _o.copy(agarre).applyQuaternion(_q)
+      _o.subVectors(this._mano, _o)
+    } else {
+      const lado = Math.sign(pose.x) || 1
+      const giro = lado * pose.giroDeg * GRADO
+      let cabeceo = 0
+      for (let i = 0; i < 5; i++) {
+        _q.setFromEuler(_e.set(cabeceo, giro, 0))
+        _o.copy(agarre).applyQuaternion(_q)
+        _o.subVectors(this._mano, _o)
+        // tan(cabeceo) = −O.y · sen(giro) / O.x: la y llega a cero donde la x.
+        if (Math.abs(_o.x) > 1e-4) cabeceo = Math.atan((-_o.y * Math.sin(giro)) / _o.x)
+      }
+      _q.setFromEuler(_e.set(cabeceo, giro, 0))
+      _o.copy(agarre).applyQuaternion(_q)
+      _o.subVectors(this._mano, _o)
+      this._convergencia = Math.abs(_o.x / (Math.sin(giro) * Math.cos(cabeceo)))
     }
-    _m.lookAt(_o, objetivo, _arriba)
-    this.arma.quaternion.setFromRotationMatrix(_m).multiply(_qGiro)
+    this.arma.quaternion.copy(_q)
     // La raíz vive en la mano (es el pivote de los gestos); el arma, relativa a ella.
     this.arma.position.copy(_o).sub(this._mano)
-    this._convergencia = _o.distanceTo(objetivo)
+    // La mano de apoyo, bajo el guardamanos, si la hay y se ha pedido.
+    if (v.manoDeApoyo && hecha.apoyo) {
+      const r2 = v.mano.radioU * v.apoyo.radio
+      _p.copy(hecha.apoyo)
+      _p.y += r2 * v.apoyo.envuelve
+      _p.applyQuaternion(_q).add(this.arma.position)
+      this.manoDeApoyo.position.copy(_p)
+      this.manoDeApoyo.visible = true
+    }
   }
 
   /**
@@ -176,7 +220,7 @@ export class ArmaEnMano {
     hecha.tapas[1].visible = derecha
   }
 
-  /** A qué distancia, a lo largo del cañón, corta el eje de la mira. */
+  /** A qué distancia, a lo largo del cañón, corta el eje de la mira (`null` con el cuchillo). */
   convergencia() {
     return this._convergencia
   }
@@ -260,26 +304,35 @@ export class ArmaEnMano {
  * **La silueta, en 3D.** El trazado del SVG se convierte en formas y se extruye
  * con el grosor del arma y un bisel redondeado; el contorno se dibuja sobre las
  * dos tapas, que son el perfil exacto de la foto. Se orienta con la boca hacia
- * delante: en las fotos de referencia el cañón mira a la izquierda (−x) y el eje
- * y del SVG va hacia abajo.
+ * delante: en todas las fotos de referencia el cañón (o la hoja) mira a la
+ * izquierda (−x), y el eje y del SVG va hacia abajo. **Mide `largoU` de punta a
+ * punta**, sea cual sea el hueco que la foto deja alrededor.
  *
  * Devuelve el grupo, con **la línea del cañón pasando por su origen y a lo largo
- * de −Z**, y **dónde está la empuñadura**, que no está escrita en ninguna parte:
- * se estima como el punto de la silueta más bajo en su tercio trasero, que en una
- * foto de perfil es la culata o el pistolete. La altura del cañón se estima igual,
- * como el centro de lo que hay en la punta.
+ * de −Z**, y **dónde van las manos**: el punto más bajo de la silueta en la
+ * fracción del largo que declara `VIEWMODEL.armas` (la empuñadura y, si la hay,
+ * el guardamanos). La altura del cañón se estima como el centro de lo que hay en
+ * la punta.
  */
-function extruirSilueta(forma, matRelleno, matContorno, alReves = false) {
+function extruirSilueta(forma, matRelleno, matContorno, datos) {
   const v = VIEWMODEL
-  const [, , anchoVB] = forma.viewBox.split(/\s+/).map(Number)
-  const escala = v.largoU / anchoVB
-  const datos = new SVGLoader().parse(`<svg xmlns="http://www.w3.org/2000/svg"><path d="${forma.d}"/></svg>`)
+  const datosSvg = new SVGLoader().parse(`<svg xmlns="http://www.w3.org/2000/svg"><path d="${forma.d}"/></svg>`)
   const formas = []
-  for (const camino of datos.paths) formas.push(...SVGLoader.createShapes(camino))
+  for (const camino of datosSvg.paths) formas.push(...SVGLoader.createShapes(camino))
+  // El largo de verdad es el de la silueta, no el del lienzo de la foto.
+  let minX = Infinity
+  let maxX = -Infinity
+  for (const f of formas) {
+    for (const pt of f.extractPoints(v.curvas).shape) {
+      if (pt.x < minX) minX = pt.x
+      if (pt.x > maxX) maxX = pt.x
+    }
+  }
+  const escala = (datos.pose.largoU * datos.largo) / Math.max(1e-6, maxX - minX)
 
   // Grosor total = cuerpo + los dos biseles. Todo en unidades del SVG.
   const bisel = v.bisel.grosorU / escala
-  const cuerpo = Math.max(0.1, v.grosorU / escala - 2 * bisel)
+  const cuerpo = Math.max(0.1, (datos.pose.grosorU ?? v.grosorU) / escala - 2 * bisel)
   const geom = new THREE.ExtrudeGeometry(formas, {
     depth: cuerpo,
     bevelEnabled: true,
@@ -307,7 +360,7 @@ function extruirSilueta(forma, matRelleno, matContorno, alReves = false) {
     return g
   })
 
-  // Las mismas transformaciones a las dos: centrar, pasar a unidades, girar.
+  // Las mismas transformaciones a las tres: centrar, pasar a unidades, girar.
   geom.computeBoundingBox()
   const caja = geom.boundingBox
   const cx = -(caja.min.x + caja.max.x) / 2
@@ -317,8 +370,8 @@ function extruirSilueta(forma, matRelleno, matContorno, alReves = false) {
     g.translate(cx, cy, cz)
     // El SVG va con la y hacia abajo.
     g.scale(escala, -escala, escala)
-    // La boca (−x) hacia delante (−z); si la foto mira a la derecha, la +x.
-    g.rotateY(alReves ? Math.PI / 2 : -Math.PI / 2)
+    // La boca (−x) hacia delante (−z).
+    g.rotateY(-Math.PI / 2)
   }
   geom.computeBoundingBox()
   const b = geom.boundingBox
@@ -339,21 +392,26 @@ function extruirSilueta(forma, matRelleno, matContorno, alReves = false) {
   geom.computeBoundingBox()
   geom.computeVertexNormals()
 
-  // La empuñadura: el vértice más bajo del tercio trasero (z positiva).
+  // Las manos: el punto más bajo de la silueta a esa fracción desde atrás (+z).
   const c = geom.boundingBox
-  const corte = c.max.z - (c.max.z - c.min.z) / 3
-  let mejor = null
-  for (let i = 0; i < pos.count; i++) {
-    const z = pos.getZ(i)
-    if (z < corte - (c.max.z - c.min.z) * 0.25) continue
-    const y = pos.getY(i)
-    if (!mejor || y < mejor.y) mejor = { y, z }
+  const bajoEn = (fraccion) => {
+    const z0 = c.max.z - fraccion * largo
+    const ventana = largo * 0.04
+    let mejor = null
+    for (let i = 0; i < pos.count; i++) {
+      const z = pos.getZ(i)
+      if (Math.abs(z - z0) > ventana) continue
+      const y = pos.getY(i)
+      if (!mejor || y < mejor.y) mejor = { y, z }
+    }
+    return new THREE.Vector3(0, mejor?.y ?? c.min.y, mejor?.z ?? z0)
   }
-  const empunadura = new THREE.Vector3(0, mejor?.y ?? c.min.y, mejor?.z ?? c.max.z * 0.5)
+  const agarre = bajoEn(datos.agarre)
+  const apoyo = datos.apoyo == null ? null : bajoEn(datos.apoyo)
 
   const grupo = new THREE.Group()
   grupo.add(new THREE.Mesh(geom, matRelleno))
   const tapas = contornos.map((g) => new THREE.LineSegments(g, matContorno))
   grupo.add(...tapas)
-  return { grupo, empunadura, tapas }
+  return { grupo, agarre, apoyo, tapas }
 }
