@@ -316,7 +316,12 @@ const donde = async (p) => p.evaluate(() => {
   const r = window.vektorNet.cliente.poseDelRival()
   return `(${c.x.toFixed(1)}, ${c.z.toFixed(1)}) rival dibujado ${r ? `(${r.x.toFixed(1)}, ${r.z.toFixed(1)})` : 'ninguno'}`
 })
-for (const ida of [0, 25, 50, 80, 150]) {
+// **Con una fila de 10 ms** (vuelta 106): con WebGL por software la tubería del
+// contenedor ya pide 127 ms de rebobinado sin latencia ninguna, así que a 25 ms
+// de ida el tope muerde y el «acuerdo casi total mientras cabe» se quedaba con
+// una sola fila que lo sostuviera. La premisa pide dos, y la de 10 ms es la que
+// cabe aquí.
+for (const ida of [0, 10, 25, 50, 80, 150]) {
   await red(A, ida, 0, 0)
   await espera(1200); await reiniciar(A)
   if (ida === 0) console.log(`     [sitio] A ${await donde(A)} · B ${await donde(B)}`)
