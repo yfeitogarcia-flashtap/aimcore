@@ -199,6 +199,23 @@ export function montarCaptura() {
   }, true)
 
   if (esEscritorio()) {
+    // **Una pulsación de ESC es una, llegue por donde llegue** (vuelta 107, F3).
+    // El atajo de la ventana no siempre se come la tecla: el WebView la entrega
+    // también a la página, así que un ESC eran **dos** —el de verdad y el aviso de
+    // la ventana, unos milisegundos después—. Con el ratón suelto el primero
+    // pedía volver y el segundo, que ya encontraba el ratón capturado, lo volvía
+    // a soltar: la partida parpadeaba y se quedaba en pausa. La que llega primero
+    // actúa y la otra, dentro de `escRepeticionMs`, se tira.
+    window.addEventListener('keydown', (evento) => {
+      if (evento.key !== 'Escape' || !evento.isTrusted) return
+      const ahora = performance.now()
+      if (evento.repeat || ahora - ultimoEscDeLaVentana < CAPTURA.escRepeticionMs) {
+        evento.preventDefault()
+        evento.stopImmediatePropagation()
+        return
+      }
+      ultimoEscDeLaVentana = ahora
+    }, true)
     window.addEventListener('vektor:escape', () => {
       const ahora = performance.now()
       if (ahora - ultimoEscDeLaVentana < CAPTURA.escRepeticionMs) return

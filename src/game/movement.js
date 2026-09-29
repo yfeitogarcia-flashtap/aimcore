@@ -896,12 +896,22 @@ export class MovementController {
     this._jumpPressedAt = at
   }
 
-  /** Devuelve al jugador a su punto de aparición, de pie y en el suelo. */
-  reset() {
+  /**
+   * Devuelve al jugador a su punto de aparición, de pie y en el suelo.
+   *
+   * **O a otro punto, con su suelo** (vuelta 107, F6). Las salidas del
+   * multijugador ponían al jugador en el spawn, y el llamante le cambiaba
+   * después `x` y `z`: los pies se quedaban **a la altura del suelo del spawn**.
+   * En Aim Camp el spawn de entrenamiento cae encima de un muro de 20 u, así que
+   * se nacía a 20 u sobre la salida y se caía. Una salida sólo dice x, z y
+   * rumbo; su altura es la de la superficie que tenga debajo, y la pregunta se
+   * hace **en la salida**, no en otro sitio.
+   */
+  reset(x = this.spawnX, z = this.spawnZ) {
     this.poseEpoch += 1
     this.releaseKeys()
     this.feetY = this.scenario
-      ? this.scenario.groundHeightAt(this.spawnX, this.spawnZ, 0)
+      ? this.scenario.groundHeightAt(x, z, 0)
       : 0
     this.verticalVelocity = 0
     this.airborne = false
@@ -946,15 +956,15 @@ export class MovementController {
     this._useWasDown = false
     this._lastYaw = this.camera.rotation.y
     this.airStrafing = false
-    this._safeX = this.spawnX
-    this._safeZ = this.spawnZ
+    this._safeX = x
+    this._safeZ = z
     this._safeFeetY = this.feetY
     this.eyeHeight = MOVEMENT.standHeight
     this.landingDip = 0
     this._dipFrom = 0
     this._dipElapsedMs = 0
     this._landingImpact = 0
-    this.camera.position.set(this.spawnX, this.feetY + MOVEMENT.standHeight, this.spawnZ)
+    this.camera.position.set(x, this.feetY + MOVEMENT.standHeight, z)
   }
 
   /**

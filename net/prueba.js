@@ -1559,11 +1559,18 @@ function pintarPanel() {
     ? `<span class="${cliente.vida < 45 ? 'mal' : 'bien'}">${cliente.vida}</span>`
     : '<span class="mal">ABATIDO</span>'
   if (m.disparos > 0) {
-    const pct = (100 * m.acuerdos / m.disparos).toFixed(0)
+    // **Los rechazados no son desacuerdos, y no pueden bajar el porcentaje**
+    // (vuelta 107, F9). El servidor tira un disparo que no cumple la cadencia o
+    // con un arma que no llevas, sin resolverlo: contarlo en el total y no en el
+    // acuerdo dejaba la fila en 0 % sin que la red hubiera discrepado en nada.
+    // Van aparte, con su nombre, que es lo que dice si ése es el problema.
+    const resueltos = m.disparos - m.rechazados
+    const pct = resueltos > 0 ? `${(100 * m.acuerdos / resueltos).toFixed(0)}%` : '—'
     $('disparos').innerHTML =
-      `${m.disparos} · <span class="${m.acuerdos === m.disparos ? 'bien' : 'mal'}">${pct}%</span>` +
-      (m.fantasmas || m.sorpresas ? ` (${m.fantasmas}✗ ${m.sorpresas}✚)` : '')
-    $('sinreb').textContent = `${(100 * m.acuerdosSinRebobinar / m.disparos).toFixed(0)}% de acuerdo`
+      `${m.acuerdos} de ${resueltos} · <span class="${m.acuerdos === resueltos ? 'bien' : 'mal'}">${pct}</span>` +
+      (m.fantasmas || m.sorpresas ? ` (${m.fantasmas}✗ ${m.sorpresas}✚)` : '') +
+      (m.rechazados ? ` <span class="mal">· ${m.rechazados} rechazados</span>` : '')
+    $('sinreb').textContent = resueltos > 0 ? `${(100 * m.acuerdosSinRebobinar / resueltos).toFixed(0)}% de acuerdo` : '—'
     if (m.ultimoDisparo) $('ultimo').textContent =
       `${m.ultimoDisparo.yo} / ${m.ultimoDisparo.servidor}` + (m.ultimoDisparo.dano ? ` (−${m.ultimoDisparo.dano})` : '')
     $('rebobinado').textContent = `${m.rebobinadoMs.toFixed(0)} ms · ${m.retrocesoMax.toFixed(2)} u`

@@ -834,11 +834,13 @@ export class ClienteRed {
    */
   _reaparecerAqui() {
     this.vivoEn = 0
-    this.movimiento.reset()
     // **Por la salida que haya elegido el servidor** (vuelta 100), si ha elegido
-    // una: en el todos contra todos no es la tuya, y viaja en tu foto.
+    // una: en el todos contra todos no es la tuya, y viaja en tu foto. Y con el
+    // suelo **de la salida** (vuelta 107, F6), el mismo que pone el servidor.
     const salida = (this.salidaSiguiente !== null && this.salidas?.[this.salidaSiguiente]) || this.salida
     this.salidaSiguiente = null
+    if (salida) this.movimiento.reset(salida.x, salida.z)
+    else this.movimiento.reset()
     if (salida) {
       this.camara.position.x = salida.x
       this.camara.position.z = salida.z

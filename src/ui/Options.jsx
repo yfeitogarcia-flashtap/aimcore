@@ -242,7 +242,7 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
         hint={
           settings.sacudidaCamara
             ? 'La vista da un golpe breve con cada disparo y vuelve sola. No mueve la mira: las balas van al mismo sitio.'
-            : 'Sin golpe de vista: disparar sólo se ve en el fogonazo, el retroceso y la silueta del arma.'
+            : 'Sin golpe de vista. Lo que sigue subiendo la vista es el retroceso del arma, que no es un efecto: mueve la mira y se compensa con el ratón.'
         }
       />
 

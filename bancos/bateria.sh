@@ -29,7 +29,7 @@ host() { bash bancos/host.sh "$@" > /dev/null; }
 A="aire88 aire91 alchemist99 apariencia84 armas90 barrera95 barrera96 compra102
    corte85 dano90 desvio88 duelo92srv escritorio97 estampado93 fang90 fang91
    gran87 gran87red granadas88 hielo84 krakov93 lobby101 paleta93 peanas105
-   peanas106 perfora95 pump91 pump91red rampa93 red85 retraso101 rot101 salas100 salas97
+   peanas106 perfora95 salidas107 pump91 pump91red rampa93 red85 retraso101 rot101 salas100 salas97
    subir94 todos100 todos105 u286 volumen96 vuelo85"
 # E · contra el servidor de desarrollo, sin huésped: el juego y Alchemist.
 E="alchemist100 arco85 arm89 arm95 barrera95ed borrador99 cabina99 capas96
@@ -49,7 +49,7 @@ B2="esc101 dinero89 duelo87 cap88 duelo88 duelo92 duelo92nav
 C="lobby101nav lobby101tam paridad101nav retraso101nav
    todos101nav todos105nav"
 # D · el huésped de serie.
-D="compra102nav"
+D="compra102nav peanas107red"
 # F · el despliegue: reconstruye dist y relanza el huésped por su cuenta.
 F="cache93"
 

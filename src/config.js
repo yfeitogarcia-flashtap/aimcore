@@ -6013,7 +6013,7 @@ export const CAPTURA = {
   /** Reintentos mientras quede gesto, y cada cuánto. */
   reintentos: 3,
   reintentoMs: 250,
-  /** Dos ESC de la ventana más juntos que esto son la tecla mantenida, no dos pulsaciones. */
+  /** Dos ESC más juntos que esto son una sola pulsación: la tecla mantenida, o la misma tecla llegando por la ventana y por el WebView (vuelta 107). */
   escRepeticionMs: 250,
 }
 

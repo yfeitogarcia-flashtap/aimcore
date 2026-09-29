@@ -182,6 +182,20 @@ for (const [nombre, url] of [['Entrenamiento', `${BASE}/`], ['Multijugador', `${
   }
   ok('ESC pausa y ESC vuelve, tres veces seguidas y sin gesto', bien === 3, `vueltas en ${tiempos.join(', ')} ms`)
   ok('ni un rechazo de Chrome ni un aviso', (await p.evaluate(() => window.__chrome.rechazos)) === 0 && !(await aviso(p)))
+  // **La misma tecla por dos puertas** (vuelta 107, F3): en la app de verdad el
+  // WebView entrega también el ESC a la página, así que cada pulsación llega como
+  // tecla **y** como aviso de la ventana, en los dos órdenes. Tiene que contar una.
+  const doble = async (primero) => {
+    if (primero === 'tecla') { await p.keyboard.press('Escape'); await p.waitForTimeout(30); await escApp(p) }
+    else { await escApp(p); await p.waitForTimeout(30); await p.keyboard.press('Escape') }
+    await p.waitForTimeout(700)
+    return capturado(p)
+  }
+  for (const primero of ['tecla', 'ventana']) {
+    const pausa = !(await doble(primero))
+    const vuelta = await doble(primero)
+    ok(`ESC doble (${primero} primero): pausa y se queda en pausa; vuelve y se queda jugando`, pausa && vuelta)
+  }
   // Y con un panel abierto encima: ESC cierra lo que haya y vuelve, como en el navegador.
   await escApp(p)
   await p.waitForTimeout(400)

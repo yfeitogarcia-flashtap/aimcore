@@ -983,7 +983,9 @@ function pintarMarcas() {
     if (estaOculto('salidas', i)) continue
     const color = colorDeSalida(i)
     const grupo = new THREE.Group()
-    grupo.position.set(salida.x, 0, salida.z)
+    // **Apoyado en la superficie que tenga debajo** (vuelta 107, F6): es la
+    // altura a la que el juego pone los pies (`movement.reset(x, z)`).
+    grupo.position.set(salida.x, sueloEn(salida.x, salida.z), salida.z)
 
     // El cono es el jugador: alto de persona y anclado al suelo, para que se
     // lea contra las piezas de al lado sin tener que imaginárselo.
@@ -1049,7 +1051,7 @@ function pintarMarcas() {
   for (const [i, salida] of salidasDeTodosLeer().entries()) {
     if (estaOculto('salidasTodos', i)) continue
     const grupo = new THREE.Group()
-    grupo.position.set(salida.x, 0, salida.z)
+    grupo.position.set(salida.x, sueloEn(salida.x, salida.z), salida.z)
     const cono = new THREE.Mesh(
       new THREE.ConeGeometry(0.45, 1.8, 6),
       new THREE.MeshBasicMaterial({ color: COLOR_TODOS, wireframe: true }),
@@ -1819,6 +1821,14 @@ scene.add(marcaSpawn)
  * bandera: arrastrar una caja cambia la definición en cada movimiento del ratón
  * y fundir geometrías por evento sería trabajo tirado.
  */
+/**
+ * **El suelo de un punto, como lo pisa el juego** (vuelta 107): la misma
+ * pregunta que hace `movement.reset(x, z)` al poner a alguien en una salida.
+ */
+function sueloEn(x, z) {
+  return escenarioMedido ? escenarioMedido.groundHeightAt(x, z, 0) : 0
+}
+
 /** Una escena que no dibuja: lo que `Scenario` necesita y nada más. */
 const escenaDeMentira = { add() {}, remove() {} }
 
@@ -1966,7 +1976,13 @@ function remontar() {
     }
   }
 
-  marcaSpawn.position.set(mapa.spawn.x, 0.9, mapa.spawn.z)
+  // **Sobre su suelo, y sólo donde significa algo** (vuelta 107, F6). El spawn
+  // es el sitio del entrenamiento; en un mapa de duelo no aparece nadie ahí, y
+  // un tercer cono azul entre las dos salidas se leía como una salida más. Y
+  // en Aim Camp caía encima de un muro de 20 u, que es por donde se colaba
+  // aparecer en el aire.
+  marcaSpawn.position.set(mapa.spawn.x, sueloEn(mapa.spawn.x, mapa.spawn.z) + 0.9, mapa.spawn.z)
+  marcaSpawn.visible = !mapa.soloDuelo
   // **Con fondo puesto, la rejilla de los muros no se dibuja** (vuelta 78):
   // aquí igual que jugando, porque lo que se ve editando tiene que ser lo que
   // se ve jugando.
@@ -6136,7 +6152,10 @@ function pintarDuelo() {
   pintarFichasDeSalida()
   pintarTodos()
   $('caja-compra').value = duelo.cajaCompra?.ancho ?? ROUNDS.cajaCompra.ancho
-  $('invulnerabilidad').value = duelo.invulnerabilidadMs ?? 0
+  // **En segundos** (vuelta 107, F10): el fichero la guarda en ms, que es como
+  // la cuenta el servidor, pero nadie piensa una gracia en milisegundos — Aim
+  // Camp se guardó con «3» queriendo decir tres segundos, y eran 3 ms.
+  $('invulnerabilidad').value = (duelo.invulnerabilidadMs ?? 0) / 1000
   $('invulnerabilidad').max = INVULNERABILIDAD_MAX
 
   $('sin-economia').checked = Boolean(duelo.sinEconomia)
@@ -6549,7 +6568,7 @@ $('s-medir').addEventListener('click', () => {
  * que el servidor ignorase sería el fallo de la vuelta 67.
  */
 campo('invulnerabilidad', (v) => {
-  const ms = Math.min(Math.max(Number(v) || 0, 0), INVULNERABILIDAD_MAX)
+  const ms = Math.min(Math.max((Number(v) || 0) * 1000, 0), INVULNERABILIDAD_MAX)
   const d = dueloDe()
   if (ms <= 0) delete d.invulnerabilidadMs
   else d.invulnerabilidadMs = Math.round(ms)

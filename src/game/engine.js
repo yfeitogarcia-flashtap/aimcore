@@ -397,9 +397,6 @@ export class Engine {
     this.pickups.setSites(this.scenario.pickupSites)
     this.enemyFire.setOccluders(this.scenario.occluders)
     this.markers.setOccluders(this.scenario.occluders)
-    this.dibujoPeanas?.montar(this.scenario)
-    this._invLocal = null
-    this._filtrarArmasDelMapa()
     // **Las peanas del mapa** (vuelta 106): se dibujan con el escenario.
     this.dibujoPeanas = new DibujoDePeanas(this.scene, this.cssScene)
     this.dibujoPeanas.montar(this.scenario)
@@ -1498,6 +1495,13 @@ export class Engine {
     this.pickups.setSites(this.scenario.pickupSites)
     this.enemyFire.setOccluders(this.scenario.occluders)
     this.markers.setOccluders(this.scenario.occluders)
+    // **Y las peanas y las armas del mapa nuevo** (vuelta 107, F5). Estas tres
+    // líneas cayeron en el constructor en la 106, donde no hacían nada, y el
+    // multijugador cambia de mapa siempre por aquí —el lobby monta el de la
+    // partida—: la E cogía del servidor y no había nada dibujado.
+    this.dibujoPeanas.montar(this.scenario)
+    this._invLocal = null
+    this._filtrarArmasDelMapa()
     this.enemyFire.setEnabled(!this.enRed && this.scenario.hasGeometry && getSettings().targetType === 'hitbox')
     this._syncMarkers(getSettings())
 
@@ -1610,7 +1614,11 @@ export class Engine {
    */
   _filtrarArmasDelMapa() {
     const reglas = this.scenario?.reglas
-    if (!reglas?.armas) return
+    // **En el constructor las ranuras todavía no existen** (vuelta 107, F4): el
+    // escenario se monta antes, y un mapa que declara sus armas reventaba aquí
+    // —pantalla negra al abrir una sala creada con él—. `_applySettings` vuelve a
+    // filtrar en cuanto están.
+    if (!reglas?.armas || !this.slots) return
     const vacio = { primary: null, secondary: SECONDARY_WEAPON, special: null, throwable: null }
     for (const slot of Object.keys(vacio)) {
       const clave = this.slots[slot]

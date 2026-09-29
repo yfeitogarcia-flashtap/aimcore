@@ -55,12 +55,17 @@ console.log('\n[0] Un mapa sin reglas se juega igual, y Los Pilares se lee como 
   ok(pilares.reglas.modo === 'equipadas' && d?.primaria === 'scout' && d.chaleco && !d.casco,
     `Los Pilares: Equipadas con Scout y chaleco, sin tocar su fichero (${JSON.stringify(d)})`)
   ok(pilares.compraSegundos === 0, 'y sin fase de compra, como desde la vuelta 72')
+  // Los que ya las declaran —desde la vuelta 107 hay uno de Yago con peanas—
+  // no cuentan: lo que se mide es que ninguno las **gane** al guardarse.
   let cambian = 0
+  let sinReglas = 0
   for (const def of Object.values(SCENARIOS)) {
+    if ('reglas' in def || 'peanas' in def) continue
+    sinReglas += 1
     const a = sanearMapa(def).mapa
     if ('reglas' in a || 'peanas' in a) cambian += 1
   }
-  ok(cambian === 0, `ningún mapa de hoy gana «reglas» ni «peanas» al guardarse (${cambian})`)
+  ok(sinReglas > 5 && cambian === 0, `ningún mapa sin reglas gana «reglas» ni «peanas» al guardarse (${cambian} de ${sinReglas})`)
 }
 
 // ------------------------------------------------------------ [1] validar
@@ -168,6 +173,34 @@ console.log('\n[5] En rondas: Equipadas reparte cada ronda; Peanas conserva lo d
   p._terminarRonda(0, 'muerte')
   ok(a.jug.inventario.primaria === 'rift', 'quien sobrevive la ronda conserva lo recogido')
   ok(b.jug.inventario.primaria === null && b.jug.escudo === ECONOMY.escudoPorChaleco, 'quien cae lo pierde, y conserva el chaleco base')
+}
+
+// ------------------------------------------------------------ [7] barreras
+console.log('\n[7] Una barrera cuenta como pared para la mano (vuelta 107, F8)')
+for (const acabado of ['cristal', 'invisible']) {
+  const def = sanearMapa({
+    clave: 'peanas107', label: 'peanas107', modos: ['todos'],
+    room: { width: 40, depth: 40, height: 10 }, spawn: { x: 0, z: 10 },
+    todos: { salidas: [{ x: -10, z: 10, yaw: 0 }, { x: 0, z: 10, yaw: 0 }, { x: 10, z: 10, yaw: 0 }] },
+    // Una barrera baja y fina entre z −4.2 y −3.9; la peana al otro lado.
+    boxes: [{ kind: 4, x: -3, z: -4.2, w: 6, d: 0.3, barrera: acabado }],
+    reglas: { modo: 'peanas', armas: ['krakov'] }, peanas: [{ x: 0, z: -5, arma: 'krakov' }],
+  }).mapa
+  const esc = escena(def)
+  ok(esc.boxes.some((b) => b.barrera === acabado), `premisa: la barrera de ${acabado} está montada`)
+  // Lo que vuela sigue atravesándola (vuelta 96): la premisa de que es barrera.
+  ok(esc.cortarSegmento(0, 1, -3, 0, 1, -6) === null, `${acabado}: un proyectil la sigue atravesando`)
+  ok(!esc.peanaALaVista(0, 0, 1.7, -3), `${acabado}: la peana detrás no está «a la vista» de la mano`)
+  ok(esc.peanaApuntadaDesde(0, 1.7, -3, 0, -0.4, -0.92) === -1, `${acabado}: apuntándole a través, el cliente no la ofrece`)
+  const { p, entra } = sala(def)
+  const [a] = [entra(), entra(), entra()]
+  for (let i = 0; i < 3; i++) p.tick()
+  colocar(a, 0, -3)
+  a.manda({ t: MSG.RECOGER, i: 0 })
+  ok(a.ultimo(MSG.RECOGER)?.ok === 0 && a.ultimo(MSG.RECOGER).m === 'pared' && a.jug.inventario.primaria === null, `${acabado}: el servidor dice «pared» y no la da`)
+  colocar(a, 0, -6)
+  a.manda({ t: MSG.RECOGER, i: 0 })
+  ok(a.ultimo(MSG.RECOGER)?.ok === 1, `${acabado}: desde su lado, se coge`)
 }
 
 // ------------------------------------------------------------ [6] coste

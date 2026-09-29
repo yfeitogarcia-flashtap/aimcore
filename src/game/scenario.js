@@ -1311,10 +1311,14 @@ export class Scenario {
    *
    * @param {number} x0,y0,z0 de dónde sale el segmento
    * @param {number} x1,y1,z1 a dónde iba
+   * @param {boolean} [conBarreras] si una barrera corta el segmento. Para lo que
+   *   vuela, no (vuelta 96); para **alcanzar algo con la mano** —una peana—, sí
+   *   (vuelta 107, F8): una barrera delimita zonas, y una peana al otro lado es
+   *   de la otra zona.
    * @returns {{x,y,z,nx,ny,nz,t,pieza}|null} el punto de corte, su normal, la
    *   fracción del segmento en que cae y la pieza tocada (o `null`, la sala).
    */
-  cortarSegmento(x0, y0, z0, x1, y1, z1) {
+  cortarSegmento(x0, y0, z0, x1, y1, z1, conBarreras = false) {
     const dx = x1 - x0
     const dy = y1 - y0
     const dz = z1 - z0
@@ -1376,7 +1380,7 @@ export class Scenario {
      * para.
      */
     for (let i = 0; i < this.boxes.length; i++) {
-      if (this.boxes[i].barrera) continue
+      if (this.boxes[i].barrera && !conBarreras) continue
       contraCaja(this.boxes[i])
     }
 
@@ -1580,10 +1584,15 @@ export class Scenario {
     return this.peanaALaVista(i, ox, oy, oz) ? i : -1
   }
 
-  /** **Sin pared entre unos ojos y el arma de una peana.** Lo pregunta también el servidor. */
+  /**
+   * **Sin pared entre unos ojos y el arma de una peana.** Lo pregunta también el
+   * servidor. **Y una barrera cuenta como pared** (vuelta 107, F8), cristal o
+   * invisible: delimita zonas, y coger un arma a través de ella es sacarla de la
+   * otra zona. Lo que vuela sí la atraviesa (vuelta 96); la mano, no.
+   */
   peanaALaVista(i, ox, oy, oz) {
     const c = centroDePeana(this.peanas[i], PEANAS.alturaArmaU)
-    return this.cortarSegmento(ox, oy, oz, c.x, c.y, c.z) === null
+    return this.cortarSegmento(ox, oy, oz, c.x, c.y, c.z, true) === null
   }
 
   tirolinaAlAlcance(x, y, z) {

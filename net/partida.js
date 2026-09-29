@@ -463,7 +463,7 @@ export class Partida {
     const pose = crearPose()
     const movimiento = new MovementController(pose)
     movimiento.setScenario(this.escenario)
-    movimiento.reset()
+    movimiento.reset(salida.x, salida.z)
     movimiento.setEnabled(true)
     pose.position.x = salida.x
     pose.position.z = salida.z
@@ -847,7 +847,7 @@ export class Partida {
       return
     }
     if (mensaje.t === MSG.COLOCAR && this.depurar) {
-      jugador.movimiento.reset()
+      jugador.movimiento.reset(mensaje.x, mensaje.z)
       jugador.pose.position.x = mensaje.x
       jugador.pose.position.z = mensaje.z
       jugador.vida = 100
@@ -2092,7 +2092,7 @@ export class Partida {
     // En el todos contra todos, la que le haya elegido el servidor al caer.
     const salida = this.salidas[jugador.salidaSiguiente ?? jugador.ranura] ?? this.salidas[jugador.ranura]
     jugador.salidaSiguiente = null
-    jugador.movimiento.reset()
+    jugador.movimiento.reset(salida.x, salida.z)
     jugador.pose.position.x = salida.x
     jugador.pose.position.z = salida.z
     // **Y mirando a donde mira su salida.** Dura un paso —la entrada siguiente
