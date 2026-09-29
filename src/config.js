@@ -8182,6 +8182,21 @@ export const NET = {
  * Reloj de pared y no del mundo, como la pausa (vuelta 54): es una cuenta de la
  * conversación entre personas, y en la sala el mundo no corre.
  */
+/**
+ * **Lo imprescindible de la beta, en pantalla** (vuelta 107): el tope del
+ * mensaje de feedback, que es el mismo que acepta el huésped (`net/beta.js`).
+ */
+export const BETA_UI = {
+  feedbackMax: 1500,
+  /** Cuántos mensajes guarda el huésped en memoria para la página de leerlos. */
+  feedbackGuardados: 300,
+  /** Por IP, cuántos mensajes en cuánto tiempo: frena el spam sin guardar la IP. */
+  feedbackPorVentana: 5,
+  feedbackVentanaMs: 10 * 60 * 1000,
+  /** Días que enseña el contador. */
+  contadorDias: 30,
+}
+
 export const CUENTA_DE_SALA = {
   totalSegundos: 45,
   avisoSegundos: 15,

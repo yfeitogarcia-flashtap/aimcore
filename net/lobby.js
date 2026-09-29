@@ -50,8 +50,10 @@ export class Lobby {
    *   como hasta la vuelta 100. Es lo que usan los bancos de netcode, que miden
    *   la red y no la sala (`VEKTOR_LOBBY=0`).
    */
-  constructor({ crearEscenario, modo = null, mapa = null, compra = null, colchon, depurar = false, rondas = true, auto = false }) {
+  constructor({ crearEscenario, modo = null, mapa = null, compra = null, colchon, depurar = false, rondas = true, auto = false, alLanzar = null }) {
     this.crearEscenario = crearEscenario
+    /** Quién quiere saber que se ha lanzado una partida, y con cuántos (el contador de la beta). */
+    this.alLanzar = alLanzar
     this.opcionesDePartida = { colchon, depurar, rondas }
     this.auto = auto
     this.config = { modo: modoDeSala(modo), mapa: null, compra: ROUNDS.compraSegundos }
@@ -422,6 +424,7 @@ export class Lobby {
       m.listo = false
     }
     this.partida.arrancar()
+    this.alLanzar?.(listos.length)
     this._publicar(true)
   }
 

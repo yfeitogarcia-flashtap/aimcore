@@ -4089,3 +4089,34 @@ body {
   font-size: var(--cab-t-pequeno);
   color: var(--cab-texto-apagado);
 }
+
+/* **Cómo se juega** (vuelta 107): cuatro bloques en rejilla, que se leen en
+   veinte segundos. Encima de la cabina, que es donde se abre. */
+.overlay--encima { z-index: 30; }
+.panel--como { max-width: 860px; }
+.como {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: var(--cab-e3);
+  margin: 0 0 var(--cab-e4);
+  padding: 0;
+  list-style: none;
+}
+.como__bloque { padding: var(--cab-e3); }
+.como__bloque p { margin: var(--cab-e2) 0 0; color: var(--cab-texto-suave); font-size: var(--cab-t-pequeno); line-height: 1.5; }
+.portada__como { margin-left: auto; }
+
+/* **Enviar feedback** (vuelta 107). */
+.panel--feedback { max-width: 560px; }
+.feedback__texto {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 var(--cab-e2);
+  padding: var(--cab-e3);
+  background: var(--cab-hueco);
+  color: var(--cab-texto);
+  border: 0;
+  font: inherit;
+  resize: vertical;
+}
+.feedback__ok { color: var(--cab-accion); }

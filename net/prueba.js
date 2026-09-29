@@ -32,6 +32,7 @@ import { ClienteRed } from './cliente.js'
 import { conLobby, conRedSimulada, transporteWebSocket } from './transporte.js'
 import { montarCapaDeDuelo } from '../src/ui/duelo.jsx'
 import { montarLobby } from '../src/ui/Lobby.jsx'
+import { registrarContextoDeFeedback } from '../src/beta.js'
 import { vigilarActualizaciones } from '../src/ui/actualizacion.js'
 import { montarPantallaCompleta } from '../src/escritorio.js'
 import { crearVueltaConEscape } from '../src/ui/volverConEscape.js'
@@ -1286,6 +1287,13 @@ $('finOtra').addEventListener('click', () => {
  */
 let vista = null
 let estadoDeSala = null
+// **Lo que viaja con un feedback desde el multijugador** (vuelta 107): si se
+// está en la sala o jugando, el modo y el mapa.
+registrarContextoDeFeedback(() => ({
+  donde: vista === 'juego' ? 'multijugador · partida' : 'multijugador · sala',
+  modo: estadoDeSala?.modo ?? MODO,
+  mapa: estadoDeSala?.mapa ?? ESCENARIO,
+}))
 let motorArrancado = false
 /** El modo del escenario montado en el motor, para saber si hay que cambiarlo. */
 let modoMontado = MODO

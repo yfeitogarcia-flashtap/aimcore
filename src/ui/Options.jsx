@@ -1,4 +1,5 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { Feedback } from './Beta.jsx'
 import Controls from './Controls.jsx'
 import { keyLabel, keysOf } from '../keybinds.js'
 import { esEscritorio, versionDeEscritorio } from '../escritorio.js'
@@ -59,6 +60,13 @@ function weaponHint(weaponKey) {
 
 export default function Options({ settings, binds, onChange, onReset, onClose }) {
   /**
+   * **«Enviar feedback» vive aquí** (vuelta 107): Opciones es un solo panel
+   * montado en los dos modos —la pausa del entrenamiento, el menú de ESC del
+   * multijugador y la cabina—, así que un botón en su pie está en todas partes
+   * sin añadir una fila a ningún menú.
+   */
+  const [enFeedback, setEnFeedback] = useState(false)
+  /**
    * **Las teclas salen del store de binds, ninguna escrita a mano** (la de la
    * armería desde la 42; las otras dos, en la vuelta 97).
    *
@@ -108,14 +116,16 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
    */
   useEffect(() => {
     const onKey = (event) => {
-      if (event.key !== 'Escape') return
+      if (event.key !== 'Escape' || enFeedback) return
       event.preventDefault()
       event.stopPropagation()
       onClose()
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [onClose])
+  }, [onClose, enFeedback])
+
+  if (enFeedback) return <Feedback onCerrar={() => setEnFeedback(false)} />
 
   return (
     <div
@@ -278,6 +288,9 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
         </button>
         <button type="button" className="button button--quiet" onClick={onReset}>
           Restablecer
+        </button>
+        <button type="button" className="button button--quiet" id="enviar-feedback" onClick={() => setEnFeedback(true)}>
+          Enviar feedback
         </button>
       </div>
       {/* **Y si no se guardan, se dice.** Hasta la vuelta 60 el fallo de

@@ -49,7 +49,7 @@ B2="esc101 dinero89 duelo87 cap88 duelo88 duelo92 duelo92nav
 C="lobby101nav lobby101tam paridad101nav retraso101nav
    todos101nav todos105nav"
 # D · el huésped de serie.
-D="peanas107red"
+D="peanas107red beta107"
 # F · el despliegue: reconstruye dist y relanza el huésped por su cuenta.
 F="cache93"
 
@@ -60,7 +60,7 @@ for g in $GRUPOS; do
     B)  host VEKTOR_LOBBY=0 VEKTOR_RONDAS=0 VEKTOR_DEBUG=1 ;;
     B2) host VEKTOR_LOBBY=0 VEKTOR_DEBUG=1 ;;
     C)  host VEKTOR_DEBUG=1 VEKTOR_BAJAS=2 ;;
-    D)  host ;;
+    D)  host VEKTOR_FEEDBACK_CLAVE=banco107 ;;
   esac
   for f in ${!g}; do corre $f; done
 done

@@ -32,6 +32,8 @@ import { vigilarActualizaciones } from './ui/actualizacion.js'
 import { crearVueltaConEscape } from './ui/volverConEscape.js'
 import { cancelarCaptura } from './game/captura.js'
 import Summary from './ui/Summary.jsx'
+import { ComoSeJuega } from './ui/Beta.jsx'
+import { contarEntreno, registrarContextoDeFeedback, tocaComoSeJuega } from './beta.js'
 
 /**
  * Une el motor (three.js, imperativo) con el HUD (React, declarativo).
@@ -163,6 +165,19 @@ export default function App() {
   const settings = useSyncExternalStore(subscribeSettings, getSettings)
   // Y el de teclas, por lo mismo: lo escribe el panel y lo lee el motor.
   const binds = useSyncExternalStore(subscribeKeybinds, getKeybinds)
+  /**
+   * **Cómo se juega** (vuelta 107): la primera vez que se pulsa «Jugar ahora», y
+   * después cuando se pida desde la portada.
+   */
+  const [como, setComo] = useState(false)
+  // **Lo que viaja con un feedback desde esta página** (vuelta 107): el modo de
+  // entrenamiento y su escenario, leídos de los ajustes al enviarlo.
+  useEffect(() => {
+    registrarContextoDeFeedback(() => {
+      const s = getSettings()
+      return { donde: 'entrenamiento', modo: s.trainingMode, mapa: s.scenario }
+    })
+  }, [])
 
   // La paleta vive en config.js; aquí sólo la publicamos como variables CSS
   // para que las hojas de estilo no repitan ningún color a mano.
@@ -285,10 +300,11 @@ export default function App() {
    * botón. Se lee del store en el momento de pulsar, no de un cierre: un
    * `useCallback` sin la dependencia se quedaría con el modo de cuando se montó.
    */
-  const startTraining = useCallback(
-    () => engineRef.current?.requestStart(getSettings().trainingMode),
-    [],
-  )
+  const startTraining = useCallback(() => {
+    // Un entrenamiento más en el contador de la beta: una suma, sin nada de quién.
+    contarEntreno()
+    engineRef.current?.requestStart(getSettings().trainingMode)
+  }, [])
   const finishSession = useCallback(() => engineRef.current?.finishSession(), [])
   const backToStart = useCallback(() => {
     setSummary(null)
@@ -495,7 +511,7 @@ export default function App() {
                 type="button"
                 className="button button--primary button--grande"
                 onMouseDown={swallowClick}
-                onClick={() => setMenu('modos')}
+                onClick={() => { setMenu('modos'); if (tocaComoSeJuega()) setComo(true) }}
                 autoFocus
               >
                 Jugar ahora
@@ -589,6 +605,9 @@ export default function App() {
                   abajo de la portada, como en la maqueta. */}
               <div className="portada__controles">
                 <span className="cab-rotulo">Controles</span>
+                <button type="button" className="button button--quiet button--pequeno portada__como" onClick={() => setComo(true)}>
+                  Cómo se juega
+                </button>
                 <ul className="teclas">
                   <li className="teclas__par">
                     <kbd className="cab-tecla">{keyLabel(keysOf('shoot', binds)[0])}</kbd>
@@ -605,6 +624,12 @@ export default function App() {
             </div>
           )}
         </Cabina>
+      )}
+
+      {como && phase === PHASE.IDLE && (
+        <div className="overlay overlay--encima" onMouseDown={(e) => e.stopPropagation()}>
+          <ComoSeJuega binds={binds} onCerrar={() => setComo(false)} />
+        </div>
       )}
 
       {!avatarDebug && phase === PHASE.PAUSED && (

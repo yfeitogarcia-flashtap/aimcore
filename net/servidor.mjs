@@ -43,6 +43,7 @@ import { Scenario } from '../src/game/scenario.js'
 import { MSG } from './protocolo.js'
 import { Lobby } from './lobby.js'
 import { normalizarCodigo, rutaDeSala } from './codigo.js'
+import { contador, paginaDeFeedback, paginaDelContador, recibirFeedback } from './beta.js'
 
 const RAIZ = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const PUBLICO = path.join(RAIZ, 'dist')
@@ -195,6 +196,8 @@ class Sala {
       depurar: DEPURAR,
       rondas: RONDAS,
       auto: SIN_LOBBY,
+      // El contador de la beta (vuelta 107): una partida y cuántos entran.
+      alLanzar: (jugadores) => contador.partida(jugadores),
     })
     /** El cable vigente de cada uno: al volver con su pase, el viejo se cierra. */
     this.cables = new Map()
@@ -432,6 +435,7 @@ function salaDe(codigo, compraSegundos = null, mapa = null, modo = null) {
   let sala = salas.get(codigo)
   if (!sala) {
     sala = new Sala(codigo, compraSegundos, mapa, modo)
+    contador.sala()
     salas.set(codigo, sala)
   }
   return sala
@@ -611,6 +615,26 @@ const texto = (respuesta, codigo, cuerpo) => {
  * servidor normalizaran cada uno a su manera, teclear el código en minúsculas
  * llevaría a otra sala y el síntoma serían dos amigos solos en dos salas.
  */
+/** El cuerpo de una petición, con tope: lo que pase de ahí no se lee. */
+function leerCuerpo(peticion, tope) {
+  return new Promise((resolver) => {
+    let cuerpo = ''
+    peticion.on('data', (trozo) => {
+      cuerpo += trozo
+      if (cuerpo.length > tope) { resolver(null); peticion.destroy() }
+    })
+    peticion.on('end', () => resolver(cuerpo))
+    peticion.on('error', () => resolver(null))
+  })
+}
+
+/** El pico de gente en partida del día, mirado una vez por minuto. */
+setInterval(() => {
+  let n = 0
+  for (const s of salas.values()) if (!s.vacia) n += s.lobby.jugadores.size
+  contador.ahora(n)
+}, 60_000).unref()
+
 function codigoDeRuta(ruta) {
   const enSala = ruta.match(/^\/sala\/([^/]+)\/?$/)
   if (!enSala) return null
@@ -634,6 +658,35 @@ const servidor = http.createServer(async (peticion, respuesta) => {
   const codigo = codigoDeRuta(url.pathname)
   if (codigo === false) return texto(respuesta, 400, 'Ese código de partida no existe.')
   if (codigo) return texto(respuesta, 426, 'Esto es una sala de Vektor: se entra por WebSocket.')
+
+  /**
+   * **Lo imprescindible de la beta** (vuelta 107): el buzón de feedback y el
+   * contador, en `net/beta.js`. Sin cookies y sin guardar de quién viene nada.
+   */
+  if (url.pathname === '/feedback' && peticion.method === 'POST') {
+    const cuerpo = await leerCuerpo(peticion, 8 * 1024)
+    let datos = null
+    try { datos = JSON.parse(cuerpo ?? '') } catch { datos = null }
+    const ip = String(peticion.headers['fly-client-ip'] || peticion.socket.remoteAddress || '')
+    const { codigo: c, error } = recibirFeedback(datos, ip)
+    respuesta.writeHead(c, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' })
+    return respuesta.end(JSON.stringify(error ? { ok: false, error } : { ok: true }))
+  }
+  if (url.pathname === '/feedback/leer') {
+    const pagina = paginaDeFeedback(url.searchParams.get('clave'))
+    if (!pagina) return texto(respuesta, 404, 'No existe.')
+    respuesta.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' })
+    return respuesta.end(pagina)
+  }
+  if (url.pathname === '/contador/entreno' && peticion.method === 'POST') {
+    contador.entreno()
+    respuesta.writeHead(204, { 'Cache-Control': 'no-store' })
+    return respuesta.end()
+  }
+  if (url.pathname === '/contador') {
+    respuesta.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex' })
+    return respuesta.end(paginaDelContador())
+  }
 
   // Un sitio al que mirar para saber si esto está vivo, y lo que la plataforma
   // consulta para decidir si hay que reiniciar.
