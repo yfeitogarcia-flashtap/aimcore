@@ -23,7 +23,14 @@ import { chromium } from 'playwright-core'
  * existe. Lo que sí se juega a rondas se mide en `rondas62` y `duelo62`.
  */
 
-const b = await chromium.launch({ executablePath:'/opt/pw-browsers/chromium', args:['--use-gl=swiftshader','--enable-unsafe-swiftshader'] })
+// **Un jugador por navegador** (vueltas 50 y 57): con las dos pestañas en el
+// mismo, la de atrás la frena el contenedor.
+const navegadores = []
+const lanzar = async () => {
+  const n = await chromium.launch({ executablePath:'/opt/pw-browsers/chromium', args:['--use-gl=swiftshader','--enable-unsafe-swiftshader'] })
+  navegadores.push(n)
+  return n
+}
 let fail = 0
 const ok = (c,m) => { console.log((c?'  PASS ':'  FAIL ')+m); if(!c) fail++ }
 const espera = (ms) => new Promise(r => setTimeout(r, ms))
@@ -37,7 +44,7 @@ const BASE_URL = process.env.VEKTOR_URL || 'http://localhost:5192/net/prueba.htm
  * puerta: antes de medir un porcentaje hay que comprobar que hay denominador.
  */
 const abrir = async (etiqueta, codigo = null) => {
-  const p = await b.newPage({ viewport: { width: 900, height: 560 } })
+  const p = await (await lanzar()).newPage({ viewport: { width: 900, height: 560 } })
   p.on('pageerror', e => console.log(`  !! ${etiqueta} PAGEERROR`, e.message))
   await p.goto(codigo ? `${BASE_URL}#${codigo}` : BASE_URL)
   await p.waitForFunction(() => !!window.vektorNet?.cliente?.id, null, { timeout: 20000 })
@@ -446,5 +453,5 @@ ok(coste.falla.p50 < coste.completo.p50,
    `y el que ni roza cuesta menos, porque no llega a gastar rayo (${(coste.falla.p50*1000).toFixed(1)} contra ${(coste.completo.p50*1000).toFixed(1)} µs)`)
 
 console.log(`\n=== tiro46: ${fail === 0 ? 'todo verde' : fail + ' FALLOS'} ===`)
-await b.close()
+for (const n of navegadores) await n.close()
 process.exit(fail ? 1 : 0)

@@ -10,6 +10,7 @@
  * píxeles del láser— y **lo que dice el HUD** —munición y aciertos—.
  */
 import { chromium } from 'playwright-core'
+import { WEAPONS } from '../src/config.js'
 
 const URL = 'http://localhost:5192/'
 const fallos = []
@@ -27,10 +28,14 @@ const errores = []
 pagina.on('pageerror', (e) => errores.push(String(e) + '\n' + String(e.stack || '').split('\n').slice(1, 4).join('\n')))
 pagina.on('console', (m) => { if (m.type() === 'error') errores.push('console: ' + m.text()) })
 
-// El arco puesto y el escenario con cobertura: es donde hay contra qué chocar.
+// El U2 en la especial, **en la sala vacía y con dianas clásicas**. Las dos
+// cosas por lo mismo: **morir repone la reserva** (vuelta 87). En el Plano A se
+// sale mirando al muro de aparición a metro y medio, y el U2 alcanza a su dueño
+// (vuelta 86): el tercer cohete mataba al que lo tiraba y la cuenta del tubo
+// volvía a empezar. Y los muñecos del hitbox disparan.
 await pagina.addInitScript(() => {
   localStorage.setItem('aimcore.settings.v1', JSON.stringify({
-    weapon: "u2", scenario: 'largoYPuerta', targetType: 'hitbox',
+    special: 'u2', scenario: 'empty', targetType: 'classic',
     simultaneousTargets: 3, sessionDuration: 'endless',
   }))
 })
@@ -51,6 +56,32 @@ await jugar.click({ timeout: 5000 })
 await pagina.waitForTimeout(800)
 await pagina.mouse.click(60, 560)
 await pagina.waitForTimeout(600)
+// **El U2 está en la ranura especial desde la vuelta 92**: se saca con la 5,
+// como lo sacaría una persona. Antes iba en `weapon` y salía en la mano solo.
+await pagina.keyboard.press('Digit5')
+await pagina.waitForTimeout(500)
+
+/**
+ * **Esperar a que acabe la recarga, en el reloj del juego y no en el de pared**
+ * (CLAUDE.md §4, vuelta 75). Con WebGL por software el mundo va a cámara lenta a
+ * propósito, y una recarga de 2 s tardaba más de 2.8 s de pared: el siguiente
+ * clic caía recargando y no disparaba, y el banco leía un cohete de más. Lo
+ * dice el HUD, que es donde lo lee una persona.
+ */
+let lentitud = 1
+async function esperaRecarga(topeMs = 20000) {
+  const t0 = Date.now()
+  await pagina.waitForTimeout(300)
+  while (Date.now() - t0 < topeMs) {
+    if (!/recargando/i.test(await pagina.evaluate(() => document.body.innerText))) {
+      // Lo que ha tardado en pared una recarga de `reloadMs` de juego es cuánto
+      // va de lento el mundo aquí: con eso se espera la cadencia, que no se ve.
+      lentitud = Math.max(1, (Date.now() - t0) / WEAPONS.u2.reloadMs)
+      return
+    }
+    await pagina.waitForTimeout(150)
+  }
+}
 
 const hud = async () => pagina.evaluate(() => {
   const txt = document.body.innerText
@@ -95,17 +126,23 @@ console.log('\n[2] dispara al pulsar, y gasta el cohete del tubo')
   const medio = (await hud()).match(/(\d+)\s*\/\s*(\d+)/)
   af(antes && medio && Number(medio[1]) === 0, 'el tubo se queda vacío',
     `${antes ? antes[0] : '?'} → ${medio ? medio[0] : '?'}`)
-  // Y se recarga solo desde la reserva: 2 s.
-  await pagina.waitForTimeout(2600)
+  // Y se recarga solo desde la reserva: 2 s de juego.
+  await esperaRecarga()
   const luego = (await hud()).match(/(\d+)\s*\/\s*(\d+)/)
   af(luego && Number(luego[1]) === 1, 'la reserva vuelve a llenar el tubo', `${luego ? luego[0] : '?'}`)
 }
 
 console.log('\n[3] con la reserva agotada no recarga, y lo dice')
 {
-  // El segundo cohete, y ya no quedan (nacen 2 de fábrica).
-  await pagina.mouse.down(); await pagina.waitForTimeout(120); await pagina.mouse.up()
-  await pagina.waitForTimeout(2800)
+  // Nacen **uno en el tubo y `reserva.inicial` detrás** —la misma cuenta que
+  // las granadas, «dos por vida» con una de reserva—, o sea tres. Ya se ha
+  // tirado uno: faltan dos, y el último deja el tubo vacío de verdad.
+  for (let k = 0; k < WEAPONS.u2.tiro.reserva.inicial; k++) {
+    await pagina.mouse.down(); await pagina.waitForTimeout(120); await pagina.mouse.up()
+    await esperaRecarga()
+    // Y la cadencia (1.5 s de juego) antes del siguiente, en el reloj de aquí.
+    await pagina.waitForTimeout((60_000 / WEAPONS.u2.rpm) * lentitud * 1.3)
+  }
   const t = await hud()
   const m = t.match(/(\d+)\s*\/\s*(\d+)/)
   af(m && Number(m[1]) === 0, 'el tubo se queda vacío de verdad', m ? m[0] : '?')

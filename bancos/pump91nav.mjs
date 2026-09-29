@@ -28,7 +28,7 @@ await p.click('text=Jugar ahora')
 await p.waitForTimeout(300)
 await p.click('.cab-rail__item:has-text("Armería")')
 await p.waitForTimeout(600)
-const fichas = await p.locator('.armoury__card').allInnerTexts()
+const fichas = await p.locator('.armoury__card').allTextContents()
 const ficha = fichas.find((f) => f.includes('Pump')) ?? ''
 afirmar('la ficha dice los perdigones', /8 por disparo en un cono de 6/.test(ficha), ficha.slice(0, 80))
 afirmar('y que se recarga cartucho a cartucho', /cartucho a cartucho/.test(ficha))

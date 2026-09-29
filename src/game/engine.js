@@ -3435,15 +3435,17 @@ export class Engine {
     if (this.phase !== PHASE.RUNNING || !this.isLocked || event.repeat) return
 
     /**
-     * **La acción contextual, y ahora reparte tres cosas** (vuelta 27; la
-     * tercera, de la 83). El orden **es** la regla, y no cambia:
+     * **La acción contextual, y ahora reparte cuatro cosas** (vuelta 27; el
+     * cable, de la 83; la peana, de la 106). El orden **es** la regla:
      *
      * 1. **Dentro del radio del explosivo, `use` desactiva y nada más.** Que
      *    ahí dentro sacara un artilugio —o te colgara de un cable— sería perder
      *    la ronda por un reflejo.
-     * 2. **Fuera, manda el cable que tengas al alcance**, porque es lo que
+     * 2. **Fuera, la peana que apuntes** (vuelta 106): apuntar a algo concreto
+     *    es más deliberado que estar cerca de algo.
+     * 3. **Si no, manda el cable que tengas al alcance**, porque es lo que
      *    tienes delante y lo estás mirando.
-     * 3. **Y si no hay cable, el artilugio**, que todavía no existe: la tecla
+     * 4. **Y si no hay cable, el artilugio**, que todavía no existe: la tecla
      *    está reservada y el hueco, hecho.
      *
      * La tirolina se resuelve **dentro del movimiento**, por el flanco de

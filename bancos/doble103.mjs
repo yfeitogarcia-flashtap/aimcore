@@ -22,14 +22,31 @@ const enlace = await A.evaluate(() => document.querySelector('#enlace').value)
 await B.goto(enlace.replace(/^https?:\/\/[^/]+/, BASE), { waitUntil: 'networkidle' }); await B.waitForTimeout(2500)
 for (const p of [A, B]) { await p.mouse.click(30, 30); await p.waitForTimeout(500) }
 const colocar = (p, x, z, yaw) => p.evaluate(({ x, z, yaw }) => { window.vektorNet.cliente.transporte.send(JSON.stringify({ t: 'c', x, z })); window.vektorNet.motor.controls.lookAt(yaw) }, { x, z, yaw })
-await colocar(A, 0, -16 - 8 + 8, -Math.PI / 2 * 0)
-await colocar(A, -3, -16, -Math.PI / 2)
-await colocar(B, 3, -16, Math.PI / 2)
+/**
+ * **El sitio se busca, no se escribe** (vuelta 106). Estaba clavado en
+ * (±3, −16) y el mapa de duelo de fábrica ha cambiado desde entonces: ahí ya no
+ * había línea de visión y los cuatro clics salían al aire — «0 aciertos», que es
+ * la premisa diciendo que la tabla estaba vacía. Es la búsqueda de `ficha101`:
+ * suelo llano en los dos sitios y nada en medio.
+ */
+const sitio = await A.evaluate(() => {
+  const { verDesde, escenario, camara } = window.vektorNet
+  const p = camara.position.clone(), q = camara.position.clone()
+  const llano = (x, z) => Math.abs(escenario.groundHeightAt(x, z)) < 0.01
+  for (let x = -16; x <= 16; x += 2) for (let z = -16; z <= 16; z += 2) {
+    if (!llano(x, z) || !llano(x, z - 6)) continue
+    p.set(x, 1.4, z); q.set(x, 1.4, z - 6)
+    if (verDesde(p, q, escenario.occluders)) return { x, z }
+  }
+  return null
+})
+await colocar(A, sitio.x, sitio.z, 0)
+await colocar(B, sitio.x, sitio.z - 6, Math.PI)
 await A.waitForTimeout(1500)
 await A.evaluate(() => {
   const e = window.vektorNet.enlace; e.latenciaMs = 60; e.enOrden = true
   const m = window.vektorNet.motor
-  m.controls.lookAt(-Math.PI / 2); m.camera.rotation.x = -0.12
+  m.controls.lookAt(0); m.camera.rotation.x = -0.12
   window.__marcas = []
   const f = m.callbacks.onVerdict
   m.callbacks.onVerdict = (v) => { window.__marcas.push(performance.now()); return f?.(v) }

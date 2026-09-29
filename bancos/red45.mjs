@@ -18,7 +18,18 @@ import { chromium } from 'playwright-core'
  * existe. Lo que sí se juega a rondas se mide en `rondas62` y `duelo62`.
  */
 
-const b = await chromium.launch({ executablePath:'/opt/pw-browsers/chromium', args:['--use-gl=swiftshader','--enable-unsafe-swiftshader'] })
+/**
+ * **Un jugador por navegador** (vueltas 50 y 57). Con las dos pestañas en el
+ * mismo, la de atrás la frena el contenedor, y la premisa de «saltando de
+ * verdad» se quedaba en 29 muestras en el aire: una pestaña frenada casi no
+ * despega. Cada uno con el suyo.
+ */
+const navegadores = []
+const lanzar = async () => {
+  const n = await chromium.launch({ executablePath:'/opt/pw-browsers/chromium', args:['--use-gl=swiftshader','--enable-unsafe-swiftshader'] })
+  navegadores.push(n)
+  return n
+}
 let fail = 0
 const ok = (c,m) => { console.log((c?'  PASS ':'  FAIL ')+m); if(!c) fail++ }
 
@@ -30,7 +41,7 @@ const ok = (c,m) => { console.log((c?'  PASS ':'  FAIL ')+m); if(!c) fail++ }
  * que en una sala de dos no puede repetirse. B entra por el código de A.
  */
 const abrir = async (etiqueta, codigo = null) => {
-  const p = await b.newPage({ viewport: { width: 960, height: 600 } })
+  const p = await (await lanzar()).newPage({ viewport: { width: 960, height: 600 } })
   p.on('pageerror', e => console.log(`  !! ${etiqueta} PAGEERROR`, e.message))
   const base = process.env.VEKTOR_URL || 'http://localhost:5192/net/prueba.html'
   await p.goto(codigo ? `${base}#${codigo}` : base)
@@ -286,5 +297,5 @@ await parar(A); await parar(B)
 await A.screenshot({ path: 'r45-A.png' })
 await B.screenshot({ path: 'r45-B.png' })
 console.log(`\n=== red45: ${fail === 0 ? 'todo verde' : fail + ' FALLOS'} ===`)
-await b.close()
+for (const n of navegadores) await n.close()
 process.exit(fail ? 1 : 0)

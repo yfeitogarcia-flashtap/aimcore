@@ -41,7 +41,7 @@ await p.waitForTimeout(300)
 // Desde Cabina (vuelta 99) la armería es una sección del raíl.
 await p.click('.cab-rail__item:has-text("Armería")')
 await p.waitForTimeout(700)
-const fichas = await p.locator('.armoury__card').allInnerTexts()
+const fichas = await p.locator('.armoury__card').allTextContents()
 const ficha = fichas.find((f) => f.includes('Krakov')) ?? ''
 afirmar(Boolean(ficha), 'el Krakov tiene ficha en la armería')
 afirmar(/casco/i.test(ficha), `y dice que atraviesa el casco: ${(/[^\n]*casco[^\n]*/i.exec(ficha) ?? [''])[0].trim()}`)
