@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import {
   CARPETAS_QUE_SUBEN, EXTENSIONES_ESTAMPADO, NO_SON_MAPAS, estadoDeMapasEn, subirMapasEn,
 } from './scripts/lib/alchemist-git.mjs'
@@ -285,6 +286,31 @@ export { CARPETAS_QUE_SUBEN, estadoDeMapasEn, subirMapasEn }
 const estadoDeMapas = () => estadoDeMapasEn(import.meta.dirname)
 const subirMapas = () => subirMapasEn(import.meta.dirname)
 
+/**
+ * **Lo que le falta a cada mapa pendiente para poder subirse** (vuelta 107,
+ * A2), con la función de `formato.js`. Se lee el fichero **tal como está en el
+ * disco** —con una consulta que lo hace nuevo, porque el módulo se reescribe con
+ * cada guardado— y las imágenes de estampado se buscan en `public/`. Un mapa
+ * borrado no tiene nada que validar: borrarlo es lo que se sube.
+ */
+async function faltasDeMapas(nombres) {
+  const { faltasParaPublicar } = await modulo('./src/maps/formato.js')
+  const existeImagen = (ruta) => existsSync(resolve(import.meta.dirname, 'public', ruta.replace(/^\//, '')))
+  const faltas = []
+  for (const nombre of nombres) {
+    const ruta = resolve(CARPETA_MAPAS, nombre)
+    if (!existsSync(ruta)) continue
+    try {
+      const def = (await import(/* @vite-ignore */ `${pathToFileURL(ruta).href}?v=${statSync(ruta).mtimeMs}`)).default
+      const lista = faltasParaPublicar(def, { existeImagen })
+      if (lista.length) faltas.push({ mapa: nombre, faltas: lista })
+    } catch (error) {
+      faltas.push({ mapa: nombre, faltas: [`No se puede leer: ${error.message}`] })
+    }
+  }
+  return faltas
+}
+
 const editor = {
   name: 'vektor-editor',
 
@@ -429,14 +455,28 @@ const editor = {
        *   middleware de Vite, así que no existe en `dist/`.
        */
       if (pathname === '/__editor/mapas-sin-subir' && peticion.method === 'GET') {
-        return respuesta.end(JSON.stringify(estadoDeMapas()))
+        const estado = estadoDeMapas()
+        faltasDeMapas(estado.mapas)
+          .then((faltas) => respuesta.end(JSON.stringify({ ...estado, faltas })))
+          .catch(() => respuesta.end(JSON.stringify({ ...estado, faltas: [] })))
+        return
       }
       if (pathname === '/__editor/subir' && peticion.method === 'POST') {
-        try {
-          return respuesta.end(JSON.stringify(subirMapas()))
-        } catch (error) {
-          return fallar(500, error.message)
-        }
+        // **Validar antes de subir** (vuelta 107, A2): con algo que rompa un
+        // mapa en el juego no se sube nada, y se dice qué y en cuál. La barra
+        // ya lo enseña antes de pulsar; esto es la puerta.
+        faltasDeMapas(estadoDeMapas().mapas).then((faltas) => {
+          if (faltas.length) {
+            const texto = faltas.map((f) => `${f.mapa}: ${f.faltas.join(' ')}`).join(' · ')
+            return fallar(422, `No se sube nada hasta arreglarlo — ${texto}`)
+          }
+          try {
+            respuesta.end(JSON.stringify(subirMapas()))
+          } catch (error) {
+            fallar(500, error.message)
+          }
+        }).catch((error) => fallar(500, error.message))
+        return
       }
 
       if (pathname !== '/__editor/guardar' || peticion.method !== 'POST') return siguiente()

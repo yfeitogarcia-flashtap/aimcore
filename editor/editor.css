@@ -269,6 +269,21 @@ body.jugando #lateral { display: none; }
   backdrop-filter: blur(6px);
 }
 body.jugando #atajos { display: none; }
+/* **La ficha de lo elegido** (vuelta 107, A1), encima de los atajos y separada
+   de ellos por una línea: es otra cosa, lo que tienes en la mano. */
+#ficha-elegido {
+  margin: 0 0 6px;
+  padding: 0 0 6px;
+  border-bottom: 1px solid var(--linea);
+}
+#ficha-elegido[hidden] { display: none; }
+#ficha-elegido-que { margin: 0; font-size: 12px; font-weight: 700; color: var(--texto, #e8e8e8); }
+#ficha-elegido-hace { margin: 2px 0 4px; font-size: 11px; color: var(--apagado); }
+#ficha-elegido-datos { margin: 0 0 6px; padding: 0; list-style: none; font-size: 11px; }
+#ficha-elegido-datos li { display: flex; justify-content: space-between; gap: 8px; }
+#ficha-elegido-datos li span:last-child { color: var(--texto, #e8e8e8); font-variant-numeric: tabular-nums; }
+#ficha-elegido-editar { width: 100%; }
+#pendientes .falta { color: #e4462b; font-size: 11px; }
 #atajos-plegar {
   display: flex;
   justify-content: space-between;

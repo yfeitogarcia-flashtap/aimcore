@@ -3829,6 +3829,98 @@ const TIPOS_DE_MAPA = [
 ]
 
 /**
+ * **La ficha de lo elegido** (vuelta 107, A1): qué es, qué hace, lo que lo
+ * define y dónde se edita. Sale de la misma tabla que Capas y Supr
+ * (`TIPOS_DE_MAPA`), así que un tipo nuevo tiene ficha en cuanto tiene fila; lo
+ * que se añade aquí es **qué hace**, que es lo que la fila no dice.
+ */
+const HOJA_DE_TIPO = {
+  boxes: 'construir', prismas: 'construir', tubos: 'construir', ramps: 'construir', escaleras: 'construir',
+  estampados: 'mapa', ventiladores: 'dispositivos', tirolinas: 'dispositivos', teletransportes: 'dispositivos',
+  salidas: 'duelo', salidasTodos: 'duelo', peanas: 'reglas',
+}
+const NOMBRE_DE_TIPO = {
+  boxes: 'Pieza', prismas: 'Prisma', tubos: 'Tubo', ramps: 'Rampa', escaleras: 'Escalera', estampados: 'Estampado',
+  ventiladores: 'Ventilador', tirolinas: 'Tirolina', teletransportes: 'Teletransporte',
+  salidas: 'Salida de duelo', salidasTodos: 'Salida de todos contra todos', peanas: 'Peana',
+}
+const redondo = (n) => (Number.isFinite(n) ? Number(n.toFixed(2)) : n)
+
+/** Lo elegido ahora mismo: `{ tipo, obj, i }` o null. */
+function loElegido() {
+  if (seleccion >= 0 && mapa.boxes?.[seleccion]) return { tipo: 'boxes', obj: mapa.boxes[seleccion], i: seleccion }
+  const que = marcaElegida?.que
+  if (!que) return null
+  const tipo = TIPOS_DE_MAPA.find((t) => t.prefijo && que.startsWith(t.prefijo))
+  if (!tipo) return null
+  const obj = tipo.lista()[marcaElegida.i]
+  return obj ? { tipo: tipo.clave, obj, i: marcaElegida.i } : null
+}
+
+/** «Peana · entrega Krakov»: qué es y qué hace, más sus datos clave. */
+function describirElegido({ tipo, obj, i }) {
+  const n = NOMBRE_DE_TIPO[tipo]
+  const donde = ['Posición', `${redondo(obj.x ?? obj.desde?.x)}, ${redondo(obj.z ?? obj.desde?.z)}`]
+  switch (tipo) {
+    case 'boxes': {
+      const s = obj.superficie
+      if (obj.barrera) return { que: `Barrera · ${obj.barrera}`, hace: 'Te choca y se pisa por arriba; lo que vuela y la vista la atraviesan.', datos: [donde, ['Tamaño', `${obj.w} × ${obj.d}`], ['Alto', coverHeight(obj.kind)]] }
+      if (s?.tipo === 'rebote') return { que: 'Rebote', hace: `Pisarlo te lanza hacia arriba con fuerza ${s.fuerza}.`, datos: [donde, ['Tamaño', `${obj.w} × ${obj.d}`], ['Fuerza', s.fuerza]] }
+      if (s?.tipo === 'velocidad') return { que: 'Plataforma de velocidad', hace: `Te lanza hacia donde apunta su galón, con fuerza ${s.fuerza}.`, datos: [donde, ['Fuerza', s.fuerza], ['Rumbo', `${Math.round(((s.rumbo ?? 0) * 180) / Math.PI)}°`]] }
+      if (s?.tipo === 'hielo') return { que: 'Hielo', hace: `El suelo resbala: rozamiento ${s.fuerza} (cuanto más bajo, más resbala).`, datos: [donde, ['Tamaño', `${obj.w} × ${obj.d}`], ['Rozamiento', s.fuerza]] }
+      return { que: `${n} · ${obj.kind}`, hace: obj.base ? `Empieza a ${obj.base} u del suelo: se puede pasar por debajo.` : 'Geometría: te choca, para balas y tapa la vista.', datos: [donde, ['Tamaño', `${obj.w} × ${obj.d}`], ['Alto', coverHeight(obj.kind)], ...(obj.tinte ? [['Tinte', obj.tinte]] : [])] }
+    }
+    case 'peanas':
+      return { que: `${n} · entrega ${WEAPONS[obj.arma]?.label ?? obj.arma}`, hace: 'Se coge apuntándole y con la E. No se agota; si ya la llevas, recarga.', datos: [donde, ['Arma', WEAPONS[obj.arma]?.label ?? obj.arma], ['Modo del mapa', mapa.reglas?.modo === 'peanas' ? 'Peanas' : 'no es Peanas: no sale']] }
+    case 'salidas':
+    case 'salidasTodos':
+      return { que: `${n} ${i + 1}`, hace: 'Donde aparece un jugador, con los pies en la superficie de debajo.', datos: [donde, ['Suelo', `${redondo(sueloEn(obj.x, obj.z))} u`], ['Rumbo', `${Math.round(((obj.yaw ?? 0) * 180) / Math.PI)}°`]] }
+    case 'ventiladores':
+      return { que: n, hace: `Dentro, la gravedad baja en ${obj.fuerza}: se sube o se cae más despacio.`, datos: [donde, ['Tamaño', `${obj.w} × ${obj.d} × ${obj.alto}`], ['Fuerza', obj.fuerza]] }
+    case 'tirolinas':
+      return { que: n, hace: 'Con la E cerca se engancha; va de A a B y te suelta con su velocidad.', datos: [['Desde', `${obj.desde.x}, ${obj.desde.z}`], ['Hasta', `${obj.hasta.x}, ${obj.hasta.z}`]] }
+    case 'teletransportes':
+      return { que: n, hace: 'Entrar en su área te pone en su destino, mirando a su rumbo.', datos: [donde, ['Destino', `${obj.destino.x}, ${obj.destino.z}`]] }
+    case 'estampados':
+      return { que: n, hace: 'Un logo pegado: no choca, no para balas, sólo se ve.', datos: [['Imagen', obj.imagen.split('/').pop()], ['Mira hacia', obj.cara], ['Tamaño', `${obj.ancho} × ${obj.alto}`]] }
+    default: {
+      const fila = TIPOS_DE_MAPA.find((t) => t.clave === tipo)?.fila(obj, i) ?? ''
+      return { que: n ?? tipo, hace: 'Geometría: te choca, para balas y tapa la vista.', datos: [donde, ['Medidas', fila]] }
+    }
+  }
+}
+
+let fichaPintada = ''
+function pintarFichaElegido() {
+  const panel = $('ficha-elegido')
+  if (!panel) return
+  const el = motor ? null : loElegido()
+  const d = el ? describirElegido(el) : null
+  const firma = d ? JSON.stringify(d) + el.tipo : ''
+  if (firma === fichaPintada) return
+  fichaPintada = firma
+  panel.hidden = !d
+  if (!d) return
+  $('ficha-elegido-que').textContent = d.que
+  $('ficha-elegido-hace').textContent = d.hace
+  const lista = $('ficha-elegido-datos')
+  lista.replaceChildren(...d.datos.map(([k, v]) => {
+    const li = document.createElement('li')
+    const a = document.createElement('span')
+    a.textContent = k
+    const b = document.createElement('span')
+    b.textContent = String(v)
+    li.append(a, b)
+    return li
+  }))
+  $('ficha-elegido-editar').dataset.hoja = HOJA_DE_TIPO[el.tipo] ?? 'construir'
+}
+// Cinco veces por segundo y escribiendo sólo si cambia: la elección cambia en
+// una docena de sitios, y arrastrar cambia los números sin elegir nada.
+setInterval(pintarFichaElegido, 200)
+$('ficha-elegido-editar')?.addEventListener('click', (evento) => abrirPanel(true, evento.currentTarget.dataset.hoja))
+
+/**
  * **Lo que el ojo esconde, y sólo en el editor** (vuelta 96). Claves
  * `<lista>:<índice>`, en memoria y **no en el mapa**: es estado de vista, y el
  * mapa es lo que compara deshacer/rehacer con un `JSON.stringify` (vuelta 83), así
@@ -5473,7 +5565,7 @@ async function pintarPendientes() {
   const lista = $('pendientes')
   try {
     const respuesta = await fetch('/__editor/mapas-sin-subir')
-    const { mapas, imagenes = [], otros, rama, conflictos = [], enCurso = null } = await respuesta.json()
+    const { mapas, imagenes = [], otros, rama, conflictos = [], enCurso = null, faltas = [] } = await respuesta.json()
     const hayAlgo = mapas.length > 0 || imagenes.length > 0 || otros > 0
     /**
      * **Un conflicto no se ofrece subir** (vuelta 99). Con un fichero de mapa
@@ -5489,18 +5581,22 @@ async function pintarPendientes() {
       : ''
     // Las imágenes van marcadas: en la lista, «nike.webp» al lado de
     // «espejo.js» no diría que una es geometría y la otra un asset.
+    // **Y lo que le falta a cada uno para subirse** (vuelta 107, A2), debajo de
+    // su nombre y en rojo: con algo ahí el botón no se enciende.
+    const faltasDe = new Map(faltas.map((f) => [f.mapa, f.faltas]))
     lista.innerHTML = [
-      ...mapas.map((m) => `<li>${escapar(m)}</li>`),
+      ...mapas.map((m) => `<li>${escapar(m)}${(faltasDe.get(m) ?? []).map((f) => `<br><span class="falta">✗ ${escapar(f)}</span>`).join('')}</li>`),
       ...imagenes.map((i) => `<li>${escapar(i)} <span class="nota">imagen de estampado</span></li>`),
     ].join('')
     $('nada-pendiente').hidden = hayAlgo
-    $('subir').disabled = !hayAlgo || hayConflicto
+    $('subir').disabled = !hayAlgo || hayConflicto || faltas.length > 0
     // El registro y el historial no son mapas, pero suben con ellos: se dicen
     // aparte y no se cuentan, que es lo que deja que el número sea el número.
     $('subir-nota').textContent = [
       rama ? `rama: ${rama}` : '',
       otros ? `y ${otros} fichero(s) del registro y el historial` : '',
       hayConflicto ? 'hay un conflicto sin resolver: cierra Alchemist y vuelve a abrirlo, que el lanzador ofrece arreglarlo' : '',
+      faltas.length ? `no se puede subir: ${faltas.length === 1 ? 'a un mapa le falta algo' : `a ${faltas.length} mapas les falta algo`} (en rojo, arriba)` : '',
     ].filter(Boolean).join(' · ')
     const aviso = $('sin-subir')
     aviso.hidden = !hayAlgo

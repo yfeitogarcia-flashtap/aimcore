@@ -10,8 +10,8 @@
  * Nada de geometría: eso es de `scenario.js`, que monta **estos mismos datos**.
  */
 
-import { MODOS_DE_ARMAS, armasMarcables } from '../game/arsenal.js'
-import { COVER, MODOS_DE_MAPA, PEANAS, WEAPONS, ESCALERAS, ESTAMPADOS, FANS, FONDOS, PRIMARY_WEAPONS, PRISMAS, ROOM, ROUNDS, SURFACES, TODOS, TUBES, ZIPLINES, coverHeight, esFotoDeFondo, esImagenDeEstampado } from '../config.js'
+import { MODOS_DE_ARMAS, armasMarcables, reglasDeMapa } from '../game/arsenal.js'
+import { COVER, MODOS_DE_MAPA, PEANAS, WEAPONS, ESCALERAS, ESTAMPADOS, FANS, FONDOS, PRIMARY_WEAPONS, PRISMAS, ROOM, ROUNDS, SURFACES, TODOS, TUBES, ZIPLINES, coverHeight, esFotoDeFondo, esImagenDeEstampado, modosDeMapa } from '../config.js'
 
 /**
  * **Todos los campos que puede tener un mapa, en el orden en que se escriben.**
@@ -939,4 +939,60 @@ function valor(v, nivel) {
     return `[\n${v.map((item) => `${sangria}${JSON.stringify(item)},`).join('\n')}\n${'  '.repeat(nivel)}]`
   }
   return JSON.stringify(v)
+}
+
+/**
+ * **Lo que le falta a un mapa para subirse al juego** (vuelta 107, A2). Es la
+ * puerta de «Subir al juego»: con algo aquí no se sube, y se dice qué. Sólo lo
+ * que **rompe** el mapa en el juego —que no salga en ningún sitio, que no haya
+ * dónde aparecer, un modo de armas sin armas, un logo que no llega—, no lo que
+ * se juega peor: eso lo avisa la barra en naranja (vuelta 105) y es del autor.
+ *
+ * Pura y sin `three`: la llaman el servidor de desarrollo, que es quien se
+ * niega, y Alchemist, que lo dice antes de pulsar.
+ *
+ * @param {object} def la definición tal cual está en el fichero
+ * @param {{ existeImagen?: (ruta: string) => boolean }} [o] si se puede mirar
+ *   el disco, cómo saber si una imagen de estampado está.
+ * @returns {string[]} lo que falta, en frases; vacío si se puede subir
+ */
+export function faltasParaPublicar(def, { existeImagen = null } = {}) {
+  const faltas = []
+  const modos = modosDeMapa(def)
+  if (modos.length === 0) {
+    faltas.push('No se publica en ningún modo: márcalo para Entrenamiento, Duelo o Todos contra todos (hoja Mapa), o nadie podrá jugarlo.')
+  }
+  const cuenta = (lista) => (Array.isArray(lista) ? lista.length : 0)
+  if (modos.includes('duelo') && cuenta(def.duelo?.salidas) < 2) {
+    faltas.push(`Duelo sin salidas: hacen falta 2 y tiene ${cuenta(def.duelo?.salidas)} (hoja Duelo).`)
+  }
+  if (modos.includes('todos') && cuenta(def.todos?.salidas) < TODOS.minJugadores) {
+    faltas.push(`Todos contra todos con ${cuenta(def.todos?.salidas)} salidas: hacen falta al menos ${TODOS.minJugadores} (hoja Duelo).`)
+  }
+  // Una salida fuera de la sala es un jugador que nace fuera del mundo.
+  const sala = def.room ?? ROOM
+  const fuera = (s) => Math.abs(s.x) > sala.width / 2 || Math.abs(s.z) > sala.depth / 2
+  const salidasFuera = [...(def.duelo?.salidas ?? []), ...(def.todos?.salidas ?? [])].filter(fuera).length
+  if (salidasFuera) faltas.push(`${salidasFuera === 1 ? 'Una salida está' : `${salidasFuera} salidas están`} fuera de la sala.`)
+  const reglas = reglasDeMapa(def)
+  const peanas = Array.isArray(def.peanas) ? def.peanas : []
+  if (reglas.modo === 'peanas' && peanas.length === 0) {
+    faltas.push('Modo Peanas sin ninguna peana: nadie podría coger un arma (hoja Reglas).')
+  }
+  if (reglas.modo === 'peanas' && reglas.armas) {
+    const sobran = [...new Set(peanas.map((p) => p.arma).filter((a) => !reglas.armas.includes(a)))]
+    if (sobran.length) faltas.push(`Hay peanas de armas que el mapa no admite (${sobran.map((a) => WEAPONS[a]?.label ?? a).join(', ')}): no se podrían coger.`)
+  }
+  // **Una gracia de milisegundos es un número en la unidad equivocada**: Aim
+  // Camp se guardó con 3 queriendo decir tres segundos (vuelta 107, F10).
+  const gracia = def.duelo?.invulnerabilidadMs
+  if (Number.isFinite(gracia) && gracia > 0 && gracia < 100) {
+    faltas.push(`La invulnerabilidad del duelo es de ${gracia} ms, que no se nota: pon los segundos que querías (hoja Duelo) o 0.`)
+  }
+  if (existeImagen) {
+    for (const e of Array.isArray(def.estampados) ? def.estampados : []) {
+      if (e?.imagen && !existeImagen(e.imagen)) faltas.push(`Falta la imagen del estampado ${e.imagen}: déjala en public/estampados/.`)
+    }
+  }
+  return faltas
 }
