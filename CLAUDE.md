@@ -6107,7 +6107,12 @@ banco pide del huésped —sin navegador, contra el servidor de desarrollo, y cu
 formas del huésped—; `bancos/dev.sh` y `bancos/host.sh` relanzan los dos
 servidores comprobando que el que contesta es el nuevo; y `bancos/LEEME.md` dice
 qué pide cada grupo. **Ningún banco de la batería puede estar en rojo**: se
-arregla o se retira con su motivo.
+arregla o se retira con su motivo. **Y antes de creerse un rojo, se pasa contra
+el código de antes** (vuelta 106): verde con el viejo y rojo con el nuevo es una
+regresión; rojo con los dos es el banco. De catorce rojos, doce eran del banco —el
+reloj de pared contra el del juego, `innerText` con mayúsculas de CSS, dos
+jugadores en un navegador, un sitio clavado en un mapa que cambió— y los otros
+dos eran carga (`docs/decisions.md` §106.5).
 
 **Un error de página es un fallo, no una línea de registro** (vuelta 60). Un
 `FOOTSTEPS is not defined` produjo **318 errores** en una tanda entera y las seis
