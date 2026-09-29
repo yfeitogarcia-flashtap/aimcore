@@ -9,6 +9,7 @@ import {
   SECONDARY_WEAPON,
   WEAPONS,
   WEAPON_MODES,
+  VIEWMODEL,
 } from '../config.js'
 
 /**
@@ -231,7 +232,9 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
         }
       />
 
-      <ToggleRow
+      {/* Para la beta, sin arma en pantalla (vuelta 105): la fila sólo sale con
+          `VIEWMODEL.disponible`. */}
+      {VIEWMODEL.disponible && <ToggleRow
         setting="armaEnPantalla"
         value={settings.armaEnPantalla}
         onChange={onChange}
@@ -240,7 +243,7 @@ export default function Options({ settings, binds, onChange, onReset, onClose })
             ? 'Maqueta: el arma que llevas, en tu mano, abajo a la derecha. Se esconde con la mirilla.'
             : 'Sin arma en pantalla, como siempre: lo que se ve de ella es su silueta en el HUD.'
         }
-      />
+      />}
 
       <ToggleRow
         setting="helpMessages"

@@ -13,7 +13,7 @@
 
 import * as THREE from 'three'
 import { CSS3DRenderer } from 'three/examples/jsm/renderers/CSS3DRenderer.js'
-import { ACCURACY, ACTION_PANEL, AUDIO, AVATAR, BANDOS, CAMERA, CLAVADAS, COLORS, COVER, EDITOR, ENEMY, FEEDBACK, FOOTSTEPS, FRAME_LIMITS, GRENADES, HELP, IMPACTS, LOOK, MELEE_WEAPON, MOVEMENT, NET, OBJECTIVE, PLAYER, PROJECTILES, RECOIL_RESET_MS, RENDER, SCOPE, SECONDARY_WEAPON, SESSION_DURATION_S, SESSION_DURATIONS, SESSION_MODES, SIM, SIM_STEP_MS, SURFACES, TARGET, TEAMS, THROWABLE_WEAPONS, TRAJECTORY, WEAPONS, WEAPON_ORDER, claveDeEscenario, colorDeJugador, definicionDeEntrenamiento, weaponSpeedFactor } from '../config.js'
+import { ACCURACY, ACTION_PANEL, AUDIO, AVATAR, BANDOS, CAMERA, CLAVADAS, COLORS, COVER, EDITOR, ENEMY, FEEDBACK, FOOTSTEPS, FRAME_LIMITS, GRENADES, HELP, IMPACTS, LOOK, MELEE_WEAPON, MOVEMENT, NET, OBJECTIVE, PLAYER, PROJECTILES, RECOIL_RESET_MS, RENDER, SCOPE, SECONDARY_WEAPON, SESSION_DURATION_S, SESSION_DURATIONS, SESSION_MODES, SIM, SIM_STEP_MS, SURFACES, TARGET, TEAMS, THROWABLE_WEAPONS, TRAJECTORY, VIEWMODEL, WEAPONS, WEAPON_ORDER, claveDeEscenario, colorDeJugador, definicionDeEntrenamiento, weaponSpeedFactor } from '../config.js'
 import { createScene } from './scene.js'
 import { Scenario } from './scenario.js'
 import { Scope } from './scope.js'
@@ -1320,7 +1320,8 @@ export class Engine {
      * vez que hace falta y no antes: con el ajuste apagado —el de fábrica— no
      * cuesta ni una geometría.
      */
-    this._conArmaEnMano = Boolean(settings.armaEnPantalla)
+    // Y para la beta, ni eso: sin `VIEWMODEL.disponible` no se construye nunca.
+    this._conArmaEnMano = VIEWMODEL.disponible && Boolean(settings.armaEnPantalla)
     if (this._conArmaEnMano && !this.armaEnMano) {
       this.armaEnMano = new ArmaEnMano()
       this.armaEnMano.poner(this.weaponKey, this.suppressorEnabled)

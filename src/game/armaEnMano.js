@@ -45,6 +45,7 @@ const _e = new THREE.Euler(0, 0, 0, 'YXZ')
 const _o = new THREE.Vector3()
 const _g = new THREE.Vector3()
 const _p = new THREE.Vector3()
+const _blanco = new THREE.Color('#ffffff')
 
 /** La pose y los agarres de un arma, con los valores de rifle si no declara nada. */
 function datosDeArma(weaponKey) {
@@ -78,6 +79,10 @@ export class ArmaEnMano {
     this.matRelleno = new THREE.MeshLambertMaterial({ color: v.relleno })
     this.matContorno = new THREE.LineBasicMaterial({ color: v.contorno, transparent: true, opacity: v.contornoOpacidad })
     this.matMano = new THREE.MeshLambertMaterial({ color: '#2F6BF0' })
+    // El piloto holográfico (vuelta 105): sólo líneas, que suman luz.
+    this.matHolo = new THREE.LineBasicMaterial({
+      color: '#2F6BF0', transparent: true, opacity: v.holograma.opacidad, depthWrite: false,
+    })
     this._esfera = new THREE.SphereGeometry(1, 32, 20)
     this.mano = new THREE.Mesh(this._esfera, this.matMano)
     this.mano.scale.setScalar(v.mano.radioU)
@@ -123,6 +128,9 @@ export class ArmaEnMano {
     if (color === this._color) return
     this._color = color
     this.matMano.color.set(color)
+    // Luminoso: el color del equipo aclarado hacia el blanco, que es lo que lo
+    // separa del gris del suelo sin inventar un color.
+    this.matHolo.color.set(color).lerp(_blanco, VIEWMODEL.holograma.aclarado)
   }
 
   /** Pone en la mano el arma que toque. Sin trazado, no hay arma que enseñar. */
@@ -142,9 +150,27 @@ export class ArmaEnMano {
       hecha = extruirSilueta(forma, this.matRelleno, this.matContorno, datos)
       this._cache.set(clave, hecha)
     }
+    // **El holograma** (piloto, vuelta 105): la misma pieza, así que el encuadre
+    // y el agarre son los de la v3 por construcción. Sin relleno y con **un solo
+    // contorno, en el plano medio**: las dos caras a la vez se leían como dos
+    // armas fantasma, porque desde atrás la perspectiva las separa.
+    const holo = VIEWMODEL.holograma.armas.includes(weaponKey)
+    hecha.grupo.children[0].visible = !holo
+    for (const tapa of hecha.tapas) {
+      tapa.material = holo ? this.matHolo : this.matContorno
+      tapa.position.x = 0
+    }
     this.arma.add(hecha.grupo)
     this._colocar(hecha, datos)
     this._tapaVisible(hecha)
+    if (holo) {
+      const [medio, otra] = hecha.tapas
+      medio.geometry.computeBoundingBox()
+      const caja = medio.geometry.boundingBox
+      medio.position.x = -(caja.min.x + caja.max.x) / 2
+      medio.visible = true
+      otra.visible = false
+    }
     // Al sacar un arma, sube desde abajo.
     this._subir = 0
   }
@@ -297,6 +323,7 @@ export class ArmaEnMano {
     this.matRelleno.dispose()
     this.matContorno.dispose()
     this.matMano.dispose()
+    this.matHolo.dispose()
   }
 }
 

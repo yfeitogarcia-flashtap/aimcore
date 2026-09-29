@@ -15812,3 +15812,25 @@ El `.exe` 0.5.0 compila para Windows desde aquí
 (`cargo check --target x86_64-pc-windows-msvc`). **Hay que instalarlo** para
 tener ESC a la primera en la app: con la 0.4.0, la app se comporta como Chrome,
 aviso incluido.
+
+### 105.8 — Sin arma en pantalla para la beta, y el piloto holográfico
+
+**La fila «Arma en pantalla» sale de Opciones** y el motor no construye el arma
+aunque un jugador la tuviera encendida de antes. Lo decide `VIEWMODEL.disponible`
+(apagado), no el ajuste: `armaEnPantalla` se sigue guardando y saneando, así que
+el día que vuelva, vuelve con lo que cada uno eligió. El código se queda entero.
+`holo105` lo comprueba: con el ajuste guardado encendido, no hay `armaEnMano`.
+
+**El piloto holográfico** (Krakov y Pulse, `VIEWMODEL.holograma`) es la misma
+pieza de la v3, así que el encuadre y el agarre son idénticos por construcción.
+Se dibuja sin relleno y con **un solo contorno, en el plano medio**, en líneas
+finas del color del jugador aclarado un 35 % hacia el blanco, al 90 %. El primer
+intento llevaba las dos caras del contorno y mezcla aditiva, y se leía como dos
+armas fantasma. Coste medido con WebGL por software: **1.11 ms contra 1.05** sin
+él.
+
+Lo que enseña la lámina (`lamina105c.png`, al lado de una captura sin arma): con
+el encuadre v3 el arma se ve casi desde atrás, y de una silueta de perfil vista
+así sólo queda una línea estrecha y retorcida que no se lee como un arma. **No es
+claramente mejor que no llevar arma**, que era la condición para seguir. Queda
+pendiente de la decisión de Yago, apagado.

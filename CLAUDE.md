@@ -4503,8 +4503,9 @@ Y no se anima:
   que te han dado a ti, dibujado alrededor de ella, y es uno de los tres canales
   de la vuelta 40. Quitarlo sería quitar información, no animación.
 
-**Sin arma visible, en ninguna parte** — salvo la maqueta de la vuelta 103, que
-va **apagada de fábrica** (*Opciones → Arma en pantalla*). Ni en tercera persona
+**Sin arma visible, en ninguna parte** — la maqueta de la vuelta 103 sigue en el
+código, **sin fila en Opciones y sin construirse** desde la 105
+(`VIEWMODEL.disponible`). Ni en tercera persona
 ni en primera. Lo que se dibuja de un arma es su silueta —en el HUD y en la
 ficha flotante—, no un modelo en la mano. La maqueta existe para decidir con
 ella delante si esto cambia, y se hizo sin romper la regla por dentro: **el arma
@@ -4543,8 +4544,13 @@ está, el juego se ve mejor sin arma. Tampoco se añaden piezas procedurales, qu
 darían armas cuadradas, como ya dio una figura burda el dummy procedural. El
 piloto de grosor por zonas se construyó y se quitó (`docs/decisions.md` §105.4).
 Lo que queda en pie es un único piloto de otro estilo, **holográfico**: sólo el
-contorno en líneas finas del color del jugador. Si no es claramente mejor que no
-llevar arma, el tema se cierra.
+contorno en líneas finas del color del jugador (`VIEWMODEL.holograma`, Krakov y
+Pulse). Si no es claramente mejor que no llevar arma, el tema se cierra, y la
+lámina de la 105 dice que no lo es.
+
+**Y para la beta no hay arma en pantalla**: la fila de Opciones se quitó y el motor
+no la construye aunque el ajuste guardado esté encendido. Lo decide
+`VIEWMODEL.disponible`, no el ajuste, que se sigue guardando por si vuelve.
 
 **Los colores de equipo se eligieron midiendo, y la paleta libre es estrecha.**
 Están cogidos el naranja (dianas), el rojo (te disparan), el verde (botones y
@@ -6436,9 +6442,10 @@ distancia no llega — la mitad de bytes a los mismos 60 Hz.
 porque tiemble el cable»): el rival se dibuja con un colchón que se adapta a la
 red —F3 lo enseña—, tu reloj no da tirones por un ping suelto, el acierto suena y
 se marca en el clic, y la escopeta deja la marca de cada perdigón como en el
-entrenamiento. `/salud` publica los atascos del servidor. Y hay **una maqueta del
-arma en pantalla**, apagada de fábrica en *Opciones*, rehecha en la 104 y
-calibrada en la 105: la silueta del arma extruida y **empuñada** por una esfera del
+entrenamiento. `/salud` publica los atascos del servidor. Y hubo **una maqueta del
+arma en pantalla**, rehecha en la 104 y calibrada en la 105, que **para la beta
+salió de Opciones** (vuelta 105: el juego se ve mejor sin arma; el código sigue,
+sin construirse): la silueta del arma extruida y **empuñada** por una esfera del
 color de tu equipo, colocada por tipo de arma como en un shooter —pistola baja y
 centrada, rifles abajo a la derecha con la culata fuera de la pantalla, el cuchillo
 con la hoja hacia arriba— y apuntando a la mira; recula al disparar y se esconde

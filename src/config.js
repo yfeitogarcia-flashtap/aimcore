@@ -6873,6 +6873,23 @@ export const MUSIC = {
  */
 export const VIEWMODEL = {
   /**
+   * **Para la beta no hay arma en pantalla** (vuelta 105, decisión de Yago):
+   * tal como está, el juego se ve mejor sin ella. La fila de Opciones se quitó,
+   * y el motor no la construye ni la dibuja aunque un jugador la tuviera
+   * encendida de antes (`armaEnPantalla` se sigue guardando, por si vuelve).
+   * El código se queda, apagado: encender esto la devuelve al menú.
+   */
+  disponible: false,
+  /**
+   * **El piloto holográfico** (vuelta 105), sólo en estas dos armas: el arma sin
+   * relleno, **sólo el contorno** de su silueta, uno y en el plano medio, en
+   * líneas finas del color del jugador aclarado (`aclarado`, hacia el blanco) y
+   * semitransparentes, como la malla del mapa.
+   * La esfera de la mano y el encuadre son los de la v3. Si no gana claramente a
+   * no llevar arma, el tema se cierra.
+   */
+  holograma: { armas: ['krakov', 'pulse'], opacidad: 0.9, aclarado: 0.35 },
+  /**
    * **Campo de visión vertical y fijo** de la cámara del arma (vuelta 104). Es
    * lo que ancla el arma al borde de abajo y el mismo encuadre relativo en
    * cualquier relación de aspecto, y lo que la deja quieta cuando el juego
