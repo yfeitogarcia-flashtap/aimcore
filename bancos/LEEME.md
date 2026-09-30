@@ -23,12 +23,12 @@ con `bancos/host.sh`.
 
 | Grupo | Qué pide | Para qué |
 |---|---|---|
-| A | nada: Node solo | la partida, el movimiento, el formato de mapa, git de Alchemist |
+| A | nada: Node solo | la partida, el movimiento, el formato de mapa, git de Alchemist, el catálogo de textos |
 | E | el servidor de desarrollo | el juego, los menús y Alchemist (`/editor/`) |
 | B | huésped `VEKTOR_LOBBY=0 VEKTOR_RONDAS=0 VEKTOR_DEBUG=1` | el motor y la red: quien llega juega y el mundo no se reinicia |
 | B2 | huésped `VEKTOR_LOBBY=0 VEKTOR_DEBUG=1` | lo que se juega a rondas |
 | C | huésped `VEKTOR_DEBUG=1 VEKTOR_BAJAS=2` | el lobby y el todos contra todos |
-| D | el huésped de serie | la compra sin límite |
+| D | el huésped de serie, con `VEKTOR_FEEDBACK_CLAVE=banco107` | las peanas en red y la beta (el buzón y el contador) |
 | F | nada: se monta lo suyo | el despliegue (reconstruye `dist/`) |
 
 ## Tres reglas

@@ -131,6 +131,7 @@ geometría. Está entero en §3 y en `docs/decisions.md` §93.8. Para todo lo de
 | Red (cliente) | `net/cliente.js`, `net/transporte.js` | Predicción, reconciliación, interpolación del rival y disparo. El transporte, detrás de tres funciones. |
 | Transporte | `net/transporte.js` | `send` / `onMessage` / `close`, y nada más. La red simulada es un transporte que envuelve a otro. |
 | Disparo en red | `net/disparo.js` | `hitPlayer` + `hasLineOfSight` en el orden que cuesta menos. **Lo llaman los dos extremos.** |
+| Textos | `src/textos/` | **El catálogo por idioma** (vuelta 108): `es.js` (español neutro, la fuente), `en.js` y `pt-BR.js`, y `t()` / `partes()` para leerlo. **Sin dependencias**, para que lo lean la página, el huésped y Alchemist. Todavía no lo usa ninguna pantalla: la mudanza va por zonas (propuesta 18). |
 | Ajustes | `src/settings.js` | Store + persistencia en localStorage + saneado. |
 | Teclas | `src/keybinds.js` | Store de binds: mismo patrón que los ajustes, almacén aparte. |
 
@@ -1158,6 +1159,32 @@ puertas con navegadores y sale rojo con el código de antes.
 atraviesa (vuelta 96), pero una peana se alcanza con la mano, y una barrera
 delimita zonas: `cortarSegmento(…, conBarreras)` y `peanaALaVista` lo pide, en el
 servidor y en el cliente. `peanas106` [7].
+
+**Un texto que ve el jugador se escribe en español neutro, y va al catálogo**
+(vuelta 108, propuesta 18). El primer público de la beta es latinoamericano, y
+en buena parte de Latinoamérica **«coger» es vulgar**: «recoger», «tomar» o
+«agarrar» según el caso. Tuteo (tú, y ustedes en plural, nunca vosotros),
+«mouse», «clic», «archivo», «caminar». Cinco reglas, y son las del catálogo
+(`src/textos/`):
+
+- **La fuente es `es.js`**, y cualquier otro idioma cae ahí lo que le falte.
+  Ningún idioma tiene claves que no estén en la fuente, ni huecos distintos:
+  `textos108` lo mide, y rechaza cualquier «coger» o «vosotros» en la fuente.
+- **Una clave dice qué es, no qué pone** (`peana.recoger`, no `e_recoger`).
+- **Nada se construye pegando trozos de frase**: una frase con huecos es una
+  clave con `{nombre}`, porque el orden de las palabras cambia de un idioma a
+  otro. Lo que no es texto —un `<kbd>` con la tecla del bind— entra por un hueco
+  con `partes()`, no cortando la frase en tres claves.
+- **Un plural es un objeto `{ one, other }`** que resuelve `Intl.PluralRules`,
+  nunca un `n === 1 ? … : …` escrito a mano.
+- **El servidor manda claves, no frases**: los motivos de un `ADIOS` que hoy
+  viajan redactados desde `config.js` pasarán a ser una clave y sus datos, y la
+  página los traduce.
+
+Hasta que su zona se mude al catálogo, un texto nuevo se escribe a mano como
+siempre, **pero ya en neutro**: no se añade un «coger» más mientras se quitan
+los que hay. El inventario de lo que hay que cambiar está en
+`docs/propuestas/18-idiomas-inventario.md`.
 
 **Todo el tuning en `config.js`.** Ninguna constante de juego vive suelta en un
 módulo. Si necesitas un número nuevo, va a `config.js` aunque lo use un solo
@@ -7421,6 +7448,19 @@ sin cuenta en igualdad) y **15 — propiedades comunes de lo colocable** (a qui�
 afecta, cuándo está activo, cuántas veces se usa, quién lo ve, y munición y
 desvanecerse para las peanas, con la auditoría de los dieciocho tipos). La
 **hibernación de mapas** está en `docs/roadmap.md`, fase 4.
+
+**Y cinco propuestas más de la vuelta 108, todas sin construir salvo el catálogo
+de textos**: **16 — Discord** (webhooks, un bot sencillo, Rich Presence y una
+prueba de un día para la *Activity* antes de nada más; el SDK Social queda
+descartado), **17 — LATAM primero** (São Paulo y Dallas además de París, una
+máquina por región con la región en el código de sala y `fly-replay`; el tope de
+rebobinado muerde mucho antes de 200 ms de ping; modo de rendimiento bajo;
+Windows 7 sólo por navegador; compresión antes que foto binaria), **18 —
+idiomas** (§3, «Un texto que ve el jugador se escribe en español neutro»),
+**19 — estable y pruebas** (dos aplicaciones de Fly, la estable sólo con
+aprobación y por la imagen ya construida) y **20 — datos en Supabase** (contador
+y feedback, por el huésped; encaja con la 14). Y la 14 gana «Entrar con Discord»
+en su fase 1 (§3.6).
 
 **Y cuatro propuestas están escritas y sin construir, con su orden decidido por el
 encargo de la vuelta 97**: primero la **11** (salas de varios, espectador y lobby

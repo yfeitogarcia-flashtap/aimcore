@@ -16234,3 +16234,97 @@ corriendo de lado a 6,5 u/s, cada 10 ms de exceso son 6,5 cm: a 205 ms, nada; a
 260 (wifi malo), 39 cm, y un tiro al borde del cuerpo que viste entrar no hace
 daño. Desde la 103 el «tic» y la X salen de lo que tú veías, así que eso se lee
 como **una marca de acierto sin daño**. F3 enseña el rebobinado concedido.
+
+## §108 — Preparar la beta latinoamericana: el buzón, dos versiones, los datos, los idiomas, Discord y la región
+
+Una vuelta de documentos, salvo una pieza de código: el catálogo de textos.
+El encargo de Yago traía ocho puntos y un orden (1, 3, 2 y 5 primero; 4, 6 y 7
+después; 8 al roadmap).
+
+### 108.0 — Lo que quedó de la 107
+
+`esc105` destapó en la batería un fallo de F3: en la app, si el ESC llegaba
+**primero como tecla** con el ratón capturado, la tecla no hacía nada —en la app
+nadie suelta el ratón por una tecla— y el aviso de la ventana de detrás se tiraba
+por repetido. Resultado: un ESC que no pausaba. Ahora la tecla hace lo mismo que
+el aviso. Y `mapas98` daba por hecho que ningún mapa declara `modos`, cuando
+`el-espejo-peanas` los declara: el banco pasa a medir que abrir un mapa no le
+escriba unos modos que no tenía.
+
+### 108.1 — El buzón, con su dirección y su lista
+
+`docs/beta-cerrada.md` gana «El buzón, en concreto»: la orden exacta
+(`fly secrets set --stage` más `fly secrets deploy`, porque poner un secreto a
+secas **reinicia la máquina y se lleva las salas abiertas**), la dirección de
+leer y **la lista de lo que viaja con cada envío**, sacada del código y no del
+plan. La sección 2 decía que viajaban los FPS, el ping y los errores de página,
+y **no viajan**: era el plan de la 106. Un texto de privacidad escrito sobre el
+plan habría prometido de más. El borrador del párrafo de privacidad sale de esa
+lista.
+
+### 108.2 — Dos versiones: el commit es la versión (propuesta 19)
+
+Pruebas es la aplicación de hoy, y estable es una nueva que sólo cambia al
+promocionar. Promocionar construye otra vez desde un commit en vez de copiar la
+imagen, porque las imágenes viven en el registro de cada aplicación, y el build
+ya es determinista. Para poder decir «lo que sirve pruebas ahora», `/salud` tiene
+que publicar su commit. Y **`VEKTOR_DOMINIO` nunca cruza de una aplicación a
+otra**: redirigir a otra máquina es mandar a otro mundo (vuelta 59).
+
+### 108.3 — Los datos, en Supabase (propuesta 20)
+
+Un volumen de Fly son N discos para N máquinas; Supabase es un sitio. El huésped
+**manda deltas y no totales** (dos máquinas escribiendo la misma fila se suman en
+vez de pisarse) y **el juego nunca espera** a la base: si no está, se reintenta y
+lo ya enviado a Discord no se pierde. La región es París, y no São Paulo, por lo
+que pesa de verdad: **las cuentas son datos de personas de la UE con un
+responsable en España**.
+
+### 108.4 — El catálogo de textos (propuesta 18)
+
+**Construido y sin usar**, a propósito: la experiencia no cambia en esta vuelta.
+La auditoría encontró **un solo «coger» que ve el jugador**: «No se puede coger:
+lejos», al fallar una recogida de peana, con el código del servidor pegado
+detrás. Encontró además cuatro «vosotros» y dos «pincha» en la beta y la sala. La
+versión neutra de los siete ya está en el catálogo, y cambiarlos es la fase 1. El
+banco que lo guarda caza también «cogió»: la primera versión usaba `\b`, que no
+entiende de tildes, y lo dejaba pasar.
+
+### 108.5 — Discord (propuesta 16, y la 14 §3.6)
+
+El WebSocket de una *Activity* pasa por el proxy de Discord (la documentación lo
+dice). El bloqueo del ratón dentro de su iframe **no está confirmado** por ningún
+lado, y se decide con una prueba de un día antes de escribir nada. Avisar de cada
+sala nueva en un canal sería **la lista pública de salas** que la vuelta 47
+decidió no tener: el enlace sólo se anuncia si lo pide el anfitrión. «Entrar con
+Discord» cabe en la fase 1 de las cuentas porque Discord, a diferencia de Google,
+no tiene publicada una política contra vistas web incrustadas; pide una pantalla
+«Elige tu nick» y que el disparador del perfil deje de exigir el nick al crear la
+cuenta.
+
+### 108.6 — LATAM primero (propuesta 17)
+
+**Fly ya no tiene Querétaro, Bogotá, Santiago ni Buenos Aires**: la consolidación
+de septiembre de 2025 dejó São Paulo como su única región en Latinoamérica. Así
+que «servidor en LATAM» son dos máquinas, **São Paulo y Dallas** (México y
+Centroamérica llegan antes a Texas que a Brasil), además de París. La regla de la
+vuelta 59 no se rompe, se amplía: **una máquina por región, y una sala vive en
+una sola**. El código lleva la región en su primer símbolo y el WebSocket que cae
+en otra máquina se reenvía con `fly-replay` en el propio `upgrade`, así que sigue
+sin haber registro de salas (vuelta 47).
+
+**Y el tope de 200 ms no es «200 ms de ping»**, que es lo que salió de medirlo:
+lo que se rebobina es el ping **más** el adelanto del reloj y el retraso con que
+se dibuja al rival, que son 85 ms en el duelo y 135 en el todos contra todos. O
+sea que el tope ya recorta a partir de 115 y de 65 ms de ping. Se copió de
+Source, que gasta casi todo el suyo en red; aquí se lo come el propio juego, y no
+lo decidió nadie. La propuesta es partirlo en dos —150 ms de red más el retraso
+fijo de la sala, que el servidor conoce— **después** de medir cuántos disparos
+salen topados, que el servidor ya sabe calcular.
+
+Dos cosas que no son opinión: **la app de escritorio no puede correr en Windows
+7** (WebView2 lo dejó en la 109 y Rust estable exige Windows 10 desde la 1.78), y
+**la foto binaria no se adelanta**: `permessage-deflate` es una opción del
+servidor, no toca el protocolo y divide la bajada entre 4 y 14. Con un aviso que
+se paga caro si se olvida: `ws` no comprime por debajo de 1024 B, y la foto del
+duelo pesa unos 900.

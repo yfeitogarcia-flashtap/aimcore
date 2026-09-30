@@ -32,7 +32,7 @@ fondo, que aquí se repiten porque son las que no se negocian:
 
 | Fase | Qué existe al acabarla | €/mes con los planes gratuitos | Horas | Plazo |
 |---|---|---|---|---|
-| **1** · Cuentas | Registro, verificación, entrar, olvidé la contraseña, borrar la cuenta, y el servidor de partida sabe quién eres | **0 €** | **60–80 h** | 2–3 semanas |
+| **1** · Cuentas | Registro, verificación, entrar (con correo **o con Discord**, §3.6), olvidé la contraseña, borrar la cuenta, y el servidor de partida sabe quién eres | **0 €** | **70–95 h** | 2,5–3 semanas |
 | **2** · Amigos | Solicitud, aceptar, lista, bloquear, y quién de tus amigos está conectado | **0 €** | **35–50 h** | 1,5–2 semanas |
 | **3** · Invitar a sala | Desde la lista, «Invitar» manda el código de tu sala; aceptar te lleva al lobby | **0 €** | **20–30 h** | 1 semana |
 
@@ -251,6 +251,8 @@ cuatro por esto.
 | `POST /cuenta/salir` | Cierra la sesión en Supabase y borra la cookie |
 | `POST /cuenta/olvide` · `GET/POST /cuenta/restablecer` | El flujo de §3.1 |
 | `POST /cuenta/borrar` | Reautentica y borra con la llave de servicio |
+| `GET /cuenta/discord` · `GET /cuenta/discord/vuelta` | Entrar con Discord (§3.6): PKCE en el huésped |
+| `POST /cuenta/nick` | «Elige tu nick» la primera vez que se entra con Discord (§3.6) |
 
 **La llave de servicio de Supabase** (la que se salta RLS) vive en un secreto de
 Fly y **sólo la usan dos rutas**: `crear` si hace falta y `borrar`. Todo lo demás
@@ -298,6 +300,94 @@ texto de la política revisado**, que no depende de nadie de aquí.
    entrar dice que no está disponible.
 
 ---
+
+### 3.6 Entrar con Discord (añadido en la vuelta 108)
+
+**El encargo:** «Entrar con Discord» como tercera puerta, junto a correo más
+contraseña e invitado, **en la fase 1 si no complica**. **Veredicto: entra en la
+fase 1**, con 10–15 horas más y una condición que se prueba el primer día (la
+app, abajo). Complica poco porque Supabase trae Discord como proveedor y el
+huésped ya es el portero (§2): es **un flujo OAuth más por el mismo sitio**, no
+una arquitectura nueva.
+
+**Por qué merece la pena para esta beta en concreto.** El primer público es
+latinoamericano y vive en Discord (propuesta 17). Cada alta por Discord es **un
+correo menos** que mandar con el tope de 100 al día de Resend (§7), **una
+contraseña menos** que olvidar, y Discord ya ha hecho de filtro contra bots.
+
+**El flujo, con el huésped de portero** (PKCE hecho en el servidor, sin
+`supabase-js` en la página):
+
+1. **ENTRAR A VEKTOR** y **CREAR CUENTA** ganan un botón «Entrar con Discord»,
+   del mismo peso que el de correo. Pulsarlo pide `GET /cuenta/discord`.
+2. El huésped genera el verificador PKCE, lo guarda en una cookie `httpOnly` de
+   diez minutos y redirige a
+   `https://<ref>.supabase.co/auth/v1/authorize?provider=discord&redirect_to=https://<el juego>/cuenta/discord/vuelta&code_challenge=…&code_challenge_method=s256`.
+3. Discord pide permiso (sólo `identify` y `email`: ni servidores, ni amigos, ni
+   mensajes). Supabase recibe la respuesta y manda al jugador a
+   `/cuenta/discord/vuelta?code=…`.
+4. El huésped canjea el código (`POST /auth/v1/token?grant_type=pkce` con el
+   verificador de la cookie), pone la sesión en la cookie de siempre y **tira la
+   cookie del verificador**.
+5. **Si es la primera vez**, la cuenta todavía no tiene nick (Discord trae su
+   nombre de usuario, pero el nick de Vektor sigue las reglas de §3.3 y es
+   único). Sale la pantalla **«Elige tu nick»**, con la misma comprobación en
+   vivo y **la casilla de la política y los 14 años**, que un OAuth no marca por
+   nadie. Hasta completarla, `/cuenta/yo` contesta `necesitaNick` y se juega de
+   invitado. Si se cierra a medias, la cuenta sin perfil se borra a las 48 h, como
+   las no verificadas.
+
+**Lo que cambia de esta propuesta:**
+
+- **§3.4**: dos rutas más, `GET /cuenta/discord` y `GET /cuenta/discord/vuelta`,
+  y `POST /cuenta/nick` para «Elige tu nick».
+- **§8**: el disparador `crear_perfil` **no puede exigir el nick al crear la
+  cuenta**, porque una cuenta de Discord nace sin él y el alta entera fallaría. Pasa a crear el
+  perfil **sólo si el nick viene en los metadatos** (correo y contraseña) y, si
+  no, lo crea `POST /cuenta/nick` con la clave de servicio. La limpieza de 48 h
+  cubre también las cuentas sin perfil.
+- **Correo repetido**: Supabase **enlaza automáticamente** una identidad de
+  Discord a una cuenta que ya exista con el **mismo correo verificado**. Quien se
+  registró con correo y luego pulsa Discord entra en la misma cuenta, con su nick.
+  Es lo que se quiere, y depende de que Discord marque ese correo como verificado.
+- **Borrar la cuenta** (§3.1) con Discord no tiene contraseña que pedir. Se pide
+  **volver a pasar por Discord** (el mismo flujo con `prompt=consent`) y escribir
+  el nick.
+- **Lo que se guarda** (§3.2): Supabase guarda la identidad de Discord (su id, el
+  nombre de usuario, el avatar y el correo) en `auth.identities`. **Es más que
+  «correo y nick»**, y la política de privacidad lo tiene que decir. Vektor no
+  lee ni enseña nada de eso: el nick sigue siendo el que eliges.
+
+**La condición: la app de escritorio.** §6 dejaba OAuth fuera por Google, que
+rechaza los inicios de sesión en vistas web incrustadas como WebView2. **Discord
+no tiene esa política publicada**, así que en la app el flujo sería navegar
+dentro de la propia ventana a `discord.com` y volver al juego, sin *deep link*.
+Pero no está probado, y hay dos cosas que pueden fallar: el captcha de Discord
+(hCaptcha) y las claves de acceso (*passkeys*) dentro de WebView2. **La prueba es
+de un día**, y va primero:
+
+- **Si pasa**, el botón sale en los dos sitios.
+- **Si no pasa**, en la app el botón no sale, y una línea dice «Para entrar con
+  Discord, usa el navegador». Entrar con correo sigue funcionando en la app. Una
+  puerta que sale sólo donde funciona es la regla de SALIR (vuelta 99).
+
+**Lo que tiene que hacer Yago, además de lo de §4:**
+
+1. En <https://discord.com/developers/applications> → *New Application*
+   («Vektor»). En *OAuth2*, copiar el **Client ID** y el **Client Secret**.
+2. En *OAuth2* → *Redirects*, añadir `https://<ref>.supabase.co/auth/v1/callback`.
+3. En Supabase → *Authentication* → *Sign In / Providers* → *Discord*: activar y
+   pegar el Client ID y el Client Secret.
+4. En Supabase → *Authentication* → *URL Configuration*, añadir a las direcciones
+   permitidas `https://<el juego>/cuenta/discord/vuelta`, una por cada versión
+   (pruebas y estable, propuesta 19).
+
+La misma aplicación de Discord sirve después para el bot y la presencia de la
+propuesta 16: **una aplicación, no tres**.
+
+**Horas: 10–15 más**: las tres rutas, la pantalla «Elige tu nick», el cambio del
+disparador, el banco del flujo contra un Supabase de pruebas y la prueba en la
+app.
 
 ## 4. El correo: Resend, el subdominio y lo que hace que llegue
 
@@ -419,10 +509,11 @@ Tres cosas más:
 - **Por eso mismo se descarta el enlace mágico**, que la 07 prefería a las
   contraseñas: en la app, «te hemos mandado un enlace para entrar» lleva al
   jugador a entrar **en otro programa**.
-- **OAuth (Google, Discord) queda fuera de la fase 1** por la misma razón y una
-  más: Google rechaza los inicios de sesión dentro de vistas web incrustadas, así
-  que en la app obligaría a abrir el navegador del sistema y volver con un *deep
-  link*. Si se quiere, es una fase aparte con ese precio delante.
+- **Google queda fuera** por la misma razón y una más: Google rechaza los inicios
+  de sesión dentro de vistas web incrustadas, así que en la app obligaría a abrir
+  el navegador del sistema y volver con un *deep link*. **Discord entra en la
+  fase 1 desde la vuelta 108** (§3.6), porque no tiene esa política publicada, a
+  condición de que la prueba de un día en la app salga bien.
 
 Y el aviso de siempre (vueltas 60 y 97): **las cookies son por dominio**. El día
 que el juego se mude de `ancient-violet-678.fly.dev` a `vektor.flicklab.gg`, las

@@ -12,18 +12,14 @@ no son código: una versión estable aparte de la de trabajo, la carta, el párr
 de privacidad y la lista de fallos conocidos. Y una prueba de red entre dos casas
 (V103-2 y las peanas en red), que es lo último que se mide antes de invitar.
 
-**Cómo se lee el feedback (lo tiene que poner Yago, una vez).** Dos secretos de
-Fly, que no pasan por nadie más:
+**El buzón de feedback, en concreto** (vuelta 108). Lo pone Yago una vez, con
+dos secretos de Fly que no pasan por nadie más. El detalle —dirección exacta,
+órdenes y la lista de lo que viaja— está en la sección «El buzón, en concreto»
+al final de este documento. El contador está en `https://ancient-violet-678.fly.dev/contador`
+y se pone a cero con cada despliegue hasta que tenga dónde guardarse, que es la
+propuesta 20 (Supabase).
 
-- `fly secrets set VEKTOR_FEEDBACK_WEBHOOK=<el webhook de un canal de Discord>`
-  (en Discord: ajustes del canal → Integraciones → Webhooks → Copiar URL). Cada
-  mensaje llega al canal con la pantalla, el modo, el mapa y la versión.
-- `fly secrets set VEKTOR_FEEDBACK_CLAVE=<una palabra tuya>` y se leen en
-  `https://<el juego>/feedback/leer?clave=<esa palabra>`. Sin disco se pierden al
-  desplegar; con el webhook puesto no importa.
-- El contador está en `https://<el juego>/contador`. Para que no se ponga a cero
-  con cada despliegue hace falta un volumen de Fly montado y `VEKTOR_DATOS` apuntando
-  a él; sin eso, cuenta desde el último despliegue y la página lo dice. Se invita a gente de confianza que no
+Se invita a gente de confianza que no
 ha visto Vektor nunca y que no va a leer nada antes de jugar. Lo que decide qué
 es imprescindible es una pregunta: **¿se puede jugar una tarde, contar qué ha
 pasado y que Yago lo lea, sin que nadie de Vektor esté delante?** Lo que no
@@ -75,12 +71,12 @@ visto en `localStorage`, como un ajuste más.
 multijugador) y en la portada. Abre un panel con un campo de texto, tres
 etiquetas para elegir —*fallo*, *idea*, *sensación*— y «Enviar». Nada más.
 
-**Qué viaja además del texto, sin que el jugador lo escriba:** la versión del
-build (la huella que ya publica `/salud`), si es la app o un navegador, el modo y
-el mapa, los FPS medios y el ping del último minuto, y **los últimos errores de
-página** si los hay. Eso último es lo que convierte «se me colgó» en algo que se
-puede arreglar: la vuelta 60 enseñó que un error por frame no rompe el juego, lo
-degrada en silencio.
+**Qué viaja además del texto** — lo que se construyó en la vuelta 107, que es
+**menos** de lo que decía este plan: la pantalla, el modo, el mapa, la versión y si
+es la app. **No** viajan los FPS, el ping ni los errores de página: se quedaron
+fuera para que el primer texto de privacidad fuera corto, y son lo primero que
+añadir si el feedback llega sin forma de reproducirlo. La lista exacta está en
+«El buzón, en concreto», al final.
 
 **A dónde llega: recomendación, un canal de Discord.** La página manda el texto
 al huésped (`POST /feedback`), y el huésped lo reenvía a un *webhook* de un canal
@@ -91,8 +87,9 @@ privado. Cuatro razones:
 - **La dirección del webhook es un secreto y se queda en el servidor**: la guarda
   Yago como secreto de Fly, igual que `FLY_API_TOKEN` en GitHub. Si la tuviera
   la página, cualquiera podría escribir en el canal.
-- **El huésped pone un tope**: un envío cada 30 s por conexión y un tamaño máximo.
-  Sin eso, un botón es una forma de llenar un canal.
+- **El huésped pone un tope**: cinco envíos cada diez minutos por dirección IP
+  (la IP se mira en memoria y no se escribe) y 1 500 caracteres por mensaje. Sin
+  eso, un botón es una forma de llenar un canal.
 - **Es la misma pieza del contador** (punto 3), así que se escribe una vez.
 
 **Alternativa sin servidor**: un formulario de Google abierto en otra pestaña,
@@ -120,6 +117,9 @@ eso es exactamente lo que «sin cookies» descarta: un número aleatorio en
 llame. Así que el contador habla de **partidas y butacas**, no de gente. Con 5–10
 testers, cuántas personas han jugado lo sabe Yago mejor que ningún contador.
 
+**Dónde se guarda, desde la vuelta 108: en Supabase** (propuesta 20), que es
+donde van a vivir las cuentas. Lo de abajo es lo que se pensó en la 106.
+
 **Dónde se lee.** El huésped vive en memoria y se reinicia con cada despliegue,
 así que los números no pueden quedarse ahí. Se mandan **una vez al día y al
 apagarse** (un despliegue apaga la máquina con aviso) al mismo canal de Discord
@@ -133,6 +133,10 @@ totales. El registro del huésped (el de Fly) sí ve IPs, como cualquier servido
 no se guardan aparte ni se cruzan con nada.
 
 ### 4. Una versión estable para la beta, aparte de la de trabajo
+
+**Desarrollado en la propuesta 19** (vuelta 108): dos aplicaciones de Fly, cómo
+se promociona una versión y las órdenes exactas. Lo de abajo es el planteamiento
+de la 106.
 
 **Hoy cada empujón a la rama de trabajo se despliega solo** (vuelta 81) en la
 misma dirección que abriría un tester, y desde la 93 **su pestaña se recarga
@@ -171,10 +175,21 @@ Un texto corto que Yago manda por privado, con:
 
 ### 7. Un párrafo de privacidad
 
-Al lado del botón de feedback, una frase: qué se manda (el texto y los datos
-técnicos del punto 2), a dónde (un canal privado de Yago) y que no se guarda
-nada que identifique a nadie. No hace falta más con lo que se recoge, pero sí
-hace falta que esté escrito antes de pedirle a alguien que escriba.
+Al lado del botón de feedback, y en la carta. Con lo que se recoge hoy, el
+borrador (vuelta 108; la lista de la que sale está en «El buzón, en concreto»):
+
+> **Qué pasa con lo que escribes.** Cuando envías un comentario, llega a Yago
+> con lo que escribiste y cinco datos técnicos: en qué pantalla estabas
+> (entrenamiento o multijugador), el modo, el mapa, la versión del juego y si
+> juegas en la app o en el navegador. No se envía tu nombre, ni tu nick, ni el
+> código de la sala, ni nada guardado en tu equipo. Tu dirección IP se usa unos
+> minutos para impedir envíos masivos y no se guarda. Los mensajes se leen en un
+> canal privado de Discord de Vektor y en una página protegida con clave. Vektor
+> no usa cookies. Si quieres que se borre algo que enviaste, pídeselo a Yago.
+
+Y una frase en la página del contador no hace falta: sólo publica sumas por día.
+Cuando lleguen las cuentas (propuesta 14) este párrafo se reescribe entero, porque
+entonces sí se guardan datos de personas.
 
 ### 8. Cerrar las pruebas de red que están abiertas
 
@@ -297,3 +312,93 @@ marcado *medido* tiene su banco en verde; falta la prueba de verdad.
 | V107-14 | «Cómo se juega» la primera vez, con las teclas del bind | medido (`beta107`) |
 | V107-15 | «Enviar feedback» llega al canal o a `/feedback/leer` (con los secretos puestos) | tu prueba |
 | V107-16 | `/contador` después de jugar | tu prueba |
+
+---
+
+## El buzón, en concreto (vuelta 108)
+
+### Lo que tiene que hacer Yago, una vez
+
+Con `flyctl` en su PC y la sesión iniciada (`fly auth login`):
+
+```sh
+fly secrets set --stage -a ancient-violet-678 \
+  VEKTOR_FEEDBACK_WEBHOOK='https://discord.com/api/webhooks/<id>/<token>' \
+  VEKTOR_FEEDBACK_CLAVE="$(openssl rand -hex 24)"
+fly secrets deploy -a ancient-violet-678
+```
+
+- **`--stage` y luego `fly secrets deploy`**, y no un `fly secrets set` a secas:
+  sin `--stage`, poner un secreto **reinicia la máquina en el acto**, y con ella
+  se van las salas que haya abiertas (viven en memoria, vuelta 59). Con `--stage`
+  se aplica en el siguiente arranque; `fly secrets deploy` lo fuerza cuando nadie
+  esté jugando. Cualquier empujón a la rama también lo aplica, porque despliega.
+- **El webhook** se saca en Discord: ajustes del canal privado → *Integraciones* →
+  *Webhooks* → *Nuevo webhook* → *Copiar URL del webhook*. Es un secreto: quien lo
+  tenga escribe en ese canal.
+- **La clave**, larga y al azar (la orden de arriba la genera). Para verla después,
+  Fly no la enseña: se guarda aparte en el gestor de contraseñas **antes** de
+  ejecutar la orden, o se genera con `openssl rand -hex 24` en una línea aparte,
+  se copia, y se pega en su sitio.
+
+### La dirección para leerlo
+
+```
+https://ancient-violet-678.fly.dev/feedback/leer?clave=<LA CLAVE>
+```
+
+- Enseña **los 300 últimos** (`BETA_UI.feedbackGuardados`), del más nuevo al más
+  viejo. **Se vacía con cada despliegue**, porque vive en memoria hasta que exista
+  la propuesta 20; lo que no se pierde es lo que ya llegó a Discord.
+- Sin `VEKTOR_FEEDBACK_CLAVE` puesta, o con una clave que no coincide, la página
+  contesta **404 «No existe»**, a propósito: no dice que ahí haya algo.
+- La clave va en la dirección, así que queda en el historial del navegador de
+  quien la abre. Se abre sólo desde el PC de Yago. Si algún día se filtra, se
+  cambia con la misma orden.
+- Cuando haya versión estable (propuesta 19), cada aplicación tiene su buzón y su
+  clave: la de pruebas y la estable no comparten memoria.
+
+**Para comprobar que llega**, sin abrir el juego:
+
+```sh
+curl -sS -X POST https://ancient-violet-678.fly.dev/feedback \
+  -H 'Content-Type: application/json' \
+  -d '{"texto":"prueba del buzón","donde":"prueba"}'
+```
+
+Contesta `{"ok":true}`, sale en el canal de Discord y en la página de leer.
+
+### Lo que adjunta cada envío (la lista para el texto de privacidad)
+
+Sale de `src/beta.js` (`datosDeFeedback`) y lo filtra `net/beta.js` (`sanear`),
+que tira cualquier campo que no sea de esta lista.
+
+| Dato | Qué es exactamente | De dónde sale |
+|---|---|---|
+| `texto` | Lo que escribe el jugador, hasta 1 500 caracteres | El campo del panel |
+| `donde` | `entrenamiento`, `multijugador · sala` o `multijugador · partida` | La página |
+| `modo` | En el entrenamiento, el modo elegido (`timed` o `deathmatch`); en multijugador, el de la sala (`duelo`, `2v2`…, `todos`) | Ajustes o sala |
+| `mapa` | La clave del mapa (`largoYPuerta`, `duelo`, `Aim-camp-1`…) | Ajustes o sala |
+| `version` | El nombre del fichero del build (p. ej. `juego-BrAB3HAl`) y, en la app, `· app 0.5.0` | La propia página |
+| `app` | Sí o no: si se juega en la app de escritorio | `esEscritorio()` |
+| `cuando` | La hora del servidor al recibirlo (UTC) | **Lo añade el servidor** |
+
+**Lo que no se envía**: nick, código de sala, identificador de jugador, ajustes,
+teclas, nada de `localStorage`, ni cookies (la petición sale con
+`credentials: 'omit'`, y Vektor no pone cookies en ningún sitio).
+
+**Lo que ve el servidor sin que se envíe**, como cualquier petición web:
+
+- **La dirección IP**. Se usa para el tope de cinco envíos cada diez minutos, en
+  memoria, y se olvida a los diez minutos. No se escribe en el mensaje, ni en
+  disco, ni en el registro del huésped (que sólo anota altas y bajas de sala).
+- **Las cabeceras normales del navegador** (`User-Agent`, idioma). Vektor no las
+  lee para el buzón ni las guarda.
+- **Fly.io**, que aloja el servidor, procesa la conexión como proveedor.
+
+**A dónde va**: a la memoria del servidor (la página de leer) y, con el webhook
+puesto, a **Discord**, que lo guarda en el canal según su propia política. El
+mensaje sale del servidor de Vektor, así que a Discord no le llega la IP del
+jugador: le llegan el texto y la cabecera (`donde · modo · mapa · versión ·
+app/navegador`).
+

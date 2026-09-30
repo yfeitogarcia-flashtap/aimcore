@@ -252,7 +252,13 @@ naturaleza del proyecto: pasa a haber datos de personas.
   fuente de ajustes; hay que decidir quién gana cuando los dos discrepan. Y el
   coste de la nube pasa a tener una segunda partida además de las salas.
 
-### 2.3 SDK Social de Discord
+### 2.3 SDK Social de Discord — **descartado en la vuelta 108**
+
+**No tiene versión web**, y Vektor se juega en el navegador (y en una ventana que
+abre esa misma página). Lo que sí se puede hacer con Discord —avisos por
+webhook, un bot, la presencia desde la app y una *Activity*— está valorado en la
+**propuesta 16**; y «Entrar con Discord» va en la fase 1 de las cuentas
+(propuesta 14 §3.6). Lo de abajo es la idea tal como se recogió.
 
 Idea recogida: apoyarse en el **SDK Social de Discord** en vez de construir la
 capa social desde cero — identidad, lista de amigos, invitaciones a partida y
@@ -393,6 +399,39 @@ Lo que falta no es el formato, es todo lo demás:
   viva en su fichero** —«hibernado» cambia sin que nadie edite el mapa, así que
   no puede ser un campo que haya que subir con Alchemist—. Mientras los mapas
   vivan en el build, hibernar es despublicar a mano (`modos`, vuelta 98).
+
+- **Alchemist dentro de Vektor** (pedido en la vuelta 108, para después de la
+  beta). **Durante la beta, Alchemist se queda como está**: sólo para Yago, en su
+  PC, con `Alchemist.bat` y «Subir al juego» (vueltas 93 y 99). Después, que crear
+  mapas sea una pestaña **Crear** del propio juego, con la misma cuenta con la que
+  se juega. Cinco piezas, y ninguna es el editor, que ya existe:
+  - **La pestaña.** El editor es hoy una página de desarrollo (`/editor/`, fuera de
+    `dist/` a propósito, vuelta 74) y habla con el servidor de Vite para guardar,
+    listar imágenes y subir. Dentro del juego habla con el **huésped**, con rutas
+    como las de la propuesta 14 (`/mapas/...`), y lo que hoy es exclusivo de Yago
+    (subir a git) desaparece: un mapa ya no es un fichero del repositorio.
+  - **Los mapas en Supabase, no en el repositorio.** Una tabla `mapas` en el mismo
+    proyecto de la propuesta 20 (el JSON del formato de siempre, saneado por el
+    mismo `sanearMapa`, su autor, su estado y sus versiones, que sustituyen al
+    historial de la vuelta 75). Y la regla de la vuelta 72 sigue mandando: **los
+    dos extremos de una partida montan el mismo mapa**, así que la sala lo pide al
+    huésped por su id y versión y se lo manda a todos; nadie lo lee de su caché.
+  - **Revisión antes de publicar.** Guardar no es publicar (vuelta 88), y en la
+    comunidad lo segundo pasa por una persona: el autor lo manda a revisión, Yago
+    lo aprueba o lo devuelve con una nota. «Subir al juego valida» (vuelta 107)
+    es la primera criba, automática, antes de que llegue a nadie.
+  - **Hibernación de mapas** (la entrada de arriba), que con los mapas en la base
+    de datos deja de necesitar editar el fichero: es una columna de estado.
+  - **Crédito «by nickname»** en la tarjeta del mapa, en el lobby y en la pantalla
+    de carga, con el nick de la cuenta (propuesta 14). Y los **estampados**,
+    que hoy son sólo de *game masters* por construcción (vuelta 93), necesitan
+    entonces su puerta de verdad: un mapa de comunidad no lleva estampados hasta
+    que haya moderación de imágenes.
+
+  **Bloqueante:** cuentas (propuesta 14, fase 1) y datos (propuesta 20).
+  **Rompe:** que un mapa sea un módulo del build, lo que lo hace legible por los
+  tres montajes sin ponerse de acuerdo (vuelta 74). Los mapas oficiales pueden
+  seguir en el build; los de comunidad, no.
 
 - **Bloqueante:** 2.2/2.3 (subir algo pide saber quién lo sube) y almacenamiento,
   que hoy es deliberadamente cero: «una partida vive en memoria y muere con la
@@ -567,6 +606,12 @@ la sala. Una sala de diez son **309 KiB/s**. Lo que queda es **el binario**.
 - **Bloqueante:** nada técnico. **Medible:** `salas100` y `red45` con el mismo
   error de reconciliación y la mitad o menos de bytes. **Rompe:** que el cable se
   pueda leer a ojo en F3 y en los bancos, que hoy es JSON.
+- **Y delante del binario, la compresión** (propuesta 17 §6, vuelta 108):
+  `permessage-deflate` en el huésped divide la bajada entre 4 y 14 sin tocar el
+  protocolo, y el cable sigue siendo JSON legible. Con el `threshold` de `ws`
+  bajado por debajo de 1024 B, o la foto del duelo (~900 B) no se comprime.
+  Las regiones (São Paulo y Dallas) y el tope de rebobinado partido en dos están
+  en la misma propuesta.
 
 ### Antitrampas
 
