@@ -31,6 +31,28 @@ con `bancos/host.sh`.
 | D | el huésped de serie, con `VEKTOR_FEEDBACK_CLAVE=banco107` | las peanas en red y la beta (el buzón y el contador) |
 | F | nada: se monta lo suyo | el despliegue (reconstruye `dist/`) |
 
+## En un contenedor nuevo
+
+El contenedor se recicla, y uno recién hecho trae otras versiones (vuelta 109).
+Tres cosas antes de la primera batería, ninguna en git:
+
+```sh
+npm ci                                                    # no hay node_modules
+ln -s /opt/node-tools/node_modules/playwright-core node_modules/playwright-core
+# los bancos llevan escrita la ruta del Chromium de antes:
+ls /opt/pw-browsers/chromium-1194/chrome-linux/chrome || {
+  mkdir -p /opt/pw-browsers/chromium-1194
+  ln -sfn /opt/pw-browsers/chromium-*/chrome-linux64 /opt/pw-browsers/chromium-1194/chrome-linux
+}
+```
+
+Sin eso, todos los bancos con navegador salen en rojo en un segundo. **Y la tanda
+que falla así deja basura**: `subir93` y `gizmo93` escriben un mapa de cebo
+(`src/maps/banco93-cebo.js`) y una imagen (`public/estampados/banco93.png`) y los
+borran al final, así que si mueren antes, el cebo se queda en el registro de mapas
+y, como no trae `ramps`, **revienta la pantalla de entrenamiento entera** en la
+tanda siguiente. Después de una tanda rota, `git status` antes de repetir.
+
 ## Tres reglas
 
 - **No se pasan dos a la vez** (vuelta 61): cada uno abre navegadores con WebGL

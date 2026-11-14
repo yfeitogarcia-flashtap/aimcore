@@ -554,6 +554,7 @@ Escala: **S** = hasta media vuelta, **M** = una vuelta, **L** = dos o más.
 
 | # | Parte | Tamaño | Depende de |
 |---|---|---|---|
+| 0 | El límite de Chrome al capturar el ratón (§14, `decisions.md` §109.8). No es del evento, pero el evento lo pisa. | **S** | — |
 | 1 | `net/evento.js` + `evento-disco.js`: registro, reconstrucción, ventanas, ranking de dianas, códigos, cierre de día y copia. Con sus bancos sin navegador. | **M** | — |
 | 2 | La pantalla de evento con las dianas: store en memoria, no pausar, semilla, puntuación, resultado, cola de reenvío y recarga por jugador. | **M** | 1 |
 | 3 | La tele y el panel del **staff**, con las ventanas todavía en `stand.json`. | **M** | 1 |
@@ -696,6 +697,16 @@ Ordenados por lo que costarían si pasan, con lo que los cubre.
 - **El ratón y ESC.** La regla de Chrome sobre el gesto (vuelta 105) se resolvió en
   la app haciendo ESC de la ventana; el modo evento lo apoya en no pausar y en «Haz
   clic para seguir». Va en la lista del ensayo.
+
+  **Y hay una regla nueva de Chrome que pide arreglo antes del evento**, medida al
+  pasar la batería de esta vuelta: Chromium 153 rechaza `requestPointerLock` con
+  «Too many pointer lock requests in a short window of time» a partir de unas
+  **cinco peticiones en cinco segundos**, y no vuelve a admitir hasta pasados 3 o 4
+  s sin pedir. Nuestro reintento cada 250 ms (`src/game/captura.js`, vuelta 105)
+  **gasta ese cupo sin conseguir nada**. Un visitante que aporree menús lo pisa, y el
+  WebView2 de la app es Chromium y lo tendrá en cuanto se actualice. Es
+  `docs/decisions.md` §109.8, y es la primera cosa que hay que construir, antes que
+  el propio modo evento.
 - **Que los dos PCs no sean iguales.** Distinto ratón, DPI, monitor o aceleración
   del puntero de Windows es una ventaja para uno de los dos, y en una final con
   premio es una reclamación. Cubre: el mismo modelo de todo y la aceleración

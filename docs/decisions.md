@@ -16394,3 +16394,33 @@ cosméticos de forma o efectos (nunca de color), el pase de temporada y la
 membresía. **El juego es 100 % gratis** y la cuota para jugar sigue descartada.
 El modo evento es la primera pieza construible de la vía de las marcas. Detalle en
 `docs/roadmap.md`, fase 6.
+
+### 109.8 — Chrome limita las peticiones de capturar el ratón, y nuestro reintento lo agota
+
+Salió pasando la batería de esta vuelta en un contenedor nuevo, con Chromium 153:
+`esc101` en rojo en su paso «ESC pegado a abrir la armería la cierra y vuelve»,
+tres de tres, con el código idéntico al de la vuelta 108, que lo pasó. La consola
+lo dice: **«Too many pointer lock requests in a short window of time»**.
+
+Medido en una página mínima, clic más petición más soltar: caben unas **cinco
+peticiones** espaciadas entre 0.1 y 1 s, la siguiente se rechaza, y no se vuelve a
+admitir hasta que pasan **3 o 4 s sin pedir**. En `esc101` la secuencia es la de
+alguien que abre y cierra menús: capturar (dos peticiones, porque la primera pide
+`unadjustedMovement` y aquí no está), soltar y volver, opciones y volver, armería…
+y la quinta se rechaza. El reintento de `src/game/captura.js` (vuelta 105, «un
+clic o REANUDAR dentro de la espera se reintentan») **pide cada 250 ms**, así que
+cada reintento cae dentro de la ventana y la mantiene llena.
+
+No es del banco: un jugador que aporrea ESC y la B hace lo mismo, y el WebView2 de
+la app es Chromium. Lo que habría que hacer, **sin hacerlo en esta vuelta** porque
+el encargo era sólo propuesta: tratar ese rechazo como lo que es —dejar de
+reintentar, esperar a que se vacíe la ventana y enseñar «Haz clic» si no hay
+gesto—, y no gastar dos peticiones por captura donde `unadjustedMovement` no
+existe. `esc101` se queda en rojo hasta entonces, a propósito: mide algo que hoy
+está mal.
+
+Y de paso, cómo se llegó aquí: la primera tanda de la vuelta murió entera porque
+el contenedor nuevo no tenía dependencias y traía otro Chromium. Eso dejó en el
+registro de mapas el cebo de `subir93`, sin `ramps`, y la miniatura de escenarios
+reventaba la pantalla de entrenamiento: cuarenta rojos que no eran de nadie. Está
+en `bancos/LEEME.md`, «En un contenedor nuevo».
