@@ -7462,6 +7462,17 @@ aprobación y por la imagen ya construida) y **20 — datos en Supabase** (conta
 y feedback, por el huésped; encaja con la 14). Y la 14 gana «Entrar con Discord»
 en su fase 1 (§3.6).
 
+**Y la 21 — modo evento** (vuelta 109, sin construir): un stand de feria con dos
+PCs y un portátil de servidor sin internet. Una página nueva (`/evento/`, con
+`/evento/tele` y `/evento/admin`) que monta el motor y el cliente de siempre;
+dianas que puntúan **aciertos × precisión²**; duelo exprés en el que el ganador se
+queda; el apodo único y el código como contraseña, sin cuentas; un registro en el
+disco del portátil que **sólo añade líneas**; y el montaje (cortafuegos, IP fija,
+kiosco) como el riesgo gordo. De cinco a siete vueltas, con un stand de dianas
+completo en la tercera. **Y la monetización tiene cinco vías desde esa vuelta**,
+con el juego 100 % gratis: se suman los mapas patrocinados por marcas y las
+activaciones en Alchemist con escuelas (`docs/roadmap.md`, fase 6).
+
 **Y cuatro propuestas están escritas y sin construir, con su orden decidido por el
 encargo de la vuelta 97**: primero la **11** (salas de varios, espectador y lobby
 de evento), detrás la **fase 2 de la 10** (agrupar y bloquear), y detrás las dos de

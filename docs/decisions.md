@@ -16328,3 +16328,69 @@ Dos cosas que no son opinión: **la app de escritorio no puede correr en Windows
 servidor, no toca el protocolo y divide la bajada entre 4 y 14. Con un aviso que
 se paga caro si se olvida: `ws` no comprime por debajo de 1024 B, y la foto del
 duelo pesa unos 900.
+
+---
+
+## §109 — El modo evento (propuesta 21) y la monetización con cinco vías
+
+Una vuelta de propuesta, sin código. El encargo pide un «modo evento» para un
+stand de feria —dos PCs con la app, un portátil de servidor, por cable y sin
+internet, tres días— y está entero en `docs/propuestas/21-modo-evento.md`. Lo
+que tiene un porqué que no se lee en otra parte:
+
+### 109.1 — Una página nueva, no un modo del juego
+
+`/evento/` monta el motor para las dianas y el cliente de red para el duelo, como
+la página del duelo monta el motor desde la vuelta 56. **ESC nunca saca al
+jugador porque en esa página no hay a dónde ir**: no importa ni el menú, ni la
+armería, ni las opciones. Lo que se decide es que en las dianas **soltar el ratón
+no pausa**: un PC en pausa en un stand es un PC parado con alguien que se ha ido.
+
+### 109.2 — Aciertos × precisión², porque el umbral se calibra solo
+
+Con «+100 por acierto, −50 por fallo», disparar a ciegas sale a cuenta en cuanto
+se acierta uno de cada tres. Con P = 100·A³/D², un disparo suma sólo si acierta
+con al menos **⅔ de tu precisión media**. No hay un número fijo que aprenderse
+para engañar a la fórmula.
+
+### 109.3 — El apodo es único y el código es su contraseña
+
+Sin cuentas ni email, es lo único que deja contar la mejor partida de cada
+persona, aplicar la regla de la pareja del duelo y que alguien vuelva al día
+siguiente siendo el mismo. El primer símbolo del código dice qué PC lo dio, así
+que un PC sin red puede dar uno sin chocar con el del otro.
+
+### 109.4 — Nada se sobrescribe
+
+Cada partida, borrado y entrega es una línea añadida con `fsync`, y el estado se
+reconstruye leyendo el registro. Por eso un cierre en seco cuesta lo que tarda en
+volver a abrirse, y borrar se puede deshacer. **El día lo abre y lo cierra el
+staff**, no el calendario: `net/beta.js` agrupa por fecha UTC, y en un evento «el
+día» es lo que hay entre abrir y cerrar.
+
+### 109.5 — Lo que más riesgo tiene es el montaje
+
+Windows clasifica una red sin internet como pública, y la regla de cortafuegos que
+crea al abrir Node suele valer sólo para redes privadas: los PCs no llegan al
+servidor sin un error en ninguna pantalla. La app sólo sabe abrir la dirección de
+Fly. Y la tecla de Windows, Alt+Tab y Alt+F4 sacan al jugador de la app aunque la
+página no se entere. Por eso el hardware de verdad entra en la cuarta vuelta y no
+al final.
+
+### 109.6 — La marca del cliente, en la capa del evento
+
+Vestir las pantallas del evento, la marca del HUD y un mapa con sus estampados
+cuesta media vuelta si se diseña desde el principio. **Los colores del juego no se
+cambian por los del cliente**: son información (vueltas 37 a 67). Y el juego
+entero rebautizado no se recomienda.
+
+### 109.7 — La monetización, con cinco vías
+
+El bloque permanente gana dos vías que no se venden al jugador: **mapas
+patrocinados por marcas** (estampados, promociones en el lobby del mapa y un
+ranking propio con premios mensuales, tarifados como producto) y **activaciones
+creativas en Alchemist con escuelas de diseño de videojuegos**. Siguen los
+cosméticos de forma o efectos (nunca de color), el pase de temporada y la
+membresía. **El juego es 100 % gratis** y la cuota para jugar sigue descartada.
+El modo evento es la primera pieza construible de la vía de las marcas. Detalle en
+`docs/roadmap.md`, fase 6.

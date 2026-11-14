@@ -356,6 +356,25 @@ gente jugándolo es la fase 3.
 - **Medible:** `rutas-buscar.mjs` ya sabe barrer un plano y decir cuántas rutas y
   cuántos puntos admite. Donde no hay conjunto limpio, no hay ruta.
 
+### 3.4 Modo evento, para un stand de feria *(propuesta 21, vuelta 109)*
+
+Dos PCs con la app y un portátil que hace de servidor, por cable y sin internet,
+tres días con mucha rotación: una pantalla de evento (apodo → JUGAR → resultado
+con su puesto y un código para reclamar → vuelta sola), ventanas horarias de
+dianas y de duelo exprés, un ranking por modo y día que se congela, la final del
+día, dos accesos con PIN y una tele. Diseñado entero en
+`docs/propuestas/21-modo-evento.md`, con el orden y el ensayo de jornada completa.
+
+- **No depende de cuentas**: el apodo es único en el evento y el código hace de
+  contraseña. La persistencia es **un registro en el disco del portátil**, sin
+  datos de nadie, que muere con la copia del evento.
+- **No rompe la vuelta 47**: una sala fija que pone el servidor del stand, y el
+  modo no existe en el despliegue.
+- **Tamaño:** de cinco a siete vueltas, con un corte en la tercera que ya es un
+  stand de dianas completo. Lo que más riesgo tiene es el montaje (el cortafuegos
+  de Windows con una red sin internet, salir de la app), y por eso el hardware de
+  verdad entra en la cuarta.
+
 ---
 
 ## Fase 4 — Mapas de comunidad
@@ -542,6 +561,24 @@ acepta las dos objeciones, así que pasan de objeciones a reglas:
 
 Quedan tres: **skins de forma**, **pase de temporada** y **membresía de
 comunidad**. Las dos últimas no tocan el juego; la primera sí y ya sabe cómo.
+
+**Y en la vuelta 109 el bloque crece a cinco, con una regla delante: el juego es
+100 % gratis.** Las tres de arriba siguen como estaban —cosméticos **de forma o
+efectos, nunca de color**, pase de temporada y membresía de comunidad— y entran
+dos que no se venden al jugador:
+
+- **Mapas patrocinados por marcas**, tarifados como producto para marcas: sus
+  estampados en el mapa (vuelta 93), promociones en el lobby del mapa y un ranking
+  propio con premios mensuales. Lo primero ya existe; el ranking mensual pide
+  cuentas (2.2) y datos que duren (propuesta 20), y se tiene que poder ver que es
+  publicidad (propuesta 12).
+- **Activaciones creativas en Alchemist con escuelas de diseño de videojuegos**,
+  que piden lo que pide «Alchemist dentro de Vektor» (fase 4): que el editor salga
+  del PC de quien lo usa.
+
+Y la cuota para jugar sigue descartada. **El modo evento** (3.4) es la primera
+pieza construible de la vía de las marcas: un stand con los logos y los premios de
+una marca, o vestido con su marca (propuesta 21 §11 y §16).
 
 Lo que **no** hay y hace falta antes de escribir una sola línea: qué se vende, a
 quién, y qué pasa con quien no paga. La respuesta a la última ya está dada —se
